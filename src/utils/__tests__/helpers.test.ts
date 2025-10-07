@@ -143,7 +143,7 @@ describe('formatTimestamp', () => {
 });
 
 describe('debounce', () => {
-  it('should delay function execution', (done) => {
+  it('should delay function execution', async () => {
     let callCount = 0;
     const debouncedFn = debounce(() => {
       callCount++;
@@ -153,15 +153,13 @@ describe('debounce', () => {
     debouncedFn();
     debouncedFn();
 
-    setTimeout(() => {
-      expect(callCount).toBe(1);
-      done();
-    }, 150);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    expect(callCount).toBe(1);
   });
 });
 
 describe('throttle', () => {
-  it('should limit function execution rate', (done) => {
+  it('should limit function execution rate', async () => {
     let callCount = 0;
     const throttledFn = throttle(() => {
       callCount++;
@@ -171,10 +169,8 @@ describe('throttle', () => {
     throttledFn();
     throttledFn();
 
-    setTimeout(() => {
-      expect(callCount).toBe(1);
-      done();
-    }, 50);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(callCount).toBe(1);
   });
 });
 

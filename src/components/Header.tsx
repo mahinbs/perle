@@ -1,11 +1,7 @@
 import React from 'react';
 import { Dot } from './Dot';
 
-interface HeaderProps {
-  onMenuClick?: () => void;
-}
-
-export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
+export const Header: React.FC = () => {
   return (
     <header className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
       <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>

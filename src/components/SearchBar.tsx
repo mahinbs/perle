@@ -11,7 +11,6 @@ interface SearchBarProps {
   showHistory: boolean;
   searchHistory: string[];
   onQuerySelect: (query: string) => void;
-  onHistoryToggle: () => void;
   selectedModel: LLMModel;
   onModelChange: (model: LLMModel) => void;
 }
@@ -24,19 +23,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   showHistory,
   searchHistory,
   onQuerySelect,
-  onHistoryToggle,
   selectedModel,
   onModelChange
 }) => {
   const [isFocused, setIsFocused] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setShowSuggestions(false);
         inputRef.current?.blur();
       }
     };
@@ -48,14 +44,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
-    setShowSuggestions(value.length > 0);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       onSearch();
-      setShowSuggestions(false);
     }
   };
 
@@ -76,7 +70,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setQuery(transcript);
-        setShowSuggestions(false);
       };
       
       recognition.start();
@@ -107,8 +100,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           onFocus={() => setIsFocused(true)}
           onBlur={() => {
             setIsFocused(false);
-            // Delay hiding suggestions to allow clicks
-            setTimeout(() => setShowSuggestions(false), 200);
+            // Delay to allow clicks
           }}
           style={{ fontSize: 18 }}
         />
@@ -211,7 +203,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               className="chip"
               onClick={() => {
                 setQuery(`${query} ${action.toLowerCase()}`);
-                setShowSuggestions(false);
               }}
               style={{ fontSize: 11 }}
             >

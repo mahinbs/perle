@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { SearchBar } from '../SearchBar';
+import type { LLMModel } from '../../types';
 
 describe('SearchBar', () => {
   const defaultProps = {
@@ -11,7 +12,8 @@ describe('SearchBar', () => {
     showHistory: false,
     searchHistory: [],
     onQuerySelect: vi.fn(),
-    onHistoryToggle: vi.fn()
+    selectedModel: 'gpt-4' as LLMModel,
+    onModelChange: vi.fn()
   };
 
   beforeEach(() => {

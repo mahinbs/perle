@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { ModeBar } from './components/ModeBar';
 import { SearchBar } from './components/SearchBar';
@@ -142,7 +142,6 @@ export default function App() {
         showHistory={showHistory}
         searchHistory={searchHistory}
         onQuerySelect={handleQuerySelect}
-        onHistoryToggle={() => setShowHistory(!showHistory)}
         selectedModel={selectedModel}
         onModelChange={setSelectedModel}
       />

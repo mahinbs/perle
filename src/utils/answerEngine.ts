@@ -63,7 +63,6 @@ export function fakeAnswerEngine(query: string, mode: Mode, model: LLMModel = 'g
 }
 
 function generateAnswerBody(query: string, mode: Mode, model: LLMModel): string {
-  const baseQuery = query.toLowerCase();
   const modelPrefix = getModelPrefix(model);
   
   switch (mode) {
