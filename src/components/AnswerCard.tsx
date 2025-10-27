@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { AnswerChunk, Source } from '../types';
+import type { AnswerChunk, Source, Mode } from '../types';
 import { SourceChip } from './SourceChip';
 import { copyToClipboard, shareContent } from '../utils/helpers';
 
@@ -7,9 +7,10 @@ interface AnswerCardProps {
   chunks: AnswerChunk[];
   sources: Source[];
   isLoading: boolean;
+  mode?: Mode;
 }
 
-export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoading }) => {
+export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoading, mode }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
 
@@ -100,11 +101,28 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
         marginBottom: 16 
       }}>
         <div style={{ 
-          fontSize: 14, 
-          fontWeight: 500,
-          color: 'var(--sub)'
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
         }}>
-          Answer
+          <div style={{ 
+            fontSize: 14, 
+            fontWeight: 500,
+            color: 'var(--sub)'
+          }}>
+            Answer
+          </div>
+          {mode && (
+            <span className="chip" style={{ 
+              fontSize: 11, 
+              padding: '4px 8px',
+              background: 'var(--accent)',
+              color: '#111',
+              fontWeight: 600
+            }}>
+              {mode}
+            </span>
+          )}
         </div>
         <div style={{ 
           display: 'flex', 

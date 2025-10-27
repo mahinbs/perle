@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { copyToClipboard } from '../utils/helpers';
-import { LLMModelSelector } from './LLMModelSelector';
 import type { LLMModel } from '../types';
 
 interface SearchBarProps {
@@ -23,8 +22,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   showHistory,
   searchHistory,
   onQuerySelect,
-  selectedModel,
-  onModelChange
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -106,11 +103,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         />
         
         <div className="row" style={{ gap: 8, flexShrink: 0 }}>
-          <LLMModelSelector
+          {/* <LLMModelSelector
             selectedModel={selectedModel}
             onModelChange={onModelChange}
             disabled={isLoading}
-          />
+          /> */}
           
           {query && (
             <button
@@ -148,10 +145,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         <div 
           className="card" 
           style={{ 
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
+            // position: 'absolute',
+            // top: '100%',
+            // left: 0,
+            // right: 0,
             marginTop: 8,
             padding: 8,
             zIndex: 1000,
