@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { AnswerChunk, Source, Mode } from '../types';
 import { SourceChip } from './SourceChip';
 import { copyToClipboard, shareContent } from '../utils/helpers';
+import { useToast } from '../contexts/ToastContext';
 
 interface AnswerCardProps {
   chunks: AnswerChunk[];
@@ -13,11 +14,42 @@ interface AnswerCardProps {
 export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoading, mode }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const { showToast } = useToast();
+
+  // Check for speech synthesis support
+  useEffect(() => {
+    setSpeechSupported('speechSynthesis' in window);
+  }, []);
+
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => {
+      if (synthesisRef.current) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   const handleCopyChunk = async (chunk: AnswerChunk, index: number) => {
-    await copyToClipboard(chunk.text);
-    setCopiedChunk(index);
-    setTimeout(() => setCopiedChunk(null), 2000);
+    try {
+      await copyToClipboard(chunk.text);
+      setCopiedChunk(index);
+      setTimeout(() => setCopiedChunk(null), 2000);
+      showToast({
+        message: 'Copied to clipboard!',
+        type: 'success',
+        duration: 2000
+      });
+    } catch (error) {
+      showToast({
+        message: 'Failed to copy',
+        type: 'error',
+        duration: 2000
+      });
+    }
   };
 
   const handleShareAnswer = async () => {
@@ -44,7 +76,53 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     bookmarks.unshift(bookmark);
     localStorage.setItem('perle-bookmarks', JSON.stringify(bookmarks.slice(0, 50)));
     
-    // Could show a toast notification here
+    showToast({
+      message: 'Answer bookmarked!',
+      type: 'success',
+      duration: 2000
+    });
+  };
+
+  const startVoiceOutput = () => {
+    if (!speechSupported) {
+      alert('Voice output is not supported in this browser');
+      return;
+    }
+
+    if (isSpeaking) {
+      stopVoiceOutput();
+      return;
+    }
+
+    // Stop any existing speech
+    window.speechSynthesis.cancel();
+
+    const answerText = chunks.map(c => c.text).join(' ');
+    const utterance = new SpeechSynthesisUtterance(answerText);
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 0.8;
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+    };
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+
+    utterance.onerror = (event) => {
+      console.error('Speech synthesis error:', event.error);
+      setIsSpeaking(false);
+    };
+
+    synthesisRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopVoiceOutput = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
   };
 
   if (isLoading) {
@@ -128,6 +206,37 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           display: 'flex', 
           gap: 4 
         }}>
+          {speechSupported && (
+            <>
+              <button
+                className="btn-ghost"
+                onClick={startVoiceOutput}
+                aria-label={isSpeaking ? "Stop speaking" : "Speak answer"}
+                style={{ 
+                  padding: 8,
+                  fontSize: 16,
+                  background: isSpeaking ? 'var(--accent)' : 'transparent',
+                  color: isSpeaking ? 'white' : 'inherit'
+                }}
+              >
+                {isSpeaking ? '🔊' : '🔊'}
+              </button>
+              {isSpeaking && (
+                <button
+                  className="btn-ghost"
+                  onClick={stopVoiceOutput}
+                  aria-label="Stop speaking"
+                  style={{ 
+                    padding: 8,
+                    fontSize: 16,
+                    color: 'var(--accent)'
+                  }}
+                >
+                  ⏹️
+                </button>
+              )}
+            </>
+          )}
           <button
             className="btn-ghost"
             onClick={handleBookmarkAnswer}

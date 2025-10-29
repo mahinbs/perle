@@ -1,10 +1,17 @@
 import type { Source, AnswerResult, Mode, LLMModel } from '../types';
 import { rerankSources, chunkAnswer } from './helpers';
 
+interface UploadedFile {
+  id: string;
+  file: File;
+  type: 'image' | 'document' | 'other';
+  preview?: string;
+}
+
 /**
  * Fake answer engine - replace with real API integration
  */
-export function fakeAnswerEngine(query: string, mode: Mode, model: LLMModel = 'gpt-4'): AnswerResult {
+export function fakeAnswerEngine(query: string, mode: Mode, model: LLMModel = 'gpt-4', uploadedFiles: UploadedFile[] = []): AnswerResult {
   const baseSources: Source[] = [
     { 
       id: 's1', 
@@ -50,11 +57,23 @@ export function fakeAnswerEngine(query: string, mode: Mode, model: LLMModel = 'g
 
   const sources = rerankSources(baseSources, query);
   
-  const body = generateAnswerBody(query, mode, model);
-  const chunks = chunkAnswer(body, sources);
+  // Add file sources if any files were uploaded
+  const fileSources: Source[] = uploadedFiles.map((file) => ({
+    id: `file-${file.id}`,
+    title: `Uploaded ${file.type}: ${file.file.name}`,
+    url: `file://${file.file.name}`,
+    year: new Date().getFullYear(),
+    domain: 'uploaded-file',
+    snippet: `User uploaded ${file.type} file: ${file.file.name} (${(file.file.size / 1024).toFixed(1)} KB)`
+  }));
+  
+  const allSources = [...fileSources, ...sources];
+  
+  const body = generateAnswerBody(query, mode, model, uploadedFiles);
+  const chunks = chunkAnswer(body, allSources);
   
   return {
-    sources,
+    sources: allSources,
     chunks,
     query,
     mode,
@@ -62,24 +81,28 @@ export function fakeAnswerEngine(query: string, mode: Mode, model: LLMModel = 'g
   };
 }
 
-function generateAnswerBody(query: string, mode: Mode, model: LLMModel): string {
+function generateAnswerBody(query: string, mode: Mode, model: LLMModel, uploadedFiles: UploadedFile[] = []): string {
   const modelPrefix = getModelPrefix(model);
+  const hasFiles = uploadedFiles.length > 0;
+  const fileContext = hasFiles ? ` (analyzing ${uploadedFiles.length} uploaded file${uploadedFiles.length > 1 ? 's' : ''})` : '';
   
   switch (mode) {
     case 'Ask':
-      return `${modelPrefix} ${query} in brief: On-device models reduce latency and cost while improving privacy. Expect hybrid retrieval (local + cloud), compressed architectures, and task-tuned context windows. The shift toward edge computing represents a fundamental change in how AI systems are deployed and scaled.`;
+      // ${modelPrefix} 
+      return `
+      ${query} in brief${fileContext}: On-device models reduce latency and cost while improving privacy. Expect hybrid retrieval (local + cloud), compressed architectures, and task-tuned context windows. The shift toward edge computing represents a fundamental change in how AI systems are deployed and scaled.${hasFiles ? ' Based on your uploaded files, I can provide more specific insights about how these technologies might apply to your use case.' : ''}`;
       
     case 'Research':
-      return `${modelPrefix} ${query}: Landscape overview, recent advances, trade-offs, and open questions. Edge inference delivers responsiveness and energy savings, with server fallback for heavy jobs. Key considerations include model compression techniques, quantization strategies, and the balance between accuracy and efficiency. Current research focuses on developing more efficient architectures that can run on resource-constrained devices.`;
+      return `${modelPrefix} ${query}: Landscape overview, recent advances, trade-offs, and open questions. Edge inference delivers responsiveness and energy savings, with server fallback for heavy jobs. Key considerations include model compression techniques, quantization strategies, and the balance between accuracy and efficiency. Current research focuses on developing more efficient architectures that can run on resource-constrained devices.${hasFiles ? ' Your uploaded files provide additional context for this research analysis.' : ''}`;
       
     case 'Summarize':
-      return `${modelPrefix} TL;DR for ${query}: 1) Lower latency through local processing, 2) Better privacy with on-device data handling, 3) Cost control by reducing cloud dependencies. Watch quantization quality, evaluation drift, and user experience trade-offs. The technology is rapidly maturing with significant improvements in model efficiency and deployment strategies.`;
+      return `${modelPrefix} TL;DR for ${query}${fileContext}: 1) Lower latency through local processing, 2) Better privacy with on-device data handling, 3) Cost control by reducing cloud dependencies. Watch quantization quality, evaluation drift, and user experience trade-offs. The technology is rapidly maturing with significant improvements in model efficiency and deployment strategies.${hasFiles ? ' The uploaded files have been considered in this summary.' : ''}`;
       
     case 'Compare':
-      return `${modelPrefix} Comparing for ${query}: On-device vs Cloud — latency (10-100ms vs 200-2000ms), cost (fixed vs variable), privacy (local vs remote). Finetune vs RAG — data freshness vs ownership, customization vs generalization. Each approach has distinct advantages depending on use case requirements and constraints.`;
+      return `${modelPrefix} Comparing for ${query}${fileContext}: On-device vs Cloud — latency (10-100ms vs 200-2000ms), cost (fixed vs variable), privacy (local vs remote). Finetune vs RAG — data freshness vs ownership, customization vs generalization. Each approach has distinct advantages depending on use case requirements and constraints.${hasFiles ? ' Your uploaded files help illustrate these comparisons with real examples.' : ''}`;
       
     default:
-      return `${modelPrefix} Analysis of ${query}: This topic involves multiple technical and strategic considerations that impact both current implementations and future development directions.`;
+      return `${modelPrefix} Analysis of ${query}${fileContext}: This topic involves multiple technical and strategic considerations that impact both current implementations and future development directions.${hasFiles ? ' The uploaded files provide valuable context for this analysis.' : ''}`;
   }
 }
 

@@ -4,10 +4,18 @@ import { ModeBar } from '../components/ModeBar';
 import { SearchBar } from '../components/SearchBar';
 import { AnswerCard } from '../components/AnswerCard';
 import { DiscoverRail } from '../components/DiscoverRail';
+import { UpgradeCard } from '../components/UpgradeCard';
 import { fakeAnswerEngine } from '../utils/answerEngine';
 import { formatQuery } from '../utils/helpers';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
 import type { Mode, AnswerResult, LLMModel } from '../types';
+
+interface UploadedFile {
+  id: string;
+  file: File;
+  type: 'image' | 'document' | 'other';
+  preview?: string;
+}
 
 export default function HomePage() {
   const { state: currentData } = useRouterNavigation();
@@ -18,6 +26,7 @@ export default function HomePage() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedModel, setSelectedModel] = useState<LLMModel>('gpt-4');
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
   // Load search history from localStorage on mount
   useEffect(() => {
@@ -52,8 +61,8 @@ export default function HomePage() {
     });
   }, []);
 
-  const doSearch = useCallback(() => {
-    const q = formatQuery(query);
+  const doSearch = useCallback((searchQuery?: string) => {
+    const q = formatQuery(searchQuery || query);
     if (!q) {
       setAnswer(null);
       return;
@@ -62,13 +71,18 @@ export default function HomePage() {
     setIsLoading(true);
     saveToHistory(q);
     
+    // If a specific search query was provided, update the query state
+    if (searchQuery && searchQuery !== query) {
+      setQuery(searchQuery);
+    }
+    
     // Simulate API delay for better UX
     setTimeout(() => {
-      const res = fakeAnswerEngine(q, mode, selectedModel);
+      const res = fakeAnswerEngine(q, mode, selectedModel, uploadedFiles);
       setAnswer(res);
       setIsLoading(false);
     }, 800);
-  }, [query, mode, selectedModel, saveToHistory]);
+  }, [query, mode, selectedModel, saveToHistory, uploadedFiles]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -155,6 +169,8 @@ export default function HomePage() {
         onQuerySelect={handleQuerySelect}
         selectedModel={selectedModel}
         onModelChange={setSelectedModel}
+        uploadedFiles={uploadedFiles}
+        onFilesChange={setUploadedFiles}
       />
 
       <div className="spacer-12" />
@@ -167,6 +183,9 @@ export default function HomePage() {
 
       <div className="spacer-16" />
       <DiscoverRail />
+
+      <div className="spacer-24" />
+      <UpgradeCard />
 
       <div className="spacer-40" />
     </div>
