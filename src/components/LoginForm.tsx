@@ -125,7 +125,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: 16,
+                  fontSize: 18,
                   color: 'var(--sub)',
                   padding: 4
                 }}

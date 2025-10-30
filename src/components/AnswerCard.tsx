@@ -3,6 +3,7 @@ import type { AnswerChunk, Source, Mode } from '../types';
 import { SourceChip } from './SourceChip';
 import { copyToClipboard, shareContent } from '../utils/helpers';
 import { useToast } from '../contexts/ToastContext';
+import { FaVolumeUp, FaStop, FaBookmark, FaShare, FaClipboard, FaCheck, FaChevronDown } from 'react-icons/fa';
 
 interface AnswerCardProps {
   chunks: AnswerChunk[];
@@ -32,6 +33,16 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       }
     };
   }, []);
+
+  // Auto-speak the next answer when triggered from voice overlay
+  useEffect(() => {
+    const shouldSpeak = localStorage.getItem('perle-speak-next-answer');
+    if (!shouldSpeak) return;
+    if (chunks.length === 0 || isLoading) return;
+    // consume the flag
+    localStorage.removeItem('perle-speak-next-answer');
+    startVoiceOutput();
+  }, [chunks, isLoading]);
 
   const handleCopyChunk = async (chunk: AnswerChunk, index: number) => {
     try {
@@ -219,7 +230,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                   color: isSpeaking ? 'white' : 'inherit'
                 }}
               >
-                {isSpeaking ? '🔊' : '🔊'}
+                <FaVolumeUp size={18} />
               </button>
               {isSpeaking && (
                 <button
@@ -232,7 +243,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                     color: 'var(--accent)'
                   }}
                 >
-                  ⏹️
+                  <FaStop size={18} />
                 </button>
               )}
             </>
@@ -246,7 +257,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
               fontSize: 16
             }}
           >
-            🔖
+            <FaBookmark size={18} />
           </button>
           <button
             className="btn-ghost"
@@ -257,7 +268,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
               fontSize: 16
             }}
           >
-            📤
+            <FaShare size={18} />
           </button>
         </div>
       </div>
@@ -305,7 +316,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                   alignSelf: 'flex-start'
                 }}
               >
-                {copiedChunk === index ? '✓' : '📋'}
+                {copiedChunk === index ? <FaCheck size={16} /> : <FaClipboard size={16} />}
               </button>
             </div>
           </div>
@@ -335,7 +346,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             transition: 'transform 0.2s',
             fontSize: 12
           }}>
-            ▼
+            <FaChevronDown size={14} />
           </span>
         </button>
         

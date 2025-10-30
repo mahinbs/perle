@@ -158,7 +158,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
             }} />
             <span>{selectedModelInfo?.name || 'Select Model'}</span>
           </div>
-          <span style={{ fontSize: 12, opacity: 0.7 }}>
+          <span style={{ fontSize: 14, opacity: 0.7 }}>
             {isOpen ? '▲' : '▼'}
           </span>
         </button>

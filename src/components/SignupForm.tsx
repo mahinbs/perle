@@ -166,7 +166,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: 16,
+                  fontSize: 18,
                   color: 'var(--sub)',
                   padding: 4
                 }}
@@ -223,7 +223,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: 16,
+                  fontSize: 18,
                   color: 'var(--sub)',
                   padding: 4
                 }}

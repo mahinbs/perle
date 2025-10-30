@@ -172,6 +172,7 @@ export const Library: React.FC = () => {
                   aria-label={item.isBookmarked ? 'Remove bookmark' : 'Add bookmark'}
                   style={{ 
                     padding: 8,
+                    fontSize: 18,
                     color: item.isBookmarked ? 'var(--accent)' : 'var(--sub)'
                   }}
                 >

@@ -35,7 +35,7 @@ export const UpgradeCard: React.FC = () => {
                 color: 'var(--text)'
               }}
             >
-              <span style={{ color: 'var(--accent)', fontSize: 18, fontWeight: 600 }}>✓</span>
+              <span style={{ color: 'var(--accent)', fontSize: 20, fontWeight: 600 }}>✓</span>
               <span>{feature}</span>
             </div>
           ))}

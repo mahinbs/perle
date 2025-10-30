@@ -1,12 +1,22 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { copyToClipboard } from '../utils/helpers';
-import { useToast } from '../contexts/ToastContext';
-import type { LLMModel } from '../types';
+import React, { useState, useRef, useEffect } from "react";
+import { copyToClipboard } from "../utils/helpers";
+import { useToast } from "../contexts/ToastContext";
+import type { LLMModel } from "../types";
+import {
+  FaMicrophone,
+  FaCopy,
+  FaPaperclip,
+  FaFolderOpen,
+  FaImage,
+  FaCamera,
+} from "react-icons/fa";
+import HeadsetWaveIcon from "./HeadsetWaveIcon";
+import VoiceOverlay from "./VoiceOverlay";
 
 interface UploadedFile {
   id: string;
   file: File;
-  type: 'image' | 'document' | 'other';
+  type: "image" | "document" | "other";
   preview?: string;
 }
 
@@ -41,6 +51,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
   const { showToast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,15 +62,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // Check for speech support
   useEffect(() => {
-    const hasSpeechRecognition = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-    const hasSpeechSynthesis = 'speechSynthesis' in window;
+    const hasSpeechRecognition =
+      "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
+    const hasSpeechSynthesis = "speechSynthesis" in window;
     setSpeechSupported(hasSpeechRecognition && hasSpeechSynthesis);
   }, []);
 
   // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         inputRef.current?.blur();
         if (isListening) {
           stopVoiceInput();
@@ -70,8 +82,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isListening, isSpeaking]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,7 +92,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       onSearch();
     }
@@ -90,50 +102,60 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     try {
       await copyToClipboard(query);
       showToast({
-        message: 'Query copied to clipboard!',
-        type: 'success',
-        duration: 2000
+        message: "Query copied to clipboard!",
+        type: "success",
+        duration: 2000,
       });
     } catch (error) {
       showToast({
-        message: 'Failed to copy query',
-        type: 'error',
-        duration: 2000
+        message: "Failed to copy query",
+        type: "error",
+        duration: 2000,
       });
     }
   };
 
   const startVoiceInput = () => {
     if (!speechSupported) {
-      alert('Voice input is not supported in this browser');
+      alert("Voice input is not supported in this browser");
       return;
     }
+
+    // Stop any ongoing TTS playback before starting a new recording
+    try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+      }
+    } catch {}
 
     if (isListening) {
       stopVoiceInput();
       return;
     }
 
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    const SpeechRecognition =
+      (window as any).webkitSpeechRecognition ||
+      (window as any).SpeechRecognition;
     const recognition = new SpeechRecognition();
-    
+
     recognition.continuous = false;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    
-    let finalTranscript = '';
-    
+    recognition.lang = "en-US";
+
+    let finalTranscript = "";
+
     recognition.onstart = () => {
       setIsListening(true);
       setShowUploadMenu(false); // Close upload menu when recording starts
     };
-    
+
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       setQuery(transcript);
       finalTranscript = transcript; // Store the latest transcript
     };
-    
+
     recognition.onend = () => {
       setIsListening(false);
       // Auto-trigger search when voice recording stops using the final transcript
@@ -141,17 +163,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         setQuery(finalTranscript);
         // Pass the transcript directly to onSearch to avoid state timing issues
         onSearch(finalTranscript);
+        // tell AnswerCard to speak the next answer
+        localStorage.setItem("perle-speak-next-answer", "1");
       }
     };
-    
+
     recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
+      console.error("Speech recognition error:", event.error);
       setIsListening(false);
-      if (event.error === 'not-allowed') {
-        alert('Microphone access denied. Please allow microphone access and try again.');
+      if (event.error === "not-allowed") {
+        alert(
+          "Microphone access denied. Please allow microphone access and try again."
+        );
       }
     };
-    
+
     recognitionRef.current = recognition;
     recognition.start();
   };
@@ -164,56 +190,27 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     setIsListening(false);
   };
 
-  const startVoiceOutput = (text: string) => {
-    if (!speechSupported) {
-      alert('Voice output is not supported in this browser');
-      return;
-    }
-
-    if (isSpeaking) {
-      stopVoiceOutput();
-      return;
-    }
-
-    // Stop any existing speech
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    utterance.volume = 0.8;
-
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-    };
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-    };
-
-    utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event.error);
-      setIsSpeaking(false);
-    };
-
-    synthesisRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-  };
+  // Voice output helper (currently unused here; AnswerCard handles TTS)
 
   const stopVoiceOutput = () => {
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
   };
 
-  const getFileType = (file: File): 'image' | 'document' | 'other' => {
-    if (file.type.startsWith('image/')) return 'image';
-    if (file.type.startsWith('text/') || file.type.includes('pdf') || file.type.includes('document')) return 'document';
-    return 'other';
+  const getFileType = (file: File): "image" | "document" | "other" => {
+    if (file.type.startsWith("image/")) return "image";
+    if (
+      file.type.startsWith("text/") ||
+      file.type.includes("pdf") ||
+      file.type.includes("document")
+    )
+      return "document";
+    return "other";
   };
 
   const createFilePreview = (file: File): Promise<string | undefined> => {
     return new Promise((resolve) => {
-      if (file.type.startsWith('image/')) {
+      if (file.type.startsWith("image/")) {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result as string);
         reader.readAsDataURL(file);
@@ -227,17 +224,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (!files || !onFilesChange) return;
 
     const newFiles: UploadedFile[] = [];
-    
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const type = getFileType(file);
       const preview = await createFilePreview(file);
-      
+
       newFiles.push({
         id: `${Date.now()}-${Math.random()}`,
         file,
         type,
-        preview
+        preview,
       });
     }
 
@@ -246,31 +243,31 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   const removeFile = (fileId: string) => {
     if (!onFilesChange) return;
-    onFilesChange(uploadedFiles.filter(f => f.id !== fileId));
+    onFilesChange(uploadedFiles.filter((f) => f.id !== fileId));
   };
 
   const startCameraCapture = async () => {
     try {
       setIsCapturing(true);
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' },
-        audio: false 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
       });
-      
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
       }
     } catch (error) {
-      console.error('Error accessing camera:', error);
+      console.error("Error accessing camera:", error);
       setIsCapturing(false);
     }
   };
 
   const stopCameraCapture = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
     setIsCapturing(false);
@@ -279,29 +276,35 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const capturePhoto = () => {
     if (!videoRef.current || !onFilesChange) return;
 
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
     if (!context) return;
 
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
-    
+
     context.drawImage(videoRef.current, 0, 0);
-    
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], `camera-capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        const newFile: UploadedFile = {
-          id: `${Date.now()}-${Math.random()}`,
-          file,
-          type: 'image',
-          preview: canvas.toDataURL('image/jpeg')
-        };
-        onFilesChange([...uploadedFiles, newFile]);
-      }
-    }, 'image/jpeg', 0.8);
-    
+
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          const file = new File([blob], `camera-capture-${Date.now()}.jpg`, {
+            type: "image/jpeg",
+          });
+          const newFile: UploadedFile = {
+            id: `${Date.now()}-${Math.random()}`,
+            file,
+            type: "image",
+            preview: canvas.toDataURL("image/jpeg"),
+          };
+          onFilesChange([...uploadedFiles, newFile]);
+        }
+      },
+      "image/jpeg",
+      0.8
+    );
+
     stopCameraCapture();
   };
 
@@ -309,7 +312,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   useEffect(() => {
     return () => {
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
       if (recognitionRef.current) {
         recognitionRef.current.stop();
@@ -323,30 +326,55 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   // Close upload menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (showUploadMenu && !(event.target as Element).closest('[data-upload-menu]')) {
+      if (
+        showUploadMenu &&
+        !(event.target as Element).closest("[data-upload-menu]")
+      ) {
         setShowUploadMenu(false);
       }
     };
 
     if (showUploadMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [showUploadMenu]);
 
   return (
-    <div className="card" style={{ padding: 16, position: 'relative', overflow: 'visible', zIndex: 1 }}>
+    <div
+      className="card"
+      style={{
+        padding: 16,
+        position: "relative",
+        overflow: "visible",
+        zIndex: 1,
+      }}
+    >
+      {/* Voice Overlay */}
+      <VoiceOverlay
+        isOpen={showVoiceOverlay}
+        isListening={isListening}
+        onToggleListening={() => {
+          if (isListening) {
+            stopVoiceInput();
+          } else {
+            startVoiceInput();
+          }
+        }}
+        onClose={() => setShowVoiceOverlay(false)}
+      />
       <div className="row">
-        <div 
-          style={{ 
-            width: 10, 
-            height: 10, 
-            borderRadius: 99, 
-            background: 'var(--accent)',
-            flexShrink: 0
-          }} 
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: 99,
+            background: "var(--accent)",
+            flexShrink: 0,
+          }}
         />
-        
+
         <input
           ref={inputRef}
           className="input"
@@ -362,14 +390,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           }}
           style={{ fontSize: 18 }}
         />
-        
+
         <div className="row" style={{ gap: 8, flexShrink: 0 }}>
           {/* <LLMModelSelector
             selectedModel={selectedModel}
             onModelChange={onModelChange}
             disabled={isLoading}
           /> */}
-          
+
           {query && (
             <button
               className="btn-ghost"
@@ -377,40 +405,40 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               aria-label="Copy query"
               style={{ padding: 8 }}
             >
-              📋
+              <FaCopy size={18} />
             </button>
           )}
-          
-          <div style={{ position: 'relative' }} data-upload-menu>
+
+          <div style={{ position: "relative" }} data-upload-menu>
             <button
               className="btn-ghost"
               onClick={() => setShowUploadMenu(!showUploadMenu)}
               aria-label="Upload files"
               disabled={isListening}
-              style={{ 
+              style={{
                 padding: 8,
                 opacity: isListening ? 0.5 : 1,
-                cursor: isListening ? 'not-allowed' : 'pointer'
+                cursor: isListening ? "not-allowed" : "pointer",
               }}
             >
-              📎
+              <FaPaperclip size={18} />
             </button>
-            
+
             {showUploadMenu && (
-              <div 
-                className="card" 
+              <div
+                className="card"
                 data-upload-menu
-                style={{ 
-                  position: 'absolute',
-                  top: '100%',
+                style={{
+                  position: "absolute",
+                  top: "100%",
                   right: 0,
                   marginTop: 8,
                   padding: 8,
                   zIndex: 9999,
                   minWidth: 200,
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                  border: '1px solid var(--border, #e0e0e0)',
-                  background: 'var(--background, #252525)'
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+                  border: "1px solid var(--border, #e0e0e0)",
+                  background: "var(--background, #252525)",
                 }}
               >
                 <button
@@ -420,15 +448,23 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     setShowUploadMenu(false);
                   }}
                   disabled={isListening}
-                  style={{ 
-                    width: '100%', 
-                    justifyContent: 'flex-start', 
+                  style={{
+                    width: "100%",
+                    justifyContent: "flex-start",
                     marginBottom: 4,
                     opacity: isListening ? 0.5 : 1,
-                    cursor: isListening ? 'not-allowed' : 'pointer'
+                    cursor: isListening ? "not-allowed" : "pointer",
                   }}
                 >
-                  📁 Upload Files
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <FaFolderOpen size={16} /> Upload Files
+                  </span>
                 </button>
                 <button
                   className="btn-ghost"
@@ -437,15 +473,23 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     setShowUploadMenu(false);
                   }}
                   disabled={isListening}
-                  style={{ 
-                    width: '100%', 
-                    justifyContent: 'flex-start', 
+                  style={{
+                    width: "100%",
+                    justifyContent: "flex-start",
                     marginBottom: 4,
                     opacity: isListening ? 0.5 : 1,
-                    cursor: isListening ? 'not-allowed' : 'pointer'
+                    cursor: isListening ? "not-allowed" : "pointer",
                   }}
                 >
-                  🖼️ Upload Images
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <FaImage size={16} /> Upload Images
+                  </span>
                 </button>
                 <button
                   className="btn-ghost"
@@ -454,76 +498,96 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     setShowUploadMenu(false);
                   }}
                   disabled={isListening}
-                  style={{ 
-                    width: '100%', 
-                    justifyContent: 'flex-start',
+                  style={{
+                    width: "100%",
+                    justifyContent: "flex-start",
                     opacity: isListening ? 0.5 : 1,
-                    cursor: isListening ? 'not-allowed' : 'pointer'
+                    cursor: isListening ? "not-allowed" : "pointer",
                   }}
                 >
-                  📷 Take Photo
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <FaCamera size={16} /> Take Photo
+                  </span>
                 </button>
               </div>
             )}
           </div>
-          
+
           {speechSupported && (
             <button
               className="btn-ghost"
-              onClick={startVoiceInput}
-              aria-label={isListening ? "Stop listening" : "Start voice input"}
-              style={{ 
+              onClick={() => setShowVoiceOverlay(true)}
+              disabled={isListening}
+              style={{
                 padding: 8,
-                background: isListening ? 'var(--accent)' : 'transparent',
-                color: isListening ? 'white' : 'inherit'
+                color: "white",
+                opacity: isListening ? 0.5 : 1,
+                cursor: isListening ? "not-allowed" : "pointer",
               }}
             >
-              {isListening ? '🔴' : '🎤'}
+              <HeadsetWaveIcon size={22} />
             </button>
           )}
-          
+
+          {/* Voice Search (no overlay): start/stop dictation, auto-search on end */}
+          {speechSupported && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  if (isListening) {
+                    stopVoiceInput();
+                  } else {
+                    startVoiceInput();
+                  }
+                }}
+                aria-label={
+                  isListening ? "Stop voice input" : "Start voice input"
+                }
+                style={{
+                  padding: "4px 8px",
+                  fontSize: 12,
+                  background: isListening ? "var(--accent)" : "transparent",
+                  color: isListening ? "white" : "inherit",
+                }}
+              >
+                <FaMicrophone size={18} />
+              </button>
+            </div>
+          )}
+
           <button
             className="btn"
             onClick={() => onSearch()}
             disabled={isLoading || !query.trim() || isListening}
-            style={{ 
+            style={{
               minWidth: 80,
               opacity: isListening ? 0.5 : 1,
-              cursor: isListening ? 'not-allowed' : 'pointer'
+              cursor: isListening ? "not-allowed" : "pointer",
             }}
           >
-            {isLoading ? '…' : isListening ? '🎤' : 'Search'}
+            {isLoading ? (
+              "…"
+            ) : isListening ? (
+              <FaMicrophone size={18} />
+            ) : (
+              "Search"
+            )}
           </button>
         </div>
       </div>
-
-      {/* Voice Output Controls */}
-      {speechSupported && query && !isListening && (
-        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            className="btn-ghost"
-            onClick={() => startVoiceOutput(query)}
-            disabled={isSpeaking}
-            style={{ 
-              padding: '4px 8px',
-              fontSize: 12,
-              background: isSpeaking ? 'var(--accent)' : 'transparent',
-              color: isSpeaking ? 'white' : 'inherit'
-            }}
-          >
-            {isSpeaking ? '🔊 Speaking...' : '🔊 Speak Query'}
-          </button>
-          {isSpeaking && (
-            <button
-              className="btn-ghost"
-              onClick={stopVoiceOutput}
-              style={{ padding: '4px 8px', fontSize: 12 }}
-            >
-              ⏹️ Stop
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Hidden file input */}
       <input
@@ -532,24 +596,24 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         multiple
         accept="image/*,.pdf,.doc,.docx,.txt"
         onChange={(e) => handleFileUpload(e.target.files)}
-        style={{ display: 'none' }}
+        style={{ display: "none" }}
       />
 
       {/* Camera Modal */}
       {isCapturing && (
-        <div 
+        <div
           style={{
-            position: 'fixed',
+            position: "fixed",
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0,0,0,0.8)',
+            background: "rgba(0,0,0,0.8)",
             zIndex: 10000,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center'
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           <video
@@ -557,23 +621,23 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             autoPlay
             playsInline
             style={{
-              maxWidth: '90vw',
-              maxHeight: '60vh',
-              borderRadius: 8
+              maxWidth: "90vw",
+              maxHeight: "60vh",
+              borderRadius: 8,
             }}
           />
-          <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
+          <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
             <button
               className="btn"
               onClick={capturePhoto}
-              style={{ padding: '12px 24px' }}
+              style={{ padding: "12px 24px" }}
             >
               📸 Capture
             </button>
             <button
               className="btn-ghost"
               onClick={stopCameraCapture}
-              style={{ padding: '12px 24px' }}
+              style={{ padding: "12px 24px" }}
             >
               ❌ Cancel
             </button>
@@ -587,17 +651,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           <div className="sub text-sm" style={{ marginBottom: 8 }}>
             Attached files ({uploadedFiles.length})
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {uploadedFiles.map((file) => (
               <div
                 key={file.id}
                 className="card"
                 style={{
                   padding: 8,
-                  display: 'flex',
-                  alignItems: 'center',
+                  display: "flex",
+                  alignItems: "center",
                   gap: 8,
-                  maxWidth: 200
+                  maxWidth: 200,
                 }}
               >
                 {file.preview ? (
@@ -607,8 +671,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     style={{
                       width: 40,
                       height: 40,
-                      objectFit: 'cover',
-                      borderRadius: 4
+                      objectFit: "cover",
+                      borderRadius: 4,
                     }}
                   />
                 ) : (
@@ -616,24 +680,24 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     style={{
                       width: 40,
                       height: 40,
-                      background: 'var(--accent)',
+                      background: "var(--accent)",
                       borderRadius: 4,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 16
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 16,
                     }}
                   >
-                    {file.type === 'document' ? '📄' : '📁'}
+                    {file.type === "document" ? "📄" : "📁"}
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div 
-                    className="text-sm" 
-                    style={{ 
-                      overflow: 'hidden', 
-                      textOverflow: 'ellipsis', 
-                      whiteSpace: 'nowrap' 
+                  <div
+                    className="text-sm"
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {file.file.name}
@@ -658,9 +722,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
       {/* Search History Dropdown */}
       {showHistory && searchHistory.length > 0 && (
-        <div 
-          className="card" 
-          style={{ 
+        <div
+          className="card"
+          style={{
             // position: 'absolute',
             // top: '100%',
             // left: 0,
@@ -669,10 +733,13 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             padding: 8,
             zIndex: 1000,
             maxHeight: 200,
-            overflowY: 'auto'
+            overflowY: "auto",
           }}
         >
-          <div className="sub text-sm" style={{ marginBottom: 8, padding: '0 8px' }}>
+          <div
+            className="sub text-sm"
+            style={{ marginBottom: 8, padding: "0 8px" }}
+          >
             Recent searches
           </div>
           {searchHistory.slice(0, 5).map((item, index) => (
@@ -680,12 +747,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               key={index}
               className="btn-ghost"
               onClick={() => onQuerySelect(item)}
-              style={{ 
-                width: '100%', 
-                justifyContent: 'flex-start',
-                padding: '8px 12px',
+              style={{
+                width: "100%",
+                justifyContent: "flex-start",
+                padding: "8px 12px",
                 marginBottom: 4,
-                textAlign: 'left'
+                textAlign: "left",
               }}
             >
               {item}
@@ -696,21 +763,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
       {/* Quick Actions */}
       {isFocused && query.length > 0 && (
-        <div 
-          className="row" 
-          style={{ 
-            marginTop: 12, 
-            flexWrap: 'wrap', 
+        <div
+          className="row"
+          style={{
+            marginTop: 12,
+            flexWrap: "wrap",
             gap: 8,
-            opacity: 0.7
+            opacity: 0.7,
           }}
         >
           {[
-            'Explain in simple terms',
-            'Compare with alternatives',
-            'What are the risks?',
-            'Show recent examples'
-          ].map(action => (
+            "Explain in simple terms",
+            "Compare with alternatives",
+            "What are the risks?",
+            "Show recent examples",
+          ].map((action) => (
             <button
               key={action}
               className="chip"

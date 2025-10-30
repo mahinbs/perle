@@ -4,8 +4,8 @@ export const Dot: React.FC = () => (
   <span 
     style={{
       display: 'inline-block',
-      width: 8,
-      height: 8,
+      width: 10,
+      height: 10,
       borderRadius: 99,
       background: 'var(--accent)',
       transform: 'translateY(2px)'

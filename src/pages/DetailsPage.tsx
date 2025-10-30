@@ -112,7 +112,7 @@ export default function DetailsPage() {
           <button
             className="btn-ghost"
             onClick={handleBookmark}
-            style={{ padding: 8 }}
+            style={{ padding: 8, fontSize: 18 }}
             aria-label="Bookmark"
           >
             🔖
@@ -120,7 +120,7 @@ export default function DetailsPage() {
           <button
             className="btn-ghost"
             onClick={handleShare}
-            style={{ padding: 8 }}
+            style={{ padding: 8, fontSize: 18 }}
             aria-label="Share"
           >
             📤
