@@ -2,14 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { copyToClipboard } from "../utils/helpers";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel } from "../types";
-import {
-  FaMicrophone,
-  FaCopy,
-  FaPaperclip,
-  FaFolderOpen,
-  FaImage,
-  FaCamera,
-} from "react-icons/fa";
+import { FaCopy, FaPaperclip, FaFolderOpen, FaImage, FaCamera } from "react-icons/fa";
+import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
 import VoiceOverlay from "./VoiceOverlay";
 
@@ -563,7 +557,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   color: isListening ? "white" : "inherit",
                 }}
               >
-                <FaMicrophone size={18} />
+                <MicWaveIcon size={25} active={isListening} />
               </button>
             </div>
           )}
@@ -581,7 +575,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             {isLoading ? (
               "…"
             ) : isListening ? (
-              <FaMicrophone size={18} />
+              <MicWaveIcon size={18} active={true} />
             ) : (
               "Search"
             )}

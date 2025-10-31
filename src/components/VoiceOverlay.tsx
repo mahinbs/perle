@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import HeadsetWaveIcon from './HeadsetWaveIcon';
-import { FaMicrophone } from 'react-icons/fa';
+import MicWaveIcon from './MicWaveIcon';
 
 interface VoiceOverlayProps {
   isOpen: boolean;
@@ -111,7 +111,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           aria-label={isListening ? 'Stop listening' : 'Start voice'}
           style={{ width: 84, height: 84, borderRadius: 9999, color: isListening ? '#111' : '#ECECEC', borderColor: isListening ? undefined : '#2A2A2A' }}
         >
-          <FaMicrophone size={26} />
+          <MicWaveIcon size={26} active={isListening} />
         </button>
       </div>
     </div>
