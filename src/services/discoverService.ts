@@ -75,15 +75,6 @@ const discoverItems: DiscoverItem[] = [
     category: 'Technology'
   },
   {
-    id: '5',
-    title: 'Climate Change Solutions',
-    description: 'Innovative approaches to combating climate change and environmental degradation.',
-    image: 'https://images.unsplash.com/photo-1569163139394-de6e45c2e44e?w=400&h=200&fit=crop',
-    alt: 'Climate solutions',
-    tag: 'Important',
-    category: 'Environment'
-  },
-  {
     id: '6',
     title: 'Sports Science Innovations',
     description: 'How technology and science are improving athletic performance and safety.',

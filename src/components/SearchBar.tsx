@@ -47,7 +47,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const [speechSupported, setSpeechSupported] = useState(false);
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
   const { showToast } = useToast();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -80,13 +80,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isListening, isSpeaking]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setQuery(value);
-  };
+  // Reset textarea height when query changes externally (e.g., from voice input)
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+      inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+    }
+  }, [query]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSearch();
     }
@@ -369,20 +372,34 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           }}
         />
 
-        <input
+        <textarea
           ref={inputRef}
           className="input"
           aria-label="Search"
           placeholder="Ask anything — we'll cite every answer"
           value={query}
-          onChange={handleInputChange}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+          }}
           onKeyDown={handleKeyDown}
           onFocus={() => setIsFocused(true)}
           onBlur={() => {
             setIsFocused(false);
             // Delay to allow clicks
           }}
-          style={{ fontSize: 18 }}
+          style={{ 
+            fontSize: 18,
+            resize: "none",
+            minHeight: 44,
+            maxHeight: 120,
+            lineHeight: 1.5,
+            overflowY: "auto",
+            fontFamily: "inherit",
+            borderRadius:".5rem"
+          }}
+          rows={1}
         />
 
         <div className="row" style={{ gap: 8, flexShrink: 0 }}>
@@ -425,7 +442,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 style={{
                   position: "absolute",
                   top: "100%",
-                  right: 0,
+                  left: 0,
                   marginTop: 8,
                   padding: 8,
                   zIndex: 9999,
@@ -513,24 +530,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             )}
           </div>
 
-          {speechSupported && (
-            <button
-              className="btn-ghost"
-              onClick={() => setShowVoiceOverlay(true)}
-              disabled={isListening}
-              style={{
-                padding: 8,
-                color: "white",
-                opacity: isListening ? 0.5 : 1,
-                cursor: isListening ? "not-allowed" : "pointer",
-              }}
-            >
-              <HeadsetWaveIcon size={22} />
-            </button>
-          )}
-
-          {/* Voice Search (no overlay): start/stop dictation, auto-search on end */}
-          {speechSupported && (
+           {/* Voice Search (no overlay): start/stop dictation, auto-search on end */}
+           {speechSupported && (
             <div
               style={{
                 display: "flex",
@@ -561,6 +562,24 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </button>
             </div>
           )}
+
+          {speechSupported && (
+            <button
+              className="btn-ghost"
+              onClick={() => setShowVoiceOverlay(true)}
+              disabled={isListening}
+              style={{
+                padding: 8,
+                color: "",
+                opacity: isListening ? 0.5 : 1,
+                cursor: isListening ? "not-allowed" : "pointer",
+              }}
+            >
+              <HeadsetWaveIcon size={22} />
+            </button>
+          )}
+
+         
 
           <button
             className="btn"

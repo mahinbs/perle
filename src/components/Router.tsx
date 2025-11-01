@@ -4,6 +4,7 @@ import DiscoverPage from '../pages/DiscoverPage';
 import ProfilePage from '../pages/ProfilePage';
 import LibraryPage from '../pages/LibraryPage';
 import DetailsPage from '../pages/DetailsPage';
+import AIFriendPage from '../pages/AIFriendPage';
 
 export function AppRouter() {
   return (
@@ -12,6 +13,7 @@ export function AppRouter() {
       <Route path="/discover" element={<DiscoverPage />} />
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/library" element={<LibraryPage />} />
+      <Route path="/ai-friend" element={<AIFriendPage />} />
       <Route path="/details/:id" element={<DetailsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

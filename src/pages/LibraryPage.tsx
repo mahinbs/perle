@@ -24,16 +24,6 @@ const defaultLibraryItems: LibraryItem[] = [
     tags: ['AI', 'Healthcare', 'Technology']
   },
   {
-    id: '2',
-    title: 'Climate Change Solutions',
-    content: 'Innovative approaches to combating climate change and environmental degradation...',
-    source: 'Scientific American',
-    url: 'https://example.com/climate-solutions',
-    date: '2024-01-10',
-    isBookmarked: false,
-    tags: ['Environment', 'Climate', 'Science']
-  },
-  {
     id: '3',
     title: 'Quantum Computing Breakthroughs',
     content: 'Recent advances in quantum computing are opening new possibilities...',

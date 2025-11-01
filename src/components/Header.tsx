@@ -23,6 +23,13 @@ export const Header: React.FC = () => {
       
       <div className="row" style={{ gap: 8 }}>
         <button 
+          className={`btn-ghost ${isActive('/ai-friend') ? 'active' : ''}`}
+          onClick={() => navigateTo('/ai-friend')}
+          aria-label="AI Friend"
+        >
+          AI Friend
+        </button>
+        <button 
           className={`btn-ghost ${isActive('/discover') ? 'active' : ''}`}
           onClick={() => navigateTo('/discover')}
           aria-label="Discover"

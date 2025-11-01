@@ -34,7 +34,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        background: '#0E0E0E',
+        background: 'var(--bg)',
         zIndex: 10000,
         display: 'flex',
         flexDirection: 'column',
@@ -53,7 +53,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
             onClose();
           }}
           aria-label="Close"
-          style={{ borderRadius: 9999, color: '#ECECEC', borderColor: '#2A2A2A', width: 48, height: 48 }}
+          style={{ borderRadius: 9999, color: 'var(--text)', borderColor: 'var(--border)', width: 48, height: 48 }}
         >
           ✕
         </button>
@@ -98,7 +98,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
             onClose();
           }}
           aria-label="Cancel"
-          style={{ width: 72, height: 72, borderRadius: 9999, color: '#ECECEC', borderColor: '#2A2A2A', fontSize: 18 }}
+          style={{ width: 72, height: 72, borderRadius: 9999, color: 'var(--text)', borderColor: 'var(--border)', fontSize: 18 }}
         >
           ✕
         </button>
@@ -109,7 +109,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
             onToggleListening();
           }}
           aria-label={isListening ? 'Stop listening' : 'Start voice'}
-          style={{ width: 84, height: 84, borderRadius: 9999, color: isListening ? '#111' : '#ECECEC', borderColor: isListening ? undefined : '#2A2A2A' }}
+          style={{ width: 84, height: 84, borderRadius: 9999, color: isListening ? '#111' : 'var(--text)', borderColor: isListening ? undefined : 'var(--border)' }}
         >
           <MicWaveIcon size={26} active={isListening} />
         </button>
@@ -140,7 +140,7 @@ const SpeakingWave: React.FC<{ isListening: boolean }> = ({ isListening }) => {
   }, []);
 
   return (
-    <HeadsetWaveIcon size={180} color="#ECECEC" pulse={!isListening && speaking} />
+    <HeadsetWaveIcon size={180} color="var(--text)" pulse={!isListening && speaking} />
   );
 };
 
