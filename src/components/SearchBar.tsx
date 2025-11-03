@@ -2,7 +2,13 @@ import React, { useState, useRef, useEffect } from "react";
 import { copyToClipboard } from "../utils/helpers";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel } from "../types";
-import { FaCopy, FaPaperclip, FaFolderOpen, FaImage, FaCamera } from "react-icons/fa";
+import {
+  FaCopy,
+  FaPaperclip,
+  FaFolderOpen,
+  FaImage,
+  FaCamera,
+} from "react-icons/fa";
 import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
 import VoiceOverlay from "./VoiceOverlay";
@@ -84,7 +90,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
-      inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+      inputRef.current.style.height = `${Math.min(
+        inputRef.current.scrollHeight,
+        120
+      )}px`;
     }
   }, [query]);
 
@@ -361,7 +370,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         }}
         onClose={() => setShowVoiceOverlay(false)}
       />
-      <div className="row">
+      <div className="row search-container">
         <div
           style={{
             width: 10,
@@ -389,7 +398,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             setIsFocused(false);
             // Delay to allow clicks
           }}
-          style={{ 
+          style={{
             fontSize: 18,
             resize: "none",
             minHeight: 44,
@@ -397,7 +406,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             lineHeight: 1.5,
             overflowY: "auto",
             fontFamily: "inherit",
-            borderRadius:".5rem"
+            borderRadius: ".5rem",
           }}
           rows={1}
         />
@@ -530,8 +539,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             )}
           </div>
 
-           {/* Voice Search (no overlay): start/stop dictation, auto-search on end */}
-           {speechSupported && (
+          {/* Voice Search (no overlay): start/stop dictation, auto-search on end */}
+          {speechSupported && (
             <div
               style={{
                 display: "flex",
@@ -578,8 +587,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <HeadsetWaveIcon size={22} />
             </button>
           )}
-
-         
 
           <button
             className="btn"

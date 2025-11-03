@@ -109,6 +109,17 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     window.speechSynthesis.cancel();
 
     const answerText = chunks.map(c => c.text).join(' ');
+    
+    // Split text into words for progressive display (preserve spaces)
+    const words = answerText.split(/(\s+)/).filter(w => w.length > 0);
+    let currentWordIndex = 0;
+    let speechStartTime = 0;
+    
+    // Initialize with empty text
+    localStorage.setItem('perle-current-answer-text', '');
+    localStorage.setItem('perle-current-word-index', '0');
+    localStorage.setItem('perle-speech-rate', '0.9');
+    
     const utterance = new SpeechSynthesisUtterance(answerText);
     utterance.rate = 0.9;
     utterance.pitch = 1;
@@ -116,15 +127,60 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
 
     utterance.onstart = () => {
       setIsSpeaking(true);
+      currentWordIndex = 0;
+      speechStartTime = Date.now();
+      
+      // Show first word immediately
+      if (words.length > 0) {
+        const displayedText = words[0];
+        localStorage.setItem('perle-current-answer-text', displayedText);
+        localStorage.setItem('perle-current-word-index', '0');
+      }
+    };
+
+    // Track word boundaries for progressive text display
+    utterance.onboundary = (event: SpeechSynthesisEvent) => {
+      if (event.name === 'word' && event.charIndex !== undefined) {
+        // Calculate which word we're currently on based on character index
+        let charCount = 0;
+        let wordIndex = 0;
+        
+        for (let i = 0; i < words.length; i++) {
+          const wordLength = words[i].length;
+          if (charCount + wordLength > event.charIndex) {
+            wordIndex = i;
+            break;
+          }
+          charCount += wordLength;
+        }
+        
+        // Update if we've moved to a new word
+        if (wordIndex > currentWordIndex) {
+          currentWordIndex = wordIndex;
+          // Update displayed text up to and including current word
+          const displayedText = words.slice(0, wordIndex + 1).join('');
+          localStorage.setItem('perle-current-answer-text', displayedText);
+          localStorage.setItem('perle-current-word-index', wordIndex.toString());
+        }
+      }
     };
 
     utterance.onend = () => {
       setIsSpeaking(false);
+      // Show full text when speech ends
+      localStorage.setItem('perle-current-answer-text', answerText);
+      // Clear the stored text after a delay
+      setTimeout(() => {
+        localStorage.removeItem('perle-current-answer-text');
+        localStorage.removeItem('perle-current-word-index');
+      }, 2000);
     };
 
     utterance.onerror = (event) => {
       console.error('Speech synthesis error:', event.error);
       setIsSpeaking(false);
+      // Show full text on error
+      localStorage.setItem('perle-current-answer-text', answerText);
     };
 
     synthesisRef.current = utterance;
@@ -134,6 +190,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
   const stopVoiceOutput = () => {
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
+    // Clear the stored text when speech is stopped
+    localStorage.removeItem('perle-current-answer-text');
+    localStorage.removeItem('perle-current-word-index');
   };
 
   if (isLoading) {
