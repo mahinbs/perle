@@ -113,6 +113,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     // Split text into words for progressive display (preserve spaces)
     const words = answerText.split(/(\s+)/).filter(w => w.length > 0);
     let currentWordIndex = 0;
+    let speechStartTime = 0;
+    let fallbackInterval: NodeJS.Timeout | null = null;
+    let lastBoundaryUpdate = 0;
     
     // Initialize with empty text
     localStorage.setItem('perle-current-answer-text', '');
@@ -127,6 +130,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     utterance.onstart = () => {
       setIsSpeaking(true);
       currentWordIndex = 0;
+      speechStartTime = Date.now();
+      lastBoundaryUpdate = Date.now();
       
       // Show first word immediately
       if (words.length > 0) {
@@ -134,6 +139,46 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
         localStorage.setItem('perle-current-answer-text', displayedText);
         localStorage.setItem('perle-current-word-index', '0');
       }
+      
+      // Fallback timer for mobile devices where onboundary may not fire reliably
+      // Estimate words per second: average English is ~150 words/min = 2.5 words/sec
+      // With rate 0.9, that's ~2.25 words/sec, so ~444ms per word
+      const estimatedMsPerWord = 450 / utterance.rate;
+      
+      fallbackInterval = setInterval(() => {
+        if (!window.speechSynthesis.speaking) {
+          if (fallbackInterval) {
+            clearInterval(fallbackInterval);
+            fallbackInterval = null;
+          }
+          return;
+        }
+        
+        const elapsed = Date.now() - speechStartTime;
+        const timeSinceLastUpdate = Date.now() - lastBoundaryUpdate;
+        
+        // Calculate estimated progress based on elapsed time
+        const estimatedWordIndex = Math.min(
+          Math.floor((elapsed / estimatedMsPerWord) + 1),
+          words.length - 1
+        );
+        
+        // Use fallback if onboundary hasn't updated recently (mobile fallback)
+        // This ensures mobile devices get updates even if boundary events are delayed or missing
+        const shouldUseFallback = timeSinceLastUpdate > estimatedMsPerWord * 0.8;
+        
+        // Always update if we've progressed and either:
+        // 1. Boundary events haven't updated recently (fallback mode), OR
+        // 2. We're significantly ahead of the last boundary update (catch-up mode)
+        if (estimatedWordIndex > currentWordIndex && shouldUseFallback) {
+          currentWordIndex = estimatedWordIndex;
+          const displayedText = words.slice(0, estimatedWordIndex + 1).join('');
+          localStorage.setItem('perle-current-answer-text', displayedText);
+          localStorage.setItem('perle-current-word-index', estimatedWordIndex.toString());
+          // Update lastBoundaryUpdate to prevent double-updates when boundary catches up
+          lastBoundaryUpdate = Date.now();
+        }
+      }, 150); // Check every 150ms for smoother updates
     };
 
     // Track word boundaries for progressive text display
@@ -155,6 +200,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
         // Update if we've moved to a new word
         if (wordIndex > currentWordIndex) {
           currentWordIndex = wordIndex;
+          lastBoundaryUpdate = Date.now();
           // Update displayed text up to and including current word
           const displayedText = words.slice(0, wordIndex + 1).join('');
           localStorage.setItem('perle-current-answer-text', displayedText);
@@ -165,6 +211,11 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
 
     utterance.onend = () => {
       setIsSpeaking(false);
+      // Clear fallback interval
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = null;
+      }
       // Show full text when speech ends
       localStorage.setItem('perle-current-answer-text', answerText);
       // Clear the stored text after a delay
@@ -177,6 +228,11 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     utterance.onerror = (event) => {
       console.error('Speech synthesis error:', event.error);
       setIsSpeaking(false);
+      // Clear fallback interval
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = null;
+      }
       // Show full text on error
       localStorage.setItem('perle-current-answer-text', answerText);
     };
@@ -191,6 +247,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     // Clear the stored text when speech is stopped
     localStorage.removeItem('perle-current-answer-text');
     localStorage.removeItem('perle-current-word-index');
+    // Note: fallbackInterval will be cleared in onend/onerror handlers
   };
 
   if (isLoading) {
