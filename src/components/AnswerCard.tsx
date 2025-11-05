@@ -113,7 +113,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     // Split text into words for progressive display (preserve spaces)
     const words = answerText.split(/(\s+)/).filter(w => w.length > 0);
     let currentWordIndex = 0;
-    let speechStartTime = 0;
     
     // Initialize with empty text
     localStorage.setItem('perle-current-answer-text', '');
@@ -128,7 +127,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     utterance.onstart = () => {
       setIsSpeaking(true);
       currentWordIndex = 0;
-      speechStartTime = Date.now();
       
       // Show first word immediately
       if (words.length > 0) {
