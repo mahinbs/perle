@@ -296,15 +296,19 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
 
   return (
     <div
+      className="speaking-gradient-circle-container"
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         gap: 24,
+        width: "100%",
+        maxWidth: "100%",
       }}
     >
       <div
+        className="speaking-circle-wrapper"
         style={{
           position: "relative",
           width: 260,
@@ -318,6 +322,7 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
           viewBox="0 0 100 100"
           width={260}
           height={260}
+          className="speaking-circle-svg"
           aria-hidden="true"
           style={{
             opacity: shouldAnimate ? 1 : 0.3,
@@ -558,15 +563,15 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
       </svg>
       </div>
       
-      {/* AI Response Text Display - Dynamic height based on content */}
+      {/* AI Response Text Display - Responsive height for mobile and desktop */}
       <div
         className="voice-overlay-text-container"
         style={{
           maxWidth: 600,
           width: "100%",
           minHeight: displayText ? 60 : 0,
-          maxHeight: displayText ? 120 : 0,
-          padding: displayText ? "12px 24px" : "0",
+          maxHeight: displayText ? "calc(100vh - 500px)" : 0,
+          padding: displayText ? "12px 16px" : "0",
           textAlign: "center",
           color: "var(--text)",
           fontSize: 16,
@@ -578,6 +583,7 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          WebkitOverflowScrolling: "touch", // Smooth scrolling on iOS
         }}
       >
         {displayText && (
@@ -612,6 +618,55 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
           .voice-overlay-text-container {
             scrollbar-width: thin;
             scrollbar-color: rgba(199, 168, 105, 0.4) rgba(199, 168, 105, 0.1);
+          }
+          
+          /* Mobile responsive adjustments */
+          @media (max-width: 768px) {
+            .speaking-gradient-circle-container {
+              gap: 16px !important;
+            }
+            
+            .speaking-circle-wrapper {
+              width: 200px !important;
+              height: 200px !important;
+            }
+            
+            .speaking-circle-svg {
+              width: 200px !important;
+              height: 200px !important;
+            }
+            
+            .voice-overlay-text-container {
+              max-width: 100% !important;
+              padding: 12px 16px !important;
+              max-height: calc(100vh - 380px) !important;
+              min-height: 50px !important;
+              font-size: 15px !important;
+            }
+          }
+          
+          @media (max-width: 480px) {
+            .speaking-gradient-circle-container {
+              gap: 12px !important;
+            }
+            
+            .speaking-circle-wrapper {
+              width: 180px !important;
+              height: 180px !important;
+            }
+            
+            .speaking-circle-svg {
+              width: 180px !important;
+              height: 180px !important;
+            }
+            
+            .voice-overlay-text-container {
+              padding: 10px 12px !important;
+              max-height: calc(100vh - 320px) !important;
+              min-height: 40px !important;
+              font-size: 14px !important;
+              line-height: 1.5 !important;
+            }
           }
         `}
       </style>
