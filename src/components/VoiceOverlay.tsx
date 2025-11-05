@@ -27,6 +27,45 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
     else setOs("other");
   }, []);
 
+  // Cancel any ongoing speech and clear text when overlay opens
+  useEffect(() => {
+    if (isOpen) {
+      // Cancel any ongoing speech synthesis
+      try {
+        if (typeof window !== "undefined" && "speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+        }
+      } catch {}
+      
+      // Clear any existing answer text from localStorage
+      localStorage.removeItem('perle-current-answer-text');
+      localStorage.removeItem('perle-current-word-index');
+      localStorage.removeItem('perle-speak-next-answer');
+    }
+  }, [isOpen]);
+
+  // Cancel speech synthesis on page refresh/component mount
+  useEffect(() => {
+    // Cancel any ongoing speech when component mounts (e.g., on page refresh)
+    try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    } catch {}
+    
+    // Clear any stored answer text on mount
+    localStorage.removeItem('perle-current-answer-text');
+    localStorage.removeItem('perle-current-word-index');
+    
+    // Cleanup on unmount
+    return () => {
+      try {
+        if (typeof window !== "undefined" && "speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+        }
+      } catch {}
+    };
+  }, []);
 
   // Lock background scroll when open
   useEffect(() => {
@@ -89,7 +128,11 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         }}
       >
         {/* Watercolor gradient circle animation on voice output */}
-        <SpeakingGradientCircle isListening={isListening} responseText={responseText} />
+        <SpeakingGradientCircle 
+          isListening={isListening} 
+          responseText={responseText}
+          key={isOpen ? 'open' : 'closed'} // Reset component when overlay opens/closes
+        />
       </div>
 
       {/* Bottom actions */}
@@ -157,6 +200,21 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
   const [audioLevel, setAudioLevel] = useState(0);
   const [wavePhase, setWavePhase] = useState(0);
   const [responseText, setResponseText] = useState<string>("");
+
+  // Reset state when component mounts (overlay opens)
+  useEffect(() => {
+    setSpeaking(false);
+    setAudioLevel(0);
+    setWavePhase(0);
+    setResponseText("");
+    
+    // Ensure speech is cancelled
+    try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    } catch {}
+  }, []); // Empty deps - only run on mount
 
   useEffect(() => {
     let raf = 0;
