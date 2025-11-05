@@ -190,13 +190,12 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
           trackUtterance();
         }
         
-        // Use prop responseText if available, otherwise try to get from localStorage or clear
+        // Use prop responseText if available, otherwise try to get from localStorage
         if (propResponseText) {
           setResponseText(propResponseText);
-        } else if (!isSpeaking && wasSpeaking) {
-          // Clear text when speech ends if no prop provided
-          setResponseText("");
         }
+        // Don't clear text immediately when speech ends - let the localStorage handler manage it
+        // This prevents flickering and allows text to remain visible briefly
         
         // Update wave phase for smooth animation
         const elapsed = (Date.now() - startTime) / 1000;
@@ -256,6 +255,22 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
           }
           return prev;
         });
+        // Also check if speech is speaking and update speaking state if needed
+        // This helps catch cases where speaking state might not be detected
+        if (storedText && typeof window !== "undefined" && "speechSynthesis" in window) {
+          const isCurrentlySpeaking = window.speechSynthesis.speaking;
+          if (isCurrentlySpeaking && !speaking) {
+            setSpeaking(true);
+          }
+        }
+      } else if (storedText === null && !propResponseText && responseText) {
+        // Keep text visible for a bit even after localStorage is cleared
+        // This prevents flickering when speech ends
+        setTimeout(() => {
+          if (!window.speechSynthesis.speaking) {
+            setResponseText("");
+          }
+        }, 1000);
       }
     };
     
@@ -265,14 +280,14 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
     // Listen for storage events (from other tabs/windows)
     window.addEventListener('storage', handleStorageChange);
     
-    // Poll more frequently for smooth typewriter effect (every 100ms)
-    const interval = setInterval(handleStorageChange, 100);
+    // Poll more frequently for smooth typewriter effect (every 50ms for better responsiveness)
+    const interval = setInterval(handleStorageChange, 50);
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
     };
-  }, [propResponseText]);
+  }, [propResponseText, speaking, responseText]);
 
   // Animate only when AI is speaking and user is not recording
   const shouldAnimate = !isListening && speaking;
@@ -543,20 +558,21 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
       </svg>
       </div>
       
-      {/* AI Response Text Display - Fixed height to keep circle position stable */}
+      {/* AI Response Text Display - Dynamic height based on content */}
       <div
         className="voice-overlay-text-container"
         style={{
           maxWidth: 600,
           width: "100%",
-          height: displayText && speaking ? 80 : 0,
-          padding: displayText && speaking ? "0 24px" : "0",
+          minHeight: displayText ? 60 : 0,
+          maxHeight: displayText ? 120 : 0,
+          padding: displayText ? "12px 24px" : "0",
           textAlign: "center",
           color: "var(--text)",
           fontSize: 16,
           lineHeight: 1.6,
-          opacity: displayText && speaking ? (shouldAnimate ? 0.95 : 0.6) : 0,
-          transition: "height 0.3s ease-in-out, opacity 0.3s ease-in-out, padding 0.3s ease-in-out",
+          opacity: displayText ? (shouldAnimate ? 0.95 : 0.7) : 0,
+          transition: "min-height 0.3s ease-in-out, max-height 0.3s ease-in-out, opacity 0.3s ease-in-out, padding 0.3s ease-in-out",
           overflowY: "auto",
           overflowX: "hidden",
           display: "flex",
@@ -564,7 +580,7 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
           justifyContent: "center",
         }}
       >
-        {displayText && speaking && (
+        {displayText && (
           <div style={{ width: "100%" }}>
             {displayText}
           </div>
