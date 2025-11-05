@@ -114,7 +114,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     const words = answerText.split(/(\s+)/).filter(w => w.length > 0);
     let currentWordIndex = 0;
     let speechStartTime = 0;
-    let fallbackInterval: NodeJS.Timeout | null = null;
+    let fallbackInterval: number | null = null;
     let lastBoundaryUpdate = 0;
     
     // Initialize with empty text

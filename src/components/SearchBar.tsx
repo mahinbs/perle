@@ -101,6 +101,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSearch();
+      // Clear the input after search is triggered
+      setQuery("");
     }
   };
 
@@ -166,11 +168,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       setIsListening(false);
       // Auto-trigger search when voice recording stops using the final transcript
       if (finalTranscript.trim()) {
+        // Show the transcript briefly before clearing
         setQuery(finalTranscript);
         // Pass the transcript directly to onSearch to avoid state timing issues
         onSearch(finalTranscript);
         // tell AnswerCard to speak the next answer
         localStorage.setItem("perle-speak-next-answer", "1");
+        // Clear the input after a brief delay to show the transcript
+        setTimeout(() => {
+          setQuery("");
+        }, 100);
       }
     };
 
@@ -590,7 +597,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
           <button
             className="btn"
-            onClick={() => onSearch()}
+            onClick={() => {
+              onSearch();
+              // Clear the input after search is triggered
+              setQuery("");
+            }}
             disabled={isLoading || !query.trim() || isListening}
             style={{
               minWidth: 80,
