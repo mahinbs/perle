@@ -20,7 +20,7 @@ interface UploadedFile {
 export default function HomePage() {
   const { state: currentData } = useRouterNavigation();
   const [mode, setMode] = useState<Mode>('Ask');
-  const [query, setQuery] = useState<string>('How will on‑device AI change search?');
+  const [query, setQuery] = useState<string>('');
   const [searchedQuery, setSearchedQuery] = useState<string>(''); // Track the query that was actually searched
   const [answer, setAnswer] = useState<AnswerResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
