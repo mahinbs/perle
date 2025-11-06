@@ -9,7 +9,7 @@ import GlobePage from '../pages/GlobePage';
 import MaintenancePage from '../pages/MaintenancePage';
 
 // Set this to true to enable maintenance mode
-const MAINTENANCE_MODE = true;
+const MAINTENANCE_MODE = false;
 
 export function AppRouter() {
   // If maintenance mode is enabled, show maintenance page for all routes

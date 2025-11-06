@@ -64,6 +64,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
   const recognitionRef = useRef<any>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const hasClearedForAnswerRef = useRef<boolean>(false);
 
   // Check for speech support
   useEffect(() => {
@@ -102,12 +103,28 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [query]);
 
-  // Initialize query with searchedQuery when entering follow-up mode
+  // Clear input when answer is received (but keep searchedQuery for display in AnswerCard)
   useEffect(() => {
-    if (hasAnswer && searchedQuery && query !== searchedQuery) {
-      setQuery(searchedQuery);
+    if (hasAnswer && !isListening && query && !hasClearedForAnswerRef.current) {
+      // Clear the input field when answer is first received
+      // The searchedQuery will still be displayed in AnswerCard
+      setQuery('');
+      hasClearedForAnswerRef.current = true;
+    } else if (!hasAnswer) {
+      // Reset the flag when there's no answer (new search started)
+      hasClearedForAnswerRef.current = false;
     }
-  }, [hasAnswer, searchedQuery]); // Intentionally not including query to avoid loops
+  }, [hasAnswer, isListening, query]); // Clear when answer is received
+
+  // Initialize query with searchedQuery when entering follow-up mode (only if user hasn't typed anything)
+  useEffect(() => {
+    // Only set query from searchedQuery if input is empty and we have an answer
+    // This allows the user to start typing a follow-up without it being overwritten
+    if (hasAnswer && searchedQuery && !query) {
+      // Don't auto-populate - let user type their follow-up
+      // This effect is kept for potential future use but currently does nothing
+    }
+  }, [hasAnswer, searchedQuery, query]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
