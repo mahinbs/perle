@@ -1,4 +1,3 @@
-import React from "react";
 import { FaTools, FaClock, FaEnvelope } from "react-icons/fa";
 
 export default function MaintenancePage() {
