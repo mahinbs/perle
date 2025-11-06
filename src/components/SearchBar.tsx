@@ -114,7 +114,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       // Reset the flag when there's no answer (new search started)
       hasClearedForAnswerRef.current = false;
     }
-  }, [hasAnswer, isListening, query]); // Clear when answer is received
+    // Removed 'query' from dependencies to prevent infinite loop when clearing
+  }, [hasAnswer, isListening]); // Clear when answer is received
 
   // Initialize query with searchedQuery when entering follow-up mode (only if user hasn't typed anything)
   useEffect(() => {
@@ -129,10 +130,13 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onSearch();
-      // In follow-up mode, keep the query for editing; otherwise clear it
-      if (!hasAnswer) {
-        setQuery("");
+      // Only search if there's input in the search box
+      if (query.trim()) {
+        onSearch();
+        // In follow-up mode, keep the query for editing; otherwise clear it
+        if (!hasAnswer) {
+          setQuery("");
+        }
       }
     }
   };
@@ -447,6 +451,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             overflowY: "auto",
             fontFamily: "inherit",
             borderRadius: ".5rem",
+            paddingInline: 8,
           }}
           rows={1}
         />
@@ -631,10 +636,13 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           <button
             className="btn"
             onClick={() => {
-              onSearch();
-              // In follow-up mode, keep the query for editing; otherwise clear it
-              if (!hasAnswer) {
-                setQuery("");
+              // Only search if there's input in the search box
+              if (query.trim()) {
+                onSearch();
+                // In follow-up mode, keep the query for editing; otherwise clear it
+                if (!hasAnswer) {
+                  setQuery("");
+                }
               }
             }}
             disabled={isLoading || !query.trim() || isListening}

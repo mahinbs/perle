@@ -31,6 +31,7 @@ export default function HomePage() {
   const answerCardRef = useRef<HTMLDivElement>(null);
   const lastSearchedQueryRef = useRef<string>('');
   const isSearchingRef = useRef<boolean>(false);
+  const queryRef = useRef<string>(''); // Keep query in ref to avoid stale closures
 
   // Load search history from localStorage on mount
   useEffect(() => {
@@ -65,8 +66,15 @@ export default function HomePage() {
     });
   }, []);
 
+  // Update query ref whenever query changes
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
+
   const doSearch = useCallback((searchQuery?: string) => {
-    const q = formatQuery(searchQuery || query);
+    // Use the provided searchQuery or get current query from ref (avoids stale closure)
+    const currentQuery = searchQuery || queryRef.current;
+    const q = formatQuery(currentQuery);
     if (!q) {
       setAnswer(null);
       setSearchedQuery('');
@@ -80,7 +88,7 @@ export default function HomePage() {
     }
 
     // Prevent duplicate searches if this is the same query as the last one
-    const finalQuery = searchQuery || query;
+    const finalQuery = searchQuery || queryRef.current;
     if (finalQuery === lastSearchedQueryRef.current) {
       return; // Don't search again if it's the same query
     }
@@ -103,7 +111,9 @@ export default function HomePage() {
       setIsLoading(false);
       isSearchingRef.current = false;
     }, 800);
-  }, [query, mode, selectedModel, saveToHistory, uploadedFiles]);
+    // Removed 'query' from dependencies to prevent re-creation on every query change
+    // The function uses query from closure, which is fine since we pass it explicitly when needed
+  }, [mode, selectedModel, saveToHistory, uploadedFiles]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -127,34 +137,53 @@ export default function HomePage() {
   }, [doSearch]);
 
   // Handle pull-to-refresh on mobile
+  // Pull-to-refresh handler - only trigger on intentional pull, not on scroll
   useEffect(() => {
     let startY = 0;
     let isPulling = false;
+    let hasTriggered = false;
 
     const handleTouchStart = (e: TouchEvent) => {
-      startY = e.touches[0].clientY;
-      isPulling = window.scrollY === 0;
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!isPulling) return;
-      
-      const currentY = e.touches[0].clientY;
-      const diff = currentY - startY;
-      
-      if (diff > 100) {
-        // Trigger refresh
-        doSearch();
+      // Only allow pull-to-refresh when at the very top of the page
+      if (window.scrollY === 0) {
+        startY = e.touches[0].clientY;
+        isPulling = true;
+        hasTriggered = false;
+      } else {
         isPulling = false;
       }
     };
 
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isPulling || hasTriggered) return;
+      
+      const currentY = e.touches[0].clientY;
+      const diff = currentY - startY;
+      
+      // Only trigger if user is pulling down (not scrolling up) and at top
+      if (diff > 100 && window.scrollY === 0 && !hasTriggered) {
+        // Only search if there's a previous query to refresh
+        if (lastSearchedQueryRef.current) {
+          doSearch(lastSearchedQueryRef.current);
+        }
+        hasTriggered = true;
+        isPulling = false;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      isPulling = false;
+      hasTriggered = false;
+    };
+
     document.addEventListener('touchstart', handleTouchStart, { passive: true });
     document.addEventListener('touchmove', handleTouchMove, { passive: true });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
     
     return () => {
       document.removeEventListener('touchstart', handleTouchStart);
       document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [doSearch]);
 

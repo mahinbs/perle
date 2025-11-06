@@ -25,33 +25,77 @@ export const ModeBar: React.FC<ModeBarProps> = ({ mode, setMode }) => {
   };
 
   return (
-    <div className="mode-bar-container">
-      <div className="row" role="tablist" aria-label="Search modes">
-        {modes.map(m => (
-          <button
-            key={m}
-            className={`pill mode-pill ${m === mode ? 'active' : ''}`}
-            onClick={() => handleModeChange(m)}
-            aria-pressed={m === mode}
-            aria-label={`Mode ${m}: ${modeDescriptions[m]}`}
-            title={modeDescriptions[m]}
-          >
-            <span className="mode-text">{m}</span>
-            {m === mode && <span className="mode-indicator">●</span>}
-          </button>
-        ))}
+    <>
+      <div className="mode-bar-container">
+        <div className="row mode-bar-buttons" role="tablist" aria-label="Search modes">
+          {modes.map(m => (
+            <button
+              key={m}
+              className={`pill mode-pill ${m === mode ? 'active' : ''}`}
+              onClick={() => handleModeChange(m)}
+              aria-pressed={m === mode}
+              aria-label={`Mode ${m}: ${modeDescriptions[m]}`}
+              title={modeDescriptions[m]}
+              style={{
+                padding: "6px 10px",
+                fontSize: "clamp(12px, 2.5vw, 14px)",
+                minHeight: 36,
+              }}
+            >
+              <span className="mode-text">{m}</span>
+              {m === mode && <span className="mode-indicator">●</span>}
+            </button>
+          ))}
+        </div>
+        
+        {/* Mode description */}
+        <div className="mode-description" style={{ 
+          marginTop: 8, 
+          fontSize: 12, 
+          color: 'var(--sub)',
+          textAlign: 'center',
+          opacity: 0.8
+        }}>
+          {modeDescriptions[mode]}
+        </div>
       </div>
-      
-      {/* Mode description */}
-      <div className="mode-description" style={{ 
-        marginTop: 8, 
-        fontSize: 12, 
-        color: 'var(--sub)',
-        textAlign: 'center',
-        opacity: 0.8
-      }}>
-        {modeDescriptions[mode]}
-      </div>
-    </div>
+      <style>
+        {`
+          .mode-bar-buttons {
+            gap: 8px;
+            flexWrap: wrap;
+          }
+          
+          .mode-bar-buttons .mode-pill {
+            flex: 1;
+            min-width: 0;
+          }
+          
+          @media (max-width: 768px) {
+            .mode-bar-buttons {
+              gap: 6px !important;
+            }
+            
+            .mode-bar-buttons .mode-pill {
+              padding: 8px 12px !important;
+              font-size: clamp(13px, 3vw, 14px) !important;
+              min-height: 40px !important;
+            }
+          }
+          
+          @media (max-width: 480px) {
+            .mode-bar-buttons {
+              gap: 4px !important;
+            }
+            
+            .mode-bar-buttons .mode-pill {
+              padding: 7px 10px !important;
+              font-size: clamp(12px, 2.8vw, 13px) !important;
+              min-height: 38px !important;
+            }
+          }
+        `}
+      </style>
+    </>
   );
 };

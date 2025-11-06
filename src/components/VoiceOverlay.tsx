@@ -380,7 +380,7 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
       maxRings: 3,
       initialPosition: { lat: 0, lng: 0 },
       autoRotate: true,
-      autoRotateSpeed: 0.6, // Constant rotation speed
+      autoRotateSpeed: 1.6, // Constant rotation speed
       polygonColor: speaking ? activePolygonColor : basePolygonColor,
       ambientLight: speaking ? (isDarkMode ? "#C7A869" : "#60a5fa") : (isDarkMode ? "#a68b5b" : "#3b82f6"), // Brighter ambient light
       directionalLeftLight: "#ffffff",
@@ -524,19 +524,19 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
             }
             
             .globe-wrapper {
-              width: clamp(200px, min(50vh, 50vw), 300px) !important;
+              width: clamp(240px, min(60vh, 60vw), 360px) !important;
               aspect-ratio: 1 / 1 !important; /* Force 1:1 aspect ratio */
-              max-width: 300px !important;
-              max-height: 300px !important;
-              min-width: 200px !important;
-              min-height: 200px !important;
+              max-width: 360px !important;
+              max-height: 360px !important;
+              min-width: 240px !important;
+              min-height: 240px !important;
               flex-shrink: 0 !important; /* Prevent shrinking */
             }
             
             .voice-overlay-text-container {
               max-width: 100% !important;
               padding: 12px 16px !important;
-              max-height: calc(100vh - 400px) !important;
+              max-height: calc(100vh - 450px) !important;
               min-height: 50px !important;
               font-size: 15px !important;
             }
@@ -548,18 +548,18 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
             }
             
             .globe-wrapper {
-              width: clamp(180px, min(45vh, 45vw), 250px) !important;
+              width: clamp(220px, min(55vh, 55vw), 300px) !important;
               aspect-ratio: 1 / 1 !important; /* Force 1:1 aspect ratio */
-              max-width: 250px !important;
-              max-height: 250px !important;
-              min-width: 180px !important;
-              min-height: 180px !important;
+              max-width: 300px !important;
+              max-height: 300px !important;
+              min-width: 220px !important;
+              min-height: 220px !important;
               flex-shrink: 0 !important; /* Prevent shrinking */
             }
             
             .voice-overlay-text-container {
               padding: 10px 12px !important;
-              max-height: calc(100vh - 340px) !important;
+              max-height: calc(100vh - 380px) !important;
               min-height: 40px !important;
               font-size: 14px !important;
               line-height: 1.5 !important;
