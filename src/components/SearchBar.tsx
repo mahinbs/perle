@@ -8,6 +8,7 @@ import {
   FaFolderOpen,
   FaImage,
   FaCamera,
+  FaPaperPlane,
 } from "react-icons/fa";
 import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
@@ -32,6 +33,8 @@ interface SearchBarProps {
   onModelChange: (model: LLMModel) => void;
   uploadedFiles?: UploadedFile[];
   onFilesChange?: (files: UploadedFile[]) => void;
+  hasAnswer?: boolean;
+  searchedQuery?: string;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -44,6 +47,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onQuerySelect,
   uploadedFiles = [],
   onFilesChange,
+  hasAnswer = false,
+  searchedQuery = '',
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
@@ -97,12 +102,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [query]);
 
+  // Initialize query with searchedQuery when entering follow-up mode
+  useEffect(() => {
+    if (hasAnswer && searchedQuery && query !== searchedQuery) {
+      setQuery(searchedQuery);
+    }
+  }, [hasAnswer, searchedQuery]); // Intentionally not including query to avoid loops
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSearch();
-      // Clear the input after search is triggered
-      setQuery("");
+      // In follow-up mode, keep the query for editing; otherwise clear it
+      if (!hasAnswer) {
+        setQuery("");
+      }
     }
   };
 
@@ -174,10 +188,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         onSearch(finalTranscript);
         // tell AnswerCard to speak the next answer
         localStorage.setItem("perle-speak-next-answer", "1");
-        // Clear the input after a brief delay to show the transcript
-        setTimeout(() => {
-          setQuery("");
-        }, 100);
+        // In follow-up mode, keep the query for editing; otherwise clear it
+        if (!hasAnswer) {
+          setTimeout(() => {
+            setQuery("");
+          }, 100);
+        }
       }
     };
 
@@ -392,7 +408,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           ref={inputRef}
           className="input"
           aria-label="Search"
-          placeholder="Ask anything — we'll cite every answer"
+          placeholder={hasAnswer ? "Ask follow-up..." : "Ask anything — we'll cite every answer"}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -599,12 +615,15 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             className="btn"
             onClick={() => {
               onSearch();
-              // Clear the input after search is triggered
-              setQuery("");
+              // In follow-up mode, keep the query for editing; otherwise clear it
+              if (!hasAnswer) {
+                setQuery("");
+              }
             }}
             disabled={isLoading || !query.trim() || isListening}
             style={{
-              minWidth: 80,
+              minWidth: hasAnswer ? 44 : 80,
+              padding: hasAnswer ? '8px' : undefined,
               opacity: isListening ? 0.5 : 1,
               cursor: isListening ? "not-allowed" : "pointer",
             }}
@@ -613,6 +632,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               "…"
             ) : isListening ? (
               <MicWaveIcon size={18} active={true} />
+            ) : hasAnswer ? (
+              <FaPaperPlane size={18} />
             ) : (
               "Search"
             )}

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { AnswerChunk, Source, Mode } from '../types';
 import { SourceChip } from './SourceChip';
 import { copyToClipboard, shareContent } from '../utils/helpers';
@@ -10,13 +11,22 @@ interface AnswerCardProps {
   sources: Source[];
   isLoading: boolean;
   mode?: Mode;
+  query?: string;
+  onQueryEdit?: (editedQuery: string) => void;
 }
 
-export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoading, mode }) => {
+export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoading, mode, query, onQueryEdit }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editedQuery, setEditedQuery] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragCurrentY, setDragCurrentY] = useState(0);
+  const [isClosing, setIsClosing] = useState(false);
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
+  const offcanvasRef = useRef<HTMLDivElement>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const { showToast } = useToast();
 
@@ -33,6 +43,142 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       }
     };
   }, []);
+
+  // Initialize edited query when opening modal
+  useEffect(() => {
+    if (showEditModal && query) {
+      setEditedQuery(query);
+      setIsClosing(false);
+      setDragCurrentY(0);
+      // Focus the input after a brief delay to ensure offcanvas is rendered
+      setTimeout(() => {
+        editInputRef.current?.focus();
+        editInputRef.current?.select();
+      }, 300);
+    }
+  }, [showEditModal, query]);
+
+  // Handle swipe gestures for closing
+  useEffect(() => {
+    if (!showEditModal || !offcanvasRef.current) return;
+
+    const offcanvas = offcanvasRef.current;
+    let startY = 0;
+    let currentY = 0;
+    let isDragging = false;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      startY = touch.clientY;
+      currentY = startY;
+      
+      // Always prepare for potential drag, but only activate if downward swipe
+      isDragging = false; // Start as false, will be set true on move if downward
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      currentY = touch.clientY;
+      const deltaY = currentY - startY;
+      
+      // Check if user is swiping down (not scrolling up)
+      if (deltaY > 10) {
+        // User is swiping down - activate drag
+        if (!isDragging) {
+          isDragging = true;
+          setIsDragging(true);
+        }
+        
+        // Only prevent default if we're actually dragging (not scrolling content)
+        const target = e.target as HTMLElement;
+        const isHandle = target.closest('[data-offcanvas-handle]');
+        
+        // If content is scrolled and not at top, allow normal scrolling
+        if (offcanvas.scrollTop > 0 && !isHandle) {
+          // Allow scrolling if content is scrollable and not at top
+          return;
+        }
+        
+        // Otherwise, handle as drag gesture
+        setDragCurrentY(deltaY);
+        e.preventDefault();
+      } else if (deltaY < -10 && offcanvas.scrollTop > 0) {
+        // User is swiping up and content is scrollable - allow normal scroll
+        isDragging = false;
+        setIsDragging(false);
+        return;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (!isDragging) return;
+      
+      const deltaY = currentY - startY;
+      const threshold = 100; // Minimum swipe distance to close
+      
+      if (deltaY > threshold) {
+        // Close the offcanvas
+        setIsClosing(true);
+        setTimeout(() => {
+          handleCloseModal();
+        }, 200);
+      } else {
+        // Reset position
+        setDragCurrentY(0);
+      }
+      
+      isDragging = false;
+      setIsDragging(false);
+    };
+
+    offcanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    offcanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    offcanvas.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      offcanvas.removeEventListener('touchstart', handleTouchStart);
+      offcanvas.removeEventListener('touchmove', handleTouchMove);
+      offcanvas.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [showEditModal]);
+
+  // Handle modal close
+  const handleCloseModal = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      setShowEditModal(false);
+      setEditedQuery('');
+      setIsClosing(false);
+      setDragCurrentY(0);
+    }, 200);
+  };
+
+  // Handle query edit submission
+  const handleEditSubmit = () => {
+    if (!editedQuery.trim()) {
+      showToast({
+        message: 'Query cannot be empty',
+        type: 'error',
+        duration: 2000
+      });
+      return;
+    }
+
+    if (onQueryEdit) {
+      onQueryEdit(editedQuery.trim());
+    }
+    handleCloseModal();
+  };
+
+  // Handle keyboard in modal
+  const handleModalKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      handleCloseModal();
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleEditSubmit();
+    }
+  };
 
   // Auto-speak the next answer when triggered from voice overlay
   useEffect(() => {
@@ -297,6 +443,45 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
 
   return (
     <div className="card" style={{ padding: 18 }}>
+      {/* Display the searched query prominently */}
+      {query && (
+        <div style={{ 
+          marginBottom: 20,
+          paddingBottom: 16,
+          borderBottom: '1px solid var(--border)'
+        }}>
+          <div 
+            onClick={() => {
+              if (onQueryEdit) {
+                setShowEditModal(true);
+              }
+            }}
+            style={{ 
+              fontSize: 24, 
+              fontWeight: 600,
+              lineHeight: '32px',
+              color: 'var(--text)',
+              wordBreak: 'break-word',
+              cursor: onQueryEdit ? 'pointer' : 'default',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              transition: 'background-color 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (onQueryEdit) {
+                e.currentTarget.style.backgroundColor = 'var(--border)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            title={onQueryEdit ? 'Click to edit query' : undefined}
+          >
+            {query}
+          </div>
+        </div>
+      )}
+      
       <div style={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
@@ -527,6 +712,148 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           ))}
         </div>
       </div>
+
+      {/* Edit Query Offcanvas */}
+      {showEditModal && createPortal(
+        <>
+          {/* Backdrop */}
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: isClosing ? 'rgba(0, 0, 0, 0)' : 'rgba(0, 0, 0, 0.5)',
+              zIndex: 9999,
+              transition: 'background-color 0.2s ease',
+            }}
+            onClick={handleCloseModal}
+          />
+          
+          {/* Offcanvas */}
+          <div
+            ref={offcanvasRef}
+            className="card"
+            data-offcanvas-handle
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              bottom: isClosing ? '-100%' : `${Math.max(0, dragCurrentY)}px`,
+              left: 0,
+              right: 0,
+              maxHeight: '90vh',
+              borderTopLeftRadius: '20px',
+              borderTopRightRadius: '20px',
+              borderBottomLeftRadius: 0,
+              borderBottomRightRadius: 0,
+              padding: 0,
+              zIndex: 10000,
+              transform: isDragging ? 'none' : undefined,
+              transition: isDragging ? 'none' : 'bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Drag Handle */}
+            <div
+              data-offcanvas-handle
+              style={{
+                width: '100%',
+                padding: '12px 0',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                cursor: 'grab',
+                userSelect: 'none',
+                touchAction: 'none',
+              }}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              <div
+                data-offcanvas-handle
+                style={{
+                  width: 40,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: 'var(--border)',
+                  cursor: 'grab',
+                }}
+              />
+            </div>
+
+            {/* Content */}
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '0 24px 24px 24px',
+            }}>
+              <div style={{ 
+                marginBottom: 16,
+                fontSize: 20,
+                fontWeight: 600,
+                color: 'var(--text)'
+              }}>
+                Edit Query
+              </div>
+              
+              <textarea
+                ref={editInputRef}
+                className="input"
+                value={editedQuery}
+                onChange={(e) => {
+                  setEditedQuery(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                }}
+                onKeyDown={handleModalKeyDown}
+                placeholder="Enter your query..."
+                style={{
+                  width: '100%',
+                  minHeight: 100,
+                  maxHeight: 200,
+                  fontSize: 16,
+                  lineHeight: 1.5,
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--card)',
+                  color: 'var(--text)',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  marginBottom: 16,
+                }}
+                rows={3}
+              />
+
+              <div style={{ 
+                display: 'flex', 
+                gap: 12, 
+                justifyContent: 'flex-end' 
+              }}>
+                <button
+                  className="btn-ghost"
+                  onClick={handleCloseModal}
+                  style={{ padding: '10px 20px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn"
+                  onClick={handleEditSubmit}
+                  disabled={!editedQuery.trim()}
+                  style={{ padding: '10px 20px' }}
+                >
+                  Search
+                </button>
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   );
 };

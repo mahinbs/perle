@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { Header } from '../components/Header';
 import { ModeBar } from '../components/ModeBar';
 import { SearchBar } from '../components/SearchBar';
@@ -21,12 +21,16 @@ export default function HomePage() {
   const { state: currentData } = useRouterNavigation();
   const [mode, setMode] = useState<Mode>('Ask');
   const [query, setQuery] = useState<string>('How will on‑device AI change search?');
+  const [searchedQuery, setSearchedQuery] = useState<string>(''); // Track the query that was actually searched
   const [answer, setAnswer] = useState<AnswerResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedModel, setSelectedModel] = useState<LLMModel>('gpt-4');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const answerCardRef = useRef<HTMLDivElement>(null);
+  const lastSearchedQueryRef = useRef<string>('');
+  const isSearchingRef = useRef<boolean>(false);
 
   // Load search history from localStorage on mount
   useEffect(() => {
@@ -65,22 +69,39 @@ export default function HomePage() {
     const q = formatQuery(searchQuery || query);
     if (!q) {
       setAnswer(null);
+      setSearchedQuery('');
+      lastSearchedQueryRef.current = '';
       return;
     }
+
+    // Prevent duplicate searches if already searching
+    if (isSearchingRef.current) {
+      return;
+    }
+
+    // Prevent duplicate searches if this is the same query as the last one
+    const finalQuery = searchQuery || query;
+    if (finalQuery === lastSearchedQueryRef.current) {
+      return; // Don't search again if it's the same query
+    }
+
+    // Mark as searching and store the query
+    isSearchingRef.current = true;
+    lastSearchedQueryRef.current = finalQuery;
 
     setIsLoading(true);
     saveToHistory(q);
     
-    // If a specific search query was provided, update the query state
-    if (searchQuery && searchQuery !== query) {
-      setQuery(searchQuery);
-    }
+    // Update both query (for editing) and searchedQuery (for display)
+    setQuery(finalQuery);
+    setSearchedQuery(finalQuery);
     
     // Simulate API delay for better UX
     setTimeout(() => {
       const res = fakeAnswerEngine(q, mode, selectedModel, uploadedFiles);
       setAnswer(res);
       setIsLoading(false);
+      isSearchingRef.current = false;
     }, 800);
   }, [query, mode, selectedModel, saveToHistory, uploadedFiles]);
 
@@ -147,6 +168,20 @@ export default function HomePage() {
     setShowHistory(newQuery.length > 0);
   }, []);
 
+  // Auto-scroll to AnswerCard when answer is received
+  useEffect(() => {
+    if (answer && !isLoading && answerCardRef.current) {
+      // Small delay to ensure the answer is rendered
+      setTimeout(() => {
+        answerCardRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start',
+          inline: 'nearest'
+        });
+      }, 100);
+    }
+  }, [answer, isLoading]);
+
   return (
     <div className="container">
       <Header />
@@ -171,15 +206,24 @@ export default function HomePage() {
         onModelChange={setSelectedModel}
         uploadedFiles={uploadedFiles}
         onFilesChange={setUploadedFiles}
+        hasAnswer={!!answer && !isLoading}
+        searchedQuery={searchedQuery}
       />
 
       <div className="spacer-12" />
-      <AnswerCard 
-        chunks={answer?.chunks || []} 
-        sources={answer?.sources || []}
-        isLoading={isLoading}
-        mode={answer?.mode || mode}
-      />
+      <div ref={answerCardRef}>
+        <AnswerCard 
+          chunks={answer?.chunks || []} 
+          sources={answer?.sources || []}
+          isLoading={isLoading}
+          mode={answer?.mode || mode}
+          query={searchedQuery}
+          onQueryEdit={(editedQuery) => {
+            setQuery(editedQuery);
+            doSearch(editedQuery);
+          }}
+        />
+      </div>
 
       <div className="spacer-16" />
       <DiscoverRail />
