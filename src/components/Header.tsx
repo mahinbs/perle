@@ -54,9 +54,9 @@ export const Header: React.FC = () => {
           </div>
         </div>
 
-        <div className="row header-right" style={{ gap: 4, flexShrink: 0 }}>
+        <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
           <button
-            className={`btn-ghost ${isActive("/ai-friend") ? "active" : ""}`}
+            className={`btn-ghost active`}
             onClick={() => navigateTo("/ai-friend")}
             aria-label="AI Friend"
             style={{
@@ -66,6 +66,19 @@ export const Header: React.FC = () => {
             }}
           >
             AI Friend
+          </button>
+          
+          <button
+            className={`btn-ghost active`}
+            onClick={() => navigateTo("/")}
+            aria-label="Home"
+            style={{
+              padding: "6px 10px",
+              fontSize: "var(--font-md)",
+              minHeight: 36,
+            }}
+          >
+            AI Psychology
           </button>
           <button
             className={`btn-ghost ${isActive("/discover") ? "active" : ""}`}
@@ -78,18 +91,6 @@ export const Header: React.FC = () => {
             }}
           >
             Discover
-          </button>
-          <button
-            className={`btn-ghost ${isActive("/") ? "active" : ""}`}
-            onClick={() => navigateTo("/")}
-            aria-label="Home"
-            style={{
-              padding: "6px 10px",
-              fontSize: "var(--font-md)",
-              minHeight: 36,
-            }}
-          >
-            AI Psychology
           </button>
         </div>
       </header>
