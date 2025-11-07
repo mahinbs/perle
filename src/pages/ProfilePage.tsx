@@ -116,7 +116,7 @@ export default function ProfilePage() {
               setShowLogin(false);
               setAuthError('');
             }}
-            style={{ fontSize: 14 }}
+            style={{ fontSize: "var(--font-md)" }}
           >
             ← Back
           </button>
@@ -154,7 +154,7 @@ export default function ProfilePage() {
               setShowSignup(false);
               setAuthError('');
             }}
-            style={{ fontSize: 14 }}
+            style={{ fontSize: "var(--font-md)" }}
           >
             ← Back
           </button>
@@ -189,7 +189,7 @@ export default function ProfilePage() {
         <button
           className="btn-ghost"
           onClick={() => navigateTo("/")}
-          style={{ fontSize: 14 }}
+          style={{ fontSize: "var(--font-md)" }}
         >
           ← Back
         </button>
@@ -234,7 +234,7 @@ export default function ProfilePage() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 24,
+                fontSize: "var(--font-2xl)",
                 fontWeight: "bold",
                 color: "#111",
                 marginRight: 16,
@@ -373,34 +373,42 @@ export default function ProfilePage() {
             Data Management
           </div>
 
-        <button
-          className="btn-ghost"
-          onClick={handleExportData}
-          style={{ width: "100%", marginBottom: 12 }}
-        >
-          📤 Export My Data
-        </button>
+          <button
+            className="btn-ghost"
+            onClick={() => navigateTo("/spaces")}
+            style={{ width: "100%", marginBottom: 12 }}
+          >
+            🧩 Manage Spaces
+          </button>
 
-        <button
-          className="btn-ghost"
-          onClick={() => navigateTo("/library")}
-          style={{ width: "100%", marginBottom: 12 }}
-        >
-          📚 View My Library
-        </button>
+          <button
+            className="btn-ghost"
+            onClick={handleExportData}
+            style={{ width: "100%", marginBottom: 12 }}
+          >
+            📤 Export My Data
+          </button>
 
-        <button
-          className="btn-ghost"
-          onClick={() => {
-            if (confirm("Clear all search history?")) {
-              localStorage.removeItem("perle-search-history");
-              console.log("Search history cleared");
-            }
-          }}
-          style={{ width: "100%" }}
-        >
-          🗑️ Clear Search History
-        </button>
+          <button
+            className="btn-ghost"
+            onClick={() => navigateTo("/library")}
+            style={{ width: "100%", marginBottom: 12 }}
+          >
+            📚 View My Library
+          </button>
+
+          <button
+            className="btn-ghost"
+            onClick={() => {
+              if (confirm("Clear all search history?")) {
+                localStorage.removeItem("perle-search-history");
+                console.log("Search history cleared");
+              }
+            }}
+            style={{ width: "100%" }}
+          >
+            🗑️ Clear Search History
+          </button>
         </div>
       )}
 

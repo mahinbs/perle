@@ -53,7 +53,7 @@ export default function MaintenancePage() {
         {/* Title */}
         <h1
           style={{
-            fontSize: "clamp(28px, 5vw, 36px)",
+            fontSize: "var(--font-2xl)",
             fontWeight: 700,
             margin: 0,
             color: "var(--text)",
@@ -66,7 +66,7 @@ export default function MaintenancePage() {
         {/* Subtitle */}
         <p
           style={{
-            fontSize: "clamp(16px, 3vw, 18px)",
+            fontSize: "var(--font-lg)",
             color: "var(--sub)",
             margin: 0,
             lineHeight: 1.6,
@@ -110,7 +110,7 @@ export default function MaintenancePage() {
             <div style={{ textAlign: "left", flex: 1 }}>
               <div
                 style={{
-                  fontSize: 14,
+                  fontSize: "var(--font-sm)",
                   fontWeight: 600,
                   color: "var(--text)",
                   marginBottom: 2,
@@ -120,7 +120,7 @@ export default function MaintenancePage() {
               </div>
               <div
                 style={{
-                  fontSize: 13,
+                  fontSize: "var(--font-sm)",
                   color: "var(--sub)",
                 }}
               >
@@ -152,7 +152,7 @@ export default function MaintenancePage() {
             <div style={{ textAlign: "left", flex: 1 }}>
               <div
                 style={{
-                  fontSize: 14,
+                  fontSize: "var(--font-sm)",
                   fontWeight: 600,
                   color: "var(--text)",
                   marginBottom: 2,
@@ -162,7 +162,7 @@ export default function MaintenancePage() {
               </div>
               <div
                 style={{
-                  fontSize: 13,
+                  fontSize: "var(--font-sm)",
                   color: "var(--sub)",
                 }}
               >
@@ -183,7 +183,7 @@ export default function MaintenancePage() {
         >
           <div
             style={{
-              fontSize: 24,
+              fontSize: "var(--font-2xl)",
               fontWeight: 700,
               color: "var(--accent)",
               letterSpacing: 1,
@@ -193,7 +193,7 @@ export default function MaintenancePage() {
           </div>
           <div
             style={{
-              fontSize: 12,
+              fontSize: "var(--font-xs)",
               color: "var(--sub)",
               marginTop: 4,
             }}

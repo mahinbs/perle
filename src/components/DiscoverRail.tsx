@@ -25,7 +25,7 @@ export const DiscoverRail: React.FC = () => {
         <button 
           className="btn-ghost" 
           onClick={handleViewAll}
-          style={{ fontSize: 14 }}
+          style={{ fontSize: 'var(--font-md)' }}
         >
           View All →
         </button>
@@ -63,7 +63,7 @@ export const DiscoverRail: React.FC = () => {
                 {item.description}
               </div>
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="chip" style={{ fontSize: 11 }}>
+                <span className="chip" style={{ fontSize: 'var(--font-sm)' }}>
                   {item.tag}
                 </span>
                 <span className="sub text-sm">

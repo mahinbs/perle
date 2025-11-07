@@ -104,7 +104,7 @@ export default function DetailsPage() {
         <button
           className="btn-ghost"
           onClick={handleBack}
-          style={{ fontSize: 14 }}
+          style={{ fontSize: "var(--font-md)" }}
         >
           ← Back
         </button>
@@ -112,7 +112,7 @@ export default function DetailsPage() {
           <button
             className="btn-ghost"
             onClick={handleBookmark}
-            style={{ padding: 8, fontSize: 18 }}
+            style={{ padding: 8, fontSize: "var(--font-lg)" }}
             aria-label="Bookmark"
           >
             🔖
@@ -120,7 +120,7 @@ export default function DetailsPage() {
           <button
             className="btn-ghost"
             onClick={handleShare}
-            style={{ padding: 8, fontSize: 18 }}
+            style={{ padding: 8, fontSize: "var(--font-lg)" }}
             aria-label="Share"
           >
             📤
@@ -151,7 +151,7 @@ export default function DetailsPage() {
         style={{ padding: 20, marginBottom: 20 }}
       >
         <div className="row" style={{ alignItems: "center", marginBottom: 12 }}>
-          <span className="chip" style={{ fontSize: 12, marginRight: 12 }}>
+          <span className="chip" style={{ fontSize: "var(--font-sm)", marginRight: 12 }}>
             {item.tag}
           </span>
           <span className="sub text-sm">{item.category}</span>
@@ -204,7 +204,7 @@ export default function DetailsPage() {
             "Latest Trends",
             "Expert Insights",
           ].map((topic) => (
-            <span key={topic} className="chip" style={{ fontSize: 12 }}>
+            <span key={topic} className="chip" style={{ fontSize: "var(--font-sm)" }}>
               {topic}
             </span>
           ))}

@@ -54,7 +54,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
               background: 'rgba(239, 68, 68, 0.1)',
               border: '1px solid #ff4444',
               color: '#ff4444',
-              fontSize: 14
+              fontSize: 'var(--font-md)'
             }}
           >
             {error}
@@ -88,7 +88,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-sm)',
                 background: 'var(--card)',
-                fontSize: 16
+                fontSize: 'var(--font-md)'
               }}
             />
           </div>
@@ -119,7 +119,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-sm)',
                 background: 'var(--card)',
-                fontSize: 16
+                fontSize: 'var(--font-md)'
               }}
             />
           </div>
@@ -152,7 +152,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                   border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-sm)',
                   background: 'var(--card)',
-                  fontSize: 16
+                fontSize: 'var(--font-md)'
                 }}
               />
               <button
@@ -166,7 +166,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: 18,
+                fontSize: 'var(--font-lg)',
                   color: 'var(--sub)',
                   padding: 4
                 }}
@@ -209,7 +209,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                   border: `1px solid ${isPasswordMismatch ? '#ff4444' : isPasswordMatch ? '#10B981' : 'var(--border)'}`,
                   borderRadius: 'var(--radius-sm)',
                   background: 'var(--card)',
-                  fontSize: 16
+                fontSize: 'var(--font-md)'
                 }}
               />
               <button
@@ -223,7 +223,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: 18,
+                fontSize: 'var(--font-lg)',
                   color: 'var(--sub)',
                   padding: 4
                 }}

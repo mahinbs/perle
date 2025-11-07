@@ -89,8 +89,8 @@ export default function LibraryPage() {
         <div className="h1">Library</div>
         <button 
           className="btn-ghost" 
-          onClick={() => navigateTo('/')}
-          style={{ fontSize: 14 }}
+          onClick={() => navigateTo('/profile')}
+          style={{ fontSize: "var(--font-md)" }}
         >
           ← Back
         </button>
@@ -119,7 +119,7 @@ export default function LibraryPage() {
           placeholder="Search your library..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ fontSize: 16, marginBottom: 12 }}
+          style={{ fontSize: "var(--font-md)", marginBottom: 12 }}
         />
         
         <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
@@ -151,14 +151,14 @@ export default function LibraryPage() {
             <button
               className={`pill ${sortBy === 'date' ? 'active' : ''}`}
               onClick={() => setSortBy('date')}
-              style={{ fontSize: 12, padding: '6px 12px' }}
+              style={{ fontSize: "var(--font-sm)", padding: '6px 12px' }}
             >
               Date
             </button>
             <button
               className={`pill ${sortBy === 'title' ? 'active' : ''}`}
               onClick={() => setSortBy('title')}
-              style={{ fontSize: 12, padding: '6px 12px' }}
+              style={{ fontSize: "var(--font-sm)", padding: '6px 12px' }}
             >
               Title
             </button>
@@ -222,7 +222,7 @@ export default function LibraryPage() {
             {/* Tags */}
             <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
               {item.tags.map(tag => (
-                <span key={tag} className="chip" style={{ fontSize: 11 }}>
+                <span key={tag} className="chip" style={{ fontSize: "var(--font-sm)" }}>
                   {tag}
                 </span>
               ))}
@@ -252,7 +252,7 @@ export default function LibraryPage() {
             <button 
               key={action} 
               className="btn-ghost" 
-              style={{ fontSize: 12, padding: '8px 12px' }}
+              style={{ fontSize: "var(--font-sm)", padding: '8px 12px' }}
             >
               {action}
             </button>

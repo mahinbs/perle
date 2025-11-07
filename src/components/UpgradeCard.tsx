@@ -31,11 +31,11 @@ export const UpgradeCard: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
-                fontSize: 16,
+              fontSize: 'var(--font-md)',
                 color: 'var(--text)'
               }}
             >
-              <span style={{ color: 'var(--accent)', fontSize: 20, fontWeight: 600 }}>✓</span>
+              <span style={{ color: 'var(--accent)', fontSize: 'var(--font-xl)', fontWeight: 600 }}>✓</span>
               <span>{feature}</span>
             </div>
           ))}
@@ -51,7 +51,7 @@ export const UpgradeCard: React.FC = () => {
             background: 'transparent',
             color: 'var(--sub)',
             textDecoration: 'underline',
-            fontSize: 14,
+            fontSize: 'var(--font-sm)',
             fontWeight: 400,
             justifyContent: 'flex-start',
             minHeight: 'auto',
@@ -70,7 +70,7 @@ export const UpgradeCard: React.FC = () => {
             color: '#FFFFFF',
             padding: '16px 24px',
             borderRadius: 'var(--radius-sm)',
-            fontSize: 16,
+            fontSize: 'var(--font-md)',
             fontWeight: 600,
             border: 'none',
             cursor: 'pointer',
@@ -100,7 +100,7 @@ export const UpgradeCard: React.FC = () => {
         <div
           style={{
             textAlign: 'center',
-            fontSize: 14,
+            fontSize: 'var(--font-sm)',
             color: 'var(--sub)',
             lineHeight: '1.5'
           }}

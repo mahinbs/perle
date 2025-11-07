@@ -43,7 +43,7 @@ export const Toast: React.FC<ToastProps> = ({
       gap: 12,
       minWidth: 250,
       maxWidth: 400,
-      fontSize: 14,
+      fontSize: 'var(--font-sm)',
       color: 'var(--text, #ffffff)',
       opacity: isVisible ? 1 : 0,
       transform: isVisible ? 'translateY(0)' : 'translateY(-10px)',
@@ -87,7 +87,7 @@ export const Toast: React.FC<ToastProps> = ({
   return (
     <div style={getToastStyles()}>
       <div style={{ 
-        fontSize: 18,
+        fontSize: 'var(--font-lg)',
         flexShrink: 0,
         color: type === 'success' ? '#4CAF50' : type === 'error' ? '#F44336' : 'var(--accent, #007AFF)'
       }}>
@@ -106,7 +106,7 @@ export const Toast: React.FC<ToastProps> = ({
           border: 'none',
           cursor: 'pointer',
           padding: 4,
-          fontSize: 18,
+          fontSize: 'var(--font-lg)',
           color: 'var(--sub, #999)',
           opacity: 0.7,
           flexShrink: 0

@@ -209,14 +209,14 @@ export default function AIFriendPage() {
           <button
             className="btn-ghost"
             onClick={() => navigateTo("/")}
-            style={{ padding: 8, fontSize: 18 }}
+            style={{ padding: 8, fontSize: "var(--font-md)" }}
             aria-label="Back"
           >
             ←
           </button>
           <div>
             <div className="h3" style={{ marginBottom: 2 }}>AI Friend</div>
-            <div className="sub text-sm" style={{ fontSize: 12 }}>
+            <div className="sub text-sm" style={{ fontSize: "var(--font-sm)" }}>
               {messages.length > 1 ? "Online" : "Ready to chat"}
             </div>
           </div>
@@ -267,12 +267,12 @@ export default function AIFriendPage() {
                 wordWrap: "break-word",
               }}
             >
-              <div style={{ fontSize: 15, whiteSpace: "pre-wrap" }}>
+              <div style={{ fontSize: "var(--font-md)", whiteSpace: "pre-wrap" }}>
                 {message.content}
               </div>
               <div
                 style={{
-                  fontSize: 11,
+                  fontSize: "var(--font-xs)",
                   opacity: 0.6,
                   marginTop: 6,
                   textAlign: message.role === "user" ? "right" : "left",
@@ -385,7 +385,7 @@ export default function AIFriendPage() {
                 border: "none",
                 background: "transparent",
                 color: "var(--text)",
-                fontSize: 15,
+                fontSize: "var(--font-md)",
                 resize: "none",
                 outline: "none",
                 fontFamily: "inherit",
@@ -453,11 +453,11 @@ export default function AIFriendPage() {
             }}
             aria-label="Send message"
           >
-            <span style={{ fontSize: 18, fontWeight: 600 }}>→</span>
+            <span style={{ fontSize: "var(--font-lg)", fontWeight: 600 }}>→</span>
           </button>
         </div>
 
-        <div className="sub text-sm" style={{ marginTop: 8, fontSize: 11, textAlign: "center" }}>
+        <div className="sub text-sm" style={{ marginTop: 8, fontSize: "var(--font-xs)", textAlign: "center" }}>
           Press Enter to send, Shift+Enter for new line
         </div>
       </div>

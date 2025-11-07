@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import MicWaveIcon from "./MicWaveIcon";
 import { World, type GlobeConfig, type Position } from "./ui/globe";
+import VoiceResponseText from "./VoiceResponseText";
+import VoiceOverlayControls from "./VoiceOverlayControls";
 
 interface VoiceOverlayProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
   responseText,
 }) => {
   const [os, setOs] = useState("");
+  const hasAutoStartedRef = useRef(false);
 
   useEffect(() => {
     const platform = navigator.platform.toLowerCase();
@@ -27,6 +29,73 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
     else if (platform.includes("win")) setOs("windows");
     else setOs("other");
   }, []);
+
+  const playActivationBeep = useCallback(async () => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const AudioCtx =
+        (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+
+      const audioCtx = new AudioCtx();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+
+      gainNode.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.25,
+        audioCtx.currentTime + 0.01,
+      );
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.0001,
+        audioCtx.currentTime + 0.25,
+      );
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      await new Promise<void>((resolve) => {
+        oscillator.onended = () => {
+          try {
+            audioCtx.close();
+          } catch {}
+          resolve();
+        };
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.3);
+      });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      hasAutoStartedRef.current = false;
+      return;
+    }
+
+    if (hasAutoStartedRef.current) return;
+    hasAutoStartedRef.current = true;
+
+    let cancelled = false;
+
+    const kickOffListening = async () => {
+      await playActivationBeep();
+      if (cancelled) return;
+      if (!isListening) {
+        onToggleListening();
+      }
+    };
+
+    kickOffListening();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isListening, onToggleListening, playActivationBeep]);
 
   // Cancel any ongoing speech and clear text when overlay opens
   useEffect(() => {
@@ -37,11 +106,11 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           window.speechSynthesis.cancel();
         }
       } catch {}
-      
+
       // Clear any existing answer text from localStorage
-      localStorage.removeItem('perle-current-answer-text');
-      localStorage.removeItem('perle-current-word-index');
-      localStorage.removeItem('perle-speak-next-answer');
+      localStorage.removeItem("perle-current-answer-text");
+      localStorage.removeItem("perle-current-word-index");
+      localStorage.removeItem("perle-speak-next-answer");
     }
   }, [isOpen]);
 
@@ -53,11 +122,11 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         window.speechSynthesis.cancel();
       }
     } catch {}
-    
+
     // Clear any stored answer text on mount
-    localStorage.removeItem('perle-current-answer-text');
-    localStorage.removeItem('perle-current-word-index');
-    
+    localStorage.removeItem("perle-current-answer-text");
+    localStorage.removeItem("perle-current-word-index");
+
     // Cleanup on unmount
     return () => {
       try {
@@ -129,62 +198,20 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         }}
       >
         {/* Watercolor gradient circle animation on voice output */}
-        <SpeakingGradientCircle 
-          isListening={isListening} 
+        <SpeakingGradientCircle
+          isListening={isListening}
           responseText={responseText}
-          key={isOpen ? 'open' : 'closed'} // Reset component when overlay opens/closes
+          key={isOpen ? "open" : "closed"} // Reset component when overlay opens/closes
         />
       </div>
 
       {/* Bottom actions */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          paddingBottom: os === 'mac' ? '6rem' : undefined,
-        }}
-      >
-        <button
-          className="btn-ghost"
-          onClick={() => {
-            try {
-              if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-            } catch {}
-            onClose();
-          }}
-          aria-label="Cancel"
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 9999,
-            color: "var(--text)",
-            borderColor: "var(--border)",
-            fontSize: 18,
-          }}
-        >
-          ✕
-        </button>
-        <button
-          className={isListening ? "btn" : "btn-ghost"}
-          onClick={() => {
-            try {
-              if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-            } catch {}
-            onToggleListening();
-          }}
-          aria-label={isListening ? "Stop listening" : "Start voice"}
-          style={{
-            width: 84,
-            height: 84,
-            borderRadius: 9999,
-            color: isListening ? "#111" : "var(--text)",
-            borderColor: isListening ? undefined : "var(--border)",
-          }}
-        >
-          <MicWaveIcon size={26} active={isListening} />
-        </button>
-      </div>
+      <VoiceOverlayControls
+        isListening={isListening}
+        onClose={onClose}
+        onToggleListening={onToggleListening}
+        isMac={os === "mac"}
+      />
     </div>
   );
 
@@ -192,32 +219,34 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
 };
 
 // Internal helper component that displays a 3D globe during voice output
-const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: string }> = ({ 
-  responseText: propResponseText 
-}) => {
+const SpeakingGradientCircle: React.FC<{
+  isListening: boolean;
+  responseText?: string;
+}> = ({ responseText: propResponseText }) => {
   const [speaking, setSpeaking] = useState(false);
-  const [responseText, setResponseText] = useState<string>("");
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const baseGlobeSize = "min(clamp(220px, 48vw, 420px), calc(100vh - 300px))";
 
   // Detect theme (light or dark)
   useEffect(() => {
     const checkTheme = () => {
-      const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isDark =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
       setIsDarkMode(isDark);
     };
-    
+
     checkTheme();
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    mediaQuery.addEventListener('change', checkTheme);
-    
-    return () => mediaQuery.removeEventListener('change', checkTheme);
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    mediaQuery.addEventListener("change", checkTheme);
+
+    return () => mediaQuery.removeEventListener("change", checkTheme);
   }, []);
 
   // Reset state when component mounts (overlay opens)
   useEffect(() => {
     setSpeaking(false);
-    setResponseText("");
-    
+
     // Ensure speech is cancelled
     try {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -235,144 +264,308 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
           typeof window !== "undefined" && "speechSynthesis" in window
             ? window.speechSynthesis.speaking
             : false;
-        
+
         setSpeaking(isSpeaking);
       } catch {}
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    
+
     return () => {
       cancelAnimationFrame(raf);
     };
   }, []);
-  
-  // Update responseText when prop changes or from localStorage
-  useEffect(() => {
-    if (propResponseText) {
-      setResponseText(propResponseText);
-    } else {
-      // Try to get from localStorage (set by AnswerCard when speaking)
-      const storedText = localStorage.getItem('perle-current-answer-text');
-      if (storedText) {
-        setResponseText(storedText);
-      }
-    }
-  }, [propResponseText]);
-  
-  // Monitor localStorage for answer text updates (with faster polling for smooth typewriter effect)
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const storedText = localStorage.getItem('perle-current-answer-text');
-      if (storedText !== null && !propResponseText) {
-        // Only update if text actually changed to avoid unnecessary re-renders
-        setResponseText(prev => {
-          if (prev !== storedText) {
-            return storedText;
-          }
-          return prev;
-        });
-        // Also check if speech is speaking and update speaking state if needed
-        // This helps catch cases where speaking state might not be detected
-        if (storedText && typeof window !== "undefined" && "speechSynthesis" in window) {
-          const isCurrentlySpeaking = window.speechSynthesis.speaking;
-          if (isCurrentlySpeaking && !speaking) {
-            setSpeaking(true);
-          }
-        }
-      } else if (storedText === null && !propResponseText && responseText) {
-        // Keep text visible for a bit even after localStorage is cleared
-        // This prevents flickering when speech ends
-        setTimeout(() => {
-          if (!window.speechSynthesis.speaking) {
-            setResponseText("");
-          }
-        }, 1000);
-      }
-    };
-    
-    // Check initially
-    handleStorageChange();
-    
-    // Listen for storage events (from other tabs/windows)
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Poll more frequently for smooth typewriter effect (every 50ms for better responsiveness)
-    const interval = setInterval(handleStorageChange, 50);
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
-  }, [propResponseText, speaking, responseText]);
-
-  const displayText = propResponseText || responseText;
 
   // Sample globe data for arcs - Multiple points across the globe
-  const globeData: Position[] = useMemo(() => [
-    // North America
-    { order: 1, startLat: 40.7128, startLng: -74.0060, endLat: 34.0522, endLng: -118.2437, arcAlt: 0.1, color: "#C7A869" }, // NYC to LA
-    { order: 2, startLat: 40.7128, startLng: -74.0060, endLat: 41.8781, endLng: -87.6298, arcAlt: 0.15, color: "#C7A869" }, // NYC to Chicago
-    { order: 3, startLat: 40.7128, startLng: -74.0060, endLat: 29.7604, endLng: -95.3698, arcAlt: 0.2, color: "#C7A869" }, // NYC to Houston
-    { order: 4, startLat: 34.0522, startLng: -118.2437, endLat: 37.7749, endLng: -122.4194, arcAlt: 0.1, color: "#C7A869" }, // LA to San Francisco
-    { order: 5, startLat: 25.7617, startLng: -80.1918, endLat: 40.7128, endLng: -74.0060, arcAlt: 0.25, color: "#C7A869" }, // Miami to NYC
-    
-    // Europe
-    { order: 6, startLat: 51.5074, startLng: -0.1278, endLat: 40.7128, endLng: -74.0060, arcAlt: 0.3, color: "#C7A869" }, // London to NYC
-    { order: 7, startLat: 48.8566, startLng: 2.3522, endLat: 51.5074, endLng: -0.1278, arcAlt: 0.1, color: "#C7A869" }, // Paris to London
-    { order: 8, startLat: 52.5200, startLng: 13.4050, endLat: 51.5074, endLng: -0.1278, arcAlt: 0.15, color: "#C7A869" }, // Berlin to London
-    { order: 9, startLat: 41.9028, startLng: 12.4964, endLat: 48.8566, endLng: 2.3522, arcAlt: 0.2, color: "#C7A869" }, // Rome to Paris
-    { order: 10, startLat: 55.7558, startLng: 37.6173, endLat: 51.5074, endLng: -0.1278, arcAlt: 0.35, color: "#C7A869" }, // Moscow to London
-    
-    // Asia
-    { order: 11, startLat: 35.6762, startLng: 139.6503, endLat: 40.7128, endLng: -74.0060, arcAlt: 0.4, color: "#C7A869" }, // Tokyo to NYC
-    { order: 12, startLat: 28.6139, startLng: 77.2090, endLat: 35.6762, endLng: 139.6503, arcAlt: 0.3, color: "#C7A869" }, // Delhi to Tokyo
-    { order: 13, startLat: 31.2304, startLng: 121.4737, endLat: 35.6762, endLng: 139.6503, arcAlt: 0.15, color: "#C7A869" }, // Shanghai to Tokyo
-    { order: 14, startLat: 22.3193, startLng: 114.1694, endLat: 31.2304, endLng: 121.4737, arcAlt: 0.2, color: "#C7A869" }, // Hong Kong to Shanghai
-    { order: 15, startLat: 1.3521, startLng: 103.8198, endLat: 22.3193, endLng: 114.1694, arcAlt: 0.25, color: "#C7A869" }, // Singapore to Hong Kong
-    { order: 16, startLat: 19.0760, startLng: 72.8777, endLat: 28.6139, endLng: 77.2090, arcAlt: 0.2, color: "#C7A869" }, // Mumbai to Delhi
-    { order: 17, startLat: 39.9042, startLng: 116.4074, endLat: 35.6762, endLng: 139.6503, arcAlt: 0.25, color: "#C7A869" }, // Beijing to Tokyo
-    { order: 18, startLat: 37.5665, startLng: 126.9780, endLat: 35.6762, endLng: 139.6503, arcAlt: 0.1, color: "#C7A869" }, // Seoul to Tokyo
-    
-    // Middle East & Africa
-    { order: 19, startLat: 25.2048, startLng: 55.2708, endLat: 51.5074, endLng: -0.1278, arcAlt: 0.3, color: "#C7A869" }, // Dubai to London
-    { order: 20, startLat: 30.0444, startLng: 31.2357, endLat: 25.2048, endLng: 55.2708, arcAlt: 0.2, color: "#C7A869" }, // Cairo to Dubai
-    { order: 21, startLat: -33.8688, startLng: 151.2093, endLat: 1.3521, endLng: 103.8198, arcAlt: 0.3, color: "#C7A869" }, // Sydney to Singapore
-    { order: 22, startLat: -26.2041, startLng: 28.0473, endLat: 25.2048, endLng: 55.2708, arcAlt: 0.35, color: "#C7A869" }, // Johannesburg to Dubai
-    
-    // South America
-    { order: 23, startLat: -23.5505, startLng: -46.6333, endLat: 40.7128, endLng: -74.0060, arcAlt: 0.4, color: "#C7A869" }, // São Paulo to NYC
-    { order: 24, startLat: -34.6037, startLng: -58.3816, endLat: -23.5505, endLng: -46.6333, arcAlt: 0.2, color: "#C7A869" }, // Buenos Aires to São Paulo
-    { order: 25, startLat: -12.0464, startLng: -77.0428, endLat: -23.5505, endLng: -46.6333, arcAlt: 0.3, color: "#C7A869" }, // Lima to São Paulo
-    
-    // Additional connections
-    { order: 26, startLat: 55.7558, startLng: 37.6173, endLat: 39.9042, endLng: 116.4074, arcAlt: 0.3, color: "#C7A869" }, // Moscow to Beijing
-    { order: 27, startLat: 51.5074, startLng: -0.1278, endLat: 28.6139, endLng: 77.2090, arcAlt: 0.35, color: "#C7A869" }, // London to Delhi
-    { order: 28, startLat: 40.7128, startLng: -74.0060, endLat: 1.3521, endLng: 103.8198, arcAlt: 0.45, color: "#C7A869" }, // NYC to Singapore
-  ], []);
+  const globeData: Position[] = useMemo(
+    () => [
+      // North America
+      {
+        order: 1,
+        startLat: 40.7128,
+        startLng: -74.006,
+        endLat: 34.0522,
+        endLng: -118.2437,
+        arcAlt: 0.1,
+        color: "#C7A869",
+      }, // NYC to LA
+      {
+        order: 2,
+        startLat: 40.7128,
+        startLng: -74.006,
+        endLat: 41.8781,
+        endLng: -87.6298,
+        arcAlt: 0.15,
+        color: "#C7A869",
+      }, // NYC to Chicago
+      {
+        order: 3,
+        startLat: 40.7128,
+        startLng: -74.006,
+        endLat: 29.7604,
+        endLng: -95.3698,
+        arcAlt: 0.2,
+        color: "#C7A869",
+      }, // NYC to Houston
+      {
+        order: 4,
+        startLat: 34.0522,
+        startLng: -118.2437,
+        endLat: 37.7749,
+        endLng: -122.4194,
+        arcAlt: 0.1,
+        color: "#C7A869",
+      }, // LA to San Francisco
+      {
+        order: 5,
+        startLat: 25.7617,
+        startLng: -80.1918,
+        endLat: 40.7128,
+        endLng: -74.006,
+        arcAlt: 0.25,
+        color: "#C7A869",
+      }, // Miami to NYC
+
+      // Europe
+      {
+        order: 6,
+        startLat: 51.5074,
+        startLng: -0.1278,
+        endLat: 40.7128,
+        endLng: -74.006,
+        arcAlt: 0.3,
+        color: "#C7A869",
+      }, // London to NYC
+      {
+        order: 7,
+        startLat: 48.8566,
+        startLng: 2.3522,
+        endLat: 51.5074,
+        endLng: -0.1278,
+        arcAlt: 0.1,
+        color: "#C7A869",
+      }, // Paris to London
+      {
+        order: 8,
+        startLat: 52.52,
+        startLng: 13.405,
+        endLat: 51.5074,
+        endLng: -0.1278,
+        arcAlt: 0.15,
+        color: "#C7A869",
+      }, // Berlin to London
+      {
+        order: 9,
+        startLat: 41.9028,
+        startLng: 12.4964,
+        endLat: 48.8566,
+        endLng: 2.3522,
+        arcAlt: 0.2,
+        color: "#C7A869",
+      }, // Rome to Paris
+      {
+        order: 10,
+        startLat: 55.7558,
+        startLng: 37.6173,
+        endLat: 51.5074,
+        endLng: -0.1278,
+        arcAlt: 0.35,
+        color: "#C7A869",
+      }, // Moscow to London
+
+      // Asia
+      {
+        order: 11,
+        startLat: 35.6762,
+        startLng: 139.6503,
+        endLat: 40.7128,
+        endLng: -74.006,
+        arcAlt: 0.4,
+        color: "#C7A869",
+      }, // Tokyo to NYC
+      {
+        order: 12,
+        startLat: 28.6139,
+        startLng: 77.209,
+        endLat: 35.6762,
+        endLng: 139.6503,
+        arcAlt: 0.3,
+        color: "#C7A869",
+      }, // Delhi to Tokyo
+      {
+        order: 13,
+        startLat: 31.2304,
+        startLng: 121.4737,
+        endLat: 35.6762,
+        endLng: 139.6503,
+        arcAlt: 0.15,
+        color: "#C7A869",
+      }, // Shanghai to Tokyo
+      {
+        order: 14,
+        startLat: 22.3193,
+        startLng: 114.1694,
+        endLat: 31.2304,
+        endLng: 121.4737,
+        arcAlt: 0.2,
+        color: "#C7A869",
+      }, // Hong Kong to Shanghai
+      {
+        order: 15,
+        startLat: 1.3521,
+        startLng: 103.8198,
+        endLat: 22.3193,
+        endLng: 114.1694,
+        arcAlt: 0.25,
+        color: "#C7A869",
+      }, // Singapore to Hong Kong
+      {
+        order: 16,
+        startLat: 19.076,
+        startLng: 72.8777,
+        endLat: 28.6139,
+        endLng: 77.209,
+        arcAlt: 0.2,
+        color: "#C7A869",
+      }, // Mumbai to Delhi
+      {
+        order: 17,
+        startLat: 39.9042,
+        startLng: 116.4074,
+        endLat: 35.6762,
+        endLng: 139.6503,
+        arcAlt: 0.25,
+        color: "#C7A869",
+      }, // Beijing to Tokyo
+      {
+        order: 18,
+        startLat: 37.5665,
+        startLng: 126.978,
+        endLat: 35.6762,
+        endLng: 139.6503,
+        arcAlt: 0.1,
+        color: "#C7A869",
+      }, // Seoul to Tokyo
+
+      // Middle East & Africa
+      {
+        order: 19,
+        startLat: 25.2048,
+        startLng: 55.2708,
+        endLat: 51.5074,
+        endLng: -0.1278,
+        arcAlt: 0.3,
+        color: "#C7A869",
+      }, // Dubai to London
+      {
+        order: 20,
+        startLat: 30.0444,
+        startLng: 31.2357,
+        endLat: 25.2048,
+        endLng: 55.2708,
+        arcAlt: 0.2,
+        color: "#C7A869",
+      }, // Cairo to Dubai
+      {
+        order: 21,
+        startLat: -33.8688,
+        startLng: 151.2093,
+        endLat: 1.3521,
+        endLng: 103.8198,
+        arcAlt: 0.3,
+        color: "#C7A869",
+      }, // Sydney to Singapore
+      {
+        order: 22,
+        startLat: -26.2041,
+        startLng: 28.0473,
+        endLat: 25.2048,
+        endLng: 55.2708,
+        arcAlt: 0.35,
+        color: "#C7A869",
+      }, // Johannesburg to Dubai
+
+      // South America
+      {
+        order: 23,
+        startLat: -23.5505,
+        startLng: -46.6333,
+        endLat: 40.7128,
+        endLng: -74.006,
+        arcAlt: 0.4,
+        color: "#C7A869",
+      }, // São Paulo to NYC
+      {
+        order: 24,
+        startLat: -34.6037,
+        startLng: -58.3816,
+        endLat: -23.5505,
+        endLng: -46.6333,
+        arcAlt: 0.2,
+        color: "#C7A869",
+      }, // Buenos Aires to São Paulo
+      {
+        order: 25,
+        startLat: -12.0464,
+        startLng: -77.0428,
+        endLat: -23.5505,
+        endLng: -46.6333,
+        arcAlt: 0.3,
+        color: "#C7A869",
+      }, // Lima to São Paulo
+
+      // Additional connections
+      {
+        order: 26,
+        startLat: 55.7558,
+        startLng: 37.6173,
+        endLat: 39.9042,
+        endLng: 116.4074,
+        arcAlt: 0.3,
+        color: "#C7A869",
+      }, // Moscow to Beijing
+      {
+        order: 27,
+        startLat: 51.5074,
+        startLng: -0.1278,
+        endLat: 28.6139,
+        endLng: 77.209,
+        arcAlt: 0.35,
+        color: "#C7A869",
+      }, // London to Delhi
+      {
+        order: 28,
+        startLat: 40.7128,
+        startLng: -74.006,
+        endLat: 1.3521,
+        endLng: 103.8198,
+        arcAlt: 0.45,
+        color: "#C7A869",
+      }, // NYC to Singapore
+    ],
+    []
+  );
 
   // Theme-aware globe configuration - colors change when speaking
   const globeConfig: GlobeConfig = useMemo(() => {
-    // Base colors (when not speaking) - Much brighter for visibility
-    const baseGlobeColor = isDarkMode ? "#2d1f4e" : "#0f4c75"; // Brighter blue tones
-    const baseEmissive = isDarkMode ? "#3d2f5e" : "#1a5490"; // Brighter emissive
-    const basePolygonColor = isDarkMode ? "rgba(199, 168, 105, 0.7)" : "rgba(255,255,255,0.8)"; // Much more visible
-    const baseAtmosphereColor = isDarkMode ? "rgba(199, 168, 105, 0.6)" : "rgba(255,255,255,0.7)"; // More visible
-    
-    // Active colors (when speaking) - even brighter and more vibrant
-    const activeGlobeColor = isDarkMode ? "#3d2f5e" : "#1a5490"; // Even brighter
-    const activeEmissive = isDarkMode ? "#C7A869" : "#3b82f6"; // Gold for dark, bright blue for light
-    const activePolygonColor = isDarkMode ? "rgba(199, 168, 105, 0.95)" : "rgba(255,255,255,1)"; // Fully visible
-    const activeAtmosphereColor = isDarkMode ? "#C7A869" : "#ffffff"; // Gold for dark, white for light
-    
+    const baseGlobeColor = isDarkMode ? "#2d1f4e" : "#0f4c75";
+    const baseEmissive = isDarkMode ? "#3d2f5e" : "#1a5490";
+    const basePolygonColor = isDarkMode
+      ? "rgba(199, 168, 105, 0.7)"
+      : "rgba(255,255,255,0.8)";
+    const baseAtmosphereColor = isDarkMode
+      ? "rgba(199, 168, 105, 0.6)"
+      : "rgba(255,255,255,0.7)";
+    const baseAmbientLight = isDarkMode ? "#a68b5b" : "#3b82f6";
+
     return {
-      pointSize: 3, // Larger points for better visibility
-      globeColor: speaking ? activeGlobeColor : baseGlobeColor,
+      pointSize: 3,
+      globeColor: baseGlobeColor,
       showAtmosphere: true,
-      atmosphereColor: speaking ? activeAtmosphereColor : baseAtmosphereColor,
-      atmosphereAltitude: speaking ? 0.25 : 0.2, // Higher atmosphere for visibility
-      emissive: speaking ? activeEmissive : baseEmissive,
-      emissiveIntensity: speaking ? (isDarkMode ? 0.6 : 0.5) : (isDarkMode ? 0.3 : 0.25), // Much brighter
+      atmosphereColor: baseAtmosphereColor,
+      atmosphereAltitude: 0.22,
+      emissive: baseEmissive,
+      emissiveIntensity: isDarkMode ? 0.4 : 0.35,
       shininess: 0.9,
       arcTime: 1000,
       arcLength: 0.9,
@@ -380,9 +573,9 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
       maxRings: 3,
       initialPosition: { lat: 0, lng: 0 },
       autoRotate: true,
-      autoRotateSpeed: 1.6, // Constant rotation speed
-      polygonColor: speaking ? activePolygonColor : basePolygonColor,
-      ambientLight: speaking ? (isDarkMode ? "#C7A869" : "#60a5fa") : (isDarkMode ? "#a68b5b" : "#3b82f6"), // Brighter ambient light
+      autoRotateSpeed: speaking ? 15 : 1.6,
+      polygonColor: basePolygonColor,
+      ambientLight: baseAmbientLight,
       directionalLeftLight: "#ffffff",
       directionalTopLight: "#ffffff",
       pointLight: "#ffffff",
@@ -408,10 +601,11 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
         className="globe-wrapper"
         style={{
           position: "relative",
-          width: "clamp(200px, min(60vh, 60vw), 600px)",
+          width: baseGlobeSize,
+          height: baseGlobeSize,
           aspectRatio: "1 / 1", // Force 1:1 aspect ratio
-          maxWidth: "600px",
-          maxHeight: "600px",
+          maxWidth: "480px",
+          maxHeight: "480px",
           minWidth: "200px",
           minHeight: "200px",
           display: "flex",
@@ -441,79 +635,29 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
         ... (entire SVG animation code commented out) ...
       </svg>
       */}
-      
+
       {/* AI Response Text Display - Responsive height for mobile and desktop */}
-      <div
-        className="voice-overlay-text-container"
-        style={{
-          maxWidth: 600,
-          width: "100%",
-          minHeight: displayText ? 60 : 0,
-          maxHeight: displayText ? "calc(100vh - 500px)" : 0,
-          padding: displayText ? "12px 16px" : "0",
-          textAlign: "center",
-          color: "var(--text)",
-          fontSize: 16,
-          lineHeight: 1.6,
-          opacity: displayText ? (speaking ? 0.95 : 0.7) : 0,
-          transition: "min-height 0.3s ease-in-out, max-height 0.3s ease-in-out, opacity 0.3s ease-in-out, padding 0.3s ease-in-out",
-          overflowY: "auto",
-          overflowX: "hidden",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          WebkitOverflowScrolling: "touch", // Smooth scrolling on iOS
-        }}
-      >
-        {displayText && (
-          <div style={{ width: "100%" }}>
-            {displayText}
-          </div>
-        )}
-      </div>
-      
+      <VoiceResponseText text={propResponseText} speaking={speaking} />
+
       <style>
         {`
-          .voice-overlay-text-container::-webkit-scrollbar {
-            width: 6px;
-          }
-          
-          .voice-overlay-text-container::-webkit-scrollbar-track {
-            background: rgba(199, 168, 105, 0.1);
-            border-radius: 10px;
-          }
-          
-          .voice-overlay-text-container::-webkit-scrollbar-thumb {
-            background: rgba(199, 168, 105, 0.4);
-            border-radius: 10px;
-            transition: background 0.2s ease;
-          }
-          
-          .voice-overlay-text-container::-webkit-scrollbar-thumb:hover {
-            background: rgba(199, 168, 105, 0.6);
-          }
-          
-          /* Firefox scrollbar styling */
-          .voice-overlay-text-container {
-            scrollbar-width: thin;
-            scrollbar-color: rgba(199, 168, 105, 0.4) rgba(199, 168, 105, 0.1);
-          }
-          
           /* Desktop - Larger globe size */
           @media (min-width: 1024px) {
             .globe-wrapper {
-              width: clamp(400px, min(65vh, 65vw), 700px) !important;
-              max-width: 700px !important;
-              max-height: 700px !important;
+              width: min(clamp(320px, 30vw, 480px), calc(100vh - 300px)) !important;
+              height: min(clamp(320px, 30vw, 480px), calc(100vh - 300px)) !important;
+              max-width: 480px !important;
+              max-height: 480px !important;
             }
           }
           
           /* Tablet responsive adjustments */
           @media (max-width: 1023px) and (min-width: 769px) {
             .globe-wrapper {
-              width: clamp(280px, min(55vh, 55vw), 500px) !important;
-              max-width: 500px !important;
-              max-height: 500px !important;
+              width: min(clamp(260px, 44vw, 420px), calc(100vh - 300px)) !important;
+              height: min(clamp(260px, 44vw, 420px), calc(100vh - 300px)) !important;
+              max-width: 420px !important;
+              max-height: 420px !important;
             }
           }
           
@@ -524,12 +668,13 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
             }
             
             .globe-wrapper {
-              width: clamp(240px, min(60vh, 60vw), 360px) !important;
+              width: min(clamp(220px, 65vw, 320px), calc(100vh - 260px)) !important;
+              height: min(clamp(220px, 65vw, 320px), calc(100vh - 260px)) !important;
               aspect-ratio: 1 / 1 !important; /* Force 1:1 aspect ratio */
-              max-width: 360px !important;
-              max-height: 360px !important;
-              min-width: 240px !important;
-              min-height: 240px !important;
+              max-width: 320px !important;
+              max-height: 320px !important;
+              min-width: 200px !important;
+              min-height: 200px !important;
               flex-shrink: 0 !important; /* Prevent shrinking */
             }
             
@@ -548,12 +693,13 @@ const SpeakingGradientCircle: React.FC<{ isListening: boolean; responseText?: st
             }
             
             .globe-wrapper {
-              width: clamp(220px, min(55vh, 55vw), 300px) !important;
+              width: min(clamp(200px, 78vw, 280px), calc(100vh - 240px)) !important;
+              height: min(clamp(200px, 78vw, 280px), calc(100vh - 240px)) !important;
               aspect-ratio: 1 / 1 !important; /* Force 1:1 aspect ratio */
-              max-width: 300px !important;
-              max-height: 300px !important;
-              min-width: 220px !important;
-              min-height: 220px !important;
+              max-width: 280px !important;
+              max-height: 280px !important;
+              min-width: 200px !important;
+              min-height: 200px !important;
               flex-shrink: 0 !important; /* Prevent shrinking */
             }
             

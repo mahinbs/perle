@@ -38,7 +38,7 @@ export const ModeBar: React.FC<ModeBarProps> = ({ mode, setMode }) => {
               title={modeDescriptions[m]}
               style={{
                 padding: "6px 10px",
-                fontSize: "clamp(12px, 2.5vw, 14px)",
+                fontSize: "var(--font-md)",
                 minHeight: 36,
               }}
             >
@@ -51,7 +51,7 @@ export const ModeBar: React.FC<ModeBarProps> = ({ mode, setMode }) => {
         {/* Mode description */}
         <div className="mode-description" style={{ 
           marginTop: 8, 
-          fontSize: 12, 
+          fontSize: "var(--font-sm)", 
           color: 'var(--sub)',
           textAlign: 'center',
           opacity: 0.8
@@ -78,7 +78,7 @@ export const ModeBar: React.FC<ModeBarProps> = ({ mode, setMode }) => {
             
             .mode-bar-buttons .mode-pill {
               padding: 8px 12px !important;
-              font-size: clamp(13px, 3vw, 14px) !important;
+              font-size: var(--font-md) !important;
               min-height: 40px !important;
             }
           }
@@ -90,7 +90,7 @@ export const ModeBar: React.FC<ModeBarProps> = ({ mode, setMode }) => {
             
             .mode-bar-buttons .mode-pill {
               padding: 7px 10px !important;
-              font-size: clamp(12px, 2.8vw, 13px) !important;
+              font-size: var(--font-sm) !important;
               min-height: 38px !important;
             }
           }

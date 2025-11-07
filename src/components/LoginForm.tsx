@@ -44,7 +44,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               background: 'rgba(239, 68, 68, 0.1)',
               border: '1px solid #ff4444',
               color: '#ff4444',
-              fontSize: 14
+              fontSize: 'var(--font-md)'
             }}
           >
             {error}
@@ -78,7 +78,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-sm)',
                 background: 'var(--card)',
-                fontSize: 16
+                fontSize: 'var(--font-md)'
               }}
             />
           </div>
@@ -111,7 +111,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                   border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-sm)',
                   background: 'var(--card)',
-                  fontSize: 16
+                fontSize: 'var(--font-md)'
                 }}
               />
               <button
@@ -125,7 +125,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: 18,
+                fontSize: 'var(--font-lg)',
                   color: 'var(--sub)',
                   padding: 4
                 }}
@@ -169,7 +169,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             marginTop: 20,
             padding: 12,
             borderRadius: 'var(--radius-sm)',
-            fontSize: 12,
+            fontSize: 'var(--font-sm)',
             color: 'var(--sub)',
             textAlign: 'center'
           }}

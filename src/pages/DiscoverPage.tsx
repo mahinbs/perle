@@ -45,7 +45,7 @@ export default function DiscoverPage() {
         <button
           className="btn-ghost"
           onClick={() => navigateTo("/")}
-          style={{ fontSize: 14 }}
+          style={{ fontSize: "var(--font-md)" }}
         >
           ← Back
         </button>
@@ -61,7 +61,7 @@ export default function DiscoverPage() {
           placeholder="Search topics..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ fontSize: 16 }}
+          style={{ fontSize: "var(--font-md)" }}
         />
       </div>
 
@@ -131,7 +131,7 @@ export default function DiscoverPage() {
                   alignItems: "center",
                 }}
               >
-                <span className="chip" style={{ fontSize: 11 }}>
+                <span className="chip" style={{ fontSize: "var(--font-sm)" }}>
                   {item.tag}
                 </span>
                 <span className="sub text-sm">{item.category}</span>

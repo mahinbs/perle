@@ -443,7 +443,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             // Delay to allow clicks
           }}
           style={{
-            fontSize: 18,
+            fontSize: "var(--font-lg)",
             resize: "none",
             minHeight: 44,
             maxHeight: 120,
@@ -607,7 +607,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 }
                 style={{
                   padding: "4px 8px",
-                  fontSize: 12,
+                  fontSize: "var(--font-md)",
                   background: isListening ? "var(--accent)" : "transparent",
                   color: isListening ? "white" : "inherit",
                 }}
@@ -762,7 +762,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: 16,
+                      fontSize: "var(--font-md)",
                     }}
                   >
                     {file.type === "document" ? "📄" : "📁"}
@@ -861,7 +861,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               onClick={() => {
                 setQuery(`${query} ${action.toLowerCase()}`);
               }}
-              style={{ fontSize: 11 }}
+              style={{ fontSize: "var(--font-sm)" }}
             >
               {action}
             </button>

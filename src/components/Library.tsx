@@ -97,14 +97,14 @@ export const Library: React.FC = () => {
           <button
             className={`btn-ghost ${filter === 'all' ? 'active' : ''}`}
             onClick={() => setFilter('all')}
-            style={{ fontSize: 14 }}
+            style={{ fontSize: 'var(--font-md)' }}
           >
             All
           </button>
           <button
             className={`btn-ghost ${filter === 'bookmarked' ? 'active' : ''}`}
             onClick={() => setFilter('bookmarked')}
-            style={{ fontSize: 14 }}
+            style={{ fontSize: 'var(--font-md)' }}
           >
             Bookmarked
           </button>
@@ -118,7 +118,7 @@ export const Library: React.FC = () => {
           placeholder="Search your library..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ fontSize: 16 }}
+          style={{ fontSize: 'var(--font-md)' }}
         />
       </div>
 
@@ -156,7 +156,7 @@ export const Library: React.FC = () => {
                   </div>
                   <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                     {item.tags.map(tag => (
-                      <span key={tag} className="chip" style={{ fontSize: 11 }}>
+                    <span key={tag} className="chip" style={{ fontSize: 'var(--font-sm)' }}>
                         {tag}
                       </span>
                     ))}
@@ -172,7 +172,7 @@ export const Library: React.FC = () => {
                   aria-label={item.isBookmarked ? 'Remove bookmark' : 'Add bookmark'}
                   style={{ 
                     padding: 8,
-                    fontSize: 18,
+                    fontSize: 'var(--font-lg)',
                     color: item.isBookmarked ? 'var(--accent)' : 'var(--sub)'
                   }}
                 >

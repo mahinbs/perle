@@ -140,7 +140,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            fontSize: 14,
+            fontSize: 'var(--font-sm)',
             minWidth: 120,
             justifyContent: 'space-between'
           }}
@@ -158,7 +158,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
             }} />
             <span>{selectedModelInfo?.name || 'Select Model'}</span>
           </div>
-          <span style={{ fontSize: 14, opacity: 0.7 }}>
+          <span style={{ fontSize: 'var(--font-sm)', opacity: 0.7 }}>
             {isOpen ? '▲' : '▼'}
           </span>
         </button>
@@ -217,21 +217,21 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ 
                       fontWeight: 600, 
-                      fontSize: 13,
+                      fontSize: 'var(--font-sm)',
                       marginBottom: 1,
                       color: 'var(--text)'
                     }}>
                       {model.name}
                     </div>
                     <div style={{ 
-                      fontSize: 11, 
+                      fontSize: 'var(--font-xs)', 
                       color: 'var(--sub)',
                       marginBottom: 2
                     }}>
                       {model.provider}
                     </div>
                     <div style={{ 
-                      fontSize: 10, 
+                      fontSize: 'var(--font-xs)', 
                       color: 'var(--sub)',
                       lineHeight: '12px'
                     }}>
@@ -247,7 +247,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                         <span
                           key={capability}
                           style={{
-                            fontSize: 9,
+                            fontSize: 'var(--font-xs)',
                             padding: '1px 4px',
                             backgroundColor: 'var(--border)',
                             borderRadius: 3,
@@ -268,7 +268,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: 9,
+                      fontSize: 'var(--font-xs)',
                       color: '#111'
                     }}>
                       ✓
@@ -332,21 +332,21 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ 
                   fontWeight: 600, 
-                  fontSize: 14,
+                  fontSize: 'var(--font-sm)',
                   marginBottom: 2,
                   color: 'var(--text)'
                 }}>
                   {model.name}
                 </div>
                 <div style={{ 
-                  fontSize: 12, 
+                  fontSize: 'var(--font-sm)', 
                   color: 'var(--sub)',
                   marginBottom: 4
                 }}>
                   {model.provider}
                 </div>
                 <div style={{ 
-                  fontSize: 11, 
+                  fontSize: 'var(--font-xs)', 
                   color: 'var(--sub)',
                   lineHeight: '14px'
                 }}>
@@ -362,7 +362,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                     <span
                       key={capability}
                       style={{
-                        fontSize: 10,
+                        fontSize: 'var(--font-xs)',
                         padding: '2px 6px',
                         backgroundColor: 'var(--border)',
                         borderRadius: 4,
@@ -383,7 +383,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 10,
+                  fontSize: 'var(--font-xs)',
                   color: '#111'
                 }}>
                   ✓

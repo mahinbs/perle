@@ -457,7 +457,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
               }
             }}
             style={{ 
-              fontSize: 24, 
+              fontSize: 'var(--font-2xl)', 
               fontWeight: 600,
               lineHeight: '32px',
               color: 'var(--text)',
@@ -494,7 +494,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           gap: 8
         }}>
           <div style={{ 
-            fontSize: 14, 
+            fontSize: 'var(--font-sm)', 
             fontWeight: 500,
             color: 'var(--sub)'
           }}>
@@ -502,7 +502,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           </div>
           {mode && (
             <span className="chip" style={{ 
-              fontSize: 11, 
+              fontSize: 'var(--font-sm)', 
               padding: '4px 8px',
               background: 'var(--accent)',
               color: '#111',
@@ -524,7 +524,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                 aria-label={isSpeaking ? "Stop speaking" : "Speak answer"}
                 style={{ 
                   padding: 8,
-                  fontSize: 16,
+                fontSize: 'var(--font-md)',
                   background: isSpeaking ? 'var(--accent)' : 'transparent',
                   color: isSpeaking ? 'white' : 'inherit'
                 }}
@@ -538,7 +538,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                   aria-label="Stop speaking"
                   style={{ 
                     padding: 8,
-                    fontSize: 16,
+                  fontSize: 'var(--font-md)',
                     color: 'var(--accent)'
                   }}
                 >
@@ -553,7 +553,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             aria-label="Bookmark answer"
             style={{ 
               padding: 8,
-              fontSize: 16
+            fontSize: 'var(--font-md)'
             }}
           >
             <FaBookmark size={18} />
@@ -564,7 +564,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             aria-label="Share answer"
             style={{ 
               padding: 8,
-              fontSize: 16
+            fontSize: 'var(--font-md)'
             }}
           >
             <FaShare size={18} />
@@ -577,7 +577,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           <div key={index} style={{ position: 'relative' }}>
             <div 
               style={{ 
-                fontSize: 16, 
+                fontSize: 'var(--font-lg)', 
                 lineHeight: '24px',
                 marginBottom: 12,
                 color: 'var(--text)'
@@ -635,7 +635,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             padding: '12px 0',
             borderBottom: '1px solid var(--border)',
             marginBottom: 16,
-            fontSize: 14,
+            fontSize: 'var(--font-md)',
             fontWeight: 500
           }}
         >
@@ -643,7 +643,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           <span style={{ 
             transform: expandedSources ? 'rotate(180deg)' : 'rotate(0deg)', 
             transition: 'transform 0.2s',
-            fontSize: 12
+            fontSize: 'var(--font-sm)'
           }}>
             <FaChevronDown size={14} />
           </span>
@@ -670,7 +670,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                   style={{ 
                     marginTop: 8, 
                     padding: '4px 8px',
-                    fontSize: 12
+                    fontSize: 'var(--font-sm)'
                   }}
                 >
                   Visit Source →
@@ -686,7 +686,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       {/* Follow-up Actions */}
       <div>
         <div style={{ 
-          fontSize: 14, 
+          fontSize: 'var(--font-md)', 
           fontWeight: 500, 
           marginBottom: 12,
           color: 'var(--text)'
@@ -792,7 +792,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             }}>
               <div style={{ 
                 marginBottom: 16,
-                fontSize: 20,
+              fontSize: 'var(--font-xl)',
                 fontWeight: 600,
                 color: 'var(--text)'
               }}>
@@ -814,7 +814,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                   width: '100%',
                   minHeight: 100,
                   maxHeight: 200,
-                  fontSize: 16,
+                  fontSize: 'var(--font-md)',
                   lineHeight: 1.5,
                   padding: '12px',
                   borderRadius: '8px',

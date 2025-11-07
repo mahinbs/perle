@@ -47,7 +47,7 @@ export const Header: React.FC = () => {
           </button>
           <div
             className="h1 header-title"
-            style={{ cursor: "pointer", fontSize: "clamp(20px, 4vw, 28px)" }}
+            style={{ cursor: "pointer", fontSize: "var(--font-2xl)" }}
             onClick={() => navigateTo("/")}
           >
             Perlé <Dot />
@@ -61,7 +61,7 @@ export const Header: React.FC = () => {
             aria-label="AI Friend"
             style={{
               padding: "6px 10px",
-              fontSize: "clamp(12px, 2.5vw, 14px)",
+              fontSize: "var(--font-md)",
               minHeight: 36,
             }}
           >
@@ -73,23 +73,23 @@ export const Header: React.FC = () => {
             aria-label="Discover"
             style={{
               padding: "6px 10px",
-              fontSize: "clamp(12px, 2.5vw, 14px)",
+              fontSize: "var(--font-md)",
               minHeight: 36,
             }}
           >
             Discover
           </button>
           <button
-            className={`btn-ghost ${isActive("/library") ? "active" : ""}`}
-            onClick={() => navigateTo("/library")}
-            aria-label="Library"
+            className={`btn-ghost ${isActive("/") ? "active" : ""}`}
+            onClick={() => navigateTo("/")}
+            aria-label="Home"
             style={{
               padding: "6px 10px",
-              fontSize: "clamp(12px, 2.5vw, 14px)",
+              fontSize: "var(--font-md)",
               minHeight: 36,
             }}
           >
-            Library
+            AI Psychology
           </button>
         </div>
       </header>
@@ -110,7 +110,7 @@ export const Header: React.FC = () => {
             }
             
             .header-title {
-              font-size: clamp(20px, 5vw, 26px) !important;
+              font-size: clamp(1.5rem, 5vw, 1.75rem) !important;
               line-height: 1.2 !important;
             }
             
@@ -120,7 +120,7 @@ export const Header: React.FC = () => {
             
             .header-right .btn-ghost {
               padding: 8px 12px !important;
-              font-size: clamp(13px, 3vw, 14px) !important;
+              font-size: var(--font-md) !important;
               min-height: 40px !important;
             }
             
@@ -143,7 +143,7 @@ export const Header: React.FC = () => {
             }
             
             .header-title {
-              font-size: clamp(18px, 4.5vw, 22px) !important;
+              font-size: clamp(1.35rem, 4.5vw, 1.5rem) !important;
             }
             
             .header-right {
@@ -152,7 +152,7 @@ export const Header: React.FC = () => {
             
             .header-right .btn-ghost {
               padding: 7px 10px !important;
-              font-size: clamp(12px, 2.8vw, 13px) !important;
+              font-size: var(--font-sm) !important;
               min-height: 38px !important;
             }
             
