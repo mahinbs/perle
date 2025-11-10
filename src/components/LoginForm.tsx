@@ -1,15 +1,18 @@
 import { useState } from 'react';
+import { GoogleIcon } from '../assets/icons/GoogleIcon';
 
 interface LoginFormProps {
   onLogin: (email: string, password: string) => void;
   onSwitchToSignup: () => void;
+  onGoogleSignIn?: () => void;
   isLoading?: boolean;
   error?: string;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ 
   onLogin, 
-  onSwitchToSignup, 
+  onSwitchToSignup,
+  onGoogleSignIn, 
   isLoading = false, 
   error 
 }) => {
@@ -49,6 +52,53 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           >
             {error}
           </div>
+        )}
+
+        {onGoogleSignIn && (
+          <>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={onGoogleSignIn}
+              disabled={isLoading}
+              style={{
+                width: '100%',
+                marginBottom: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                fontWeight: 600,
+                opacity: isLoading ? 0.6 : 1,
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <GoogleIcon width={22} height={22} />
+              Continue with Google
+            </button>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              <span
+                className="sub"
+                style={{
+                  fontSize: 'var(--font-sm)',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                }}
+              >
+                or
+              </span>
+              <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            </div>
+          </>
         )}
 
         <form onSubmit={handleSubmit}>

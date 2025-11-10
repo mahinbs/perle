@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { LoginForm } from "../components/LoginForm";
 import { SignupForm } from "../components/SignupForm";
+import { GoogleIcon } from "../assets/icons/GoogleIcon";
 
 export default function ProfilePage() {
   const { navigateTo } = useRouterNavigation();
@@ -97,6 +98,31 @@ export default function ProfilePage() {
     }
   };
 
+  const handleGoogleAuth = async (mode: "login" | "signup") => {
+    setIsLoading(true);
+    setAuthError("");
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      setIsAuthenticated(true);
+      setShowLogin(false);
+      setShowSignup(false);
+      setUserSettings((prev) => ({
+        ...prev,
+        name: "SyntraIQ User",
+        email: "syntra.user@gmail.com",
+      }));
+    } catch (error) {
+      setAuthError(
+        mode === "login"
+          ? "Google sign-in failed. Please try again."
+          : "Google sign-up failed. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Show login form
   if (showLogin) {
     return (
@@ -128,6 +154,7 @@ export default function ProfilePage() {
             setShowSignup(true);
             setAuthError('');
           }}
+          onGoogleSignIn={() => handleGoogleAuth("login")}
           isLoading={isLoading}
           error={authError}
         />
@@ -166,6 +193,7 @@ export default function ProfilePage() {
             setShowLogin(true);
             setAuthError('');
           }}
+          onGoogleSignup={() => handleGoogleAuth("signup")}
           isLoading={isLoading}
           error={authError}
         />
@@ -209,17 +237,38 @@ export default function ProfilePage() {
               className="btn" 
               onClick={() => setShowLogin(true)}
               style={{ flex: 1, maxWidth: 120 }}
+              disabled={isLoading}
             >
               Sign In
             </button>
             <button 
               className="btn-ghost" 
               onClick={() => setShowSignup(true)}
-              style={{ flex: 1, maxWidth: 120 }}
+              style={{ flex: 1, maxWidth: 120, opacity: isLoading ? 0.6 : 1, cursor: isLoading ? "not-allowed" : "pointer" }}
+              disabled={isLoading}
             >
               Sign Up
             </button>
           </div>
+          <button
+            className="btn-ghost"
+            onClick={() => handleGoogleAuth("signup")}
+            disabled={isLoading}
+            style={{
+              width: '100%',
+              marginTop: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              fontWeight: 600,
+              opacity: isLoading ? 0.6 : 1,
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <GoogleIcon width={22} height={22} />
+            Continue with Google
+          </button>
         </div>
       ) : (
         /* User Info Card */

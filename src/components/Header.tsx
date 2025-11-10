@@ -14,8 +14,8 @@ export const Header: React.FC = () => {
     <>
       <header
         className="row header-container"
-        style={{ 
-          justifyContent: "space-between", 
+        style={{
+          justifyContent: "space-between",
           alignItems: "center",
           paddingBlock: "8px",
           flexWrap: "wrap",
@@ -28,30 +28,63 @@ export const Header: React.FC = () => {
             gap: 6,
             alignItems: "center",
             flexShrink: 0,
+            justifyContent: "space-between",
+            width: "100%",
           }}
         >
+          <div className="row"
+            style={{
+              gap: 6,
+              alignItems: "center",
+            }}
+          >
+            <button
+              className={`btn-ghost ${isActive("/profile") ? "active" : ""}`}
+              onClick={() => navigateTo("/profile")}
+              aria-label="Profile"
+              style={{
+                padding: 6,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 36,
+                minHeight: 36,
+              }}
+            >
+              <FaUserCircle size={20} />
+            </button>
+            <div
+              className="h1 header-title"
+              style={{ cursor: "pointer", fontSize: "var(--font-2xl)" }}
+              onClick={() => navigateTo("/")}
+            >
+              Perlé <Dot />
+            </div>
+          </div>
           <button
-            className={`btn-ghost ${isActive("/profile") ? "active" : ""}`}
-            onClick={() => navigateTo("/profile")}
-            aria-label="Profile"
+            className={`btn-ghost ${isActive("/discover") ? "active" : ""}`}
+            onClick={() => navigateTo("/discover")}
+            aria-label="Discover"
             style={{
               padding: 6,
+              minHeight: 36,
+              minWidth: 48,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              minWidth: 36,
-              minHeight: 36,
             }}
           >
-            <FaUserCircle size={20} />
+            <span className="discover-icon" aria-hidden="true">
+              <img
+                src="https://res.cloudinary.com/dknafpppp/image/upload/v1759865727/home-based-medical-care-bringing-healthcare-to-your-doorstep_tgkhkw.png"
+                alt=""
+              />
+              <img
+                src="https://res.cloudinary.com/dknafpppp/image/upload/v1759865401/black_background_qachfc.jpg"
+                alt=""
+              />
+            </span>
           </button>
-          <div
-            className="h1 header-title"
-            style={{ cursor: "pointer", fontSize: "var(--font-2xl)" }}
-            onClick={() => navigateTo("/")}
-          >
-            Perlé <Dot />
-          </div>
         </div>
 
         <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
@@ -67,7 +100,7 @@ export const Header: React.FC = () => {
           >
             AI Friend
           </button>
-          
+
           <button
             className={`btn-ghost active`}
             onClick={() => navigateTo("/")}
@@ -80,7 +113,7 @@ export const Header: React.FC = () => {
           >
             AI Psychology
           </button>
-          <button
+          {/* <button
             className={`btn-ghost ${isActive("/discover") ? "active" : ""}`}
             onClick={() => navigateTo("/discover")}
             aria-label="Discover"
@@ -91,11 +124,47 @@ export const Header: React.FC = () => {
             }}
           >
             Discover
-          </button>
+          </button> */}
         </div>
       </header>
       <style>
         {`
+          .discover-icon {
+            position: relative;
+            width: 35px;
+            height: 35px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .discover-icon img {
+            position: absolute;
+            width: 26px;
+            height: 26px;
+            object-fit: cover;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            background: var(--card);
+          }
+
+          .discover-icon img:first-of-type {
+            transform: rotate(-8deg) translateX(-6px);
+            z-index: 2;
+          }
+
+          .discover-icon img:last-of-type {
+            transform: rotate(10deg) translateX(8px);
+            z-index: 1;
+            filter: brightness(0.92);
+          }
+
+          .btn-ghost:hover .discover-icon img {
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+          }
+
           .header-container {
             min-height: auto !important;
           }

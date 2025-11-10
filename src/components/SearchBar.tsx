@@ -500,10 +500,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   marginTop: 8,
                   padding: 8,
                   zIndex: 9999,
-                  minWidth: 200,
-                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-                  border: "1px solid var(--border, #e0e0e0)",
-                  background: "var(--background, #252525)",
+                  minWidth: 220,
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  boxShadow: "var(--shadow)",
+                  borderRadius: "var(--radius-sm)",
+                  color: "var(--text)",
+                  backdropFilter: "blur(6px)",
+                  transition: "background 0.2s ease, border 0.2s ease",
                 }}
               >
                 <button
