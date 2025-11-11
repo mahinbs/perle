@@ -1,17 +1,29 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getAllDiscoverItems } from "../services/discoverService";
 import type { DiscoverItem } from "../types";
 
-// Use the DiscoverItem type from the types file
-
-// Get discover items from service
-const discoverItems = getAllDiscoverItems();
-
 export default function DiscoverPage() {
   const { navigateTo } = useRouterNavigation();
+  const [discoverItems, setDiscoverItems] = useState<DiscoverItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        const items = await getAllDiscoverItems();
+        setDiscoverItems(Array.isArray(items) ? items : []);
+      } catch (error) {
+        console.error('Failed to fetch discover items:', error);
+        setDiscoverItems([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchItems();
+  }, []);
 
   const categories = ["All", "Technology", "Environment", "Science", "Sports"];
 
@@ -85,21 +97,31 @@ export default function DiscoverPage() {
         ))}
       </div>
 
+      {/* Loading State */}
+      {isLoading && (
+        <div className="card" style={{ padding: 40, textAlign: "center" }}>
+          <div className="sub">Loading discover items...</div>
+        </div>
+      )}
+
       {/* Results Count */}
-      <div className="sub text-sm" style={{ marginBottom: 16 }}>
-        {filteredItems.length}{" "}
-        {filteredItems.length === 1 ? "result" : "results"} found
-      </div>
+      {!isLoading && (
+        <div className="sub text-sm" style={{ marginBottom: 16 }}>
+          {filteredItems.length}{" "}
+          {filteredItems.length === 1 ? "result" : "results"} found
+        </div>
+      )}
 
       {/* Discover Items Grid */}
-      <div
-        style={{
-          display: "grid",
-          gap: 16,
-          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-        }}
-      >
-        {filteredItems.map((item) => (
+      {!isLoading && (
+        <div
+          style={{
+            display: "grid",
+            gap: 16,
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+          }}
+        >
+          {filteredItems.map((item) => (
           <div
             key={item.id}
             className="card"
@@ -145,9 +167,10 @@ export default function DiscoverPage() {
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
 
-      {filteredItems.length === 0 && (
+      {!isLoading && filteredItems.length === 0 && (
         <div className="card" style={{ padding: 40, textAlign: "center" }}>
           <div className="h3" style={{ marginBottom: 8 }}>
             No results found

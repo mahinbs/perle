@@ -135,36 +135,61 @@ function getModelPrefix(model: LLMModel): string {
  * Mock API functions for future integration
  */
 export async function searchAPI(query: string, mode: Mode, model: LLMModel = 'gpt-4'): Promise<AnswerResult> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  if (!baseUrl) {
+    // Fallback to local fake engine if backend not configured
+    await new Promise(resolve => setTimeout(resolve, 500));
+    return fakeAnswerEngine(query, mode, model);
+  }
   
-  // For now, return the fake engine result
-  return fakeAnswerEngine(query, mode, model);
+  // Import auth utilities dynamically to avoid circular dependencies
+  const { getAuthHeaders } = await import('./auth');
+  
+  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ query, mode, model })
+  });
+  if (!res.ok) {
+    // Graceful fallback
+    return fakeAnswerEngine(query, mode, model);
+  }
+  return await res.json();
 }
 
 export async function getSearchSuggestions(query: string): Promise<string[]> {
-  // Mock suggestions based on query
-  const suggestions = [
-    `${query} benefits`,
-    `${query} challenges`,
-    `${query} future trends`,
-    `${query} best practices`,
-    `${query} comparison`,
-  ];
-  
-  await new Promise(resolve => setTimeout(resolve, 300));
-  return suggestions.slice(0, 3);
+  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  if (!baseUrl) {
+    const suggestions = [
+      `${query} benefits`,
+      `${query} challenges`,
+      `${query} future trends`,
+      `${query} best practices`,
+      `${query} comparison`,
+    ];
+    await new Promise(resolve => setTimeout(resolve, 200));
+    return suggestions.slice(0, 3);
+  }
+  const url = `${baseUrl.replace(/\/+$/, '')}/api/suggestions?q=${encodeURIComponent(query)}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  return await res.json();
 }
 
 export async function getRelatedQueries(query: string): Promise<string[]> {
-  // Mock related queries
-  const related = [
-    'What are the alternatives to ' + query.toLowerCase(),
-    'How does ' + query.toLowerCase() + ' work',
-    'Why is ' + query.toLowerCase() + ' important',
-    'When to use ' + query.toLowerCase(),
-  ];
-  
-  await new Promise(resolve => setTimeout(resolve, 200));
-  return related.slice(0, 4);
+  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  if (!baseUrl) {
+    const related = [
+      'What are the alternatives to ' + query.toLowerCase(),
+      'How does ' + query.toLowerCase() + ' work',
+      'Why is ' + query.toLowerCase() + ' important',
+      'When to use ' + query.toLowerCase(),
+    ];
+    await new Promise(resolve => setTimeout(resolve, 180));
+    return related.slice(0, 4);
+  }
+  const url = `${baseUrl.replace(/\/+$/, '')}/api/related?q=${encodeURIComponent(query)}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  return await res.json();
 }

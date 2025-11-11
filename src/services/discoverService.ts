@@ -1,6 +1,6 @@
 import type { DiscoverItem } from '../types';
-
-// This would typically be an API call in a real app
+ 
+// Local fallback data (used if no backend configured)
 const discoverItems: DiscoverItem[] = [
   {
     id: 'cognitive-psychology',
@@ -85,10 +85,30 @@ const discoverItems: DiscoverItem[] = [
   }
 ];
 
-export const getDiscoverItemById = (id: string): DiscoverItem | null => {
-  return discoverItems.find(item => item.id === id) || null;
+export const getDiscoverItemById = async (id: string): Promise<DiscoverItem | null> => {
+  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  if (!baseUrl) {
+    return discoverItems.find(item => item.id === id) || null;
+  }
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/discover/${encodeURIComponent(id)}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return discoverItems.find(item => item.id === id) || null;
+  }
 };
-
-export const getAllDiscoverItems = (): DiscoverItem[] => {
-  return discoverItems;
+ 
+export const getAllDiscoverItems = async (): Promise<DiscoverItem[]> => {
+  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  if (!baseUrl) {
+    return discoverItems;
+  }
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/discover`);
+    if (!res.ok) return discoverItems;
+    return await res.json();
+  } catch {
+    return discoverItems;
+  }
 };

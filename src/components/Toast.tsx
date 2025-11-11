@@ -46,7 +46,7 @@ export const Toast: React.FC<ToastProps> = ({
       fontSize: 'var(--font-sm)',
       color: 'var(--text, #ffffff)',
       opacity: isVisible ? 1 : 0,
-      transform: isVisible ? 'translateY(0)' : 'translateY(-10px)',
+      transform: isVisible ? 'translateY(0)' : 'translateY(10px)',
       transition: 'opacity 0.3s ease, transform 0.3s ease',
       zIndex: 10000,
       position: 'relative'

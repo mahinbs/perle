@@ -9,25 +9,39 @@ export default function DetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Get item from URL parameter or state
-    const itemId = params.id;
-    let foundItem: DiscoverItem | null = null;
+    const fetchItem = async () => {
+      // Get item from URL parameter or state
+      const itemId = params.id;
 
-    if (currentData?.item) {
-      // Item passed via state (from navigation)
-      foundItem = currentData.item;
-    } else if (itemId) {
-      // Item ID from URL parameter
-      foundItem = getDiscoverItemById(itemId);
-    }
+      if (currentData?.item) {
+        // Item passed via state (from navigation)
+        setItem(currentData.item);
+        setIsLoading(false);
+        return;
+      }
 
-    if (foundItem) {
-      setItem(foundItem);
-      setIsLoading(false);
-    } else {
-      // If no item found, navigate back to discover
-      navigateTo("/discover");
-    }
+      if (itemId) {
+        // Item ID from URL parameter - fetch from API
+        try {
+          const foundItem = await getDiscoverItemById(itemId);
+          if (foundItem) {
+            setItem(foundItem);
+            setIsLoading(false);
+          } else {
+            // If no item found, navigate back to discover
+            navigateTo("/discover");
+          }
+        } catch (error) {
+          console.error('Failed to fetch item:', error);
+          navigateTo("/discover");
+        }
+      } else {
+        // No item ID, navigate back
+        navigateTo("/discover");
+      }
+    };
+
+    fetchItem();
   }, [currentData, params.id, navigateTo]);
 
   const handleBack = () => {

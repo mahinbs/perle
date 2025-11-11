@@ -1,13 +1,27 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { DiscoverItem } from '../types';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
 import { getAllDiscoverItems } from '../services/discoverService';
 
-// Get discover items from service
-const discoverItems = getAllDiscoverItems();
-
 export const DiscoverRail: React.FC = () => {
   const { navigateTo } = useRouterNavigation();
+  const [discoverItems, setDiscoverItems] = useState<DiscoverItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        const items = await getAllDiscoverItems();
+        setDiscoverItems(Array.isArray(items) ? items : []);
+      } catch (error) {
+        console.error('Failed to fetch discover items:', error);
+        setDiscoverItems([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchItems();
+  }, []);
 
   const handleItemClick = (item: DiscoverItem) => {
     // Navigate to details page with specific item data
@@ -17,6 +31,28 @@ export const DiscoverRail: React.FC = () => {
   const handleViewAll = () => {
     navigateTo('/discover');
   };
+
+  if (isLoading) {
+    return (
+      <div>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div className="h3">Discover</div>
+          <button 
+            className="btn-ghost" 
+            onClick={handleViewAll}
+            style={{ fontSize: 'var(--font-md)' }}
+          >
+            View All →
+          </button>
+        </div>
+        <div className="sub text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!discoverItems || discoverItems.length === 0) {
+    return null;
+  }
 
   return (
     <div>
