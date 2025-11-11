@@ -8,6 +8,7 @@ import AIFriendPage from '../pages/AIFriendPage';
 import MaintenancePage from '../pages/MaintenancePage';
 import SpacesPage from '../pages/SpacesPage';
 import UpgradePlansPage from '../pages/UpgradePlansPage';
+import VerificationPage from '../pages/VerificationPage';
 
 // Set this to true to enable maintenance mode
 const MAINTENANCE_MODE = false;
@@ -32,6 +33,7 @@ export function AppRouter() {
       <Route path="/ai-friend" element={<AIFriendPage />} />
       <Route path="/upgrade" element={<UpgradePlansPage />} />
       <Route path="/details/:id" element={<DetailsPage />} />
+      <Route path="/verify" element={<VerificationPage />} />
       <Route path="/maintenance" element={<MaintenancePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

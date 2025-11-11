@@ -31,11 +31,11 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       <div
         style={{
           position: 'fixed',
-          top: 20,
+          bottom: 20,
           right: 20,
           left: 'auto',
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection: 'column-reverse',
           gap: 12,
           zIndex: 10000,
           pointerEvents: 'none',

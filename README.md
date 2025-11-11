@@ -38,6 +38,65 @@ npm run dev
 
 The app will be available at `http://localhost:3000`
 
+### Backend Setup (Required for Full Functionality)
+
+This repo includes a full-featured Express + TypeScript backend with Supabase integration.
+
+#### 1. Set Up Supabase
+
+1. Create a free account at [supabase.com](https://supabase.com)
+2. Create a new project
+3. Go to **Settings** → **API** to get your credentials:
+   - `SUPABASE_URL` (Project URL)
+   - `SUPABASE_ANON_KEY` (anon/public key)
+
+#### 2. Set Up Database
+
+1. In Supabase, go to **SQL Editor**
+2. Copy and run the SQL from `server/database/schema.sql`
+   - This creates all necessary tables (users, sessions, user_profiles, search_history, library_items)
+   - Sets up indexes and Row Level Security policies
+
+#### 3. Configure Backend
+
+1. Copy `server/.env.example` to `server/.env`:
+   ```bash
+   cp server/.env.example server/.env
+   ```
+
+2. Edit `server/.env` and add your Supabase credentials:
+   ```env
+   PORT=3333
+   CORS_ORIGIN=http://localhost:3000
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_ANON_KEY=your-anon-key-here
+   ```
+
+#### 4. Install and Run Backend
+
+```bash
+# Install backend dependencies
+cd server
+npm install
+
+# Start backend (runs on port 3333)
+npm run dev
+```
+
+Or from the root directory:
+```bash
+npm run server:dev
+```
+
+#### 5. Configure Frontend
+
+Create a `.env` file in the root directory:
+```env
+VITE_API_URL=http://localhost:3333
+```
+
+Now the frontend will use the backend API instead of mock data.
+
 ### Build for Production
 
 ```bash

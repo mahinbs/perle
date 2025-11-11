@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
+import { getAuthHeaders, isAuthenticated } from '../utils/auth';
+
+const API_URL = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
 
 interface LibraryItem {
   id: string;
@@ -12,35 +15,45 @@ interface LibraryItem {
   tags: string[];
 }
 
-const defaultLibraryItems: LibraryItem[] = [
-  {
-    id: '1',
-    title: 'The Future of AI in Healthcare',
-    content: 'Artificial intelligence is revolutionizing medical diagnosis and treatment...',
-    source: 'Nature Medicine',
-    url: 'https://example.com/ai-healthcare',
-    date: '2024-01-15',
-    isBookmarked: true,
-    tags: ['AI', 'Healthcare', 'Technology']
-  },
-  {
-    id: '3',
-    title: 'Quantum Computing Breakthroughs',
-    content: 'Recent advances in quantum computing are opening new possibilities...',
-    source: 'MIT Technology Review',
-    url: 'https://example.com/quantum-computing',
-    date: '2024-01-08',
-    isBookmarked: true,
-    tags: ['Quantum', 'Computing', 'Physics']
-  }
-];
-
 export default function LibraryPage() {
   const { navigateTo } = useRouterNavigation();
-  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>(defaultLibraryItems);
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('All');
   const [sortBy, setSortBy] = useState<'date' | 'title'>('date');
+
+  // Fetch library items from backend
+  useEffect(() => {
+    const fetchLibraryItems = async () => {
+      if (!API_URL || !isAuthenticated()) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        const response = await fetch(`${API_URL}/api/library`, {
+          method: 'GET',
+          headers: getAuthHeaders(),
+        });
+
+        if (response.ok) {
+          const items = await response.json();
+          setLibraryItems(items);
+        } else if (response.status === 401) {
+          // Not authenticated, show empty state
+          setLibraryItems([]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch library items:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchLibraryItems();
+  }, []);
 
   const allTags = ['All', ...Array.from(new Set(libraryItems.flatMap(item => item.tags)))];
   const bookmarkedItems = libraryItems.filter(item => item.isBookmarked);
@@ -62,17 +75,54 @@ export default function LibraryPage() {
     }
   });
 
-  const toggleBookmark = (id: string) => {
-    setLibraryItems(prev => 
-      prev.map(item => 
-        item.id === id ? { ...item, isBookmarked: !item.isBookmarked } : item
-      )
-    );
+  const toggleBookmark = async (id: string) => {
+    if (!API_URL || !isAuthenticated()) return;
+
+    const item = libraryItems.find(i => i.id === id);
+    if (!item) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/library/${id}`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ isBookmarked: !item.isBookmarked }),
+      });
+
+      if (response.ok) {
+        const updated = await response.json();
+        setLibraryItems(prev => 
+          prev.map(i => i.id === id ? updated : i)
+        );
+      }
+    } catch (error) {
+      console.error('Failed to toggle bookmark:', error);
+    }
   };
 
-  const deleteItem = (id: string) => {
-    if (confirm('Are you sure you want to delete this item?')) {
+  const deleteItem = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this item?')) {
+      return;
+    }
+
+    if (!API_URL || !isAuthenticated()) {
       setLibraryItems(prev => prev.filter(item => item.id !== id));
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/library/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok || response.status === 204) {
+        setLibraryItems(prev => prev.filter(item => item.id !== id));
+      } else {
+        alert('Failed to delete item. Please try again.');
+      }
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+      alert('Failed to delete item. Please try again.');
     }
   };
 
@@ -81,6 +131,55 @@ export default function LibraryPage() {
       window.open(item.url, '_blank');
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="container">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div className="h1">Library</div>
+          <button 
+            className="btn-ghost" 
+            onClick={() => navigateTo('/profile')}
+            style={{ fontSize: "var(--font-md)" }}
+          >
+            ← Back
+          </button>
+        </div>
+        <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+          <div className="sub">Loading library...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated()) {
+    return (
+      <div className="container">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div className="h1">Library</div>
+          <button 
+            className="btn-ghost" 
+            onClick={() => navigateTo('/profile')}
+            style={{ fontSize: "var(--font-md)" }}
+          >
+            ← Back
+          </button>
+        </div>
+        <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+          <div className="h3" style={{ marginBottom: 8 }}>Sign in required</div>
+          <div className="sub" style={{ marginBottom: 20 }}>
+            Please sign in to view your library
+          </div>
+          <button 
+            className="btn" 
+            onClick={() => navigateTo('/profile')}
+          >
+            Go to Profile
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container">
@@ -231,7 +330,7 @@ export default function LibraryPage() {
         ))}
       </div>
 
-      {sortedItems.length === 0 && (
+      {sortedItems.length === 0 && !isLoading && (
         <div className="card" style={{ padding: 40, textAlign: 'center' }}>
           <div className="h3" style={{ marginBottom: 8 }}>No items found</div>
           <div className="sub">Try adjusting your search or filters</div>
