@@ -2,22 +2,22 @@ import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 
 const features = [
   {
-    icon: "📁",
-    title: "Upload Sources",
+    icon: "🧭",
+    title: "Organize by Initiative",
     description:
-      "Bring in documents, links, and notes so Perlé can answer deep project questions.",
+      "Gather every brief, attachment, and insight inside a focused hub so nothing falls through the cracks.",
   },
   {
-    icon: "✨",
-    title: "Set AI Instructions",
+    icon: "🧠",
+    title: "Brief SyntraIQ Once",
     description:
-      "Tailor the assistant with prompts that convert research into FAQs, briefs, or summaries.",
+      "Capture tone, priorities, and guardrails. Spaces remember your instructions so each follow-up stays on-message.",
   },
   {
-    icon: "🔗",
-    title: "Share Your Space",
+    icon: "🤝",
+    title: "Invite Collaborators",
     description:
-      "Invite teammates, keep threads together, and build a reusable knowledge base for the group.",
+      "Share curated research and live threads with clients or teammates while controlling who can contribute.",
   },
 ];
 
@@ -51,11 +51,11 @@ export default function SpacesPage() {
       <div className="card" style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
         <div>
           <div className="h2" style={{ marginBottom: 8 }}>
-            Create a Space
+            Launch a Space in seconds
           </div>
           <div className="sub" style={{ lineHeight: 1.6 }}>
-            Organize threads and files for projects, teams, or topics. Spaces act as dedicated
-            workspaces where you can orchestrate custom AI research workflows from start to finish.
+            Spaces are living workrooms for your most important projects—product launches, pitch decks,
+            or deep-dives. Collect assets, craft prompts, and let SyntraIQ keep everyone aligned.
           </div>
         </div>
 
@@ -93,13 +93,22 @@ export default function SpacesPage() {
           ))}
         </div>
 
-        <button
-          className="btn"
-          onClick={() => navigateTo("/ai-friend")}
-          style={{ alignSelf: "stretch" }}
-        >
-          Create a space
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <button
+            className="btn btn-strong"
+            onClick={() => navigateTo("/ai-friend")}
+            style={{ alignSelf: "stretch" }}
+          >
+            Start a Space
+          </button>
+          <button
+            className="btn-ghost"
+            onClick={() => navigateTo("/library")}
+            style={{ alignSelf: "stretch" }}
+          >
+            Explore saved work
+          </button>
+        </div>
       </div>
 
       <div
@@ -112,15 +121,15 @@ export default function SpacesPage() {
         }}
       >
         <div className="h3" style={{ marginBottom: 4 }}>
-          Why use Spaces?
+          Why teams rely on Spaces
         </div>
         <div className="sub" style={{ lineHeight: 1.6 }}>
-          Spaces keep research aligned. Group live conversations, curated sources, and reusable
-          prompts so every teammate can pick up where the last one left off.
+          Spaces blend structured knowledge with on-demand answers. Keep annotated sources, bookmarked
+          prompts, and decision trails ready for the next handoff.
         </div>
         <div className="sub text-sm" style={{ opacity: 0.7 }}>
-          Tip: create one Space for each client or initiative to streamline approvals and share
-          updates faster.
+          Pro tip: spin up a Space for each client or campaign to offer stakeholders a transparent,
+          always-on briefing room.
         </div>
       </div>
 

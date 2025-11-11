@@ -3,6 +3,7 @@ import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { LoginForm } from "../components/LoginForm";
 import { SignupForm } from "../components/SignupForm";
 import { GoogleIcon } from "../assets/icons/GoogleIcon";
+import earth from "../assets/images/earth.png";
 
 export default function ProfilePage() {
   const { navigateTo } = useRouterNavigation();
@@ -225,8 +226,8 @@ export default function ProfilePage() {
 
       {/* Authentication Section */}
       {!isAuthenticated ? (
-        <div className="card" style={{ padding: 20, marginBottom: 20, textAlign: 'center' }}>
-          <div className="h3" style={{ marginBottom: 8 }}>
+        <div className="" style={{ padding: 10, marginBottom: 20, textAlign: 'center' }}>
+          {/* <div className="h3" style={{ marginBottom: 8 }}>
             Welcome to Perlé
           </div>
           <div className="sub" style={{ marginBottom: 20 }}>
@@ -249,7 +250,20 @@ export default function ProfilePage() {
             >
               Sign Up
             </button>
+          </div> */}
+          <div className="splash-logo relative w-full">
+          {/* <img src={logo} alt="SyntraIQ logo" /> */}
+          <h1 className="font-ubuntu text-4xl font-bold translate-y-1">
+            Syntra <span className="text-gold font-bold!">IQ</span>
+          </h1>
+          <div className="relative mb-5">
+            <div className="bg-linear-to-b from-transparent to-[#F8F7F4] dark:to-[#0E0E0E] absolute top-0 left-0 w-full h-full"/>
+            <img src={earth} alt="Earth" className="w-full object-cover" />
           </div>
+          <p className="splash-tagline font-ubuntu text-lg! font-medium">
+          Preparing your SyntraIQ experience…
+        </p>
+        </div>
           <button
             className="btn-ghost"
             onClick={() => handleGoogleAuth("signup")}
@@ -268,6 +282,42 @@ export default function ProfilePage() {
           >
             <GoogleIcon width={22} height={22} />
             Continue with Google
+          </button>
+          <button
+            className="btn-ghost"
+            onClick={() => setShowSignup(true)}
+            disabled={isLoading}
+            style={{
+              width: "100%",
+              marginTop: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              fontWeight: 600,
+              opacity: isLoading ? 0.6 : 1,
+              cursor: isLoading ? "not-allowed" : "pointer",
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                fontWeight: 700,
+                fontSize: "1.6rem",
+                color: "var(--text)",
+              }}
+            >
+              @
+            </span>
+            Continue with Email
           </button>
         </div>
       ) : (

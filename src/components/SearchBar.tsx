@@ -633,7 +633,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 cursor: isListening ? "not-allowed" : "pointer",
               }}
             >
-              <HeadsetWaveIcon size={22} />
+              <HeadsetWaveIcon size={27} />
             </button>
           )}
 

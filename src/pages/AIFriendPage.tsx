@@ -1,7 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
-import { FaStop } from "react-icons/fa";
+import {
+  FaPen,
+  FaStar,
+  FaStop,
+  FaLightbulb,
+  FaSyncAlt,
+  FaPaperclip,
+  FaTimes,
+} from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
 
 interface Message {
@@ -14,20 +22,42 @@ interface Message {
 export default function AIFriendPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
+  const aiProfile = {
+    name: "Nani",
+    handle: "@syntraIQ companion",
+    avatar:
+      "https://images.unsplash.com/photo-1523289333742-be1143f6b766?auto=format&fit=crop&w=120&q=80",
+  };
+  const userProfile = {
+    name: "You",
+    avatar:
+      "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=120&q=80",
+  };
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
       role: "ai",
-      content: "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+      content:
+        "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
       timestamp: new Date(),
     },
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([
+    "I'll heat up the dal if you promise to share how your day's been going.",
+    "Maybe we can cook together sometime—what's your favorite comfort meal?",
+    "Want me to send you a quick recipe to make that dinner extra special?",
+  ]);
+  const [dailySuggestionUses, setDailySuggestionUses] = useState(0);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -43,7 +73,7 @@ export default function AIFriendPage() {
   useEffect(() => {
     const hasSpeechRecognition =
       "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
-    
+
     if (!hasSpeechRecognition) {
       return;
     }
@@ -122,27 +152,31 @@ export default function AIFriendPage() {
   const simulateAIResponse = (userMessage: string): string => {
     // Simulate AI responses - in a real app, this would call an API
     const lowerMessage = userMessage.toLowerCase();
-    
-    if (lowerMessage.includes("hello") || lowerMessage.includes("hi") || lowerMessage.includes("hey")) {
+
+    if (
+      lowerMessage.includes("hello") ||
+      lowerMessage.includes("hi") ||
+      lowerMessage.includes("hey")
+    ) {
       return "Hello! Great to talk with you! What's on your mind today?";
     }
-    
+
     if (lowerMessage.includes("how are you")) {
       return "I'm doing great, thanks for asking! I'm here and ready to chat. How are you doing?";
     }
-    
+
     if (lowerMessage.includes("help")) {
       return "I'm here to help! You can ask me questions, have a conversation, or just chat about anything. What would you like to talk about?";
     }
-    
+
     if (lowerMessage.includes("thank")) {
       return "You're very welcome! Happy to help anytime. 😊";
     }
-    
+
     if (lowerMessage.includes("bye") || lowerMessage.includes("goodbye")) {
       return "Goodbye! It was great chatting with you. Feel free to come back anytime! 👋";
     }
-    
+
     // Default response
     const responses = [
       "That's interesting! Tell me more about that.",
@@ -151,7 +185,7 @@ export default function AIFriendPage() {
       "I'd love to hear more about your thoughts on that.",
       "That's a great point! Can you elaborate?",
     ];
-    
+
     return responses[Math.floor(Math.random() * responses.length)];
   };
 
@@ -167,6 +201,12 @@ export default function AIFriendPage() {
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
+    if (attachedFileName) {
+      setAttachedFileName(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
     setIsLoading(true);
 
     // Simulate API delay
@@ -189,8 +229,54 @@ export default function AIFriendPage() {
     }
   };
 
+  const inspirationPool = [
+    "I'll grab a plate too—food tastes better when we share it.",
+    "Let's keep chatting while you eat. I don't mind being your dinner guest.",
+    "Maybe your appetite will come back if I tell you a story. Want to hear one?",
+    "I'll wait while you warm it up. We can plan dessert together.",
+    "Sometimes good company is the secret ingredient. I'm here as long as you need.",
+    "How about we set a timer and make dinner together, step by step?",
+  ];
+
+  const refreshSuggestions = () => {
+    const shuffled = [...inspirationPool].sort(() => Math.random() - 0.5);
+    setSuggestions(shuffled.slice(0, 3));
+    setDailySuggestionUses((prev) => Math.min(prev + 1, 10));
+  };
+
+  const handleUseSuggestion = (text: string) => {
+    setInputValue(text);
+    inputRef.current?.focus();
+  };
+
+  const handleAttachClick = () => {
+    if (isLoading) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setAttachedFileName(file.name);
+
+    // simulate upload
+    setTimeout(() => {
+      setIsUploading(false);
+    }, 1000);
+  };
+
   return (
-    <div className="container" style={{ height: "100vh", display: "flex", flexDirection: "column", padding: 0 }}>
+    <div
+      className="container"
+      style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        padding: 0,
+      }}
+    >
       {/* Header */}
       <div
         className="row"
@@ -214,20 +300,49 @@ export default function AIFriendPage() {
           >
             ←
           </button>
-          <div>
-            <div className="h3" style={{ marginBottom: 2 }}>AI Friend</div>
-            <div className="sub text-sm" style={{ fontSize: "var(--font-sm)" }}>
-              {messages.length > 1 ? "Online" : "Ready to chat"}
+          <div className="row" style={{ alignItems: "center", gap: 12 }}>
+            <img
+              src={aiProfile.avatar}
+              alt={`${aiProfile.name} avatar`}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "2px solid var(--accent)",
+              }}
+            />
+            <div>
+              <div className="h3" style={{ marginBottom: 2 }}>
+                {aiProfile.name}
+              </div>
+              <div
+                className="sub text-sm"
+                style={{ fontSize: "var(--font-sm)", opacity: 0.8 }}
+              >
+                {aiProfile.handle}
+              </div>
             </div>
           </div>
         </div>
-        <div style={{ 
-          width: 10, 
-          height: 10, 
-          borderRadius: "50%", 
-          background: "#10A37F",
-          boxShadow: "0 0 8px rgba(16, 163, 127, 0.5)"
-        }} />
+        <div className="row" style={{ alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: "#10A37F",
+              boxShadow: "0 0 8px rgba(16, 163, 127, 0.5)",
+            }}
+          />
+          <button
+            className="btn-ghost"
+            aria-label="Favorite conversation"
+            style={{ padding: 8 }}
+          >
+            <FaStar size={18} color="var(--accent)" />
+          </button>
+        </div>
       </div>
 
       {/* Messages Area */}
@@ -244,30 +359,50 @@ export default function AIFriendPage() {
             key={message.id}
             style={{
               display: "flex",
-              justifyContent: message.role === "user" ? "flex-end" : "flex-start",
+              flexDirection: message.role === "user" ? "row-reverse" : "row",
+              alignItems: "flex-end",
+              gap: 12,
               marginBottom: 16,
             }}
           >
+            <img
+              src={
+                message.role === "user" ? userProfile.avatar : aiProfile.avatar
+              }
+              alt={
+                message.role === "user"
+                  ? `${userProfile.name} avatar`
+                  : `${aiProfile.name} avatar`
+              }
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border:
+                  message.role === "user"
+                    ? "2px solid var(--accent)"
+                    : "2px solid rgba(16, 163, 127, 0.5)",
+              }}
+            />
             <div
               style={{
-                maxWidth: "75%",
+                maxWidth: "72%",
                 padding: "12px 16px",
                 borderRadius: "var(--radius-sm)",
                 background:
-                  message.role === "user"
-                    ? "var(--accent)"
-                    : "var(--card)",
+                  message.role === "user" ? "var(--accent)" : "var(--card)",
                 color: message.role === "user" ? "#111" : "var(--text)",
                 border:
-                  message.role === "ai"
-                    ? "1px solid var(--border)"
-                    : "none",
+                  message.role === "ai" ? "1px solid var(--border)" : "none",
                 boxShadow: "var(--shadow)",
                 lineHeight: 1.5,
                 wordWrap: "break-word",
               }}
             >
-              <div style={{ fontSize: "var(--font-md)", whiteSpace: "pre-wrap" }}>
+              <div
+                style={{ fontSize: "var(--font-md)", whiteSpace: "pre-wrap" }}
+              >
                 {message.content}
               </div>
               <div
@@ -291,10 +426,22 @@ export default function AIFriendPage() {
           <div
             style={{
               display: "flex",
-              justifyContent: "flex-start",
+              alignItems: "flex-end",
+              gap: 12,
               marginBottom: 16,
             }}
           >
+            <img
+              src={aiProfile.avatar}
+              alt={`${aiProfile.name} avatar`}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "2px solid rgba(16, 163, 127, 0.5)",
+              }}
+            />
             <div
               style={{
                 padding: "12px 16px",
@@ -355,8 +502,16 @@ export default function AIFriendPage() {
           bottom: 0,
         }}
       >
-        <div className="row" style={{ gap: 8, alignItems: "flex-end" }}>
+        <div className="row" style={{ gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            style={{ display: "none" }}
+            onChange={handleFileSelected}
+            aria-hidden
+          />
           <div
+          className="w-full min-w-[calc(100vw-2rem)]"
             style={{
               flex: 1,
               position: "relative",
@@ -376,7 +531,10 @@ export default function AIFriendPage() {
               onChange={(e) => {
                 setInputValue(e.target.value);
                 e.target.style.height = "auto";
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                e.target.style.height = `${Math.min(
+                  e.target.scrollHeight,
+                  120
+                )}px`;
               }}
               onKeyPress={handleKeyPress}
               placeholder="Type your message..."
@@ -437,9 +595,8 @@ export default function AIFriendPage() {
           )}
 
           <button
-            className="btn"
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim() || isLoading}
+            className="btn-ghost"
+            onClick={handleAttachClick}
             style={{
               width: 44,
               height: 44,
@@ -448,18 +605,267 @@ export default function AIFriendPage() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              opacity: inputValue.trim() && !isLoading ? 1 : 0.5,
-              cursor: inputValue.trim() && !isLoading ? "pointer" : "not-allowed",
+              opacity: isLoading ? 0.6 : 1,
+              cursor: isLoading ? "not-allowed" : "pointer",
+              background: attachedFileName ? "rgba(199, 168, 105, 0.15)" : "transparent",
+              color: attachedFileName ? "var(--accent)" : "inherit",
+              transition: "background 0.2s ease, color 0.2s ease",
+            }}
+            aria-label="Attach file"
+            disabled={isLoading}
+          >
+            <FaPaperclip size={18} />
+          </button>
+          
+
+          <button
+            className="btn-ghost"
+            onClick={() => setShowSuggestions((prev) => !prev)}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: showSuggestions
+                ? "rgba(199, 168, 105, 0.2)"
+                : "transparent",
+              color: showSuggestions ? "var(--accent)" : "inherit",
+              transition: "background 0.2s ease, transform 0.2s ease",
+            }}
+            aria-label="Toggle inspiration replies"
+            aria-expanded={showSuggestions}
+          >
+            <FaLightbulb size={18} />
+          </button>
+
+          <button
+            className="btn"
+            onClick={handleSendMessage}
+            disabled={!inputValue.trim() || isLoading || isUploading}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity:
+                inputValue.trim() && !isLoading && !isUploading ? 1 : 0.5,
+              cursor:
+                inputValue.trim() && !isLoading && !isUploading
+                  ? "pointer"
+                  : "not-allowed",
             }}
             aria-label="Send message"
           >
-            <span style={{ fontSize: "var(--font-lg)", fontWeight: 600 }}>→</span>
+            <span style={{ fontSize: "var(--font-lg)", fontWeight: 600 }}>
+              →
+            </span>
           </button>
         </div>
 
-        <div className="sub text-sm" style={{ marginTop: 8, fontSize: "var(--font-xs)", textAlign: "center" }}>
+        <div
+          className="sub text-sm"
+          style={{
+            marginTop: 8,
+            fontSize: "var(--font-xs)",
+            textAlign: "center",
+          }}
+        >
           Press Enter to send, Shift+Enter for new line
         </div>
+
+        {attachedFileName && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: "10px 12px",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+              background: "var(--card)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: "var(--font-sm)",
+                color: "var(--text)",
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              <FaPaperclip size={14} color="var(--accent)" />
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {attachedFileName}
+              </span>
+              {isUploading && (
+                <span
+                  style={{
+                    fontSize: "var(--font-xs)",
+                    color: "var(--accent)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Uploading…
+                </span>
+              )}
+            </div>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setAttachedFileName(null);
+                setIsUploading(false);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: "var(--font-xs)",
+              }}
+              aria-label="Remove attached file"
+            >
+              <FaTimes size={12} />
+              Remove
+            </button>
+          </div>
+        )}
+
+        {showSuggestions && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: 12,
+              borderRadius: "var(--radius-sm)",
+              background: "rgba(199, 168, 105, 0.08)",
+              border: "1px solid rgba(199, 168, 105, 0.2)",
+            }}
+          >
+            <div
+              className="row"
+              style={{
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 10,
+              }}
+            >
+              <div className="row" style={{ alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: "50%",
+                    background: "rgba(199, 168, 105, 0.2)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--accent)",
+                  }}
+                >
+                  <FaLightbulb size={14} />
+                </span>
+                <div>
+                  <div
+                    className="sub"
+                    style={{ fontSize: "var(--font-sm)", fontWeight: 600 }}
+                  >
+                    Inspiration Reply
+                  </div>
+                  <div
+                    className="sub text-sm"
+                    style={{ fontSize: "var(--font-xs)", opacity: 0.7 }}
+                  >
+                    Free: {Math.max(0, 10 - dailySuggestionUses)}/10 today
+                  </div>
+                </div>
+              </div>
+              <button
+                className="btn-ghost"
+                onClick={refreshSuggestions}
+                style={{
+                  width: 32,
+                  minWidth: 32,
+                  height: 32,
+                  borderRadius: "10%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                }}
+                aria-label="Refresh inspiration replies"
+              >
+                <FaSyncAlt size={14} />
+              </button>
+            </div>
+
+            <div className="col" style={{ gap: 10 }}>
+              {suggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => handleUseSuggestion(suggestion)}
+                  style={{
+                    textAlign: "left",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "12px 14px",
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    cursor: "pointer",
+                    transition: "transform 0.15s ease, box-shadow 0.2s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow =
+                      "0 8px 20px rgba(0,0,0,0.12)";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = "none";
+                    e.currentTarget.style.transform = "translateY(0)";
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "var(--accent)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginTop: 2,
+                    }}
+                  >
+                    <FaPen size={12} />
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "var(--font-sm)",
+                      color: "var(--text)",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {suggestion}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <style>
@@ -473,4 +879,3 @@ export default function AIFriendPage() {
     </div>
   );
 }
-

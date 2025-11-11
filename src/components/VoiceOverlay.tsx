@@ -573,7 +573,7 @@ const SpeakingGradientCircle: React.FC<{
       maxRings: 3,
       initialPosition: { lat: 0, lng: 0 },
       autoRotate: true,
-      autoRotateSpeed: speaking ? 15 : 1.6,
+      autoRotateSpeed: speaking ? 50 : 15,
       polygonColor: basePolygonColor,
       ambientLight: baseAmbientLight,
       directionalLeftLight: "#ffffff",
