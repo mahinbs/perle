@@ -21,7 +21,8 @@ export default function DiscoverPage() {
     const matchesSearch =
       searchQuery === "" ||
       item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      (item.description &&
+        item.description.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
 
@@ -61,7 +62,12 @@ export default function DiscoverPage() {
           placeholder="Search topics..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ fontSize: "var(--font-md)" }}
+          style={{
+            fontSize: "var(--font-md)",
+            width: "100%",
+            borderRadius: ".5rem",
+            paddingInline: 8,
+          }}
         />
       </div>
 
