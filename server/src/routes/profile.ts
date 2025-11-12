@@ -59,7 +59,8 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
           notifications: true,
           dark_mode: false,
           search_history: true,
-          voice_search: true
+          voice_search: true,
+          is_premium: false
         } as any)
         .select()
         .single();
@@ -74,7 +75,8 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
           notifications: true,
           darkMode: false,
           searchHistory: true,
-          voiceSearch: true
+          voiceSearch: true,
+          isPremium: false
         });
       }
 
@@ -85,7 +87,8 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
         notifications: (newProfile as any).notifications,
         darkMode: (newProfile as any).dark_mode,
         searchHistory: (newProfile as any).search_history,
-        voiceSearch: (newProfile as any).voice_search
+        voiceSearch: (newProfile as any).voice_search,
+        isPremium: (newProfile as any).is_premium ?? false
       });
     }
 
@@ -96,7 +99,8 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
       notifications: (profile as any).notifications,
       darkMode: (profile as any).dark_mode,
       searchHistory: (profile as any).search_history,
-      voiceSearch: (profile as any).voice_search
+      voiceSearch: (profile as any).voice_search,
+      isPremium: (profile as any).is_premium ?? false
     });
   } catch (error) {
     console.error('Get profile error:', error);
@@ -219,7 +223,8 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       notifications: (profileResult as any).notifications,
       darkMode: (profileResult as any).dark_mode,
       searchHistory: (profileResult as any).search_history,
-      voiceSearch: (profileResult as any).voice_search
+      voiceSearch: (profileResult as any).voice_search,
+      isPremium: (profileResult as any).is_premium ?? false
     });
   } catch (error) {
     console.error('Update profile error:', error);

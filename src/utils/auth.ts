@@ -17,6 +17,7 @@ export interface User {
   darkMode: boolean;
   searchHistory: boolean;
   voiceSearch: boolean;
+  isPremium?: boolean;
 }
 
 export interface AuthResponse {

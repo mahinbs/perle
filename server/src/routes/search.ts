@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { generateServerAnswer } from '../utils/answerEngine.js';
+import { generateAIAnswer } from '../utils/aiProviders.js';
 import type { AnswerResult, Mode, LLMModel } from '../types.js';
 import { supabase } from '../lib/supabase.js';
-import { generateOpenAIAnswer } from '../utils/openai.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -12,6 +12,12 @@ const searchSchema = z.object({
   query: z.string().min(1, 'Query cannot be empty').max(500, 'Query too long'),
   mode: z.enum(['Ask', 'Research', 'Summarize', 'Compare']).default('Ask'),
   model: z.enum([
+    'auto',
+    'gpt-5',
+    'gemini-2.0-latest',
+    'grok-4',
+    'claude-4.5',
+    'gemini-lite',
     'gpt-4',
     'gpt-3.5-turbo',
     'claude-3-opus',
@@ -21,7 +27,7 @@ const searchSchema = z.object({
     'gemini-pro-vision',
     'llama-2',
     'mistral-7b'
-  ]).default('gpt-4')
+  ]).default('gemini-lite')
 });
 
 // Main search endpoint
@@ -42,18 +48,45 @@ router.post('/search', optionalAuth, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Query cannot be empty' });
     }
 
-    // Generate answer: Prefer OpenAI if key present, else fallback to local generator
-    let result: AnswerResult;
-    const hasOpenAI = !!process.env.OPENAI_API_KEY;
-    try {
-      if (hasOpenAI) {
-        result = await generateOpenAIAnswer(trimmedQuery, mode as Mode, model as LLMModel);
-      } else {
-        result = generateServerAnswer(trimmedQuery, mode as Mode, model as LLMModel);
+    // Check if user is premium
+    let isPremium = false;
+    if (req.userId) {
+      try {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('is_premium')
+          .eq('user_id', req.userId)
+          .single();
+        isPremium = (profile as any)?.is_premium ?? false;
+      } catch (e) {
+        // If profile fetch fails, assume free user
+        console.warn('Failed to fetch premium status, defaulting to free:', e);
       }
+    }
+
+    // Determine actual model to use
+    let actualModel: LLMModel = model as LLMModel;
+    
+    if (!isPremium) {
+      // Free users always use gemini-lite
+      actualModel = 'gemini-lite';
+    } else {
+      // Premium users: if 'auto' is selected, use gemini-lite
+      if (model === 'auto') {
+        actualModel = 'gemini-lite';
+      } else {
+        actualModel = model as LLMModel;
+      }
+    }
+
+    // Generate answer: Try AI provider first, fallback to local generator
+    let result: AnswerResult;
+    try {
+      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel);
     } catch (e: any) {
-      // Fallback if OpenAI errors/timeouts
-      result = generateServerAnswer(trimmedQuery, mode as Mode, model as LLMModel);
+      // Fallback to local generator if AI provider fails (missing key, timeout, etc.)
+      console.warn(`AI provider failed for model ${actualModel}, using fallback:`, e.message);
+      result = generateServerAnswer(trimmedQuery, mode as Mode, actualModel);
     }
 
     // Save to search history if user is authenticated

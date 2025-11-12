@@ -108,6 +108,18 @@ function generateAnswerBody(query: string, mode: Mode, model: LLMModel, uploaded
 
 function getModelPrefix(model: LLMModel): string {
   switch (model) {
+    case 'auto':
+      return '[Auto]';
+    case 'gpt-5':
+      return '[GPT-5]';
+    case 'gemini-2.0-latest':
+      return '[Gemini 2.0]';
+    case 'grok-4':
+      return '[Grok 4]';
+    case 'claude-4.5':
+      return '[Claude 4.5]';
+    case 'gemini-lite':
+      return '[Gemini Lite]';
     case 'gpt-4':
       return '[GPT-4]';
     case 'gpt-3.5-turbo':

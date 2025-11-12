@@ -35,6 +35,7 @@ interface SearchBarProps {
   onFilesChange?: (files: UploadedFile[]) => void;
   hasAnswer?: boolean;
   searchedQuery?: string;
+  isPremium?: boolean;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -49,6 +50,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onFilesChange,
   hasAnswer = false,
   searchedQuery = '',
+  isPremium = false,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
@@ -252,10 +254,27 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (
       file.type.startsWith("text/") ||
       file.type.includes("pdf") ||
-      file.type.includes("document")
+      file.type.includes("document") ||
+      file.type.includes("csv") ||
+      file.type.includes("word") ||
+      file.type.includes("msword") ||
+      file.type.includes("wordprocessingml") ||
+      file.type.includes("opendocument") ||
+      file.name.endsWith(".txt") ||
+      file.name.endsWith(".csv") ||
+      file.name.endsWith(".doc") ||
+      file.name.endsWith(".docx") ||
+      file.name.endsWith(".odt") ||
+      file.name.endsWith(".pdf")
     )
       return "document";
     return "other";
+  };
+
+  // Check if file is video (should be blocked)
+  const isVideoFile = (file: File): boolean => {
+    return file.type.startsWith("video/") || 
+           file.name.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/i) !== null;
   };
 
   const createFilePreview = (file: File): Promise<string | undefined> => {
@@ -273,10 +292,41 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || !onFilesChange) return;
 
+    const maxFiles = isPremium ? 5 : 2;
+    const currentFileCount = uploadedFiles.length;
+
+    // Check total file limit
+    if (currentFileCount >= maxFiles) {
+      showToast({
+        message: `Maximum ${maxFiles} file${maxFiles > 1 ? 's' : ''} allowed. ${isPremium ? 'Premium' : 'Free'} users can upload up to ${maxFiles} files.`,
+        type: 'error',
+        duration: 4000
+      });
+      return;
+    }
+
     const newFiles: UploadedFile[] = [];
+    const rejectedFiles: string[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+
+      // Block video files
+      if (isVideoFile(file)) {
+        rejectedFiles.push(file.name);
+        continue;
+      }
+
+      // Check if adding this file would exceed limit
+      if (currentFileCount + newFiles.length >= maxFiles) {
+        showToast({
+          message: `Maximum ${maxFiles} file${maxFiles > 1 ? 's' : ''} allowed. Some files were not added.`,
+          type: 'error',
+          duration: 4000
+        });
+        break;
+      }
+
       const type = getFileType(file);
       const preview = await createFilePreview(file);
 
@@ -288,7 +338,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       });
     }
 
-    onFilesChange([...uploadedFiles, ...newFiles]);
+    if (rejectedFiles.length > 0) {
+      showToast({
+        message: `Video files are not supported. ${rejectedFiles.length} file${rejectedFiles.length > 1 ? 's' : ''} rejected.`,
+        type: 'error',
+        duration: 4000
+      });
+    }
+
+    if (newFiles.length > 0) {
+      onFilesChange([...uploadedFiles, ...newFiles]);
+    }
   };
 
   const removeFile = (fileId: string) => {
@@ -675,7 +735,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         ref={fileInputRef}
         type="file"
         multiple
-        accept="image/*,.pdf,.doc,.docx,.txt"
+        accept="image/*,.pdf,.doc,.docx,.txt,.csv,.odt,.xls,.xlsx"
         onChange={(e) => handleFileUpload(e.target.files)}
         style={{ display: "none" }}
       />

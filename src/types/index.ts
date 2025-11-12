@@ -1,6 +1,6 @@
 export type Mode = 'Ask' | 'Research' | 'Summarize' | 'Compare';
 
-export type LLMModel = 'gpt-4' | 'gpt-3.5-turbo' | 'claude-3-opus' | 'claude-3-sonnet' | 'claude-3-haiku' | 'gemini-pro' | 'gemini-pro-vision' | 'llama-2' | 'mistral-7b';
+export type LLMModel = 'auto' | 'gpt-5' | 'gemini-2.0-latest' | 'grok-4' | 'claude-4.5' | 'gemini-lite' | 'gpt-4' | 'gpt-3.5-turbo' | 'claude-3-opus' | 'claude-3-sonnet' | 'claude-3-haiku' | 'gemini-pro' | 'gemini-pro-vision' | 'llama-2' | 'mistral-7b';
 
 export interface LLMModelInfo {
   id: LLMModel;

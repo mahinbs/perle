@@ -142,7 +142,8 @@ router.post('/auth/verify-otp', async (req, res) => {
           notifications: true,
           dark_mode: false,
           search_history: true,
-          voice_search: true
+          voice_search: true,
+          is_premium: false
         });
     }
 
@@ -158,7 +159,8 @@ router.post('/auth/verify-otp', async (req, res) => {
         notifications: profile?.notifications ?? true,
         darkMode: profile?.dark_mode ?? false,
         searchHistory: profile?.search_history ?? true,
-        voiceSearch: profile?.voice_search ?? true
+        voiceSearch: profile?.voice_search ?? true,
+        isPremium: (profile as any)?.is_premium ?? false
       }
     });
   } catch (error) {
@@ -258,7 +260,8 @@ router.post('/auth/login', async (req, res) => {
         notifications: profile?.notifications ?? true,
         darkMode: profile?.dark_mode ?? false,
         searchHistory: profile?.search_history ?? true,
-        voiceSearch: profile?.voice_search ?? true
+        voiceSearch: profile?.voice_search ?? true,
+        isPremium: (profile as any)?.is_premium ?? false
       }
     });
   } catch (error) {
@@ -319,7 +322,8 @@ router.get('/auth/verify', authenticateToken, async (req: AuthRequest, res) => {
         notifications: profile?.notifications ?? true,
         darkMode: profile?.dark_mode ?? false,
         searchHistory: profile?.search_history ?? true,
-        voiceSearch: profile?.voice_search ?? true
+        voiceSearch: profile?.voice_search ?? true,
+        isPremium: (profile as any)?.is_premium ?? false
       }
     });
   } catch (error) {

@@ -5,9 +5,11 @@ import { SearchBar } from '../components/SearchBar';
 import { AnswerCard } from '../components/AnswerCard';
 import { DiscoverRail } from '../components/DiscoverRail';
 import { UpgradeCard } from '../components/UpgradeCard';
+import { LLMModelSelector } from '../components/LLMModelSelector';
 import { fakeAnswerEngine } from '../utils/answerEngine';
 import { formatQuery } from '../utils/helpers';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
+import { getUserData } from '../utils/auth';
 import type { Mode, AnswerResult, LLMModel } from '../types';
 
 interface UploadedFile {
@@ -26,12 +28,61 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<LLMModel>('gpt-4');
+  const [isPremium, setIsPremium] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<LLMModel>('gemini-lite'); // Default to gemini-lite for free users
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [conversationHistory, setConversationHistory] = useState<Array<{query: string; answer: string; mode: Mode; model: LLMModel}>>([]);
   const answerCardRef = useRef<HTMLDivElement>(null);
   const lastSearchedQueryRef = useRef<string>('');
   const isSearchingRef = useRef<boolean>(false);
   const queryRef = useRef<string>(''); // Keep query in ref to avoid stale closures
+
+  // Load user premium status on mount and when user data changes
+  useEffect(() => {
+    const updatePremiumStatus = () => {
+      const user = getUserData();
+      if (user) {
+        const premium = user.isPremium ?? false;
+        setIsPremium(premium);
+        // Set default model based on premium status
+        if (premium) {
+          setSelectedModel('auto'); // Premium users default to 'auto'
+        } else {
+          setSelectedModel('gemini-lite'); // Free users always use gemini-lite
+        }
+      } else {
+        // Not logged in = free user
+        setIsPremium(false);
+        setSelectedModel('gemini-lite');
+      }
+    };
+
+    updatePremiumStatus();
+
+    // Listen for storage changes (when user logs in/out or premium status changes)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'perle-user-data') {
+        updatePremiumStatus();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also check periodically (for same-tab updates)
+    const interval = setInterval(updatePremiumStatus, 2000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Ensure free users always use gemini-lite (even if they try to change it)
+  useEffect(() => {
+    if (!isPremium && selectedModel !== 'gemini-lite') {
+      setSelectedModel('gemini-lite');
+    }
+  }, [isPremium, selectedModel]);
 
   // Load search history from localStorage on mount
   useEffect(() => {
@@ -45,12 +96,20 @@ export default function HomePage() {
     }
   }, []);
 
-  // Handle search query from other pages
+  // Handle search query and mode from other pages (e.g., Discover items)
   useEffect(() => {
     if (currentData?.searchQuery) {
       setQuery(currentData.searchQuery);
-      // Optionally auto-trigger search
-      // doSearch();
+      // Set mode if provided
+      if (currentData.mode && ['Ask', 'Research', 'Summarize', 'Compare'].includes(currentData.mode)) {
+        setMode(currentData.mode as Mode);
+      }
+      // Auto-trigger search when coming from Discover
+      if (currentData.searchQuery) {
+        setTimeout(() => {
+          doSearch(currentData.searchQuery);
+        }, 100);
+      }
     }
   }, [currentData]);
 
@@ -108,6 +167,15 @@ export default function HomePage() {
     setTimeout(() => {
       const res = fakeAnswerEngine(q, mode, selectedModel, uploadedFiles);
       setAnswer(res);
+      
+      // Add to conversation history (for context in future queries)
+      const answerText = res.chunks.map(chunk => chunk.text).join(' ');
+      setConversationHistory(prev => {
+        // Keep last 10 exchanges for context
+        const updated = [...prev, { query: finalQuery, answer: answerText, mode, model: selectedModel }];
+        return updated.slice(-10);
+      });
+      
       setIsLoading(false);
       isSearchingRef.current = false;
     }, 800);
@@ -222,6 +290,20 @@ export default function HomePage() {
       <div className="spacer-8" />
       <ModeBar mode={mode} setMode={setMode} />
 
+      {/* Model Selector - Only show for premium users */}
+      {isPremium && (
+        <>
+          <div className="spacer-8" />
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <LLMModelSelector
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              isPremium={isPremium}
+            />
+          </div>
+        </>
+      )}
+
       <div className="spacer-12" />
       <SearchBar 
         query={query} 
@@ -237,6 +319,7 @@ export default function HomePage() {
         onFilesChange={setUploadedFiles}
         hasAnswer={!!answer && !isLoading}
         searchedQuery={searchedQuery}
+        isPremium={isPremium}
       />
 
       <div className="spacer-12" />

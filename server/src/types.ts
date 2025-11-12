@@ -1,6 +1,12 @@
 export type Mode = 'Ask' | 'Research' | 'Summarize' | 'Compare';
 
 export type LLMModel =
+  | 'auto'
+  | 'gpt-5'
+  | 'gemini-2.0-latest'
+  | 'grok-4'
+  | 'claude-4.5'
+  | 'gemini-lite'
   | 'gpt-4'
   | 'gpt-3.5-turbo'
   | 'claude-3-opus'

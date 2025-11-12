@@ -2,7 +2,47 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { LLMModel, LLMModelInfo } from '../types';
 
-const availableModels: LLMModelInfo[] = [
+// Premium models available to premium users
+const premiumModels: LLMModelInfo[] = [
+  {
+    id: 'auto',
+    name: 'Auto',
+    provider: 'Perlé',
+    description: 'Automatically selects the best model (uses Gemini Lite)',
+    capabilities: ['Smart Selection', 'Optimized', 'Cost Effective']
+  },
+  {
+    id: 'gpt-5',
+    name: 'GPT-5',
+    provider: 'OpenAI',
+    description: 'Latest and most advanced OpenAI model',
+    capabilities: ['Advanced Reasoning', 'Latest Tech', 'High Performance']
+  },
+  {
+    id: 'gemini-2.0-latest',
+    name: 'Gemini 2.0 Latest',
+    provider: 'Google',
+    description: 'Google\'s latest and most powerful model',
+    capabilities: ['Latest Version', 'Multimodal', 'Advanced AI']
+  },
+  {
+    id: 'grok-4',
+    name: 'Grok 4',
+    provider: 'xAI',
+    description: 'xAI\'s advanced language model',
+    capabilities: ['Real-time Data', 'Advanced Reasoning', 'Fast']
+  },
+  {
+    id: 'claude-4.5',
+    name: 'Claude 4.5',
+    provider: 'Anthropic',
+    description: 'Anthropic\'s latest and most capable model',
+    capabilities: ['Advanced Reasoning', 'Long Context', 'Safety Focused']
+  }
+];
+
+// Legacy models (kept for backward compatibility, but not shown in selector)
+const legacyModels: LLMModelInfo[] = [
   {
     id: 'gpt-4',
     name: 'GPT-4',
@@ -72,18 +112,25 @@ interface LLMModelSelectorProps {
   selectedModel: LLMModel;
   onModelChange: (model: LLMModel) => void;
   disabled?: boolean;
+  isPremium?: boolean;
 }
 
 export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   selectedModel,
   onModelChange,
-  disabled = false
+  disabled = false,
+  isPremium = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const selectedModelInfo = availableModels.find(model => model.id === selectedModel);
+  // Use premium models if user is premium, otherwise return empty (shouldn't be shown)
+  const availableModels = isPremium ? premiumModels : [];
+  
+  // Find selected model info from premium or legacy models
+  const selectedModelInfo = premiumModels.find(model => model.id === selectedModel) ||
+                           legacyModels.find(model => model.id === selectedModel);
 
   const handleModelSelect = (modelId: LLMModel) => {
     onModelChange(modelId);
@@ -153,6 +200,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               backgroundColor: selectedModelInfo?.provider === 'OpenAI' ? '#10A37F' :
                               selectedModelInfo?.provider === 'Anthropic' ? '#D97706' :
                               selectedModelInfo?.provider === 'Google' ? '#4285F4' :
+                              selectedModelInfo?.provider === 'xAI' ? '#000000' :
+                              selectedModelInfo?.provider === 'Perlé' ? '#6366F1' :
                               selectedModelInfo?.provider === 'Meta' ? '#1877F2' :
                               selectedModelInfo?.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280'
             }} />
@@ -210,6 +259,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                     backgroundColor: model.provider === 'OpenAI' ? '#10A37F' :
                                     model.provider === 'Anthropic' ? '#D97706' :
                                     model.provider === 'Google' ? '#4285F4' :
+                                    model.provider === 'xAI' ? '#000000' :
+                                    model.provider === 'Perlé' ? '#6366F1' :
                                     model.provider === 'Meta' ? '#1877F2' :
                                     model.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280',
                     flexShrink: 0
@@ -325,6 +376,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                 backgroundColor: model.provider === 'OpenAI' ? '#10A37F' :
                                 model.provider === 'Anthropic' ? '#D97706' :
                                 model.provider === 'Google' ? '#4285F4' :
+                                model.provider === 'xAI' ? '#000000' :
+                                model.provider === 'Perlé' ? '#6366F1' :
                                 model.provider === 'Meta' ? '#1877F2' :
                                 model.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280',
                 flexShrink: 0
