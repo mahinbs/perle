@@ -8,6 +8,8 @@ You need to set up API keys for the following providers:
 
 1. **OpenAI** - For GPT-5, GPT-4, GPT-3.5 Turbo
 2. **Google** - For Gemini 2.0 Latest, Gemini Lite
+   - `GOOGLE_API_KEY` - For premium users (Gemini 2.0 Latest)
+   - `GOOGLE_API_KEY_FREE` - For free users (Gemini Lite) - **Required**
 3. **Anthropic** - For Claude 4.5
 4. **xAI** - For Grok 4
 
@@ -21,7 +23,8 @@ You need to set up API keys for the following providers:
 
 ```
 OPENAI_API_KEY=sk-...
-GOOGLE_API_KEY=...
+GOOGLE_API_KEY=...          # For premium users (Gemini 2.0 Latest)
+GOOGLE_API_KEY_FREE=...     # For free users (Gemini Lite) - REQUIRED
 ANTHROPIC_API_KEY=sk-ant-...
 XAI_API_KEY=...
 ```
@@ -40,7 +43,8 @@ supabase link --project-ref your-project-ref
 
 # Set secrets
 supabase secrets set OPENAI_API_KEY=sk-...
-supabase secrets set GOOGLE_API_KEY=...
+supabase secrets set GOOGLE_API_KEY=...          # For premium users
+supabase secrets set GOOGLE_API_KEY_FREE=...    # For free users - REQUIRED
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 supabase secrets set XAI_API_KEY=...
 ```
@@ -81,7 +85,8 @@ SUPABASE_ANON_KEY=your-anon-key
 
 # AI Provider API Keys
 OPENAI_API_KEY=sk-...
-GOOGLE_API_KEY=...
+GOOGLE_API_KEY=...          # For premium users (Gemini 2.0 Latest)
+GOOGLE_API_KEY_FREE=...     # For free users (Gemini Lite) - REQUIRED
 ANTHROPIC_API_KEY=sk-ant-...
 XAI_API_KEY=...
 
@@ -95,16 +100,20 @@ CORS_ORIGIN=http://localhost:3000
 | Model | Provider | API Key Required |
 |-------|----------|----------------|
 | GPT-5 | OpenAI | `OPENAI_API_KEY` |
-| Gemini 2.0 Latest | Google | `GOOGLE_API_KEY` |
-| Gemini Lite | Google | `GOOGLE_API_KEY` |
+| Gemini 2.0 Latest | Google | `GOOGLE_API_KEY` (premium) |
+| Gemini Lite | Google | `GOOGLE_API_KEY_FREE` (free) or `GOOGLE_API_KEY` (fallback) |
 | Claude 4.5 | Anthropic | `ANTHROPIC_API_KEY` |
 | Grok 4 | xAI | `XAI_API_KEY` |
-| Auto | Google (Gemini Lite) | `GOOGLE_API_KEY` |
+| Auto | Google (Gemini Lite) | `GOOGLE_API_KEY_FREE` (free) or `GOOGLE_API_KEY` (premium) |
 
 ## ⚠️ Important Notes
 
-1. **Free Users**: Always use Gemini Lite (requires `GOOGLE_API_KEY`)
+1. **Free Users**: Always use Gemini Lite (requires `GOOGLE_API_KEY_FREE`)
+   - If `GOOGLE_API_KEY_FREE` is not set, it will fallback to `GOOGLE_API_KEY`
+   - **You must set `GOOGLE_API_KEY_FREE` for free users to work properly**
 2. **Premium Users**: Can use any model, but the corresponding API key must be set
+   - Premium users use `GOOGLE_API_KEY` for Gemini 2.0 Latest
+   - Premium users in "auto" mode use `GOOGLE_API_KEY_FREE` (or `GOOGLE_API_KEY` as fallback)
 3. **Fallback**: If an API key is missing, the system falls back to a local answer generator
 4. **Security**: Never commit API keys to version control. Always use environment variables or Supabase secrets.
 

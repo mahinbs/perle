@@ -6,7 +6,7 @@ import { AnswerCard } from '../components/AnswerCard';
 import { DiscoverRail } from '../components/DiscoverRail';
 import { UpgradeCard } from '../components/UpgradeCard';
 import { LLMModelSelector } from '../components/LLMModelSelector';
-import { fakeAnswerEngine } from '../utils/answerEngine';
+import { searchAPI } from '../utils/answerEngine';
 import { formatQuery } from '../utils/helpers';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
 import { getUserData } from '../utils/auth';
@@ -129,7 +129,7 @@ export default function HomePage() {
     queryRef.current = query;
   }, [query]);
 
-  const doSearch = useCallback((searchQuery?: string) => {
+  const doSearch = useCallback(async (searchQuery?: string) => {
     // Use the provided searchQuery or get current query from ref (avoids stale closure)
     const currentQuery = searchQuery || queryRef.current;
     const q = formatQuery(currentQuery);
@@ -162,14 +162,28 @@ export default function HomePage() {
     setQuery(finalQuery);
     setSearchedQuery(finalQuery);
     
-    // Simulate API delay for better UX
-    setTimeout(() => {
-      const res = fakeAnswerEngine(q, mode, selectedModel, uploadedFiles);
+    // Call the real API
+    try {
+      const res = await searchAPI(q, mode, selectedModel);
       setAnswer(res);
-      
+    } catch (error: any) {
+      console.error('Search API error:', error);
+      // Show error to user - no mock fallback
+      setAnswer({
+        chunks: [{
+          text: `Error: ${error.message || 'Failed to get answer from API. Please check your backend server is running.'}`,
+          citationIds: [],
+          confidence: 0
+        }],
+        sources: [],
+        query: q,
+        mode,
+        timestamp: Date.now()
+      });
+    } finally {
       setIsLoading(false);
       isSearchingRef.current = false;
-    }, 800);
+    }
     // Removed 'query' from dependencies to prevent re-creation on every query change
     // The function uses query from closure, which is fine since we pass it explicitly when needed
   }, [mode, selectedModel, saveToHistory, uploadedFiles]);
@@ -324,6 +338,13 @@ export default function HomePage() {
           onQueryEdit={(editedQuery) => {
             setQuery(editedQuery);
             doSearch(editedQuery);
+          }}
+          onSearch={(searchQuery, searchMode) => {
+            if (searchMode) {
+              setMode(searchMode);
+            }
+            setQuery(searchQuery);
+            doSearch(searchQuery);
           }}
         />
       </div>

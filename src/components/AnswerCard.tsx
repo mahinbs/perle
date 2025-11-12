@@ -13,9 +13,10 @@ interface AnswerCardProps {
   mode?: Mode;
   query?: string;
   onQueryEdit?: (editedQuery: string) => void;
+  onSearch?: (query: string, mode?: Mode) => void;
 }
 
-export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoading, mode, query, onQueryEdit }) => {
+export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoading, mode, query, onQueryEdit, onSearch }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -432,7 +433,14 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             'Compare React vs Vue',
             'Explain quantum computing'
           ].map(suggestion => (
-            <span key={suggestion} className="chip" role="button" tabIndex={0}>
+            <span 
+              key={suggestion} 
+              className="chip" 
+              role="button" 
+              tabIndex={0}
+              onClick={() => onSearch?.(suggestion, mode)}
+              style={{ cursor: 'pointer' }}
+            >
               {suggestion}
             </span>
           ))}
@@ -699,15 +707,28 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           gap: 8 
         }}>
           {[
-            'Show recent studies only',
-            'Compare viewpoints',
-            'Summarize in 5 bullets',
-            'What are the risks?',
-            'Find similar topics',
-            'Explain like I\'m 5'
+            { text: 'Show recent studies only', mode: 'Research' as Mode },
+            { text: 'Compare viewpoints', mode: 'Compare' as Mode },
+            { text: 'Summarize in 5 bullets', mode: 'Summarize' as Mode },
+            { text: 'What are the risks?', mode: 'Ask' as Mode },
+            { text: 'Find similar topics', mode: 'Research' as Mode },
+            { text: 'Explain like I\'m 5', mode: 'Ask' as Mode }
           ].map(action => (
-            <span key={action} className="chip" role="button" tabIndex={0}>
-              {action}
+            <span 
+              key={action.text} 
+              className="chip" 
+              role="button" 
+              tabIndex={0}
+              onClick={() => {
+                if (query) {
+                  onSearch?.(`${query} ${action.text}`, action.mode);
+                } else {
+                  onSearch?.(action.text, action.mode);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              {action.text}
             </span>
           ))}
         </div>

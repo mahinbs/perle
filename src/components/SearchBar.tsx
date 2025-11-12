@@ -224,9 +224,23 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       console.error("Speech recognition error:", event.error);
       setIsListening(false);
       if (event.error === "not-allowed") {
-        alert(
-          "Microphone access denied. Please allow microphone access and try again."
-        );
+        showToast({
+          message: "Microphone access denied. Please allow microphone access in your browser settings and try again.",
+          type: "error",
+          duration: 4000
+        });
+      } else if (event.error === "no-speech") {
+        showToast({
+          message: "No speech detected. Please try again.",
+          type: "error",
+          duration: 3000
+        });
+      } else {
+        showToast({
+          message: `Speech recognition error: ${event.error}. Please try again.`,
+          type: "error",
+          duration: 3000
+        });
       }
     };
 

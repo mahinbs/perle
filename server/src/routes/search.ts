@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { generateServerAnswer } from '../utils/answerEngine.js';
 import { generateAIAnswer } from '../utils/aiProviders.js';
 import type { AnswerResult, Mode, LLMModel } from '../types.js';
 import { supabase } from '../lib/supabase.js';
@@ -79,14 +78,20 @@ router.post('/search', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
 
-    // Generate answer: Try AI provider first, fallback to local generator
+    // Generate answer using real AI provider only - no fallbacks
     let result: AnswerResult;
     try {
-      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel);
-    } catch (e: any) {
-      // Fallback to local generator if AI provider fails (missing key, timeout, etc.)
-      console.warn(`AI provider failed for model ${actualModel}, using fallback:`, e.message);
-      result = generateServerAnswer(trimmedQuery, mode as Mode, actualModel);
+      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium);
+    } catch (apiError: any) {
+      console.error('AI provider error:', apiError);
+      const errorMessage = apiError?.message || 'Failed to generate answer';
+      // Return specific error message to help debug
+      return res.status(500).json({ 
+        error: errorMessage,
+        details: apiError?.message?.includes('API_KEY') 
+          ? 'API key is missing or invalid. Please check your GOOGLE_API_KEY_FREE in .env file.'
+          : undefined
+      });
     }
 
     // Save to search history if user is authenticated

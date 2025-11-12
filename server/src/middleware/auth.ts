@@ -37,12 +37,12 @@ export async function authenticateToken(
   }
 }
 
-export function optionalAuth(
+export async function optionalAuth(
   req: AuthRequest,
   res: Response,
   next: NextFunction
-): void {
-  // Try to authenticate, but don't fail if no token
+): Promise<void> {
+  // Try to authenticate, but don't fail if no token or invalid token
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
@@ -51,9 +51,20 @@ export function optionalAuth(
     return;
   }
 
-  // If token exists, try to authenticate
-  authenticateToken(req, res, next).catch(() => {
-    // If auth fails, continue without user (optional auth)
+  // If token exists, try to verify it (but don't fail if invalid)
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    
+    if (!error && user) {
+      // Token is valid - set user info
+      req.userId = user.id;
+      req.userEmail = user.email || undefined;
+    }
+    // If token is invalid/expired, just continue without user (optional auth)
     next();
-  });
+  } catch (error) {
+    // If verification fails, continue without user (optional auth)
+    console.warn('Optional auth verification failed:', error);
+    next();
+  }
 }

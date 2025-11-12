@@ -19,18 +19,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 function chunkTextToAnswer(text: string, sources: Source[]): AnswerResult['chunks'] {
-  const sentences = text
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (sentences.length === 0) {
-    return [{ text, citationIds: sources.slice(0, 2).map((s) => s.id), confidence: 0.9 }];
-  }
-  return sentences.map((s, i) => ({
-    text: s,
-    citationIds: sources.slice(0, Math.min(2 + (i % 3), sources.length)).map((src) => src.id),
-    confidence: Math.max(0.6, 0.95 - i * 0.05)
-  }));
+  // Return single chunk with full text instead of splitting into sentences
+  return [{
+    text: text.trim(),
+    citationIds: sources.slice(0, 2).map((s) => s.id),
+    confidence: 0.9
+  }];
 }
 
 // OpenAI Provider (GPT-5)
@@ -87,20 +81,26 @@ export async function generateOpenAIAnswer(
 export async function generateGeminiAnswer(
   query: string,
   mode: Mode,
-  model: LLMModel
+  model: LLMModel,
+  isPremium: boolean = false
 ): Promise<AnswerResult> {
-  const apiKey = process.env.GOOGLE_API_KEY;
+  // Use separate API keys for free vs premium users
+  const apiKey = isPremium 
+    ? process.env.GOOGLE_API_KEY 
+    : (process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY);
+  
   if (!apiKey) {
-    throw new Error('GOOGLE_API_KEY_MISSING');
+    throw new Error(isPremium ? 'GOOGLE_API_KEY_MISSING' : 'GOOGLE_API_KEY_FREE_MISSING');
   }
   const genAI = new GoogleGenerativeAI(apiKey);
 
   // Map model names to actual Gemini models
-  let geminiModel = 'gemini-1.5-flash'; // Default for gemini-lite
+  // Use correct model names that are available in the API (from REST API list)
+  let geminiModel = 'gemini-flash-latest'; // Default for gemini-lite (free tier)
   if (model === 'gemini-2.0-latest') {
-    geminiModel = 'gemini-1.5-pro'; // Use latest available for Gemini 2.0
+    geminiModel = 'gemini-2.0-flash'; // Use 2.0 flash for premium
   } else if (model === 'gemini-lite') {
-    geminiModel = 'gemini-1.5-flash'; // Lite version
+    geminiModel = 'gemini-flash-latest'; // Use flash-latest for lite (free tier)
   }
 
   const modelInstance = genAI.getGenerativeModel({ model: geminiModel });
@@ -234,21 +234,22 @@ export async function generateGrokAnswer(
 export async function generateAIAnswer(
   query: string,
   mode: Mode,
-  model: LLMModel
+  model: LLMModel,
+  isPremium: boolean = false
 ): Promise<AnswerResult> {
   // Route to appropriate provider based on model
   if (model === 'gpt-5' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
     return generateOpenAIAnswer(query, mode, model);
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    return generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model);
+    return generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium);
   } else if (model === 'claude-4.5' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
     return generateClaudeAnswer(query, mode, model);
   } else if (model === 'grok-4') {
     return generateGrokAnswer(query, mode, model);
   } else {
     // Fallback to Gemini Lite for unknown models
-    return generateGeminiAnswer(query, mode, 'gemini-lite');
+    return generateGeminiAnswer(query, mode, 'gemini-lite', isPremium);
   }
 }
 

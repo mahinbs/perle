@@ -147,11 +147,9 @@ function getModelPrefix(model: LLMModel): string {
  * Mock API functions for future integration
  */
 export async function searchAPI(query: string, mode: Mode, model: LLMModel = 'gpt-4'): Promise<AnswerResult> {
-  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
-    // Fallback to local fake engine if backend not configured
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return fakeAnswerEngine(query, mode, model);
+    throw new Error('API URL not configured. Please set VITE_API_URL in your .env file.');
   }
   
   // Import auth utilities dynamically to avoid circular dependencies
@@ -162,15 +160,17 @@ export async function searchAPI(query: string, mode: Mode, model: LLMModel = 'gp
     headers: getAuthHeaders(),
     body: JSON.stringify({ query, mode, model })
   });
+  
   if (!res.ok) {
-    // Graceful fallback
-    return fakeAnswerEngine(query, mode, model);
+    const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(errorData.error || `API request failed with status ${res.status}`);
   }
+  
   return await res.json();
 }
 
 export async function getSearchSuggestions(query: string): Promise<string[]> {
-  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
     const suggestions = [
       `${query} benefits`,
@@ -189,7 +189,7 @@ export async function getSearchSuggestions(query: string): Promise<string[]> {
 }
 
 export async function getRelatedQueries(query: string): Promise<string[]> {
-  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
     const related = [
       'What are the alternatives to ' + query.toLowerCase(),
