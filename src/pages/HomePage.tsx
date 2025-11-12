@@ -31,7 +31,6 @@ export default function HomePage() {
   const [isPremium, setIsPremium] = useState(false);
   const [selectedModel, setSelectedModel] = useState<LLMModel>('gemini-lite'); // Default to gemini-lite for free users
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [conversationHistory, setConversationHistory] = useState<Array<{query: string; answer: string; mode: Mode; model: LLMModel}>>([]);
   const answerCardRef = useRef<HTMLDivElement>(null);
   const lastSearchedQueryRef = useRef<string>('');
   const isSearchingRef = useRef<boolean>(false);
@@ -167,14 +166,6 @@ export default function HomePage() {
     setTimeout(() => {
       const res = fakeAnswerEngine(q, mode, selectedModel, uploadedFiles);
       setAnswer(res);
-      
-      // Add to conversation history (for context in future queries)
-      const answerText = res.chunks.map(chunk => chunk.text).join(' ');
-      setConversationHistory(prev => {
-        // Keep last 10 exchanges for context
-        const updated = [...prev, { query: finalQuery, answer: answerText, mode, model: selectedModel }];
-        return updated.slice(-10);
-      });
       
       setIsLoading(false);
       isSearchingRef.current = false;
