@@ -140,7 +140,8 @@ export default function UpgradePlansPage() {
                 color: plan.highlighted ? "#111111" : "#FFFFFF",
               }}
               onClick={() => {
-                console.log(`Selected plan: ${plan.id}`);
+                // Navigate to subscription page with plan selection
+                navigateTo(`/subscription?plan=${plan.id}`);
               }}
             >
               {plan.cta}

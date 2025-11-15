@@ -36,6 +36,7 @@ interface SearchBarProps {
   hasAnswer?: boolean;
   searchedQuery?: string;
   isPremium?: boolean;
+  onNewConversation?: () => void; // Callback to start new conversation
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -51,6 +52,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   hasAnswer = false,
   searchedQuery = '',
   isPremium = false,
+  onNewConversation,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
@@ -711,36 +713,85 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </button>
           )}
 
-          <button
-            className="btn"
-            onClick={() => {
-              // Only search if there's input in the search box
-              if (query.trim()) {
-                onSearch();
-                // In follow-up mode, keep the query for editing; otherwise clear it
-                if (!hasAnswer) {
-                  setQuery("");
+          {/* Show conversation options for premium users with existing answers */}
+          {isPremium && hasAnswer && (
+            <div style={{ 
+              display: 'flex', 
+              gap: 8, 
+              marginRight: 8,
+              alignItems: 'center'
+            }}>
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  if (onNewConversation) {
+                    onNewConversation();
+                    setQuery("");
+                  }
+                }}
+                disabled={isLoading}
+                style={{
+                  padding: '8px 12px',
+                  fontSize: 'var(--font-xs)',
+                  whiteSpace: 'nowrap'
+                }}
+                title="Start a new conversation"
+              >
+                New
+              </button>
+              <button
+                className="btn"
+                onClick={() => {
+                  if (query.trim()) {
+                    onSearch();
+                  }
+                }}
+                disabled={isLoading || !query.trim() || isListening}
+                style={{
+                  padding: '8px 12px',
+                  fontSize: 'var(--font-xs)',
+                  whiteSpace: 'nowrap'
+                }}
+                title="Ask a follow-up question"
+              >
+                Follow-up
+              </button>
+            </div>
+          )}
+          
+          {/* Regular search button (for free users or when no answer yet) */}
+          {(!isPremium || !hasAnswer) && (
+            <button
+              className="btn"
+              onClick={() => {
+                // Only search if there's input in the search box
+                if (query.trim()) {
+                  onSearch();
+                  // In follow-up mode, keep the query for editing; otherwise clear it
+                  if (!hasAnswer) {
+                    setQuery("");
+                  }
                 }
-              }
-            }}
-            disabled={isLoading || !query.trim() || isListening}
-            style={{
-              minWidth: hasAnswer ? 44 : 80,
-              padding: hasAnswer ? '8px' : undefined,
-              opacity: isListening ? 0.5 : 1,
-              cursor: isListening ? "not-allowed" : "pointer",
-            }}
-          >
-            {isLoading ? (
-              "…"
-            ) : isListening ? (
-              <MicWaveIcon size={18} active={true} />
-            ) : hasAnswer ? (
-              <FaPaperPlane size={18} />
-            ) : (
-              "Search"
-            )}
-          </button>
+              }}
+              disabled={isLoading || !query.trim() || isListening}
+              style={{
+                minWidth: hasAnswer ? 44 : 80,
+                padding: hasAnswer ? '8px' : undefined,
+                opacity: isListening ? 0.5 : 1,
+                cursor: isListening ? "not-allowed" : "pointer",
+              }}
+            >
+              {isLoading ? (
+                "…"
+              ) : isListening ? (
+                <MicWaveIcon size={18} active={true} />
+              ) : hasAnswer ? (
+                <FaPaperPlane size={18} />
+              ) : (
+                "Search"
+              )}
+            </button>
+          )}
         </div>
       </div>
 

@@ -6,12 +6,12 @@ This document explains how to set up API keys for all AI models in Supabase Edge
 
 You need to set up API keys for the following providers:
 
-1. **OpenAI** - For GPT-5, GPT-4, GPT-3.5 Turbo
+1. **OpenAI** - For GPT-5, GPT-4o, GPT-4o Mini, GPT-4 Turbo, GPT-4, GPT-3.5 Turbo
 2. **Google** - For Gemini 2.0 Latest, Gemini Lite
    - `GOOGLE_API_KEY` - For premium users (Gemini 2.0 Latest)
    - `GOOGLE_API_KEY_FREE` - For free users (Gemini Lite) - **Required**
 3. **Anthropic** - For Claude 4.5
-4. **xAI** - For Grok 4
+4. **xAI** - For all Grok models (Grok 3, Grok 3 Mini, Grok 4, Grok 4 Heavy, Grok 4 Fast, Grok Code Fast 1, Grok Beta)
 
 ## 📝 Setting Up Secrets in Supabase
 
@@ -97,14 +97,25 @@ CORS_ORIGIN=http://localhost:3000
 
 ## 📋 Model-to-Provider Mapping
 
-| Model | Provider | API Key Required |
-|-------|----------|----------------|
-| GPT-5 | OpenAI | `OPENAI_API_KEY` |
-| Gemini 2.0 Latest | Google | `GOOGLE_API_KEY` (premium) |
-| Gemini Lite | Google | `GOOGLE_API_KEY_FREE` (free) or `GOOGLE_API_KEY` (fallback) |
-| Claude 4.5 | Anthropic | `ANTHROPIC_API_KEY` |
-| Grok 4 | xAI | `XAI_API_KEY` |
-| Auto | Google (Gemini Lite) | `GOOGLE_API_KEY_FREE` (free) or `GOOGLE_API_KEY` (premium) |
+| Model | Provider | API Key Required | Premium Only |
+|-------|----------|----------------|--------------|
+| Auto | Google (Gemini Lite) | `GOOGLE_API_KEY_FREE` (free) or `GOOGLE_API_KEY` (premium) | No |
+| GPT-5 | OpenAI | `OPENAI_API_KEY` | Yes |
+| GPT-4o | OpenAI | `OPENAI_API_KEY` | Yes |
+| GPT-4o Mini | OpenAI | `OPENAI_API_KEY` | Yes |
+| GPT-4 Turbo | OpenAI | `OPENAI_API_KEY` | Yes |
+| GPT-4 | OpenAI | `OPENAI_API_KEY` | Yes |
+| GPT-3.5 Turbo | OpenAI | `OPENAI_API_KEY` | Yes |
+| Gemini 2.0 Latest | Google | `GOOGLE_API_KEY` (premium) | Yes |
+| Gemini Lite | Google | `GOOGLE_API_KEY_FREE` (free) or `GOOGLE_API_KEY` (fallback) | No |
+| Grok 3 | xAI | `XAI_API_KEY` | Yes |
+| Grok 3 Mini | xAI | `XAI_API_KEY` | Yes |
+| Grok 4 | xAI | `XAI_API_KEY` | Yes |
+| Grok 4 Heavy | xAI | `XAI_API_KEY` | Yes |
+| Grok 4 Fast | xAI | `XAI_API_KEY` | Yes |
+| Grok Code Fast 1 | xAI | `XAI_API_KEY` | Yes |
+| Grok Beta | xAI | `XAI_API_KEY` | Yes |
+| Claude 4.5 | Anthropic | `ANTHROPIC_API_KEY` | Yes |
 
 ## ⚠️ Important Notes
 

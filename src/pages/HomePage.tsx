@@ -31,6 +31,7 @@ export default function HomePage() {
   const [isPremium, setIsPremium] = useState(false);
   const [selectedModel, setSelectedModel] = useState<LLMModel>('gemini-lite'); // Default to gemini-lite for free users
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [newConversation, setNewConversation] = useState(false); // Flag to start new conversation
   const answerCardRef = useRef<HTMLDivElement>(null);
   const lastSearchedQueryRef = useRef<string>('');
   const isSearchingRef = useRef<boolean>(false);
@@ -38,43 +39,87 @@ export default function HomePage() {
 
   // Load user premium status on mount and when user data changes
   useEffect(() => {
-    const updatePremiumStatus = () => {
+    // Load saved model preference from localStorage
+    const savedModel = localStorage.getItem('perle-selected-model') as LLMModel | null;
+    
+    const updatePremiumStatus = (isInitialLoad = false) => {
       const user = getUserData();
       if (user) {
         const premium = user.isPremium ?? false;
         setIsPremium(premium);
-        // Set default model based on premium status
-        if (premium) {
-          setSelectedModel('auto'); // Premium users default to 'auto'
-        } else {
-          setSelectedModel('gemini-lite'); // Free users always use gemini-lite
+        
+        // Only set default model on initial load or if no saved preference
+        if (isInitialLoad) {
+          if (savedModel && premium) {
+            // Restore saved model if user is premium
+            setSelectedModel(savedModel);
+          } else if (premium) {
+            setSelectedModel('auto'); // Premium users default to 'auto'
+          } else {
+            setSelectedModel('gemini-lite'); // Free users always use gemini-lite
+          }
         }
+        // Don't reset model on subsequent updates - keep user's selection
       } else {
         // Not logged in = free user
         setIsPremium(false);
-        setSelectedModel('gemini-lite');
+        if (isInitialLoad) {
+          setSelectedModel('gemini-lite');
+        }
       }
     };
 
-    updatePremiumStatus();
+    // Initial load only
+    updatePremiumStatus(true);
 
     // Listen for storage changes (when user logs in/out or premium status changes)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'perle-user-data') {
-        updatePremiumStatus();
+        const user = getUserData();
+        if (user) {
+          const premium = user.isPremium ?? false;
+          setIsPremium(premium);
+          // Don't reset model - keep user's selection
+          if (!premium && selectedModel !== 'gemini-lite') {
+            setSelectedModel('gemini-lite');
+          }
+        } else {
+          setIsPremium(false);
+          if (selectedModel !== 'gemini-lite') {
+            setSelectedModel('gemini-lite');
+          }
+        }
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
     
-    // Also check periodically (for same-tab updates)
-    const interval = setInterval(updatePremiumStatus, 2000);
+    // Also check periodically (for same-tab updates) - but don't reset model
+    const interval = setInterval(() => {
+      const user = getUserData();
+      const currentModel = localStorage.getItem('perle-selected-model') as LLMModel | null;
+      if (user) {
+        const premium = user.isPremium ?? false;
+        setIsPremium(premium);
+        // Don't reset model - keep user's selection
+        // Only force gemini-lite for free users
+        if (!premium) {
+          setSelectedModel('gemini-lite');
+        } else if (currentModel) {
+          // Restore saved model for premium users
+          setSelectedModel(currentModel);
+        }
+      } else {
+        setIsPremium(false);
+        setSelectedModel('gemini-lite');
+      }
+    }, 2000);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
     };
-  }, []);
+  }, []); // Remove selectedModel from dependencies to prevent reset loop
 
   // Ensure free users always use gemini-lite (even if they try to change it)
   useEffect(() => {
@@ -82,6 +127,16 @@ export default function HomePage() {
       setSelectedModel('gemini-lite');
     }
   }, [isPremium, selectedModel]);
+
+  // Save model selection to localStorage when it changes (for premium users)
+  useEffect(() => {
+    if (isPremium && selectedModel !== 'auto') {
+      localStorage.setItem('perle-selected-model', selectedModel);
+    } else if (isPremium && selectedModel === 'auto') {
+      // Remove saved preference if user selects 'auto' (use default)
+      localStorage.removeItem('perle-selected-model');
+    }
+  }, [selectedModel, isPremium]);
 
   // Load search history from localStorage on mount
   useEffect(() => {
@@ -164,8 +219,12 @@ export default function HomePage() {
     
     // Call the real API
     try {
-      const res = await searchAPI(q, mode, selectedModel);
+      const res = await searchAPI(q, mode, selectedModel, newConversation);
       setAnswer(res);
+      // Reset newConversation flag after search
+      if (newConversation) {
+        setNewConversation(false);
+      }
     } catch (error: any) {
       console.error('Search API error:', error);
       // Show error to user - no mock fallback
@@ -302,7 +361,13 @@ export default function HomePage() {
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <LLMModelSelector
               selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
+              onModelChange={(model) => {
+                setSelectedModel(model);
+                // Save to localStorage immediately for premium users
+                if (isPremium) {
+                  localStorage.setItem('perle-selected-model', model);
+                }
+              }}
               isPremium={isPremium}
             />
           </div>
@@ -325,6 +390,14 @@ export default function HomePage() {
         hasAnswer={!!answer && !isLoading}
         searchedQuery={searchedQuery}
         isPremium={isPremium}
+        onNewConversation={() => {
+          setNewConversation(true);
+          setAnswer(null);
+          setSearchedQuery('');
+          setQuery('');
+          // Trigger search with empty query to clear conversation
+          // The actual search will happen when user types and searches
+        }}
       />
 
       <div className="spacer-12" />

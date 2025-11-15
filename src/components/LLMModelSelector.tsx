@@ -8,16 +8,39 @@ const premiumModels: LLMModelInfo[] = [
     id: 'auto',
     name: 'Auto',
     provider: 'Perlé',
-    description: 'Automatically selects the best model (uses Gemini Lite)',
+    description: 'Automatically selects the best model',
     capabilities: ['Smart Selection', 'Optimized', 'Cost Effective']
   },
+  // OpenAI Models
   {
     id: 'gpt-5',
     name: 'GPT-5',
     provider: 'OpenAI',
-    description: 'Latest and most advanced OpenAI model',
+    description: 'Latest and most advanced OpenAI model (GPT-4o)',
     capabilities: ['Advanced Reasoning', 'Latest Tech', 'High Performance']
   },
+  {
+    id: 'gpt-4o',
+    name: 'GPT-4o',
+    provider: 'OpenAI',
+    description: 'OpenAI\'s flagship model with optimized performance',
+    capabilities: ['Fast', 'Multimodal', 'Advanced Reasoning']
+  },
+  {
+    id: 'gpt-4o-mini',
+    name: 'GPT-4o Mini',
+    provider: 'OpenAI',
+    description: 'Faster and more affordable GPT-4o variant',
+    capabilities: ['Fast', 'Cost Effective', 'Efficient']
+  },
+  {
+    id: 'gpt-4-turbo',
+    name: 'GPT-4 Turbo',
+    provider: 'OpenAI',
+    description: 'Enhanced GPT-4 with improved speed and capabilities',
+    capabilities: ['Fast', 'Long Context', 'Advanced']
+  },
+  // Google Gemini Models
   {
     id: 'gemini-2.0-latest',
     name: 'Gemini 2.0 Latest',
@@ -25,20 +48,64 @@ const premiumModels: LLMModelInfo[] = [
     description: 'Google\'s latest and most powerful model',
     capabilities: ['Latest Version', 'Multimodal', 'Advanced AI']
   },
+  // xAI Grok Models
   {
-    id: 'grok-4',
-    name: 'Grok 4',
+    id: 'grok-3',
+    name: 'Grok 3',
     provider: 'xAI',
-    description: 'xAI\'s advanced language model',
-    capabilities: ['Real-time Data', 'Advanced Reasoning', 'Fast']
+    description: 'xAI\'s flagship model for enterprise tasks, coding, and data extraction',
+    capabilities: ['Enterprise', 'Coding', 'Data Extraction', '131K Context']
   },
   {
-    id: 'claude-4.5',
-    name: 'Claude 4.5',
-    provider: 'Anthropic',
-    description: 'Anthropic\'s latest and most capable model',
-    capabilities: ['Advanced Reasoning', 'Long Context', 'Safety Focused']
-  }
+    id: 'grok-3-mini',
+    name: 'Grok 3 Mini',
+    provider: 'xAI',
+    description: 'Lightweight reasoning model for agentic coding and math problems',
+    capabilities: ['Fast', 'Coding', 'Math', '131K Context']
+  },
+  // {
+  //   id: 'grok-4', // COMMENTED OUT - temporarily disabled
+  //   name: 'Grok 4',
+  //   provider: 'xAI',
+  //   description: 'Latest Grok model with enhanced performance and features',
+  //   capabilities: ['Latest', 'Advanced Reasoning', 'High Performance']
+  // },
+  {
+    id: 'grok-4-heavy',
+    name: 'Grok 4 Heavy',
+    provider: 'xAI',
+    description: 'Most powerful Grok model for complex problem-solving',
+    capabilities: ['Complex Tasks', 'Advanced Reasoning', 'High Performance']
+  },
+  {
+    id: 'grok-4-fast',
+    name: 'Grok 4 Fast',
+    provider: 'xAI',
+    description: 'Cost-efficient multimodal model with 2M token context',
+    capabilities: ['Multimodal', 'Fast', '2M Context', 'Cost Efficient']
+  },
+  {
+    id: 'grok-code-fast-1',
+    name: 'Grok Code Fast 1',
+    provider: 'xAI',
+    description: 'Specialized model for agentic coding with visible reasoning',
+    capabilities: ['Coding', 'Fast', 'Reasoning Traces', 'Agentic']
+  },
+  {
+    id: 'grok-beta',
+    name: 'Grok Beta',
+    provider: 'xAI',
+    description: 'xAI\'s beta language model with real-time capabilities',
+    capabilities: ['Real-time Data', 'Fast Response', 'Beta Features']
+  },
+  // Anthropic Claude Models (COMMENTED OUT - No API key)
+  // {
+  //   id: 'claude-4.5',
+  //   name: 'Claude 4.5',
+  //   provider: 'Anthropic',
+  //   description: 'Anthropic\'s latest and most capable model',
+  //   capabilities: ['Advanced Reasoning', 'Long Context', 'Safety Focused']
+  // }
 ];
 
 // Legacy models (kept for backward compatibility, but not shown in selector)
@@ -57,27 +124,27 @@ const legacyModels: LLMModelInfo[] = [
     description: 'Fast and efficient for most tasks',
     capabilities: ['General Purpose', 'Fast Response', 'Cost Effective']
   },
-  {
-    id: 'claude-3-opus',
-    name: 'Claude 3 Opus',
-    provider: 'Anthropic',
-    description: 'Most powerful Claude model for complex tasks',
-    capabilities: ['Advanced Reasoning', 'Long Context', 'Analysis']
-  },
-  {
-    id: 'claude-3-sonnet',
-    name: 'Claude 3 Sonnet',
-    provider: 'Anthropic',
-    description: 'Balanced performance and speed',
-    capabilities: ['Balanced Performance', 'Code Generation', 'Analysis']
-  },
-  {
-    id: 'claude-3-haiku',
-    name: 'Claude 3 Haiku',
-    provider: 'Anthropic',
-    description: 'Fast and lightweight for simple tasks',
-    capabilities: ['Fast Response', 'Simple Tasks', 'Cost Effective']
-  },
+  // {
+  //   id: 'claude-3-opus',
+  //   name: 'Claude 3 Opus',
+  //   provider: 'Anthropic',
+  //   description: 'Most powerful Claude model for complex tasks',
+  //   capabilities: ['Advanced Reasoning', 'Long Context', 'Analysis']
+  // },
+  // {
+  //   id: 'claude-3-sonnet',
+  //   name: 'Claude 3 Sonnet',
+  //   provider: 'Anthropic',
+  //   description: 'Balanced performance and speed',
+  //   capabilities: ['Balanced Performance', 'Code Generation', 'Analysis']
+  // },
+  // {
+  //   id: 'claude-3-haiku',
+  //   name: 'Claude 3 Haiku',
+  //   provider: 'Anthropic',
+  //   description: 'Fast and lightweight for simple tasks',
+  //   capabilities: ['Fast Response', 'Simple Tasks', 'Cost Effective']
+  // },
   {
     id: 'gemini-pro',
     name: 'Gemini Pro',
