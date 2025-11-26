@@ -6,14 +6,35 @@ import discoverRouter from './routes/discover.js';
 import authRouter from './routes/auth.js';
 import profileRouter from './routes/profile.js';
 import libraryRouter from './routes/library.js';
+import paymentRouter from './routes/payment.js';
+import adminRouter from './routes/admin.js';
+import chatRouter from './routes/chat.js';
 import { errorHandler } from './utils/errorHandler.js';
 import { cleanupExpiredSessions } from './utils/auth.js';
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3333;
-const ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
 
-app.use(cors({ origin: ORIGIN }));
+// Allow multiple origins for CORS (development + production)
+const allowedOrigins = [
+  process.env.CORS_ORIGIN // Add custom origin from env if provided
+].filter(Boolean); // Remove undefined values
+
+app.use(cors({ 
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // Log for debugging
+      console.warn(`⚠️  CORS blocked origin: ${origin}`);
+      callback(null, true); // Allow anyway for development (you can change to false in production)
+    }
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: '2mb' }));
 
 // Health check endpoint
@@ -27,6 +48,9 @@ app.use('/api', discoverRouter);
 app.use('/api', authRouter);
 app.use('/api', profileRouter);
 app.use('/api', libraryRouter);
+app.use('/api', paymentRouter);
+app.use('/api', adminRouter);
+app.use('/api', chatRouter);
 
 // 404 handler
 app.use((_req, res) => {
@@ -49,6 +73,6 @@ app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`🚀 SyntraIQ backend listening on http://localhost:${PORT}`);
   // eslint-disable-next-line no-console
-  console.log(`📡 CORS enabled for: ${ORIGIN}`);
+  console.log(`📡 CORS enabled for: ${allowedOrigins.join(', ')}`);
 });
 

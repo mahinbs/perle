@@ -1,11 +1,26 @@
 export type Mode = 'Ask' | 'Research' | 'Summarize' | 'Compare';
 
 export type LLMModel =
+  | 'auto'
+  | 'gpt-5'
+  | 'gpt-4o'
+  | 'gpt-4o-mini'
+  | 'gpt-4-turbo'
   | 'gpt-4'
   | 'gpt-3.5-turbo'
-  | 'claude-3-opus'
-  | 'claude-3-sonnet'
-  | 'claude-3-haiku'
+  | 'gemini-2.0-latest'
+  | 'gemini-lite'
+  | 'grok-3'
+  | 'grok-3-mini'
+  // | 'grok-4' // COMMENTED OUT - temporarily disabled
+  | 'grok-4-heavy'
+  | 'grok-4-fast'
+  | 'grok-code-fast-1'
+  | 'grok-beta'
+  // | 'claude-4.5'
+  // | 'claude-3-opus'
+  // | 'claude-3-sonnet'
+  // | 'claude-3-haiku'
   | 'gemini-pro'
   | 'gemini-pro-vision'
   | 'llama-2'
@@ -24,6 +39,11 @@ export interface AnswerChunk {
   text: string;
   citationIds: string[];
   confidence?: number;
+}
+
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 export interface AnswerResult {

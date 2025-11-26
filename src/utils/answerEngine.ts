@@ -108,16 +108,28 @@ function generateAnswerBody(query: string, mode: Mode, model: LLMModel, uploaded
 
 function getModelPrefix(model: LLMModel): string {
   switch (model) {
+    case 'auto':
+      return '[Auto]';
+    case 'gpt-5':
+      return '[GPT-5]';
+    case 'gemini-2.0-latest':
+      return '[Gemini 2.0]';
+    // case 'grok-4': // COMMENTED OUT - temporarily disabled
+    //   return '[Grok 4]';
+    // case 'claude-4.5':
+    //   return '[Claude 4.5]';
+    case 'gemini-lite':
+      return '[Gemini Lite]';
     case 'gpt-4':
       return '[GPT-4]';
     case 'gpt-3.5-turbo':
       return '[GPT-3.5]';
-    case 'claude-3-opus':
-      return '[Claude Opus]';
-    case 'claude-3-sonnet':
-      return '[Claude Sonnet]';
-    case 'claude-3-haiku':
-      return '[Claude Haiku]';
+    // case 'claude-3-opus':
+    //   return '[Claude Opus]';
+    // case 'claude-3-sonnet':
+    //   return '[Claude Sonnet]';
+    // case 'claude-3-haiku':
+    //   return '[Claude Haiku]';
     case 'gemini-pro':
       return '[Gemini Pro]';
     case 'gemini-pro-vision':
@@ -134,12 +146,10 @@ function getModelPrefix(model: LLMModel): string {
 /**
  * Mock API functions for future integration
  */
-export async function searchAPI(query: string, mode: Mode, model: LLMModel = 'gpt-4'): Promise<AnswerResult> {
-  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+export async function searchAPI(query: string, mode: Mode, model: LLMModel = 'gpt-4', newConversation: boolean = false): Promise<AnswerResult> {
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
-    // Fallback to local fake engine if backend not configured
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return fakeAnswerEngine(query, mode, model);
+    throw new Error('API URL not configured. Please set VITE_API_URL in your .env file.');
   }
   
   // Import auth utilities dynamically to avoid circular dependencies
@@ -148,17 +158,19 @@ export async function searchAPI(query: string, mode: Mode, model: LLMModel = 'gp
   const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ query, mode, model })
+    body: JSON.stringify({ query, mode, model, newConversation })
   });
+  
   if (!res.ok) {
-    // Graceful fallback
-    return fakeAnswerEngine(query, mode, model);
+    const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(errorData.error || `API request failed with status ${res.status}`);
   }
+  
   return await res.json();
 }
 
 export async function getSearchSuggestions(query: string): Promise<string[]> {
-  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
     const suggestions = [
       `${query} benefits`,
@@ -177,7 +189,7 @@ export async function getSearchSuggestions(query: string): Promise<string[]> {
 }
 
 export async function getRelatedQueries(query: string): Promise<string[]> {
-  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
     const related = [
       'What are the alternatives to ' + query.toLowerCase(),

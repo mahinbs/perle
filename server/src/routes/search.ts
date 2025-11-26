@@ -1,9 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { generateServerAnswer } from '../utils/answerEngine.js';
+import { generateAIAnswer } from '../utils/aiProviders.js';
 import type { AnswerResult, Mode, LLMModel } from '../types.js';
 import { supabase } from '../lib/supabase.js';
-import { generateOpenAIAnswer } from '../utils/openai.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -11,17 +10,33 @@ const router = Router();
 const searchSchema = z.object({
   query: z.string().min(1, 'Query cannot be empty').max(500, 'Query too long'),
   mode: z.enum(['Ask', 'Research', 'Summarize', 'Compare']).default('Ask'),
+  newConversation: z.boolean().optional().default(false), // Flag to start new conversation
   model: z.enum([
+    'auto',
+    'gpt-5',
+    'gpt-4o',
+    'gpt-4o-mini',
+    'gpt-4-turbo',
     'gpt-4',
     'gpt-3.5-turbo',
-    'claude-3-opus',
-    'claude-3-sonnet',
-    'claude-3-haiku',
+    'gemini-2.0-latest',
+    'gemini-lite',
+    'grok-3',
+    'grok-3-mini',
+    // 'grok-4', // COMMENTED OUT - temporarily disabled
+    'grok-4-heavy',
+    'grok-4-fast',
+    'grok-code-fast-1',
+    'grok-beta',
+    // 'claude-4.5',
+    // 'claude-3-opus',
+    // 'claude-3-sonnet',
+    // 'claude-3-haiku',
     'gemini-pro',
     'gemini-pro-vision',
     'llama-2',
     'mistral-7b'
-  ]).default('gpt-4')
+  ]).default('gemini-lite')
 });
 
 // Main search endpoint
@@ -35,25 +50,118 @@ router.post('/search', optionalAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const { query, mode, model } = parse.data;
+    const { query, mode, model, newConversation } = parse.data;
     const trimmedQuery = query.trim();
 
     if (!trimmedQuery) {
       return res.status(400).json({ error: 'Query cannot be empty' });
     }
 
-    // Generate answer: Prefer OpenAI if key present, else fallback to local generator
-    let result: AnswerResult;
-    const hasOpenAI = !!process.env.OPENAI_API_KEY;
-    try {
-      if (hasOpenAI) {
-        result = await generateOpenAIAnswer(trimmedQuery, mode as Mode, model as LLMModel);
-      } else {
-        result = generateServerAnswer(trimmedQuery, mode as Mode, model as LLMModel);
+    // Check if user is premium (check premium_tier or is_premium for backward compatibility)
+    let isPremium = false;
+    let premiumTier = 'free';
+    if (req.userId) {
+      try {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('premium_tier, is_premium, subscription_status, subscription_end_date')
+          .eq('user_id', req.userId)
+          .single();
+        
+        if (profile) {
+          premiumTier = (profile as any)?.premium_tier || 'free';
+          // Check if subscription is active and not expired
+          const status = (profile as any)?.subscription_status || 'inactive';
+          const endDate = (profile as any)?.subscription_end_date;
+          
+          if (status === 'active' && endDate) {
+            const expiryDate = new Date(endDate);
+            const now = new Date();
+            if (expiryDate < now) {
+              // Subscription expired
+              isPremium = false;
+              premiumTier = 'free';
+            } else {
+              isPremium = premiumTier !== 'free';
+            }
+          } else {
+            // Fallback to is_premium for backward compatibility
+            isPremium = (profile as any)?.is_premium ?? (premiumTier !== 'free');
+          }
+        }
+      } catch (e) {
+        // If profile fetch fails, assume free user
+        console.warn('Failed to fetch premium status, defaulting to free:', e);
       }
-    } catch (e: any) {
-      // Fallback if OpenAI errors/timeouts
-      result = generateServerAnswer(trimmedQuery, mode as Mode, model as LLMModel);
+    }
+
+    // Determine actual model to use
+    let actualModel: LLMModel = model as LLMModel;
+    
+    if (!isPremium) {
+      // Free users always use gemini-lite
+      actualModel = 'gemini-lite';
+    } else {
+      // Premium users: if 'auto' is selected, use gemini-lite
+      if (model === 'auto') {
+        actualModel = 'gemini-lite';
+      } else {
+        actualModel = model as LLMModel;
+      }
+    }
+
+    // Fetch conversation history (last 10 messages) for context
+    // ONLY for premium users and if not starting a new conversation
+    let conversationHistory: any[] = [];
+    if (req.userId && isPremium && !newConversation) {
+      try {
+        const { data: history } = await supabase
+          .from('conversation_history')
+          .select('query, answer')
+          .eq('user_id', req.userId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        
+        if (history && history.length > 0) {
+          // Convert to conversation format (reverse to get chronological order)
+          conversationHistory = history.reverse().flatMap((item: any) => [
+            { role: 'user' as const, content: item.query },
+            { role: 'assistant' as const, content: item.answer }
+          ]);
+        }
+      } catch (historyError) {
+        console.warn('Failed to fetch conversation history:', historyError);
+        // Continue without history if fetch fails
+      }
+    }
+    
+    // If starting new conversation, clear existing history for this user
+    if (req.userId && newConversation) {
+      try {
+        await supabase
+          .from('conversation_history')
+          .delete()
+          .eq('user_id', req.userId);
+      } catch (clearError) {
+        console.warn('Failed to clear conversation history:', clearError);
+        // Continue even if clear fails
+      }
+    }
+
+    // Generate answer using real AI provider only - no fallbacks
+    let result: AnswerResult;
+    try {
+      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory);
+    } catch (apiError: any) {
+      console.error('AI provider error:', apiError);
+      const errorMessage = apiError?.message || 'Failed to generate answer';
+      // Return specific error message to help debug
+      return res.status(500).json({ 
+        error: errorMessage,
+        details: apiError?.message?.includes('API_KEY') 
+          ? 'API key is missing or invalid. Please check your GOOGLE_API_KEY_FREE in .env file.'
+          : undefined
+      });
     }
 
     // Save to search history if user is authenticated
@@ -70,6 +178,41 @@ router.post('/search', optionalAuth, async (req: AuthRequest, res) => {
       } catch (historyError) {
         // Log but don't fail the request if history save fails
         console.error('Failed to save search history:', historyError);
+      }
+      
+      // Save to conversation history for context (store answer text)
+      // ONLY for premium users
+      if (isPremium) {
+        try {
+          const answerText = result.chunks.map(c => c.text).join('\n\n');
+          await supabase
+            .from('conversation_history')
+            .insert({
+              user_id: req.userId,
+              query: trimmedQuery,
+              answer: answerText,
+              mode: mode,
+              model: actualModel
+            });
+          
+          // Keep only last 20 messages per user (cleanup old ones)
+          const { data: allHistory } = await supabase
+            .from('conversation_history')
+            .select('id')
+            .eq('user_id', req.userId)
+            .order('created_at', { ascending: false });
+          
+          if (allHistory && allHistory.length > 20) {
+            const idsToDelete = allHistory.slice(20).map((h: any) => h.id);
+            await supabase
+              .from('conversation_history')
+              .delete()
+              .in('id', idsToDelete);
+          }
+        } catch (convError) {
+          // Log but don't fail the request if conversation history save fails
+          console.error('Failed to save conversation history:', convError);
+        }
       }
     }
 

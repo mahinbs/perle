@@ -11,6 +11,9 @@ import {
   FaTimes,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
+import { getUserData, getAuthHeaders } from "../utils/auth";
+import { LLMModelSelector } from "../components/LLMModelSelector";
+import type { LLMModel } from "../types";
 
 interface Message {
   id: string;
@@ -22,16 +25,19 @@ interface Message {
 export default function AIFriendPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
+  // Get user data for avatar
+  const userData = getUserData();
+  const userName = userData?.name || 'You';
+  
+  // Generate avatars using UI Avatars service
   const aiProfile = {
     name: "Nani",
     handle: "@syntraIQ companion",
-    avatar:
-      "https://images.unsplash.com/photo-1523289333742-be1143f6b766?auto=format&fit=crop&w=120&q=80",
+    avatar: `https://ui-avatars.com/api/?name=Perle+AI&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
   };
   const userProfile = {
-    name: "You",
-    avatar:
-      "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=120&q=80",
+    name: userName,
+    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
   };
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -46,6 +52,9 @@ export default function AIFriendPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<LLMModel>('gemini-lite');
+  const [newConversation, setNewConversation] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([
     "I'll heat up the dal if you promise to share how your day's been going.",
     "Maybe we can cook together sometime—what's your favorite comfort meal?",
@@ -68,6 +77,71 @@ export default function AIFriendPage() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Load user premium status and model preference
+  useEffect(() => {
+    const user = getUserData();
+    if (user) {
+      const premium = user.isPremium ?? false;
+      setIsPremium(premium);
+      
+      // Load saved model preference
+      const savedModel = localStorage.getItem('perle-ai-friend-model') as LLMModel | null;
+      if (savedModel && premium) {
+        setSelectedModel(savedModel);
+      } else if (premium) {
+        setSelectedModel('auto');
+      } else {
+        setSelectedModel('gemini-lite');
+      }
+    } else {
+      setIsPremium(false);
+      setSelectedModel('gemini-lite');
+    }
+  }, []);
+
+  // Load conversation history on mount (for both free and premium users)
+  useEffect(() => {
+    const loadHistory = async () => {
+      const API_URL = import.meta.env.VITE_API_URL;
+      if (!API_URL) return;
+
+      try {
+        const response = await fetch(`${API_URL}/api/chat/history`, {
+          method: 'GET',
+          headers: getAuthHeaders(),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.messages && data.messages.length > 0) {
+            // Convert to Message format
+            const historyMessages: Message[] = data.messages.map((msg: any, index: number) => ({
+              id: `history-${index}`,
+              role: msg.role === 'user' ? 'user' : 'ai',
+              content: msg.content,
+              timestamp: new Date(msg.timestamp)
+            }));
+            
+            // Replace initial greeting with history
+            setMessages([
+              {
+                id: "1",
+                role: "ai",
+                content: "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+                timestamp: new Date(),
+              },
+              ...historyMessages
+            ]);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+      }
+    };
+
+    loadHistory();
+  }, [isPremium]);
 
   // Speech recognition setup
   useEffect(() => {
@@ -149,46 +223,6 @@ export default function AIFriendPage() {
     setIsListening(false);
   };
 
-  const simulateAIResponse = (userMessage: string): string => {
-    // Simulate AI responses - in a real app, this would call an API
-    const lowerMessage = userMessage.toLowerCase();
-
-    if (
-      lowerMessage.includes("hello") ||
-      lowerMessage.includes("hi") ||
-      lowerMessage.includes("hey")
-    ) {
-      return "Hello! Great to talk with you! What's on your mind today?";
-    }
-
-    if (lowerMessage.includes("how are you")) {
-      return "I'm doing great, thanks for asking! I'm here and ready to chat. How are you doing?";
-    }
-
-    if (lowerMessage.includes("help")) {
-      return "I'm here to help! You can ask me questions, have a conversation, or just chat about anything. What would you like to talk about?";
-    }
-
-    if (lowerMessage.includes("thank")) {
-      return "You're very welcome! Happy to help anytime. 😊";
-    }
-
-    if (lowerMessage.includes("bye") || lowerMessage.includes("goodbye")) {
-      return "Goodbye! It was great chatting with you. Feel free to come back anytime! 👋";
-    }
-
-    // Default response
-    const responses = [
-      "That's interesting! Tell me more about that.",
-      "I see what you mean. How does that make you feel?",
-      "Thanks for sharing that with me. What else is on your mind?",
-      "I'd love to hear more about your thoughts on that.",
-      "That's a great point! Can you elaborate?",
-    ];
-
-    return responses[Math.floor(Math.random() * responses.length)];
-  };
-
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
@@ -200,6 +234,7 @@ export default function AIFriendPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const messageText = inputValue.trim();
     setInputValue("");
     if (attachedFileName) {
       setAttachedFileName(null);
@@ -209,17 +244,70 @@ export default function AIFriendPage() {
     }
     setIsLoading(true);
 
-    // Simulate API delay
-    setTimeout(() => {
+    // Call real API
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) {
+      showToast({
+        message: "API URL not configured",
+        type: "error",
+        duration: 3000,
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/chat`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          message: messageText,
+          model: selectedModel,
+          newConversation: newConversation
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `API request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Check if response is empty or invalid
+      if (!data.message || data.message.trim().length === 0) {
+        throw new Error('AI returned an empty response. Please try again.');
+      }
+      
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
-        content: simulateAIResponse(userMessage.content),
+        content: data.message,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiResponse]);
+      
+      // Reset newConversation flag after first message
+      if (newConversation) {
+        setNewConversation(false);
+      }
+    } catch (error: any) {
+      console.error('Chat API error:', error);
+      showToast({
+        message: error.message || 'Failed to get response from AI',
+        type: "error",
+        duration: 3000,
+      });
+      const errorResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "ai",
+        content: `Sorry, I encountered an error: ${error.message || 'Failed to connect to the server'}. Please try again.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorResponse]);
+    } finally {
       setIsLoading(false);
-    }, 800 + Math.random() * 1200); // Random delay between 800-2000ms
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -279,11 +367,7 @@ export default function AIFriendPage() {
     >
       {/* Header */}
       <div
-        className="row"
         style={{
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "16px",
           borderBottom: "1px solid var(--border)",
           background: "var(--card)",
           position: "sticky",
@@ -291,58 +375,68 @@ export default function AIFriendPage() {
           zIndex: 100,
         }}
       >
-        <div className="row" style={{ alignItems: "center", gap: 12 }}>
-          <button
-            className="btn-ghost"
-            onClick={() => navigateTo("/")}
-            style={{ padding: 8, fontSize: "var(--font-md)" }}
-            aria-label="Back"
-          >
-            ←
-          </button>
+        <div
+          className="row"
+          style={{
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "16px",
+          }}
+        >
           <div className="row" style={{ alignItems: "center", gap: 12 }}>
-            <img
-              src={aiProfile.avatar}
-              alt={`${aiProfile.name} avatar`}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "2px solid var(--accent)",
-              }}
-            />
-            <div>
-              <div className="h3" style={{ marginBottom: 2 }}>
-                {aiProfile.name}
-              </div>
-              <div
-                className="sub text-sm"
-                style={{ fontSize: "var(--font-sm)", opacity: 0.8 }}
-              >
-                {aiProfile.handle}
+            <button
+              className="btn-ghost"
+              onClick={() => navigateTo("/")}
+              style={{ padding: 8, fontSize: "var(--font-md)" }}
+              aria-label="Back"
+            >
+              ←
+            </button>
+            <div className="row" style={{ alignItems: "center", gap: 12 }}>
+              <img
+                src={aiProfile.avatar}
+                alt={`${aiProfile.name} avatar`}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  border: "2px solid var(--accent)",
+                }}
+              />
+              <div>
+                <div className="h3" style={{ marginBottom: 2 }}>
+                  {aiProfile.name}
+                </div>
+                <div
+                  className="sub text-sm"
+                  style={{ fontSize: "var(--font-sm)", opacity: 0.8 }}
+                >
+                  {aiProfile.handle}
+                </div>
               </div>
             </div>
           </div>
+          <div className="row" style={{ alignItems: "center", gap: 10 }}>
+            <div
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                background: "#10A37F",
+                boxShadow: "0 0 8px rgba(16, 163, 127, 0.5)",
+              }}
+            />
+            <button
+              className="btn-ghost"
+              aria-label="Favorite conversation"
+              style={{ padding: 8 }}
+            >
+              <FaStar size={18} color="var(--accent)" />
+            </button>
+          </div>
         </div>
-        <div className="row" style={{ alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background: "#10A37F",
-              boxShadow: "0 0 8px rgba(16, 163, 127, 0.5)",
-            }}
-          />
-          <button
-            className="btn-ghost"
-            aria-label="Favorite conversation"
-            style={{ padding: 8 }}
-          >
-            <FaStar size={18} color="var(--accent)" />
-          </button>
-        </div>
+        
       </div>
 
       {/* Messages Area */}
@@ -502,7 +596,53 @@ export default function AIFriendPage() {
           bottom: 0,
         }}
       >
-        <div className="row" style={{ gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+        {/* Model Selector and New Chat Button (Premium Users) - Moved to bottom */}
+        {isPremium && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+              gap: 8,
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <LLMModelSelector
+                selectedModel={selectedModel}
+                onModelChange={(model) => {
+                  setSelectedModel(model);
+                  localStorage.setItem('perle-ai-friend-model', model);
+                }}
+                isPremium={isPremium}
+              />
+            </div>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setNewConversation(true);
+                setMessages([
+                  {
+                    id: "1",
+                    role: "ai",
+                    content: "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+                    timestamp: new Date(),
+                  },
+                ]);
+              }}
+              style={{
+                padding: "6px 12px",
+                fontSize: "var(--font-xs)",
+                whiteSpace: "nowrap"
+              }}
+              title="Start a new conversation"
+            >
+              New Chat
+            </button>
+          </div>
+        )}
+        
+        <div className="row" style={{ gap: 8, alignItems: "flex-end", flexWrap: "nowrap" }}>
           <input
             ref={fileInputRef}
             type="file"
@@ -511,18 +651,16 @@ export default function AIFriendPage() {
             aria-hidden
           />
           <div
-          className="w-full min-w-[calc(100vw-2rem)]"
             style={{
               flex: 1,
-              position: "relative",
-              background: "var(--bg)",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border)",
-              padding: "10px 12px",
-              minHeight: 44,
-              maxHeight: 120,
               display: "flex",
               alignItems: "center",
+              background: "var(--input-bg)",
+              borderRadius: "var(--radius-lg)",
+              padding: "8px 12px",
+              border: "1px solid var(--border)",
+              minHeight: 44,
+              maxHeight: 120,
             }}
           >
             <textarea
@@ -533,23 +671,25 @@ export default function AIFriendPage() {
                 e.target.style.height = "auto";
                 e.target.style.height = `${Math.min(
                   e.target.scrollHeight,
-                  120
+                  100
                 )}px`;
               }}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               placeholder="Type your message..."
               style={{
-                width: "100%",
+                flex: 1,
                 border: "none",
                 background: "transparent",
-                color: "var(--text)",
-                fontSize: "var(--font-md)",
                 resize: "none",
+                padding: "4px 0",
+                fontSize: "var(--font-md)",
+                color: "var(--text)",
                 outline: "none",
                 fontFamily: "inherit",
                 lineHeight: 1.5,
                 minHeight: 24,
                 maxHeight: 100,
+                overflowY: "auto",
               }}
               rows={1}
               disabled={isLoading}

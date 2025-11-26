@@ -70,7 +70,7 @@ export const UpgradeCard: React.FC = () => {
         {/* Upgrade Button */}
         <button
           className="btn btn-strong"
-          onClick={() => navigateTo("/upgrade")}
+          onClick={() => navigateTo("/subscription")}
           style={{
             width: "100%",
             background: "#111111",

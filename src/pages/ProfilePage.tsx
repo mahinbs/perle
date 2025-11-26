@@ -16,7 +16,7 @@ import {
   type User 
 } from "../utils/auth";
 
-const API_URL = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+const API_URL = import.meta.env.VITE_API_URL as string | undefined;
 
 export default function ProfilePage() {
   const { navigateTo } = useRouterNavigation();

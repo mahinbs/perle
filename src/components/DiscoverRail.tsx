@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { DiscoverItem } from '../types';
+import type { DiscoverItem, Mode } from '../types';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
 import { getAllDiscoverItems } from '../services/discoverService';
 
@@ -23,9 +23,23 @@ export const DiscoverRail: React.FC = () => {
     fetchItems();
   }, []);
 
+  // Map tag to mode
+  const getModeFromTag = (tag: string): Mode => {
+    const tagLower = tag.toLowerCase();
+    if (tagLower.includes('research')) return 'Research';
+    if (tagLower.includes('explain') || tagLower.includes('brief')) return 'Ask';
+    if (tagLower.includes('compare')) return 'Compare';
+    if (tagLower.includes('summarize') || tagLower.includes('summary')) return 'Summarize';
+    return 'Ask'; // Default
+  };
+
   const handleItemClick = (item: DiscoverItem) => {
-    // Navigate to details page with specific item data
-    navigateTo(`/details/${item.id}`, { item });
+    // Navigate to home with search query and mode
+    const mode = getModeFromTag(item.tag);
+    navigateTo('/', { 
+      searchQuery: item.title,
+      mode: mode
+    });
   };
 
   const handleViewAll = () => {
