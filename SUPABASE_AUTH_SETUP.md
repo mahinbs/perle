@@ -26,7 +26,7 @@ This guide shows you how to configure Supabase Auth with beautiful email templat
 
 #### Subject Line:
 ```
-Verify Your Email - Perlé
+Verify Your Email - SyntraIQ
 ```
 
 #### Email Body (HTML):
@@ -38,7 +38,7 @@ Copy and paste this beautiful template:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verify Your Email - Perlé</title>
+  <title>Verify Your Email - SyntraIQ</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #F8F7F4;">
   <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #F8F7F4; padding: 40px 20px;">
@@ -49,7 +49,7 @@ Copy and paste this beautiful template:
           <tr>
             <td style="background: linear-gradient(135deg, #C7A869 0%, #B8955A 100%); padding: 40px 30px; text-align: center;">
               <h1 style="margin: 0; color: #FFFFFF; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">
-                Perlé
+                SyntraIQ
               </h1>
               <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">
                 Elegant AI Search
@@ -69,7 +69,7 @@ Copy and paste this beautiful template:
               </p>
               
               <p style="margin: 0 0 30px 0; color: #4B4B4B; font-size: 16px; line-height: 1.6;">
-                Welcome to Perlé! To complete your signup, please verify your email address using the 6-digit code below:
+                Welcome to SyntraIQ! To complete your signup, please verify your email address using the 6-digit code below:
               </p>
               
               <!-- OTP Code Box -->
@@ -94,7 +94,7 @@ Copy and paste this beautiful template:
               </table>
               
               <p style="margin: 30px 0 0 0; color: #4B4B4B; font-size: 14px; line-height: 1.6;">
-                If you didn't create an account with Perlé, you can safely ignore this email.
+                If you didn't create an account with SyntraIQ, you can safely ignore this email.
               </p>
             </td>
           </tr>
@@ -103,7 +103,7 @@ Copy and paste this beautiful template:
           <tr>
             <td style="padding: 30px; background-color: #F8F7F4; border-top: 1px solid #EBE8E1; text-align: center;">
               <p style="margin: 0 0 10px 0; color: #4B4B4B; font-size: 12px;">
-                © 2024 Perlé. All rights reserved.
+                © 2024 SyntraIQ. All rights reserved.
               </p>
               <p style="margin: 0; color: #4B4B4B; font-size: 12px;">
                 This is an automated email, please do not reply.
@@ -174,7 +174,7 @@ Supabase provides these variables you can use:
 
 ## 🎨 Template Features
 
-- ✅ Beautiful gold gradient header matching Perlé design
+- ✅ Beautiful gold gradient header matching SyntraIQ design
 - ✅ Large, readable 6-digit code display
 - ✅ Professional styling
 - ✅ Responsive design

@@ -1,4 +1,4 @@
-# Perlé — Elegant Perplexity-style Mobile Web App
+# SyntraIQ — Elegant Perplexity-style Mobile Web App
 
 A beautiful, mobile-first web application inspired by Perplexity's design, built with React and TypeScript. Features elegant UI, comprehensive search functionality, and mobile-optimized interactions.
 
@@ -177,7 +177,7 @@ Create a `.env` file for configuration:
 
 ```env
 VITE_API_URL=https://your-api-endpoint.com
-VITE_APP_NAME=Perlé
+VITE_APP_NAME=SyntraIQ
 VITE_APP_VERSION=1.0.0
 ```
 
@@ -229,4 +229,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Perlé** — Where elegance meets intelligence. ✨
+**SyntraIQ** — Where elegance meets intelligence. ✨

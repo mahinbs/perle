@@ -13,7 +13,7 @@
    - `POST /api/auth/resend-otp` - Resend verification code
 
 3. **Beautiful Email Template**
-   - HTML email matching Perlé design
+   - HTML email matching SyntraIQ design
    - Gold gradient header
    - Large, readable 6-digit code
    - Professional styling
@@ -88,11 +88,11 @@ Then uncomment the Resend code in `server/src/utils/email.ts`
 
 ## 🎨 Email Template Features
 
-- **Beautiful Design**: Matches Perlé gold theme
+- **Beautiful Design**: Matches SyntraIQ gold theme
 - **Responsive**: Works on all devices
 - **Clear OTP Display**: Large, monospace font
 - **Professional**: Includes expiration notice
-- **Branded**: Perlé logo and colors
+- **Branded**: SyntraIQ logo and colors
 
 ## 🔧 Development Mode
 

@@ -1,4 +1,4 @@
-# 🚀 Complete Setup Guide for Perlé
+# 🚀 Complete Setup Guide for SyntraIQ
 
 This guide will help you set up the backend with Supabase and connect the frontend.
 
@@ -73,7 +73,7 @@ npm run server:dev
 
 You should see:
 ```
-🚀 Perlé backend listening on http://localhost:3333
+🚀 SyntraIQ backend listening on http://localhost:3333
 📡 CORS enabled for: http://localhost:3000
 ```
 

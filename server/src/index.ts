@@ -47,7 +47,7 @@ setInterval(async () => {
 
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`🚀 Perlé backend listening on http://localhost:${PORT}`);
+  console.log(`🚀 SyntraIQ backend listening on http://localhost:${PORT}`);
   // eslint-disable-next-line no-console
   console.log(`📡 CORS enabled for: ${ORIGIN}`);
 });

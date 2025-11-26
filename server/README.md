@@ -1,6 +1,6 @@
-# Perlé Backend
+# SyntraIQ Backend
 
-Express + TypeScript backend with Supabase integration for the Perlé application.
+Express + TypeScript backend with Supabase integration for the SyntraIQ application.
 
 ## 🚀 Quick Start
 

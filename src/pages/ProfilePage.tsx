@@ -445,7 +445,7 @@ export default function ProfilePage() {
       {!isAuthenticated ? (
         <div className="" style={{ padding: 10, marginBottom: 20, textAlign: 'center' }}>
           {/* <div className="h3" style={{ marginBottom: 8 }}>
-            Welcome to Perlé
+            Welcome to SyntraIQ
           </div>
           <div className="sub" style={{ marginBottom: 20 }}>
             Sign in to access your personalized settings and saved content

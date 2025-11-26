@@ -189,7 +189,7 @@ export default function MaintenancePage() {
               letterSpacing: 1,
             }}
           >
-            Perlé
+            SyntraIQ
           </div>
           <div
             style={{

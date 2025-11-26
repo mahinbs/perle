@@ -46,7 +46,7 @@ Follow these exact steps:
 
 **Subject Line:**
 ```
-Verify Your Email - Perlé
+Verify Your Email - SyntraIQ
 ```
 
 **Body (HTML) - Copy this ENHANCED version:**
@@ -99,7 +99,7 @@ The interface looks exactly like your image:
 
 - ✅ Beautiful gold gradient header
 - ✅ Large 6-digit code display (monospace font)
-- ✅ Matches Perlé design colors
+- ✅ Matches SyntraIQ design colors
 - ✅ Responsive (works on mobile)
 - ✅ Professional footer
 

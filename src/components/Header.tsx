@@ -58,7 +58,7 @@ export const Header: React.FC = () => {
               style={{ cursor: "pointer", fontSize: "var(--font-2xl)" }}
               onClick={() => navigateTo("/")}
             >
-              Perlé <Dot />
+              SyntraIQ <Dot />
             </div>
           </div>
           <button

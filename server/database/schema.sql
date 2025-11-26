@@ -1,4 +1,4 @@
--- Perlé Database Schema for Supabase
+-- SyntraIQ Database Schema for Supabase
 -- Run this in your Supabase SQL Editor
 
 -- Enable UUID extension

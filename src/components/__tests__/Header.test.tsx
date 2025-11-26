@@ -5,7 +5,7 @@ import { Header } from '../Header';
 describe('Header', () => {
   it('should render the app title', () => {
     render(<Header />);
-    expect(screen.getByText('Perlé')).toBeInTheDocument();
+    expect(screen.getByText('SyntraIQ')).toBeInTheDocument();
   });
 
   it('should render navigation buttons', () => {

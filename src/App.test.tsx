@@ -28,7 +28,7 @@ describe('App', () => {
 
   it('should render the app title', () => {
     render(<App />);
-    expect(screen.getByText('Perlé')).toBeInTheDocument();
+    expect(screen.getByText('SyntraIQ')).toBeInTheDocument();
   });
 
   it('should render mode selection buttons', () => {

@@ -214,7 +214,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     const sourceText = sources.map(s => `${s.title} (${s.domain})`).join('\n');
     
     await shareContent({
-      title: 'Answer from Perlé',
+      title: 'Answer from SyntraIQ',
       text: `${answerText}\n\nSources:\n${sourceText}`,
       url: window.location.href
     });
