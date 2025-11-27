@@ -43,15 +43,15 @@ export const ModeBar: React.FC<ModeBarProps> = ({ mode, setMode }) => {
               }}
             >
               <span className="mode-text">{m}</span>
-              {m === mode && <span className="mode-indicator">●</span>}
+              {/* {m === mode && <span className="mode-indicator">●</span>} */}
             </button>
           ))}
         </div>
-        
+
         {/* Mode description */}
-        <div className="mode-description" style={{ 
-          marginTop: 8, 
-          fontSize: "var(--font-sm)", 
+        <div className="mode-description" style={{
+          marginTop: 8,
+          fontSize: "var(--font-sm)",
           color: 'var(--sub)',
           textAlign: 'center',
           opacity: 0.8
