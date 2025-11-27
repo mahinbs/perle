@@ -44,7 +44,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
           Create Account
         </div>
         <div className="sub" style={{ textAlign: 'center', marginBottom: 24 }}>
-          Join SyntraIQ and start exploring
+          Join Syntra<span className="text-gold">IQ</span>  and start exploring
         </div>
 
         {error && (

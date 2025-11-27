@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getDiscoverItemById } from "../services/discoverService";
 import type { DiscoverItem } from "../types";
+import { IoIosArrowBack } from "react-icons/io";
 
 export default function DetailsPage() {
   const { navigateTo, state: currentData, params } = useRouterNavigation();
@@ -120,7 +121,7 @@ export default function DetailsPage() {
           onClick={handleBack}
           style={{ fontSize: "var(--font-md)" }}
         >
-          ← Back
+          <IoIosArrowBack size={24} /> Back
         </button>
         <div className="row" style={{ gap: 8 }}>
           <button

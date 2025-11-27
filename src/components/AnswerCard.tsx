@@ -465,7 +465,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
               }
             }}
             style={{ 
-              fontSize: 'var(--font-2xl)', 
+              fontSize: 'var(--font-xl)', 
               fontWeight: 600,
               lineHeight: '32px',
               color: 'var(--text)',

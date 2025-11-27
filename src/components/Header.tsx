@@ -32,12 +32,46 @@ export const Header: React.FC = () => {
             width: "100%",
           }}
         >
-          <div className="row"
+          <div
+            className="row"
             style={{
               gap: 6,
               alignItems: "center",
             }}
           >
+            <div
+              className="h1 header-title"
+              style={{ cursor: "pointer", fontSize: "var(--font-2xl)" }}
+              onClick={() => navigateTo("/")}
+            >
+              Syntra<span className="text-gold -ml-2">IQ</span> <Dot />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className={`btn-ghost ${isActive("/discover") ? "active" : ""}`}
+              onClick={() => navigateTo("/discover")}
+              aria-label="Discover"
+              style={{
+                padding: 4,
+                minHeight: 36,
+                minWidth: 48,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <span className="discover-icon" aria-hidden="true">
+                <img
+                  src="https://res.cloudinary.com/dknafpppp/image/upload/v1759865727/home-based-medical-care-bringing-healthcare-to-your-doorstep_tgkhkw.png"
+                  alt=""
+                />
+                <img
+                  src="https://res.cloudinary.com/dknafpppp/image/upload/v1759865401/black_background_qachfc.jpg"
+                  alt=""
+                />
+              </span>
+            </button>
             <button
               className={`btn-ghost ${isActive("/profile") ? "active" : ""}`}
               onClick={() => navigateTo("/profile")}
@@ -47,44 +81,13 @@ export const Header: React.FC = () => {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                minWidth: 36,
                 minHeight: 36,
+                minWidth: 48,
               }}
             >
-              <FaUserCircle size={20} />
+              <FaUserCircle className="min-w-8 min-h-9" size={33} />
             </button>
-            <div
-              className="h1 header-title"
-              style={{ cursor: "pointer", fontSize: "var(--font-2xl)" }}
-              onClick={() => navigateTo("/")}
-            >
-              SyntraIQ <Dot />
-            </div>
           </div>
-          <button
-            className={`btn-ghost ${isActive("/discover") ? "active" : ""}`}
-            onClick={() => navigateTo("/discover")}
-            aria-label="Discover"
-            style={{
-              padding: 6,
-              minHeight: 36,
-              minWidth: 48,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <span className="discover-icon" aria-hidden="true">
-              <img
-                src="https://res.cloudinary.com/dknafpppp/image/upload/v1759865727/home-based-medical-care-bringing-healthcare-to-your-doorstep_tgkhkw.png"
-                alt=""
-              />
-              <img
-                src="https://res.cloudinary.com/dknafpppp/image/upload/v1759865401/black_background_qachfc.jpg"
-                alt=""
-              />
-            </span>
-          </button>
         </div>
 
         <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>

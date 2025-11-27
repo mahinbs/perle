@@ -20,7 +20,7 @@ function getOTPEmailTemplate(name: string, otp: string): string {
           <tr>
             <td style="background: linear-gradient(135deg, #C7A869 0%, #B8955A 100%); padding: 40px 30px; text-align: center;">
               <h1 style="margin: 0; color: #FFFFFF; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">
-                SyntraIQ
+                Syntra<span style="color: #C7A869;">IQ</span>
               </h1>
               <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">
                 Elegant AI Search
@@ -40,7 +40,7 @@ function getOTPEmailTemplate(name: string, otp: string): string {
               </p>
               
               <p style="margin: 0 0 30px 0; color: #4B4B4B; font-size: 16px; line-height: 1.6;">
-                Welcome to SyntraIQ! To complete your signup, please verify your email address using the 6-digit code below:
+                Welcome to Syntra<span style="color: #C7A869;">IQ</span>! To complete your signup, please verify your email address using the 6-digit code below:
               </p>
               
               <!-- OTP Code Box -->

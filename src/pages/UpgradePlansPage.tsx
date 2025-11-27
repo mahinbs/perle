@@ -1,3 +1,4 @@
+import { IoIosArrowBack } from "react-icons/io";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 
 const plans = [
@@ -57,7 +58,7 @@ export default function UpgradePlansPage() {
           aria-label="Back to profile"
           style={{ fontSize: "var(--font-md)" }}
         >
-          ← Back
+          <IoIosArrowBack size={24} /> Back
         </button>
         <div className="h1" style={{ margin: 0 }}>
           Choose your plan
@@ -66,8 +67,9 @@ export default function UpgradePlansPage() {
       </div>
 
       <div className="sub" style={{ lineHeight: 1.6 }}>
-        Unlock more power with SyntraIQ. Pick the plan that matches your pace today—change or cancel
-        anytime.
+        Unlock more power with Syntra
+        <span style={{ color: "var(--accent)" }}>IQ</span>. Pick the plan that
+        matches your pace today—change or cancel anytime.
       </div>
 
       <div className="col" style={{ gap: 20 }}>
@@ -82,12 +84,17 @@ export default function UpgradePlansPage() {
               gap: 16,
               borderWidth: plan.highlighted ? 2 : 1,
               borderColor: plan.highlighted ? "var(--accent)" : "var(--border)",
-              boxShadow: plan.highlighted ? "0 16px 32px rgba(0, 0, 0, 0.18)" : "var(--shadow)",
+              boxShadow: plan.highlighted
+                ? "0 16px 32px rgba(0, 0, 0, 0.18)"
+                : "var(--shadow)",
             }}
           >
             <div
               className="row"
-              style={{ justifyContent: "space-between", alignItems: "baseline" }}
+              style={{
+                justifyContent: "space-between",
+                alignItems: "baseline",
+              }}
             >
               <div>
                 <div className="h2" style={{ marginBottom: 4 }}>
@@ -112,9 +119,20 @@ export default function UpgradePlansPage() {
               )}
             </div>
 
-            <div className="sub" style={{ lineHeight: 1.6 }}>{plan.description}</div>
+            <div className="sub" style={{ lineHeight: 1.6 }}>
+              {plan.description}
+            </div>
 
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+            <ul
+              style={{
+                listStyle: "none",
+                padding: 0,
+                margin: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
               {plan.perks.map((perk) => (
                 <li
                   key={perk}
@@ -152,4 +170,3 @@ export default function UpgradePlansPage() {
     </div>
   );
 }
-

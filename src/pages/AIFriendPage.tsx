@@ -14,6 +14,7 @@ import { useToast } from "../contexts/ToastContext";
 import { getUserData, getAuthHeaders } from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
+import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 
 interface Message {
   id: string;
@@ -27,8 +28,8 @@ export default function AIFriendPage() {
   const { showToast } = useToast();
   // Get user data for avatar
   const userData = getUserData();
-  const userName = userData?.name || 'You';
-  
+  const userName = userData?.name || "You";
+
   // Generate avatars using UI Avatars service
   const aiProfile = {
     name: "Nani",
@@ -37,7 +38,9 @@ export default function AIFriendPage() {
   };
   const userProfile = {
     name: userName,
-    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
+    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      userName
+    )}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
   };
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -53,7 +56,7 @@ export default function AIFriendPage() {
   const [isListening, setIsListening] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<LLMModel>('gemini-lite');
+  const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite");
   const [newConversation, setNewConversation] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([
     "I'll heat up the dal if you promise to share how your day's been going.",
@@ -84,19 +87,21 @@ export default function AIFriendPage() {
     if (user) {
       const premium = user.isPremium ?? false;
       setIsPremium(premium);
-      
+
       // Load saved model preference
-      const savedModel = localStorage.getItem('perle-ai-friend-model') as LLMModel | null;
+      const savedModel = localStorage.getItem(
+        "perle-ai-friend-model"
+      ) as LLMModel | null;
       if (savedModel && premium) {
         setSelectedModel(savedModel);
       } else if (premium) {
-        setSelectedModel('auto');
+        setSelectedModel("auto");
       } else {
-        setSelectedModel('gemini-lite');
+        setSelectedModel("gemini-lite");
       }
     } else {
       setIsPremium(false);
-      setSelectedModel('gemini-lite');
+      setSelectedModel("gemini-lite");
     }
   }, []);
 
@@ -108,7 +113,7 @@ export default function AIFriendPage() {
 
       try {
         const response = await fetch(`${API_URL}/api/chat/history`, {
-          method: 'GET',
+          method: "GET",
           headers: getAuthHeaders(),
         });
 
@@ -116,27 +121,30 @@ export default function AIFriendPage() {
           const data = await response.json();
           if (data.messages && data.messages.length > 0) {
             // Convert to Message format
-            const historyMessages: Message[] = data.messages.map((msg: any, index: number) => ({
-              id: `history-${index}`,
-              role: msg.role === 'user' ? 'user' : 'ai',
-              content: msg.content,
-              timestamp: new Date(msg.timestamp)
-            }));
-            
+            const historyMessages: Message[] = data.messages.map(
+              (msg: any, index: number) => ({
+                id: `history-${index}`,
+                role: msg.role === "user" ? "user" : "ai",
+                content: msg.content,
+                timestamp: new Date(msg.timestamp),
+              })
+            );
+
             // Replace initial greeting with history
             setMessages([
               {
                 id: "1",
                 role: "ai",
-                content: "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+                content:
+                  "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
                 timestamp: new Date(),
               },
-              ...historyMessages
+              ...historyMessages,
             ]);
           }
         }
       } catch (error) {
-        console.error('Failed to load chat history:', error);
+        console.error("Failed to load chat history:", error);
       }
     };
 
@@ -258,27 +266,31 @@ export default function AIFriendPage() {
 
     try {
       const response = await fetch(`${API_URL}/api/chat`, {
-        method: 'POST',
+        method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
           message: messageText,
           model: selectedModel,
-          newConversation: newConversation
-        })
+          newConversation: newConversation,
+        }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `API request failed with status ${response.status}`);
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(
+          errorData.error || `API request failed with status ${response.status}`
+        );
       }
 
       const data = await response.json();
-      
+
       // Check if response is empty or invalid
       if (!data.message || data.message.trim().length === 0) {
-        throw new Error('AI returned an empty response. Please try again.');
+        throw new Error("AI returned an empty response. Please try again.");
       }
-      
+
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
@@ -286,22 +298,24 @@ export default function AIFriendPage() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiResponse]);
-      
+
       // Reset newConversation flag after first message
       if (newConversation) {
         setNewConversation(false);
       }
     } catch (error: any) {
-      console.error('Chat API error:', error);
+      console.error("Chat API error:", error);
       showToast({
-        message: error.message || 'Failed to get response from AI',
+        message: error.message || "Failed to get response from AI",
         type: "error",
         duration: 3000,
       });
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
-        content: `Sorry, I encountered an error: ${error.message || 'Failed to connect to the server'}. Please try again.`,
+        content: `Sorry, I encountered an error: ${
+          error.message || "Failed to connect to the server"
+        }. Please try again.`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorResponse]);
@@ -390,7 +404,7 @@ export default function AIFriendPage() {
               style={{ padding: 8, fontSize: "var(--font-md)" }}
               aria-label="Back"
             >
-              ←
+              <IoIosArrowBack size={24} />
             </button>
             <div className="row" style={{ alignItems: "center", gap: 12 }}>
               <img
@@ -436,7 +450,6 @@ export default function AIFriendPage() {
             </button>
           </div>
         </div>
-        
       </div>
 
       {/* Messages Area */}
@@ -612,7 +625,7 @@ export default function AIFriendPage() {
                 selectedModel={selectedModel}
                 onModelChange={(model) => {
                   setSelectedModel(model);
-                  localStorage.setItem('perle-ai-friend-model', model);
+                  localStorage.setItem("perle-ai-friend-model", model);
                 }}
                 isPremium={isPremium}
               />
@@ -625,7 +638,8 @@ export default function AIFriendPage() {
                   {
                     id: "1",
                     role: "ai",
-                    content: "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+                    content:
+                      "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
                     timestamp: new Date(),
                   },
                 ]);
@@ -633,7 +647,7 @@ export default function AIFriendPage() {
               style={{
                 padding: "6px 12px",
                 fontSize: "var(--font-xs)",
-                whiteSpace: "nowrap"
+                whiteSpace: "nowrap",
               }}
               title="Start a new conversation"
             >
@@ -641,8 +655,79 @@ export default function AIFriendPage() {
             </button>
           </div>
         )}
-        
-        <div className="row" style={{ gap: 8, alignItems: "flex-end", flexWrap: "nowrap" }}>
+
+        {attachedFileName && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: "10px 12px",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+              background: "var(--card)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: "var(--font-sm)",
+                color: "var(--text)",
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              <FaPaperclip size={14} color="var(--accent)" />
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {attachedFileName}
+              </span>
+              {isUploading && (
+                <span
+                  style={{
+                    fontSize: "var(--font-xs)",
+                    color: "var(--accent)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Uploading…
+                </span>
+              )}
+            </div>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                setAttachedFileName(null);
+                setIsUploading(false);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: "var(--font-xs)",
+              }}
+              aria-label="Remove attached file"
+            >
+              <FaTimes size={12} />
+              Remove
+            </button>
+          </div>
+        )}
+
+        <div
+          className="row"
+          style={{ gap: 8, alignItems: "flex-end", flexWrap: "nowrap" }}
+        >
           <input
             ref={fileInputRef}
             type="file"
@@ -747,7 +832,9 @@ export default function AIFriendPage() {
               justifyContent: "center",
               opacity: isLoading ? 0.6 : 1,
               cursor: isLoading ? "not-allowed" : "pointer",
-              background: attachedFileName ? "rgba(199, 168, 105, 0.15)" : "transparent",
+              background: attachedFileName
+                ? "rgba(199, 168, 105, 0.15)"
+                : "transparent",
               color: attachedFileName ? "var(--accent)" : "inherit",
               transition: "background 0.2s ease, color 0.2s ease",
             }}
@@ -756,7 +843,6 @@ export default function AIFriendPage() {
           >
             <FaPaperclip size={18} />
           </button>
-          
 
           <button
             className="btn-ghost"
@@ -803,7 +889,7 @@ export default function AIFriendPage() {
             aria-label="Send message"
           >
             <span style={{ fontSize: "var(--font-lg)", fontWeight: 600 }}>
-              →
+              <IoIosSend />
             </span>
           </button>
         </div>
@@ -818,74 +904,6 @@ export default function AIFriendPage() {
         >
           Press Enter to send, Shift+Enter for new line
         </div>
-
-        {attachedFileName && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: "10px 12px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border)",
-              background: "var(--card)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                fontSize: "var(--font-sm)",
-                color: "var(--text)",
-                flex: 1,
-                minWidth: 0,
-              }}
-            >
-              <FaPaperclip size={14} color="var(--accent)" />
-              <span
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {attachedFileName}
-              </span>
-              {isUploading && (
-                <span
-                  style={{
-                    fontSize: "var(--font-xs)",
-                    color: "var(--accent)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Uploading…
-                </span>
-              )}
-            </div>
-            <button
-              className="btn-ghost"
-              onClick={() => {
-                setAttachedFileName(null);
-                setIsUploading(false);
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: "var(--font-xs)",
-              }}
-              aria-label="Remove attached file"
-            >
-              <FaTimes size={12} />
-              Remove
-            </button>
-          </div>
-        )}
 
         {showSuggestions && (
           <div

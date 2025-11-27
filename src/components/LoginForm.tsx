@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { GoogleIcon } from '../assets/icons/GoogleIcon';
+import { useState } from "react";
+import { GoogleIcon } from "../assets/icons/GoogleIcon";
 
 interface LoginFormProps {
   onLogin: (email: string, password: string) => void;
@@ -9,15 +9,15 @@ interface LoginFormProps {
   error?: string;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ 
-  onLogin, 
+export const LoginForm: React.FC<LoginFormProps> = ({
+  onLogin,
   onSwitchToSignup,
-  onGoogleSignIn, 
-  isLoading = false, 
-  error 
+  onGoogleSignIn,
+  isLoading = false,
+  error,
 }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -29,25 +29,28 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   return (
     <div className="auth-form">
-      <div className="card" style={{ padding: 24, maxWidth: 400, margin: '0 auto' }}>
-        <div className="h2" style={{ textAlign: 'center', marginBottom: 8 }}>
+      <div
+        className="card"
+        style={{ padding: 24, maxWidth: 400, margin: "0 auto" }}
+      >
+        <div className="h2" style={{ textAlign: "center", marginBottom: 8 }}>
           Welcome Back
         </div>
-        <div className="sub" style={{ textAlign: 'center', marginBottom: 24 }}>
+        <div className="sub" style={{ textAlign: "center", marginBottom: 24 }}>
           Sign in to your account
         </div>
 
         {error && (
-          <div 
-            className="error-message" 
-            style={{ 
-              padding: 12, 
-              marginBottom: 16, 
-              borderRadius: 'var(--radius-sm)',
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid #ff4444',
-              color: '#ff4444',
-              fontSize: 'var(--font-md)'
+          <div
+            className="error-message"
+            style={{
+              padding: 12,
+              marginBottom: 16,
+              borderRadius: "var(--radius-sm)",
+              background: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid #ff4444",
+              color: "#ff4444",
+              fontSize: "var(--font-md)",
             }}
           >
             {error}
@@ -62,15 +65,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               onClick={onGoogleSignIn}
               disabled={isLoading}
               style={{
-                width: '100%',
+                width: "100%",
                 marginBottom: 16,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 gap: 10,
                 fontWeight: 600,
                 opacity: isLoading ? 0.6 : 1,
-                cursor: isLoading ? 'not-allowed' : 'pointer',
+                cursor: isLoading ? "not-allowed" : "pointer",
               }}
             >
               <GoogleIcon width={22} height={22} />
@@ -78,38 +81,42 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </button>
             <div
               style={{
-                display: 'flex',
-                alignItems: 'center',
+                display: "flex",
+                alignItems: "center",
                 gap: 12,
                 marginBottom: 16,
               }}
             >
-              <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              <span
+                style={{ flex: 1, height: 1, background: "var(--border)" }}
+              />
               <span
                 className="sub"
                 style={{
-                  fontSize: 'var(--font-sm)',
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
+                  fontSize: "var(--font-sm)",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
                   fontWeight: 600,
                 }}
               >
                 or
               </span>
-              <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              <span
+                style={{ flex: 1, height: 1, background: "var(--border)" }}
+              />
             </div>
           </>
         )}
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>
-            <label 
-              htmlFor="email" 
-              style={{ 
-                display: 'block', 
-                marginBottom: 6, 
+            <label
+              htmlFor="email"
+              style={{
+                display: "block",
+                marginBottom: 6,
                 fontWeight: 500,
-                color: 'var(--text)'
+                color: "var(--text)",
               }}
             >
               Email
@@ -123,64 +130,64 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               required
               className="input"
               style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--card)',
-                fontSize: 'var(--font-md)'
+                width: "100%",
+                padding: "12px 16px",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-sm)",
+                background: "var(--card)",
+                fontSize: "var(--font-md)",
               }}
             />
           </div>
 
           <div style={{ marginBottom: 20 }}>
-            <label 
-              htmlFor="password" 
-              style={{ 
-                display: 'block', 
-                marginBottom: 6, 
+            <label
+              htmlFor="password"
+              style={{
+                display: "block",
+                marginBottom: 6,
                 fontWeight: 500,
-                color: 'var(--text)'
+                color: "var(--text)",
               }}
             >
               Password
             </label>
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: "relative" }}>
               <input
                 id="password"
-                type={showPassword ? 'text' : 'password'}
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
                 className="input"
                 style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  paddingRight: '48px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--card)',
-                fontSize: 'var(--font-md)'
+                  width: "100%",
+                  padding: "12px 16px",
+                  paddingRight: "48px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--card)",
+                  fontSize: "var(--font-md)",
                 }}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 style={{
-                  position: 'absolute',
+                  position: "absolute",
                   right: 12,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                fontSize: 'var(--font-lg)',
-                  color: 'var(--sub)',
-                  padding: 4
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "var(--font-lg)",
+                  color: "var(--sub)",
+                  padding: 4,
                 }}
               >
-                {showPassword ? '🙈' : '👁️'}
+                {showPassword ? "🙈" : "👁️"}
               </button>
             </div>
           </div>
@@ -189,44 +196,27 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             type="submit"
             className="btn"
             disabled={isLoading || !email || !password}
-            style={{ width: '100%', marginBottom: 16 }}
+            style={{ width: "100%", marginBottom: 16 }}
           >
-            {isLoading ? 'Signing In...' : 'Sign In'}
+            {isLoading ? "Signing In..." : "Sign In"}
           </button>
         </form>
 
-        <div style={{ textAlign: 'center' }}>
+        <div style={{ textAlign: "center" }}>
           <span className="sub">Don't have an account? </span>
           <button
             onClick={onSwitchToSignup}
             style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--accent)',
-              cursor: 'pointer',
+              background: "none",
+              border: "none",
+              color: "var(--accent)",
+              cursor: "pointer",
               fontWeight: 600,
-              textDecoration: 'underline'
+              textDecoration: "underline",
             }}
           >
             Sign up
           </button>
-        </div>
-
-        {/* Demo credentials */}
-        <div 
-          className="demo-credentials"
-          style={{
-            marginTop: 20,
-            padding: 12,
-            borderRadius: 'var(--radius-sm)',
-            fontSize: 'var(--font-sm)',
-            color: 'var(--sub)',
-            textAlign: 'center'
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Demo Credentials:</div>
-          <div>Email: demo@perle.com</div>
-          <div>Password: demo123</div>
         </div>
       </div>
     </div>

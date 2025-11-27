@@ -189,7 +189,7 @@ export default function MaintenancePage() {
               letterSpacing: 1,
             }}
           >
-            SyntraIQ
+            Syntra<span className="text-gold">IQ</span> 
           </div>
           <div
             style={{

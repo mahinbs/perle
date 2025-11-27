@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getAllDiscoverItems } from "../services/discoverService";
 import type { DiscoverItem } from "../types";
+import { IoIosArrowBack } from "react-icons/io";
 
 export default function DiscoverPage() {
   const { navigateTo } = useRouterNavigation();
@@ -60,7 +61,7 @@ export default function DiscoverPage() {
           onClick={() => navigateTo("/")}
           style={{ fontSize: "var(--font-md)" }}
         >
-          ← Back
+          <IoIosArrowBack size={24} /> Back
         </button>
       </div>
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
 import { useToast } from '../contexts/ToastContext';
 import { getUserData, getAuthHeaders } from '../utils/auth';
+import { IoIosArrowBack } from 'react-icons/io';
 
 const API_URL = import.meta.env.VITE_API_URL as string | undefined;
 
@@ -309,7 +310,7 @@ export default function SubscriptionPage() {
           onClick={() => navigateTo('/')}
           style={{ marginBottom: 24 }}
         >
-          ← Back
+          <IoIosArrowBack size={24} /> Back
         </button>
         <div className="card" style={{ padding: 24, textAlign: 'center' }}>
           <h2 style={{ marginBottom: 16 }}>Login Required</h2>
@@ -334,7 +335,7 @@ export default function SubscriptionPage() {
         onClick={() => navigateTo('/')}
         style={{ marginBottom: 24 }}
       >
-        ← Back
+        <IoIosArrowBack size={24} /> Back
       </button>
 
       <div style={{ textAlign: 'center', marginBottom: 48 }}>

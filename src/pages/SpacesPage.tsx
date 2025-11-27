@@ -1,3 +1,4 @@
+import { IoIosArrowBack } from "react-icons/io";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 
 const features = [
@@ -27,12 +28,21 @@ export default function SpacesPage() {
   return (
     <div
       className="container"
-      style={{ display: "flex", flexDirection: "column", gap: 24, minHeight: "100vh" }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 24,
+        minHeight: "100vh",
+      }}
     >
       {/* Header */}
       <div
         className="row"
-        style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}
+        style={{
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 8,
+        }}
       >
         <button
           className="btn-ghost"
@@ -40,7 +50,7 @@ export default function SpacesPage() {
           aria-label="Back to profile"
           style={{ fontSize: "var(--font-md)" }}
         >
-          ← Back
+          <IoIosArrowBack size={24} /> Back
         </button>
         <div className="h1" style={{ margin: 0 }}>
           Spaces
@@ -48,14 +58,24 @@ export default function SpacesPage() {
         <div style={{ width: 52 }} />
       </div>
 
-      <div className="card" style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div
+        className="card"
+        style={{
+          padding: 24,
+          display: "flex",
+          flexDirection: "column",
+          gap: 20,
+        }}
+      >
         <div>
           <div className="h2" style={{ marginBottom: 8 }}>
             Launch a Space in seconds
           </div>
           <div className="sub" style={{ lineHeight: 1.6 }}>
-            Spaces are living workrooms for your most important projects—product launches, pitch decks,
-            or deep-dives. Collect assets, craft prompts, and let SyntraIQ keep everyone aligned.
+            Spaces are living workrooms for your most important projects—product
+            launches, pitch decks, or deep-dives. Collect assets, craft prompts,
+            and let Syntra <span className="text-gold">IQ</span> keep everyone
+            aligned.
           </div>
         </div>
 
@@ -124,12 +144,13 @@ export default function SpacesPage() {
           Why teams rely on Spaces
         </div>
         <div className="sub" style={{ lineHeight: 1.6 }}>
-          Spaces blend structured knowledge with on-demand answers. Keep annotated sources, bookmarked
-          prompts, and decision trails ready for the next handoff.
+          Spaces blend structured knowledge with on-demand answers. Keep
+          annotated sources, bookmarked prompts, and decision trails ready for
+          the next handoff.
         </div>
         <div className="sub text-sm" style={{ opacity: 0.7 }}>
-          Pro tip: spin up a Space for each client or campaign to offer stakeholders a transparent,
-          always-on briefing room.
+          Pro tip: spin up a Space for each client or campaign to offer
+          stakeholders a transparent, always-on briefing room.
         </div>
       </div>
 
@@ -162,4 +183,3 @@ export default function SpacesPage() {
     </div>
   );
 }
-

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
 import { setAuthToken, setUserData } from '../utils/auth';
+import { IoIosArrowBack } from 'react-icons/io';
 
 // Use Vite's env access directly
 const API_URL = import.meta.env.VITE_API_URL as string | undefined;
@@ -182,7 +183,7 @@ export default function VerificationPage() {
           onClick={() => navigateTo('/profile')}
           style={{ fontSize: "var(--font-md)" }}
         >
-          ← Back
+          <IoIosArrowBack size={24} /> Back
         </button>
       </div>
 

@@ -15,6 +15,7 @@ import {
   getAuthHeaders,
   type User 
 } from "../utils/auth";
+import { IoIosArrowBack } from "react-icons/io";
 
 const API_URL = import.meta.env.VITE_API_URL as string | undefined;
 
@@ -362,7 +363,7 @@ export default function ProfilePage() {
             }}
             style={{ fontSize: "var(--font-md)" }}
           >
-            ← Back
+            <IoIosArrowBack size={24} /> Back
           </button>
         </div>
         <LoginForm
@@ -401,7 +402,7 @@ export default function ProfilePage() {
             }}
             style={{ fontSize: "var(--font-md)" }}
           >
-            ← Back
+            <IoIosArrowBack size={24} /> Back
           </button>
         </div>
         <SignupForm
@@ -437,7 +438,7 @@ export default function ProfilePage() {
           onClick={() => navigateTo("/")}
           style={{ fontSize: "var(--font-md)" }}
         >
-          ← Back
+          <IoIosArrowBack size={24} /> Back
         </button>
       </div>
 
@@ -478,7 +479,7 @@ export default function ProfilePage() {
             <img src={earth} alt="Earth" className="w-full object-cover" />
           </div>
           <p className="splash-tagline font-ubuntu text-lg! font-medium">
-          Preparing your SyntraIQ experience…
+          Preparing your Syntra<span className="text-gold">IQ</span> experience…
         </p>
         </div>
           <button

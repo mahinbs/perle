@@ -16,7 +16,7 @@ export function SplashScreen() {
           </div>
         </div>
         <p className="splash-tagline font-ubuntu text-lg! font-medium">
-          Preparing your SyntraIQ experience…
+          Preparing your Syntra<span className="text-gold">IQ</span> experience…
         </p>
       </div>
     </>
