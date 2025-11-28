@@ -2,7 +2,7 @@
 
 ## Overview
 
-Perlé offers two premium subscription tiers to cater to different user needs:
+SyntraIQ offers two premium subscription tiers to cater to different user needs:
 
 ### IQ Pro - ₹399/month
 **Target Audience:** Creators and strategists

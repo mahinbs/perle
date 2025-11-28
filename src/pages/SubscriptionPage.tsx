@@ -71,7 +71,6 @@ export default function SubscriptionPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-5 px-4 pb-[260px]">
           {selectedPlan.perks
-            .concat(selectedPlan.perks, selectedPlan.perks)
             .map((perk, index) => (
               <div
                 key={index}
@@ -97,11 +96,10 @@ export default function SubscriptionPage() {
               <div
                 key={plan.id}
                 onClick={() => setSelectedPlanId(plan.id)}
-                className={`flex-none w-full border rounded-[18px] p-4 cursor-pointer flex flex-col justify-between h-[130px] transition-all duration-200 shadow-[0_4px_12px_rgba(0,0,0,0.05)] ${
-                  isSelected
-                    ? "border-2 border-[var(--text)] bg-[var(--card)]"
-                    : "border border-[var(--border)] backdrop-blur-[2px]"
-                }`}
+                className={`flex-none w-full border rounded-[18px] p-4 cursor-pointer flex flex-col justify-between h-[130px] transition-all duration-200 shadow-[0_4px_12px_rgba(0,0,0,0.05)] ${isSelected
+                  ? "border-2 border-[var(--text)] bg-[var(--card)]"
+                  : "border border-[var(--border)]"
+                  }`}
               >
                 <div className="font-bold text-[var(--font-lg)] leading-[1.2]">
                   {plan.shortName}

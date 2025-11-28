@@ -7,7 +7,7 @@ const premiumModels: LLMModelInfo[] = [
   {
     id: 'auto',
     name: 'Auto',
-    provider: 'Perlé',
+    provider: 'SyntraIQ',
     description: 'Automatically selects the best model',
     capabilities: ['Smart Selection', 'Optimized', 'Cost Effective']
   },
@@ -194,10 +194,10 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
 
   // Use premium models if user is premium, otherwise return empty (shouldn't be shown)
   const availableModels = isPremium ? premiumModels : [];
-  
+
   // Find selected model info from premium or legacy models
   const selectedModelInfo = premiumModels.find(model => model.id === selectedModel) ||
-                           legacyModels.find(model => model.id === selectedModel);
+    legacyModels.find(model => model.id === selectedModel);
 
   const handleModelSelect = (modelId: LLMModel) => {
     onModelChange(modelId);
@@ -209,7 +209,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     const checkMobile = () => {
       setIsMobile(window.innerWidth <= 768);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
@@ -232,7 +232,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   return (
     <>
       {isOpen && isMobile && (
-        <div 
+        <div
           style={{
             position: 'fixed',
             top: 0,
@@ -265,12 +265,12 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               height: 8,
               borderRadius: '50%',
               backgroundColor: selectedModelInfo?.provider === 'OpenAI' ? '#10A37F' :
-                              selectedModelInfo?.provider === 'Anthropic' ? '#D97706' :
-                              selectedModelInfo?.provider === 'Google' ? '#4285F4' :
-                              selectedModelInfo?.provider === 'xAI' ? '#000000' :
-                              selectedModelInfo?.provider === 'Perlé' ? '#6366F1' :
-                              selectedModelInfo?.provider === 'Meta' ? '#1877F2' :
-                              selectedModelInfo?.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280'
+                selectedModelInfo?.provider === 'Anthropic' ? '#D97706' :
+                  selectedModelInfo?.provider === 'Google' ? '#4285F4' :
+                    selectedModelInfo?.provider === 'xAI' ? '#000000' :
+                      selectedModelInfo?.provider === 'SyntraIQ' ? '#6366F1' :
+                        selectedModelInfo?.provider === 'Meta' ? '#1877F2' :
+                          selectedModelInfo?.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280'
             }} />
             <span>{selectedModelInfo?.name || 'Select Model'}</span>
           </div>
@@ -324,42 +324,42 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                     height: 8,
                     borderRadius: '50%',
                     backgroundColor: model.provider === 'OpenAI' ? '#10A37F' :
-                                    model.provider === 'Anthropic' ? '#D97706' :
-                                    model.provider === 'Google' ? '#4285F4' :
-                                    model.provider === 'xAI' ? '#000000' :
-                                    model.provider === 'Perlé' ? '#6366F1' :
-                                    model.provider === 'Meta' ? '#1877F2' :
-                                    model.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280',
+                      model.provider === 'Anthropic' ? '#D97706' :
+                        model.provider === 'Google' ? '#4285F4' :
+                          model.provider === 'xAI' ? '#000000' :
+                            model.provider === 'SyntraIQ' ? '#6366F1' :
+                              model.provider === 'Meta' ? '#1877F2' :
+                                model.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280',
                     flexShrink: 0
                   }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ 
-                      fontWeight: 600, 
+                    <div style={{
+                      fontWeight: 600,
                       fontSize: 'var(--font-sm)',
                       marginBottom: 1,
                       color: 'var(--text)'
                     }}>
                       {model.name}
                     </div>
-                    <div style={{ 
-                      fontSize: 'var(--font-xs)', 
+                    <div style={{
+                      fontSize: 'var(--font-xs)',
                       color: 'var(--sub)',
                       marginBottom: 2
                     }}>
                       {model.provider}
                     </div>
-                    <div style={{ 
-                      fontSize: 'var(--font-xs)', 
+                    <div style={{
+                      fontSize: 'var(--font-xs)',
                       color: 'var(--sub)',
                       lineHeight: '12px'
                     }}>
                       {model.description}
                     </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      flexWrap: 'wrap', 
-                      gap: 3, 
-                      marginTop: 4 
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 3,
+                      marginTop: 4
                     }}>
                       {model.capabilities.slice(0, 2).map((capability) => (
                         <span
@@ -397,121 +397,121 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
             </div>,
             document.body
           ) : (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: 0,
-          right: 0,
-          backgroundColor: 'var(--card)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-sm)',
-          boxShadow: 'var(--shadow)',
-          zIndex: 99999,
-          maxHeight: 300,
-          overflowY: 'auto',
-          marginTop: 4,
-          minWidth: 280
-        }}>
-          {availableModels.map((model) => (
-            <button
-              key={model.id}
-              onClick={() => handleModelSelect(model.id)}
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: 'none',
-                backgroundColor: 'transparent',
-                textAlign: 'left',
-                cursor: 'pointer',
-                borderBottom: '1px solid var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                transition: 'background-color 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--border)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }}
-            >
-              <div style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                backgroundColor: model.provider === 'OpenAI' ? '#10A37F' :
-                                model.provider === 'Anthropic' ? '#D97706' :
-                                model.provider === 'Google' ? '#4285F4' :
-                                model.provider === 'xAI' ? '#000000' :
-                                model.provider === 'Perlé' ? '#6366F1' :
-                                model.provider === 'Meta' ? '#1877F2' :
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              boxShadow: 'var(--shadow)',
+              zIndex: 99999,
+              maxHeight: 300,
+              overflowY: 'auto',
+              marginTop: 4,
+              minWidth: 280
+            }}>
+              {availableModels.map((model) => (
+                <button
+                  key={model.id}
+                  onClick={() => handleModelSelect(model.id)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    transition: 'background-color 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--border)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <div style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: model.provider === 'OpenAI' ? '#10A37F' :
+                      model.provider === 'Anthropic' ? '#D97706' :
+                        model.provider === 'Google' ? '#4285F4' :
+                          model.provider === 'xAI' ? '#000000' :
+                            model.provider === 'SyntraIQ' ? '#6366F1' :
+                              model.provider === 'Meta' ? '#1877F2' :
                                 model.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280',
-                flexShrink: 0
-              }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ 
-                  fontWeight: 600, 
-                  fontSize: 'var(--font-sm)',
-                  marginBottom: 2,
-                  color: 'var(--text)'
-                }}>
-                  {model.name}
-                </div>
-                <div style={{ 
-                  fontSize: 'var(--font-sm)', 
-                  color: 'var(--sub)',
-                  marginBottom: 4
-                }}>
-                  {model.provider}
-                </div>
-                <div style={{ 
-                  fontSize: 'var(--font-xs)', 
-                  color: 'var(--sub)',
-                  lineHeight: '14px'
-                }}>
-                  {model.description}
-                </div>
-                <div style={{ 
-                  display: 'flex', 
-                  flexWrap: 'wrap', 
-                  gap: 4, 
-                  marginTop: 6 
-                }}>
-                  {model.capabilities.slice(0, 3).map((capability) => (
-                    <span
-                      key={capability}
-                      style={{
-                        fontSize: 'var(--font-xs)',
-                        padding: '2px 6px',
-                        backgroundColor: 'var(--border)',
-                        borderRadius: 4,
-                        color: 'var(--sub)'
-                      }}
-                    >
-                      {capability}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              {selectedModel === model.id && (
-                <div style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--accent)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 'var(--font-xs)',
-                  color: '#111'
-                }}>
-                  ✓
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
+                    flexShrink: 0
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontWeight: 600,
+                      fontSize: 'var(--font-sm)',
+                      marginBottom: 2,
+                      color: 'var(--text)'
+                    }}>
+                      {model.name}
+                    </div>
+                    <div style={{
+                      fontSize: 'var(--font-sm)',
+                      color: 'var(--sub)',
+                      marginBottom: 4
+                    }}>
+                      {model.provider}
+                    </div>
+                    <div style={{
+                      fontSize: 'var(--font-xs)',
+                      color: 'var(--sub)',
+                      lineHeight: '14px'
+                    }}>
+                      {model.description}
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 4,
+                      marginTop: 6
+                    }}>
+                      {model.capabilities.slice(0, 3).map((capability) => (
+                        <span
+                          key={capability}
+                          style={{
+                            fontSize: 'var(--font-xs)',
+                            padding: '2px 6px',
+                            backgroundColor: 'var(--border)',
+                            borderRadius: 4,
+                            color: 'var(--sub)'
+                          }}
+                        >
+                          {capability}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {selectedModel === model.id && (
+                    <div style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--accent)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 'var(--font-xs)',
+                      color: '#111'
+                    }}>
+                      ✓
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
           )
         )}
       </div>
