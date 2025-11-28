@@ -62,13 +62,13 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         oscillator.onended = () => {
           try {
             audioCtx.close();
-          } catch {}
+          } catch { }
           resolve();
         };
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.3);
       });
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => {
@@ -105,7 +105,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
           window.speechSynthesis.cancel();
         }
-      } catch {}
+      } catch { }
 
       // Clear any existing answer text from localStorage
       localStorage.removeItem("perle-current-answer-text");
@@ -121,7 +121,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
-    } catch {}
+    } catch { }
 
     // Clear any stored answer text on mount
     localStorage.removeItem("perle-current-answer-text");
@@ -133,7 +133,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
           window.speechSynthesis.cancel();
         }
-      } catch {}
+      } catch { }
     };
   }, []);
 
@@ -171,7 +171,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           onClick={() => {
             try {
               if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-            } catch {}
+            } catch { }
             onClose();
           }}
           aria-label="Close"
@@ -252,7 +252,7 @@ const SpeakingGradientCircle: React.FC<{
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
-    } catch {}
+    } catch { }
   }, []); // Empty deps - only run on mount
 
   useEffect(() => {
@@ -266,7 +266,7 @@ const SpeakingGradientCircle: React.FC<{
             : false;
 
         setSpeaking(isSpeaking);
-      } catch {}
+      } catch { }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -683,7 +683,6 @@ const SpeakingGradientCircle: React.FC<{
               padding: 12px 16px !important;
               max-height: calc(100vh - 450px) !important;
               min-height: 50px !important;
-              font-size: 15px !important;
             }
           }
           
@@ -707,7 +706,6 @@ const SpeakingGradientCircle: React.FC<{
               padding: 10px 12px !important;
               max-height: calc(100vh - 380px) !important;
               min-height: 40px !important;
-              font-size: 14px !important;
               line-height: 1.5 !important;
             }
           }

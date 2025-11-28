@@ -72,7 +72,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       const touch = e.touches[0];
       startY = touch.clientY;
       currentY = startY;
-      
+
       // Always prepare for potential drag, but only activate if downward swipe
       isDragging = false; // Start as false, will be set true on move if downward
     };
@@ -81,7 +81,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       const touch = e.touches[0];
       currentY = touch.clientY;
       const deltaY = currentY - startY;
-      
+
       // Check if user is swiping down (not scrolling up)
       if (deltaY > 10) {
         // User is swiping down - activate drag
@@ -89,17 +89,17 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           isDragging = true;
           setIsDragging(true);
         }
-        
+
         // Only prevent default if we're actually dragging (not scrolling content)
         const target = e.target as HTMLElement;
         const isHandle = target.closest('[data-offcanvas-handle]');
-        
+
         // If content is scrolled and not at top, allow normal scrolling
         if (offcanvas.scrollTop > 0 && !isHandle) {
           // Allow scrolling if content is scrollable and not at top
           return;
         }
-        
+
         // Otherwise, handle as drag gesture
         setDragCurrentY(deltaY);
         e.preventDefault();
@@ -113,10 +113,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
 
     const handleTouchEnd = () => {
       if (!isDragging) return;
-      
+
       const deltaY = currentY - startY;
       const threshold = 100; // Minimum swipe distance to close
-      
+
       if (deltaY > threshold) {
         // Close the offcanvas
         setIsClosing(true);
@@ -127,7 +127,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
         // Reset position
         setDragCurrentY(0);
       }
-      
+
       isDragging = false;
       setIsDragging(false);
     };
@@ -213,7 +213,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
   const handleShareAnswer = async () => {
     const answerText = chunks.map(c => c.text).join(' ');
     const sourceText = sources.map(s => `${s.title} (${s.domain})`).join('\n');
-    
+
     await shareContent({
       title: 'Answer from SyntraIQ',
       text: `${answerText}\n\nSources:\n${sourceText}`,
@@ -230,10 +230,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       sources,
       timestamp: Date.now()
     };
-    
+
     bookmarks.unshift(bookmark);
     localStorage.setItem('perle-bookmarks', JSON.stringify(bookmarks.slice(0, 50)));
-    
+
     showToast({
       message: 'Answer bookmarked!',
       type: 'success',
@@ -256,19 +256,19 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     window.speechSynthesis.cancel();
 
     const answerText = chunks.map(c => c.text).join(' ');
-    
+
     // Split text into words for progressive display (preserve spaces)
     const words = answerText.split(/(\s+)/).filter(w => w.length > 0);
     let currentWordIndex = 0;
     let speechStartTime = 0;
     let fallbackInterval: number | null = null;
     let lastBoundaryUpdate = 0;
-    
+
     // Initialize with empty text
     localStorage.setItem('perle-current-answer-text', '');
     localStorage.setItem('perle-current-word-index', '0');
     localStorage.setItem('perle-speech-rate', '0.9');
-    
+
     const utterance = new SpeechSynthesisUtterance(answerText);
     utterance.rate = 0.9;
     utterance.pitch = 1;
@@ -279,19 +279,19 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       currentWordIndex = 0;
       speechStartTime = Date.now();
       lastBoundaryUpdate = Date.now();
-      
+
       // Show first word immediately
       if (words.length > 0) {
         const displayedText = words[0];
         localStorage.setItem('perle-current-answer-text', displayedText);
         localStorage.setItem('perle-current-word-index', '0');
       }
-      
+
       // Fallback timer for mobile devices where onboundary may not fire reliably
       // Estimate words per second: average English is ~150 words/min = 2.5 words/sec
       // With rate 0.9, that's ~2.25 words/sec, so ~444ms per word
       const estimatedMsPerWord = 450 / utterance.rate;
-      
+
       fallbackInterval = setInterval(() => {
         if (!window.speechSynthesis.speaking) {
           if (fallbackInterval) {
@@ -300,20 +300,20 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           }
           return;
         }
-        
+
         const elapsed = Date.now() - speechStartTime;
         const timeSinceLastUpdate = Date.now() - lastBoundaryUpdate;
-        
+
         // Calculate estimated progress based on elapsed time
         const estimatedWordIndex = Math.min(
           Math.floor((elapsed / estimatedMsPerWord) + 1),
           words.length - 1
         );
-        
+
         // Use fallback if onboundary hasn't updated recently (mobile fallback)
         // This ensures mobile devices get updates even if boundary events are delayed or missing
         const shouldUseFallback = timeSinceLastUpdate > estimatedMsPerWord * 0.8;
-        
+
         // Always update if we've progressed and either:
         // 1. Boundary events haven't updated recently (fallback mode), OR
         // 2. We're significantly ahead of the last boundary update (catch-up mode)
@@ -334,7 +334,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
         // Calculate which word we're currently on based on character index
         let charCount = 0;
         let wordIndex = 0;
-        
+
         for (let i = 0; i < words.length; i++) {
           const wordLength = words[i].length;
           if (charCount + wordLength > event.charIndex) {
@@ -343,7 +343,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           }
           charCount += wordLength;
         }
-        
+
         // Update if we've moved to a new word
         if (wordIndex > currentWordIndex) {
           currentWordIndex = wordIndex;
@@ -433,10 +433,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             'Compare React vs Vue',
             'Explain quantum computing'
           ].map(suggestion => (
-            <span 
-              key={suggestion} 
-              className="chip" 
-              role="button" 
+            <span
+              key={suggestion}
+              className="chip"
+              role="button"
               tabIndex={0}
               onClick={() => onSearch?.(suggestion, mode)}
               style={{ cursor: 'pointer' }}
@@ -453,19 +453,19 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     <div className="card" style={{ padding: 18 }}>
       {/* Display the searched query prominently */}
       {query && (
-        <div style={{ 
+        <div style={{
           marginBottom: 20,
           paddingBottom: 16,
           borderBottom: '1px solid var(--border)'
         }}>
-          <div 
+          <div
             onClick={() => {
               if (onQueryEdit) {
                 setShowEditModal(true);
               }
             }}
-            style={{ 
-              fontSize: 'var(--font-xl)', 
+            style={{
+              fontSize: 'var(--font-xl)',
               fontWeight: 600,
               lineHeight: '32px',
               color: 'var(--text)',
@@ -489,28 +489,28 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           </div>
         </div>
       )}
-      
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: 16 
+
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16
       }}>
-        <div style={{ 
+        <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8
         }}>
-          <div style={{ 
-            fontSize: 'var(--font-sm)', 
+          <div style={{
+            fontSize: 'var(--font-sm)',
             fontWeight: 500,
             color: 'var(--sub)'
           }}>
             Answer
           </div>
           {mode && (
-            <span className="chip" style={{ 
-              fontSize: 'var(--font-sm)', 
+            <span className="chip" style={{
+              fontSize: 'var(--font-sm)',
               padding: '4px 8px',
               background: 'var(--accent)',
               color: '#111',
@@ -520,9 +520,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             </span>
           )}
         </div>
-        <div style={{ 
-          display: 'flex', 
-          gap: 4 
+        <div style={{
+          display: 'flex',
+          gap: 4
         }}>
           {speechSupported && (
             <>
@@ -530,9 +530,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                 className="btn-ghost"
                 onClick={startVoiceOutput}
                 aria-label={isSpeaking ? "Stop speaking" : "Speak answer"}
-                style={{ 
+                style={{
                   padding: 8,
-                fontSize: 'var(--font-md)',
+                  fontSize: 'var(--font-md)',
                   background: isSpeaking ? 'var(--accent)' : 'transparent',
                   color: isSpeaking ? 'white' : 'inherit'
                 }}
@@ -544,9 +544,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                   className="btn-ghost"
                   onClick={stopVoiceOutput}
                   aria-label="Stop speaking"
-                  style={{ 
+                  style={{
                     padding: 8,
-                  fontSize: 'var(--font-md)',
+                    fontSize: 'var(--font-md)',
                     color: 'var(--accent)'
                   }}
                 >
@@ -559,9 +559,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             className="btn-ghost"
             onClick={handleBookmarkAnswer}
             aria-label="Bookmark answer"
-            style={{ 
+            style={{
               padding: 8,
-            fontSize: 'var(--font-md)'
+              fontSize: 'var(--font-md)'
             }}
           >
             <FaBookmark size={18} />
@@ -570,9 +570,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             className="btn-ghost"
             onClick={handleShareAnswer}
             aria-label="Share answer"
-            style={{ 
+            style={{
               padding: 8,
-            fontSize: 'var(--font-md)'
+              fontSize: 'var(--font-md)'
             }}
           >
             <FaShare size={18} />
@@ -583,40 +583,40 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {chunks.map((chunk, index) => (
           <div key={index} style={{ position: 'relative' }}>
-            <div 
-              style={{ 
-                fontSize: 'var(--font-lg)', 
-                lineHeight: '24px',
+            <div
+              className='text-[1.26rem] leading-relaxed'
+              style={{
+                // fontSize: 'var(--font-lg)', 
                 marginBottom: 12,
                 color: 'var(--text)'
               }}
             >
               {chunk.text}
             </div>
-            
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
+
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'flex-start',
               gap: 12
             }}>
-              <div style={{ 
-                display: 'flex', 
-                flexWrap: 'wrap', 
-                gap: 6, 
-                flex: 1 
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 6,
+                flex: 1
               }}>
                 {chunk.citationIds.map(id => {
                   const source = sources.find(s => s.id === id);
                   return source ? <SourceChip key={`${id}-${index}`} source={source} /> : null;
                 })}
               </div>
-              
+
               <button
                 className="btn-ghost"
                 onClick={() => handleCopyChunk(chunk, index)}
                 aria-label="Copy chunk"
-                style={{ 
+                style={{
                   padding: 6,
                   opacity: copiedChunk === index ? 1 : 0.6,
                   flexShrink: 0,
@@ -631,14 +631,14 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       </div>
 
       <div className="spacer-16" />
-      
+
       {/* Sources Section */}
       <div>
         <button
           className="btn-ghost"
           onClick={() => setExpandedSources(!expandedSources)}
-          style={{ 
-            width: '100%', 
+          style={{
+            width: '100%',
             justifyContent: 'space-between',
             padding: '12px 0',
             borderBottom: '1px solid var(--border)',
@@ -648,15 +648,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
           }}
         >
           <span>Sources ({sources.length})</span>
-          <span style={{ 
-            transform: expandedSources ? 'rotate(180deg)' : 'rotate(0deg)', 
+          <span style={{
+            transform: expandedSources ? 'rotate(180deg)' : 'rotate(0deg)',
             transition: 'transform 0.2s',
             fontSize: 'var(--font-sm)'
           }}>
             <FaChevronDown size={14} />
           </span>
         </button>
-        
+
         {expandedSources && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {sources.map(source => (
@@ -675,8 +675,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                 <button
                   className="btn-ghost"
                   onClick={() => window.open(source.url, '_blank')}
-                  style={{ 
-                    marginTop: 8, 
+                  style={{
+                    marginTop: 8,
                     padding: '4px 8px',
                     fontSize: 'var(--font-sm)'
                   }}
@@ -690,21 +690,21 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       </div>
 
       <div className="spacer-16" />
-      
+
       {/* Follow-up Actions */}
       <div>
-        <div style={{ 
-          fontSize: 'var(--font-md)', 
-          fontWeight: 500, 
+        <div style={{
+          fontSize: 'var(--font-md)',
+          fontWeight: 500,
           marginBottom: 12,
           color: 'var(--text)'
         }}>
           Follow-up Actions
         </div>
-        <div style={{ 
-          display: 'flex', 
-          flexWrap: 'wrap', 
-          gap: 8 
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 8
         }}>
           {[
             { text: 'Show recent studies only', mode: 'Research' as Mode },
@@ -714,10 +714,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             { text: 'Find similar topics', mode: 'Research' as Mode },
             { text: 'Explain like I\'m 5', mode: 'Ask' as Mode }
           ].map(action => (
-            <span 
-              key={action.text} 
-              className="chip" 
-              role="button" 
+            <span
+              key={action.text}
+              className="chip"
+              role="button"
               tabIndex={0}
               onClick={() => {
                 if (query) {
@@ -751,7 +751,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             }}
             onClick={handleCloseModal}
           />
-          
+
           {/* Offcanvas */}
           <div
             ref={offcanvasRef}
@@ -811,15 +811,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
               overflowY: 'auto',
               padding: '0 24px 24px 24px',
             }}>
-              <div style={{ 
+              <div style={{
                 marginBottom: 16,
-              fontSize: 'var(--font-xl)',
+                fontSize: 'var(--font-xl)',
                 fontWeight: 600,
                 color: 'var(--text)'
               }}>
                 Edit Query
               </div>
-              
+
               <textarea
                 ref={editInputRef}
                 className="input"
@@ -849,10 +849,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                 rows={3}
               />
 
-              <div style={{ 
-                display: 'flex', 
-                gap: 12, 
-                justifyContent: 'flex-end' 
+              <div style={{
+                display: 'flex',
+                gap: 12,
+                justifyContent: 'flex-end'
               }}>
                 <button
                   className="btn-ghost"

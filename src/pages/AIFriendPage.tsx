@@ -313,9 +313,8 @@ export default function AIFriendPage() {
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
-        content: `Sorry, I encountered an error: ${
-          error.message || "Failed to connect to the server"
-        }. Please try again.`,
+        content: `Sorry, I encountered an error: ${error.message || "Failed to connect to the server"
+          }. Please try again.`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorResponse]);
@@ -371,80 +370,48 @@ export default function AIFriendPage() {
 
   return (
     <div
-      className="container"
-      style={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        padding: 0,
-      }}
+      className="container h-screen flex flex-col !p-0"
     >
       {/* Header */}
       <div
-        style={{
-          borderBottom: "1px solid var(--border)",
-          background: "var(--card)",
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-        }}
+        className="border-b border-[var(--border)] bg-[var(--card)] sticky top-0 z-[100]"
       >
         <div
-          className="row"
-          style={{
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "16px",
-          }}
+          className="row flex justify-between items-center p-4"
         >
-          <div className="row" style={{ alignItems: "center", gap: 12 }}>
+          <div className="row flex items-center gap-3">
             <button
-              className="btn-ghost"
+              className="btn-ghost p-2 text-[length:var(--font-md)]"
               onClick={() => navigateTo("/")}
-              style={{ padding: 8, fontSize: "var(--font-md)" }}
               aria-label="Back"
             >
               <IoIosArrowBack size={24} />
             </button>
-            <div className="row" style={{ alignItems: "center", gap: 12 }}>
+            <div className="row flex items-center gap-3">
               <img
                 src={aiProfile.avatar}
                 alt={`${aiProfile.name} avatar`}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  border: "2px solid var(--accent)",
-                }}
+                className="w-11 h-11 rounded-full object-cover border-2 border-[var(--accent)]"
               />
               <div>
-                <div className="h3" style={{ marginBottom: 2 }}>
+                <div className="h3 mb-0.5">
                   {aiProfile.name}
                 </div>
                 <div
-                  className="sub text-sm"
-                  style={{ fontSize: "var(--font-sm)", opacity: 0.8 }}
+                  className="sub text-sm text-[length:var(--font-sm)] opacity-80"
                 >
                   {aiProfile.handle}
                 </div>
               </div>
             </div>
           </div>
-          <div className="row" style={{ alignItems: "center", gap: 10 }}>
+          <div className="row flex items-center gap-2.5">
             <div
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                background: "#10A37F",
-                boxShadow: "0 0 8px rgba(16, 163, 127, 0.5)",
-              }}
+              className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)]"
             />
             <button
-              className="btn-ghost"
+              className="btn-ghost p-2"
               aria-label="Favorite conversation"
-              style={{ padding: 8 }}
             >
               <FaStar size={18} color="var(--accent)" />
             </button>
@@ -454,23 +421,12 @@ export default function AIFriendPage() {
 
       {/* Messages Area */}
       <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "20px 16px",
-          background: "var(--bg)",
-        }}
+        className="flex-1 overflow-y-auto px-4 py-5 bg-[var(--bg)]"
       >
         {messages.map((message) => (
           <div
             key={message.id}
-            style={{
-              display: "flex",
-              flexDirection: message.role === "user" ? "row-reverse" : "row",
-              alignItems: "flex-end",
-              gap: 12,
-              marginBottom: 16,
-            }}
+            className={`flex items-end gap-3 mb-4 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}
           >
             <img
               src={
@@ -481,44 +437,24 @@ export default function AIFriendPage() {
                   ? `${userProfile.name} avatar`
                   : `${aiProfile.name} avatar`
               }
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border:
-                  message.role === "user"
-                    ? "2px solid var(--accent)"
-                    : "2px solid rgba(16, 163, 127, 0.5)",
-              }}
+              className={`w-9 h-9 rounded-full object-cover border-2 ${message.role === "user"
+                ? "border-[var(--accent)]"
+                : "border-[rgba(16,163,127,0.5)]"
+                }`}
             />
             <div
-              style={{
-                maxWidth: "72%",
-                padding: "12px 16px",
-                borderRadius: "var(--radius-sm)",
-                background:
-                  message.role === "user" ? "var(--accent)" : "var(--card)",
-                color: message.role === "user" ? "#111" : "var(--text)",
-                border:
-                  message.role === "ai" ? "1px solid var(--border)" : "none",
-                boxShadow: "var(--shadow)",
-                lineHeight: 1.5,
-                wordWrap: "break-word",
-              }}
+              className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${message.role === "user"
+                ? "bg-[var(--accent)] text-[#111]"
+                : "bg-[var(--card)] text-[var(--text)] border border-[var(--border)]"
+                }`}
             >
               <div
-                style={{ fontSize: "var(--font-md)", whiteSpace: "pre-wrap" }}
+                className="text-[length:var(--font-md)] whitespace-pre-wrap"
               >
                 {message.content}
               </div>
               <div
-                style={{
-                  fontSize: "var(--font-xs)",
-                  opacity: 0.6,
-                  marginTop: 6,
-                  textAlign: message.role === "user" ? "right" : "left",
-                }}
+                className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${message.role === "user" ? "text-right" : "text-left"}`}
               >
                 {message.timestamp.toLocaleTimeString([], {
                   hour: "2-digit",
@@ -531,65 +467,27 @@ export default function AIFriendPage() {
 
         {isLoading && (
           <div
-            style={{
-              display: "flex",
-              alignItems: "flex-end",
-              gap: 12,
-              marginBottom: 16,
-            }}
+            className="flex items-end gap-3 mb-4"
           >
             <img
               src={aiProfile.avatar}
               alt={`${aiProfile.name} avatar`}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: "50%",
-                objectFit: "cover",
-                border: "2px solid rgba(16, 163, 127, 0.5)",
-              }}
+              className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(16,163,127,0.5)]"
             />
             <div
-              style={{
-                padding: "12px 16px",
-                borderRadius: "var(--radius-sm)",
-                background: "var(--card)",
-                border: "1px solid var(--border)",
-              }}
+              className="px-4 py-3 rounded-[var(--radius-sm)] bg-[var(--card)] border border-[var(--border)]"
             >
               <div
-                style={{
-                  display: "flex",
-                  gap: 4,
-                  alignItems: "center",
-                }}
+                className="flex gap-1 items-center"
               >
                 <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "var(--sub)",
-                    animation: "pulse 1.4s ease-in-out infinite",
-                  }}
+                  className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite]"
                 />
                 <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "var(--sub)",
-                    animation: "pulse 1.4s ease-in-out infinite 0.2s",
-                  }}
+                  className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.2s]"
                 />
                 <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "var(--sub)",
-                    animation: "pulse 1.4s ease-in-out infinite 0.4s",
-                  }}
+                  className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.4s]"
                 />
               </div>
             </div>
@@ -601,26 +499,14 @@ export default function AIFriendPage() {
 
       {/* Input Area */}
       <div
-        style={{
-          padding: "12px 16px",
-          borderTop: "1px solid var(--border)",
-          background: "var(--card)",
-          position: "sticky",
-          bottom: 0,
-        }}
+        className="p-3 px-4 border-t border-[var(--border)] bg-[var(--card)] sticky bottom-0"
       >
         {/* Model Selector and New Chat Button (Premium Users) - Moved to bottom */}
         {isPremium && (
           <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 8,
-              gap: 8,
-            }}
+            className="flex justify-between items-center mb-2 gap-2"
           >
-            <div style={{ flex: 1 }}>
+            <div className="flex-1">
               <LLMModelSelector
                 selectedModel={selectedModel}
                 onModelChange={(model) => {
@@ -631,7 +517,7 @@ export default function AIFriendPage() {
               />
             </div>
             <button
-              className="btn-ghost"
+              className="btn-ghost px-3 py-1.5 text-[length:var(--font-xs)] whitespace-nowrap"
               onClick={() => {
                 setNewConversation(true);
                 setMessages([
@@ -644,11 +530,6 @@ export default function AIFriendPage() {
                   },
                 ]);
               }}
-              style={{
-                padding: "6px 12px",
-                fontSize: "var(--font-xs)",
-                whiteSpace: "nowrap",
-              }}
               title="Start a new conversation"
             >
               New Chat
@@ -658,63 +539,31 @@ export default function AIFriendPage() {
 
         {attachedFileName && (
           <div
-            style={{
-              marginTop: 10,
-              padding: "10px 12px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border)",
-              background: "var(--card)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-            }}
+            className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3"
           >
             <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                fontSize: "var(--font-sm)",
-                color: "var(--text)",
-                flex: 1,
-                minWidth: 0,
-              }}
+              className="flex items-center gap-2.5 text-[length:var(--font-sm)] text-[var(--text)] flex-1 min-w-0"
             >
               <FaPaperclip size={14} color="var(--accent)" />
               <span
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
+                className="overflow-hidden text-ellipsis whitespace-nowrap"
               >
                 {attachedFileName}
               </span>
               {isUploading && (
                 <span
-                  style={{
-                    fontSize: "var(--font-xs)",
-                    color: "var(--accent)",
-                    fontWeight: 600,
-                  }}
+                  className="text-[length:var(--font-xs)] text-[var(--accent)] font-semibold"
                 >
                   Uploading…
                 </span>
               )}
             </div>
             <button
-              className="btn-ghost"
+              className="btn-ghost flex items-center gap-1.5 text-[length:var(--font-xs)]"
               onClick={() => {
                 setAttachedFileName(null);
                 setIsUploading(false);
                 if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: "var(--font-xs)",
               }}
               aria-label="Remove attached file"
             >
@@ -725,28 +574,17 @@ export default function AIFriendPage() {
         )}
 
         <div
-          className="row"
-          style={{ gap: 8, alignItems: "flex-end", flexWrap: "nowrap" }}
+          className="flex gap-2 items-end flex-wrap bg-[var(--input-bg)] sm:bg-none p-3 rounded-xl border border-[var(--border)]"
         >
           <input
             ref={fileInputRef}
             type="file"
-            style={{ display: "none" }}
+            className="hidden"
             onChange={handleFileSelected}
             aria-hidden
           />
           <div
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              background: "var(--input-bg)",
-              borderRadius: "var(--radius-lg)",
-              padding: "8px 12px",
-              border: "1px solid var(--border)",
-              minHeight: 44,
-              maxHeight: 120,
-            }}
+            className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-2 sm:border border-[var(--border)] min-h-[44px] max-h-[120px]"
           >
             <textarea
               ref={inputRef}
@@ -761,261 +599,118 @@ export default function AIFriendPage() {
               }}
               onKeyDown={handleKeyPress}
               placeholder="Type your message..."
-              style={{
-                flex: 1,
-                border: "none",
-                background: "transparent",
-                resize: "none",
-                padding: "4px 0",
-                fontSize: "var(--font-md)",
-                color: "var(--text)",
-                outline: "none",
-                fontFamily: "inherit",
-                lineHeight: 1.5,
-                minHeight: 24,
-                maxHeight: 100,
-                overflowY: "auto",
-              }}
+              className="flex-1 border-none bg-transparent resize-none py-1 text-[length:var(--font-md)] text-[var(--text)] outline-none font-inherit leading-relaxed min-h-[24px] max-h-[100px] overflow-y-auto h-auto"
               rows={1}
               disabled={isLoading}
             />
           </div>
 
-          {isListening ? (
+          <div className="flex gap-2">
+            {isListening ? (
+              <button
+                className="btn w-11 h-11 rounded-full p-0 flex items-center justify-center bg-[#EF4444]"
+                onClick={stopVoiceInput}
+                aria-label="Stop recording"
+              >
+                <FaStop size={16} />
+              </button>
+            ) : (
+              <button
+                className="btn-ghost min-w-11 w-11 h-11 rounded-full p-0 flex items-center justify-center"
+                onClick={startVoiceInput}
+                aria-label="Voice input"
+                disabled={isLoading}
+              >
+                <MicWaveIcon size={20} active={false} />
+              </button>
+            )}
+
             <button
-              className="btn"
-              onClick={stopVoiceInput}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                padding: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "#EF4444",
-              }}
-              aria-label="Stop recording"
-            >
-              <FaStop size={16} />
-            </button>
-          ) : (
-            <button
-              className="btn-ghost"
-              onClick={startVoiceInput}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                padding: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              aria-label="Voice input"
+              className={`btn-ghost w-11 h-11 rounded-full p-0 flex items-center justify-center transition-colors duration-200 ${isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${attachedFileName ? " bg-[rgba(199,168,105,0.15)] text-[var(--accent)]" : " bg-transparent text-inherit"}`}
+              onClick={handleAttachClick}
+              aria-label="Attach file"
               disabled={isLoading}
             >
-              <MicWaveIcon size={20} active={false} />
+              <FaPaperclip size={18} />
             </button>
-          )}
 
-          <button
-            className="btn-ghost"
-            onClick={handleAttachClick}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              padding: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: isLoading ? 0.6 : 1,
-              cursor: isLoading ? "not-allowed" : "pointer",
-              background: attachedFileName
-                ? "rgba(199, 168, 105, 0.15)"
-                : "transparent",
-              color: attachedFileName ? "var(--accent)" : "inherit",
-              transition: "background 0.2s ease, color 0.2s ease",
-            }}
-            aria-label="Attach file"
-            disabled={isLoading}
-          >
-            <FaPaperclip size={18} />
-          </button>
+            <button
+              className={`btn-ghost w-11 h-11 rounded-full p-0 flex items-center justify-center transition-all duration-200 ${showSuggestions ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]" : "bg-transparent text-inherit"}`}
+              onClick={() => setShowSuggestions((prev) => !prev)}
+              aria-label="Toggle inspiration replies"
+              aria-expanded={showSuggestions}
+            >
+              <FaLightbulb size={18} />
+            </button>
 
-          <button
-            className="btn-ghost"
-            onClick={() => setShowSuggestions((prev) => !prev)}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              padding: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: showSuggestions
-                ? "rgba(199, 168, 105, 0.2)"
-                : "transparent",
-              color: showSuggestions ? "var(--accent)" : "inherit",
-              transition: "background 0.2s ease, transform 0.2s ease",
-            }}
-            aria-label="Toggle inspiration replies"
-            aria-expanded={showSuggestions}
-          >
-            <FaLightbulb size={18} />
-          </button>
-
-          <button
-            className="btn"
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim() || isLoading || isUploading}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              padding: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              opacity:
-                inputValue.trim() && !isLoading && !isUploading ? 1 : 0.5,
-              cursor:
-                inputValue.trim() && !isLoading && !isUploading
-                  ? "pointer"
-                  : "not-allowed",
-            }}
-            aria-label="Send message"
-          >
-            <span style={{ fontSize: "var(--font-lg)", fontWeight: 600 }}>
-              <IoIosSend />
-            </span>
-          </button>
+            <button
+              className={`btn w-11 h-11 rounded-full p-0 flex items-center justify-center ${inputValue.trim() && !isLoading && !isUploading ? "opacity-100 cursor-pointer" : "opacity-50 cursor-not-allowed"}`}
+              onClick={handleSendMessage}
+              disabled={!inputValue.trim() || isLoading || isUploading}
+              aria-label="Send message"
+            >
+              <span className="text-[length:var(--font-lg)] font-semibold">
+                <IoIosSend />
+              </span>
+            </button>
+          </div>
         </div>
 
         <div
-          className="sub text-sm"
-          style={{
-            marginTop: 8,
-            fontSize: "var(--font-xs)",
-            textAlign: "center",
-          }}
+          className="sub text-sm mt-2 text-[length:var(--font-xs)] text-center"
         >
           Press Enter to send, Shift+Enter for new line
         </div>
 
         {showSuggestions && (
           <div
-            style={{
-              marginTop: 16,
-              padding: 12,
-              borderRadius: "var(--radius-sm)",
-              background: "rgba(199, 168, 105, 0.08)",
-              border: "1px solid rgba(199, 168, 105, 0.2)",
-            }}
+            className="mt-4 p-3 rounded-[var(--radius-sm)] bg-[rgba(199,168,105,0.08)] border border-[rgba(199,168,105,0.2)]"
           >
             <div
-              className="row"
-              style={{
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 10,
-              }}
+              className="row flex justify-between items-center mb-2.5"
             >
-              <div className="row" style={{ alignItems: "center", gap: 8 }}>
+              <div className="row flex items-center gap-2">
                 <span
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: "50%",
-                    background: "rgba(199, 168, 105, 0.2)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--accent)",
-                  }}
+                  className="w-7 h-7 rounded-full bg-[rgba(199,168,105,0.2)] flex items-center justify-center text-[var(--accent)]"
                 >
                   <FaLightbulb size={14} />
                 </span>
                 <div>
                   <div
-                    className="sub"
-                    style={{ fontSize: "var(--font-sm)", fontWeight: 600 }}
+                    className="sub text-[length:var(--font-sm)] font-semibold"
                   >
                     Inspiration Reply
                   </div>
                   <div
-                    className="sub text-sm"
-                    style={{ fontSize: "var(--font-xs)", opacity: 0.7 }}
+                    className="sub text-sm text-[length:var(--font-xs)] opacity-70"
                   >
                     Free: {Math.max(0, 10 - dailySuggestionUses)}/10 today
                   </div>
                 </div>
               </div>
               <button
-                className="btn-ghost"
+                className="btn-ghost w-8 min-w-[32px] h-8 rounded-[10%] flex items-center justify-center p-0"
                 onClick={refreshSuggestions}
-                style={{
-                  width: 32,
-                  minWidth: 32,
-                  height: 32,
-                  borderRadius: "10%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 0,
-                }}
                 aria-label="Refresh inspiration replies"
               >
                 <FaSyncAlt size={14} />
               </button>
             </div>
 
-            <div className="col" style={{ gap: 10 }}>
+            <div className="col flex flex-col gap-2.5">
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion}
                   onClick={() => handleUseSuggestion(suggestion)}
-                  style={{
-                    textAlign: "left",
-                    background: "var(--card)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "12px 14px",
-                    display: "flex",
-                    gap: 12,
-                    alignItems: "flex-start",
-                    cursor: "pointer",
-                    transition: "transform 0.15s ease, box-shadow 0.2s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow =
-                      "0 8px 20px rgba(0,0,0,0.12)";
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = "none";
-                    e.currentTarget.style.transform = "translateY(0)";
-                  }}
+                  className="text-left bg-[var(--card)] border border-[var(--border)] rounded-[var(--radius-sm)] px-3.5 py-3 flex gap-3 items-start cursor-pointer transition-all duration-200 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-px"
                 >
                   <span
-                    style={{
-                      color: "var(--accent)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginTop: 2,
-                    }}
+                    className="text-[var(--accent)] flex items-center justify-center mt-0.5"
                   >
                     <FaPen size={12} />
                   </span>
                   <span
-                    style={{
-                      fontSize: "var(--font-sm)",
-                      color: "var(--text)",
-                      lineHeight: 1.5,
-                    }}
+                    className="text-[length:var(--font-sm)] text-[var(--text)] leading-relaxed"
                   >
                     {suggestion}
                   </span>
@@ -1026,14 +721,7 @@ export default function AIFriendPage() {
         )}
       </div>
 
-      <style>
-        {`
-          @keyframes pulse {
-            0%, 100% { opacity: 0.4; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.1); }
-          }
-        `}
-      </style>
+
     </div>
   );
 }

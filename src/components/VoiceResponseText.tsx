@@ -148,7 +148,7 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
               padding: 12px 16px !important;
               max-height: 20px !important;
               min-height: 20px !important;
-              font-size: var(--font-md) !important;
+              font-size: var(--font-lg) !important;
             }
           }
 
@@ -157,7 +157,7 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
               padding: 10px 12px !important;
               max-height: calc(100vh - 380px) !important;
               min-height: 40px !important;
-              font-size: var(--font-sm) !important;
+              font-size: var(--font-lg) !important;
               line-height: 1.5 !important;
             }
           }
