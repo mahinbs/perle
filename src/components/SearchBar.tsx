@@ -491,7 +491,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         onClose={() => setShowVoiceOverlay(false)}
       />
       <div className="row search-container">
-        <div
+        {/* <div
           style={{
             width: 10,
             height: 10,
@@ -499,7 +499,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             background: "var(--accent)",
             flexShrink: 0,
           }}
-        />
+        /> */}
 
         <textarea
           ref={inputRef}

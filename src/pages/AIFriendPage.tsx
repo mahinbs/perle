@@ -584,7 +584,7 @@ export default function AIFriendPage() {
             aria-hidden
           />
           <div
-            className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-2 sm:border border-[var(--border)] min-h-[44px] max-h-[120px]"
+            className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-1 sm:border border-[var(--border)] min-h-[34px] max-h-[120px]"
           >
             <textarea
               ref={inputRef}
@@ -608,7 +608,7 @@ export default function AIFriendPage() {
           <div className="flex gap-2">
             {isListening ? (
               <button
-                className="btn w-11 h-11 rounded-full p-0 flex items-center justify-center bg-[#EF4444]"
+                className="btn w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-[#EF4444]"
                 onClick={stopVoiceInput}
                 aria-label="Stop recording"
               >
@@ -616,35 +616,35 @@ export default function AIFriendPage() {
               </button>
             ) : (
               <button
-                className="btn-ghost min-w-11 w-11 h-11 rounded-full p-0 flex items-center justify-center"
+                className="btn-ghost min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center"
                 onClick={startVoiceInput}
                 aria-label="Voice input"
                 disabled={isLoading}
               >
-                <MicWaveIcon size={20} active={false} />
+                <MicWaveIcon size={19} active={false} />
               </button>
             )}
 
             <button
-              className={`btn-ghost w-11 h-11 rounded-full p-0 flex items-center justify-center transition-colors duration-200 ${isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${attachedFileName ? " bg-[rgba(199,168,105,0.15)] text-[var(--accent)]" : " bg-transparent text-inherit"}`}
+              className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${attachedFileName ? " bg-[rgba(199,168,105,0.15)] text-[var(--accent)]" : " bg-transparent text-inherit"}`}
               onClick={handleAttachClick}
               aria-label="Attach file"
               disabled={isLoading}
             >
-              <FaPaperclip size={18} />
+              <FaPaperclip size={16} />
             </button>
 
             <button
-              className={`btn-ghost w-11 h-11 rounded-full p-0 flex items-center justify-center transition-all duration-200 ${showSuggestions ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]" : "bg-transparent text-inherit"}`}
+              className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${showSuggestions ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]" : "bg-transparent text-inherit"}`}
               onClick={() => setShowSuggestions((prev) => !prev)}
               aria-label="Toggle inspiration replies"
               aria-expanded={showSuggestions}
             >
-              <FaLightbulb size={18} />
+              <FaLightbulb size={16} />
             </button>
 
             <button
-              className={`btn w-11 h-11 rounded-full p-0 flex items-center justify-center ${inputValue.trim() && !isLoading && !isUploading ? "opacity-100 cursor-pointer" : "opacity-50 cursor-not-allowed"}`}
+              className={`btn md:bg-[var(--accent)]! bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${inputValue.trim() && !isLoading && !isUploading ? "opacity-100 cursor-pointer" : "opacity-50 cursor-not-allowed"}`}
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || isLoading || isUploading}
               aria-label="Send message"

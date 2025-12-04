@@ -26,9 +26,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
   const [isDragging, setIsDragging] = useState(false);
   const [dragCurrentY, setDragCurrentY] = useState(0);
   const [isClosing, setIsClosing] = useState(false);
+  const [displayedTexts, setDisplayedTexts] = useState<Record<number, string>>({});
+  const [isTypingComplete, setIsTypingComplete] = useState(false);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
   const offcanvasRef = useRef<HTMLDivElement>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const typewriterTimeoutRef = useRef<number | null>(null);
   const { showToast } = useToast();
 
   // Check for speech synthesis support
@@ -180,6 +183,68 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
       handleEditSubmit();
     }
   };
+
+  // Typewriter effect for answer chunks
+  useEffect(() => {
+    if (isLoading || chunks.length === 0) {
+      setDisplayedTexts({});
+      setIsTypingComplete(false);
+      if (typewriterTimeoutRef.current) {
+        clearTimeout(typewriterTimeoutRef.current);
+        typewriterTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    // Reset state when chunks change
+    setDisplayedTexts({});
+    setIsTypingComplete(false);
+    if (typewriterTimeoutRef.current) {
+      clearTimeout(typewriterTimeoutRef.current);
+      typewriterTimeoutRef.current = null;
+    }
+
+    // Type out each chunk sequentially
+    let currentChunkIndex = 0;
+    let currentCharIndex = 0;
+    const typingSpeed = 1; // milliseconds per character
+
+    const typeNextChar = () => {
+      if (currentChunkIndex >= chunks.length) {
+        // All chunks are complete
+        setIsTypingComplete(true);
+        return;
+      }
+
+      const currentChunk = chunks[currentChunkIndex];
+      const currentText = currentChunk.text;
+
+      if (currentCharIndex < currentText.length) {
+        // Type next character
+        setDisplayedTexts(prev => ({
+          ...prev,
+          [currentChunkIndex]: currentText.substring(0, currentCharIndex + 1)
+        }));
+        currentCharIndex++;
+        typewriterTimeoutRef.current = setTimeout(typeNextChar, typingSpeed);
+      } else {
+        // Move to next chunk
+        currentChunkIndex++;
+        currentCharIndex = 0;
+        typewriterTimeoutRef.current = setTimeout(typeNextChar, typingSpeed);
+      }
+    };
+
+    // Start typing after a brief delay
+    typewriterTimeoutRef.current = setTimeout(typeNextChar, 100);
+
+    return () => {
+      if (typewriterTimeoutRef.current) {
+        clearTimeout(typewriterTimeoutRef.current);
+        typewriterTimeoutRef.current = null;
+      }
+    };
+  }, [chunks, isLoading]);
 
   // Auto-speak the next answer when triggered from voice overlay
   useEffect(() => {
@@ -400,9 +465,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
   if (isLoading) {
     return (
       <div className="card" style={{ padding: 18 }}>
-        <div className="sub text-sm" style={{ marginBottom: 10 }}>Answer</div>
+        <div className="sub text-sm" style={{ marginBottom: 10 }}>Syntra<span className='text-[var(--accent)]'>IQ</span></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {[1, 2, 3].map(i => (
+          <p className="text-base">
+            IQ is thinking
+            <span className="dot-blink" style={{ animationDelay: '0s' }}>.</span>
+            <span className="dot-blink" style={{ animationDelay: '0.2s' }}>.</span>
+            <span className="dot-blink" style={{ animationDelay: '0.4s' }}>.</span>
+          </p>
+          {/* {[1, 2, 3].map(i => (
             <div key={i}>
               <div className="skeleton" style={{ height: 20, borderRadius: 4, marginBottom: 8 }} />
               <div className="skeleton" style={{ height: 20, borderRadius: 4, width: '80%' }} />
@@ -412,7 +483,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                 <div className="skeleton" style={{ height: 24, width: 100, borderRadius: 12 }} />
               </div>
             </div>
-          ))}
+          ))} */}
         </div>
       </div>
     );
@@ -506,9 +577,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             fontWeight: 500,
             color: 'var(--sub)'
           }}>
-            Answer
+            {/* Answer */}
+            Syntra<span className='text-[var(--accent)]'>IQ</span>
           </div>
-          {mode && (
+          {/* {mode && (
             <span className="chip" style={{
               fontSize: 'var(--font-sm)',
               padding: '4px 8px',
@@ -518,7 +590,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
             }}>
               {mode}
             </span>
-          )}
+          )} */}
         </div>
         <div style={{
           display: 'flex',
@@ -591,7 +663,19 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
                 color: 'var(--text)'
               }}
             >
-              {chunk.text}
+              {displayedTexts[index] || ''}
+              {isTypingComplete && index === chunks.length - 1 && (
+                <span style={{
+                  display: 'inline-block',
+                  width: '3px',
+                  height: '3px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--text)',
+                  marginLeft: '4px',
+                  verticalAlign: 'middle',
+                  animation: 'blink 1s infinite'
+                }} className='mt-2' />
+              )}
             </div>
 
             <div style={{
