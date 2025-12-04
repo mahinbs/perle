@@ -1,0 +1,14 @@
+runpod>=1.7.0
+requests
+
+torch==2.1.2
+torchvision
+torchaudio
+
+diffusers[torch]==0.35.1
+transformers==4.39.3
+accelerate
+safetensors
+ftfy
+numpy
+pillow

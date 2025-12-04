@@ -69,6 +69,43 @@ setInterval(async () => {
   }
 }, 60 * 60 * 1000); // 1 hour
 
+// Self-ping health check to keep Render alive (pings every 30 seconds)
+// Render free tier spins down after 50 seconds of inactivity
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL || process.env.SERVER_URL;
+if (RENDER_URL) {
+  const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+  
+  const pingSelf = async () => {
+    try {
+      const healthUrl = `${RENDER_URL}/api/health`;
+      const response = await fetch(healthUrl, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-cache',
+      });
+      
+      if (response.ok) {
+        console.log('✅ Self-ping successful - keeping server alive');
+      } else {
+        console.warn(`⚠️ Self-ping failed with status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('❌ Self-ping error:', error instanceof Error ? error.message : error);
+    }
+  };
+
+  // Start self-pinging after server starts
+  setTimeout(() => {
+    // Ping immediately
+    pingSelf();
+    // Then ping every 30 seconds
+    setInterval(pingSelf, HEALTH_CHECK_INTERVAL);
+    console.log(`🔄 Health check: Self-pinging every ${HEALTH_CHECK_INTERVAL / 1000}s to keep Render alive`);
+  }, 5000); // Wait 5 seconds after server starts
+} else {
+  console.log('ℹ️ Health check: RENDER_EXTERNAL_URL not set, skipping self-ping (likely local development)');
+}
+
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`🚀 SyntraIQ backend listening on http://localhost:${PORT}`);
