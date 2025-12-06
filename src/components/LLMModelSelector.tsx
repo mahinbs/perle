@@ -191,6 +191,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const mobileDropdownRef = useRef<HTMLDivElement>(null);
 
   // Use premium models if user is premium, otherwise return empty (shouldn't be shown)
   const availableModels = isPremium ? premiumModels : [];
@@ -217,17 +218,33 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      const isOutsideDropdown = dropdownRef.current && !dropdownRef.current.contains(target);
+      const isOutsideMobileDropdown = mobileDropdownRef.current && !mobileDropdownRef.current.contains(target);
+      
+      // On mobile, check mobile dropdown; on desktop, check regular dropdown
+      if (isMobile) {
+        if (isOutsideMobileDropdown && isOutsideDropdown) {
+          setIsOpen(false);
+        }
+      } else {
+        if (isOutsideDropdown) {
+          setIsOpen(false);
+        }
       }
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      // Use click event (fires after mousedown) to allow button mousedown events to process first
+      document.addEventListener('click', handleClickOutside, true);
+      document.addEventListener('touchstart', handleClickOutside, true);
+      return () => {
+        document.removeEventListener('click', handleClickOutside, true);
+        document.removeEventListener('touchstart', handleClickOutside, true);
+      };
     }
-  }, [isOpen]);
+  }, [isOpen, isMobile]);
 
   return (
     <>
@@ -242,19 +259,17 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
             zIndex: 99998
           }}
-          onClick={() => setIsOpen(false)}
         />
       )}
       <div ref={dropdownRef} style={{ position: 'relative' }}>
         <button
-          className="btn-ghost"
+          className="btn-ghost text-[length:var(--font-xs)]"
           onClick={() => setIsOpen(!isOpen)}
           disabled={disabled}
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            fontSize: 'var(--font-sm)',
             minWidth: 120,
             justifyContent: 'space-between'
           }}
@@ -281,24 +296,37 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
 
         {isOpen && (
           isMobile ? createPortal(
-            <div style={{
-              position: 'fixed',
-              top: '120px',
-              left: 0,
-              right: 0,
-              backgroundColor: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              boxShadow: 'var(--shadow)',
-              zIndex: 99999,
-              maxHeight: '300px',
-              overflowY: 'auto',
-              minWidth: '100%'
-            }}>
+            <div 
+              ref={mobileDropdownRef}
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              style={{
+                position: 'fixed',
+                top: '120px',
+                left: 0,
+                right: 0,
+                backgroundColor: 'var(--card)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                boxShadow: 'var(--shadow)',
+                zIndex: 99999,
+                maxHeight: '300px',
+                overflowY: 'auto',
+                minWidth: '100%'
+              }}>
               {availableModels.map((model) => (
                 <button
                   key={model.id}
-                  onClick={() => handleModelSelect(model.id)}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // Prevent focus issues
+                    e.stopPropagation();
+                    handleModelSelect(model.id);
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleModelSelect(model.id);
+                  }}
                   style={{
                     width: '100%',
                     padding: '8px 12px',

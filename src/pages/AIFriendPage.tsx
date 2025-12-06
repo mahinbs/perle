@@ -313,8 +313,9 @@ export default function AIFriendPage() {
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
-        content: `Sorry, I encountered an error: ${error.message || "Failed to connect to the server"
-          }. Please try again.`,
+        content: `Sorry, I encountered an error: ${
+          error.message || "Failed to connect to the server"
+        }. Please try again.`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorResponse]);
@@ -369,46 +370,36 @@ export default function AIFriendPage() {
   };
 
   return (
-    <div
-      className="container h-screen flex flex-col !p-0"
-    >
+    <div className="container h-screen flex flex-col !p-0">
       {/* Header */}
-      <div
-        className="border-b border-[var(--border)] bg-[var(--card)] sticky top-0 z-[100]"
-      >
-        <div
-          className="row flex justify-between items-center p-4"
-        >
+      <div className="border-b border-[var(--border)] bg-[var(--card)] sticky top-0 z-[100]">
+        <div className="row flex-nowrap! flex justify-between items-center p-4">
           <div className="row flex items-center gap-3">
             <button
-              className="btn-ghost p-2 text-[length:var(--font-md)]"
+              className="btn-ghost p-2! text-[length:var(--font-md)]"
               onClick={() => navigateTo("/")}
               aria-label="Back"
             >
               <IoIosArrowBack size={24} />
             </button>
             <div className="row flex items-center gap-3">
-              <img
-                src={aiProfile.avatar}
-                alt={`${aiProfile.name} avatar`}
-                className="w-11 h-11 rounded-full object-cover border-2 border-[var(--accent)]"
-              />
+              <div className="relative">
+                <img
+                  src={aiProfile.avatar}
+                  alt={`${aiProfile.name} avatar`}
+                  className="w-11 h-11 rounded-full object-cover border-2 border-[var(--accent)]"
+                />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
+              </div>
               <div>
-                <div className="h3 mb-0.5">
-                  {aiProfile.name}
-                </div>
-                <div
-                  className="sub text-sm text-[length:var(--font-sm)] opacity-80"
-                >
+                <div className="h3 mb-0.5">{aiProfile.name}</div>
+                <div className="sub text-sm text-[length:var(--font-sm)] opacity-80">
                   {aiProfile.handle}
                 </div>
               </div>
             </div>
           </div>
           <div className="row flex items-center gap-2.5">
-            <div
-              className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)]"
-            />
             <button
               className="btn-ghost p-2"
               aria-label="Favorite conversation"
@@ -420,13 +411,13 @@ export default function AIFriendPage() {
       </div>
 
       {/* Messages Area */}
-      <div
-        className="flex-1 overflow-y-auto px-4 py-5 bg-[var(--bg)]"
-      >
+      <div className="flex-1 overflow-y-auto px-4 py-5 bg-[var(--bg)]">
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex items-end gap-3 mb-4 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+            className={`flex items-end gap-3 mb-4 ${
+              message.role === "user" ? "flex-row-reverse" : "flex-row"
+            }`}
           >
             <img
               src={
@@ -437,24 +428,26 @@ export default function AIFriendPage() {
                   ? `${userProfile.name} avatar`
                   : `${aiProfile.name} avatar`
               }
-              className={`w-9 h-9 rounded-full object-cover border-2 ${message.role === "user"
-                ? "border-[var(--accent)]"
-                : "border-[rgba(16,163,127,0.5)]"
-                }`}
+              className={`w-9 h-9 rounded-full object-cover border-2 ${
+                message.role === "user"
+                  ? "border-[var(--accent)]"
+                  : "border-[rgba(16,163,127,0.5)]"
+              }`}
             />
             <div
-              className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${message.role === "user"
-                ? "bg-[var(--accent)] text-[#111]"
-                : "bg-[var(--card)] text-[var(--text)] border border-[var(--border)]"
-                }`}
+              className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${
+                message.role === "user"
+                  ? "bg-[var(--accent)] text-[#111]"
+                  : "bg-[var(--card)] text-[var(--text)] border border-[var(--border)]"
+              }`}
             >
-              <div
-                className="text-[length:var(--font-md)] whitespace-pre-wrap"
-              >
+              <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
                 {message.content}
               </div>
               <div
-                className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${message.role === "user" ? "text-right" : "text-left"}`}
+                className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${
+                  message.role === "user" ? "text-right" : "text-left"
+                }`}
               >
                 {message.timestamp.toLocaleTimeString([], {
                   hour: "2-digit",
@@ -466,29 +459,17 @@ export default function AIFriendPage() {
         ))}
 
         {isLoading && (
-          <div
-            className="flex items-end gap-3 mb-4"
-          >
+          <div className="flex items-end gap-3 mb-4">
             <img
               src={aiProfile.avatar}
               alt={`${aiProfile.name} avatar`}
               className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(16,163,127,0.5)]"
             />
-            <div
-              className="px-4 py-3 rounded-[var(--radius-sm)] bg-[var(--card)] border border-[var(--border)]"
-            >
-              <div
-                className="flex gap-1 items-center"
-              >
-                <span
-                  className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite]"
-                />
-                <span
-                  className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.2s]"
-                />
-                <span
-                  className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.4s]"
-                />
+            <div className="px-4 py-3 rounded-[var(--radius-sm)] bg-[var(--card)] border border-[var(--border)]">
+              <div className="flex gap-1 items-center">
+                <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite]" />
+                <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.2s]" />
+                <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.4s]" />
               </div>
             </div>
           </div>
@@ -498,14 +479,10 @@ export default function AIFriendPage() {
       </div>
 
       {/* Input Area */}
-      <div
-        className="p-3 px-4 border-t border-[var(--border)] bg-[var(--card)] sticky bottom-0"
-      >
+      <div className="p-3 px-4 border-none border-[var(--border)] bg-[var(--card)] sticky bottom-0">
         {/* Model Selector and New Chat Button (Premium Users) - Moved to bottom */}
         {isPremium && (
-          <div
-            className="flex justify-between items-center mb-2 gap-2"
-          >
+          <div className="flex justify-between items-center mb-2 gap-2">
             <div className="flex-1">
               <LLMModelSelector
                 selectedModel={selectedModel}
@@ -538,22 +515,14 @@ export default function AIFriendPage() {
         )}
 
         {attachedFileName && (
-          <div
-            className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3"
-          >
-            <div
-              className="flex items-center gap-2.5 text-[length:var(--font-sm)] text-[var(--text)] flex-1 min-w-0"
-            >
+          <div className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3">
+            <div className="flex items-center gap-2.5 text-[length:var(--font-sm)] text-[var(--text)] flex-1 min-w-0">
               <FaPaperclip size={14} color="var(--accent)" />
-              <span
-                className="overflow-hidden text-ellipsis whitespace-nowrap"
-              >
+              <span className="overflow-hidden text-ellipsis whitespace-nowrap">
                 {attachedFileName}
               </span>
               {isUploading && (
-                <span
-                  className="text-[length:var(--font-xs)] text-[var(--accent)] font-semibold"
-                >
+                <span className="text-[length:var(--font-xs)] text-[var(--accent)] font-semibold">
                   Uploading…
                 </span>
               )}
@@ -573,9 +542,7 @@ export default function AIFriendPage() {
           </div>
         )}
 
-        <div
-          className="flex gap-2 items-end flex-wrap bg-[var(--input-bg)] sm:bg-none p-3 rounded-xl border border-[var(--border)]"
-        >
+        <div className="flex gap-2 items-end flex-wrap bg-[var(--input-bg)] sm:bg-none p-3 rounded-xl border border-[var(--border)]">
           <input
             ref={fileInputRef}
             type="file"
@@ -583,9 +550,7 @@ export default function AIFriendPage() {
             onChange={handleFileSelected}
             aria-hidden
           />
-          <div
-            className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-1 sm:border border-[var(--border)] min-h-[34px] max-h-[120px]"
-          >
+          <div className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-1 sm:border border-[var(--border)] min-h-[34px] max-h-[120px]">
             <textarea
               ref={inputRef}
               value={inputValue}
@@ -626,7 +591,13 @@ export default function AIFriendPage() {
             )}
 
             <button
-              className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${attachedFileName ? " bg-[rgba(199,168,105,0.15)] text-[var(--accent)]" : " bg-transparent text-inherit"}`}
+              className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${
+                isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+              } ${
+                attachedFileName
+                  ? " bg-[rgba(199,168,105,0.15)] text-[var(--accent)]"
+                  : " bg-transparent text-inherit"
+              }`}
               onClick={handleAttachClick}
               aria-label="Attach file"
               disabled={isLoading}
@@ -635,7 +606,11 @@ export default function AIFriendPage() {
             </button>
 
             <button
-              className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${showSuggestions ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]" : "bg-transparent text-inherit"}`}
+              className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${
+                showSuggestions
+                  ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]"
+                  : "bg-transparent text-inherit"
+              }`}
               onClick={() => setShowSuggestions((prev) => !prev)}
               aria-label="Toggle inspiration replies"
               aria-expanded={showSuggestions}
@@ -644,7 +619,11 @@ export default function AIFriendPage() {
             </button>
 
             <button
-              className={`btn md:bg-[var(--accent)]! bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${inputValue.trim() && !isLoading && !isUploading ? "opacity-100 cursor-pointer" : "opacity-50 cursor-not-allowed"}`}
+              className={`btn md:bg-[var(--accent)]! bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${
+                inputValue.trim() && !isLoading && !isUploading
+                  ? "opacity-100 cursor-pointer"
+                  : "opacity-50 cursor-not-allowed"
+              }`}
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || isLoading || isUploading}
               aria-label="Send message"
@@ -656,34 +635,22 @@ export default function AIFriendPage() {
           </div>
         </div>
 
-        <div
-          className="sub text-sm mt-2 text-[length:var(--font-xs)] text-center"
-        >
+        <div className="sub text-sm mt-2 text-[length:var(--font-xs)] text-center">
           Press Enter to send, Shift+Enter for new line
         </div>
 
         {showSuggestions && (
-          <div
-            className="mt-4 p-3 rounded-[var(--radius-sm)] bg-[rgba(199,168,105,0.08)] border border-[rgba(199,168,105,0.2)]"
-          >
-            <div
-              className="row flex justify-between items-center mb-2.5"
-            >
+          <div className="mt-4 p-3 rounded-[var(--radius-sm)] bg-[rgba(199,168,105,0.08)] border border-[rgba(199,168,105,0.2)]">
+            <div className="row flex justify-between items-center mb-2.5">
               <div className="row flex items-center gap-2">
-                <span
-                  className="w-7 h-7 rounded-full bg-[rgba(199,168,105,0.2)] flex items-center justify-center text-[var(--accent)]"
-                >
+                <span className="w-7 h-7 rounded-full bg-[rgba(199,168,105,0.2)] flex items-center justify-center text-[var(--accent)]">
                   <FaLightbulb size={14} />
                 </span>
                 <div>
-                  <div
-                    className="sub text-[length:var(--font-sm)] font-semibold"
-                  >
+                  <div className="sub text-[length:var(--font-sm)] font-semibold">
                     Inspiration Reply
                   </div>
-                  <div
-                    className="sub text-sm text-[length:var(--font-xs)] opacity-70"
-                  >
+                  <div className="sub text-sm text-[length:var(--font-xs)] opacity-70">
                     Free: {Math.max(0, 10 - dailySuggestionUses)}/10 today
                   </div>
                 </div>
@@ -704,14 +671,10 @@ export default function AIFriendPage() {
                   onClick={() => handleUseSuggestion(suggestion)}
                   className="text-left bg-[var(--card)] border border-[var(--border)] rounded-[var(--radius-sm)] px-3.5 py-3 flex gap-3 items-start cursor-pointer transition-all duration-200 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-px"
                 >
-                  <span
-                    className="text-[var(--accent)] flex items-center justify-center mt-0.5"
-                  >
+                  <span className="text-[var(--accent)] flex items-center justify-center mt-0.5">
                     <FaPen size={12} />
                   </span>
-                  <span
-                    className="text-[length:var(--font-sm)] text-[var(--text)] leading-relaxed"
-                  >
+                  <span className="text-[length:var(--font-sm)] text-[var(--text)] leading-relaxed">
                     {suggestion}
                   </span>
                 </button>
@@ -720,8 +683,6 @@ export default function AIFriendPage() {
           </div>
         )}
       </div>
-
-
     </div>
   );
 }
