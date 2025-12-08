@@ -9,6 +9,7 @@ import {
   FaSyncAlt,
   FaPaperclip,
   FaTimes,
+  FaComments,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
 import { getUserData, getAuthHeaders } from "../utils/auth";
@@ -481,18 +482,19 @@ export default function AIFriendPage() {
       {/* Input Area */}
       <div className="p-3 px-4 border-none border-[var(--border)] bg-[var(--card)] sticky bottom-0">
         {/* Model Selector and New Chat Button (Premium Users) - Moved to bottom */}
-        {isPremium && (
+        {/* <div className="flex-1">
+          <LLMModelSelector
+            selectedModel={selectedModel}
+            onModelChange={(model) => {
+              setSelectedModel(model);
+              localStorage.setItem("perle-ai-friend-model", model);
+            }}
+            isPremium={isPremium}
+            size="large"
+          />
+        </div> */}
+        {/* {isPremium && (
           <div className="flex justify-between items-center mb-2 gap-2">
-            <div className="flex-1">
-              <LLMModelSelector
-                selectedModel={selectedModel}
-                onModelChange={(model) => {
-                  setSelectedModel(model);
-                  localStorage.setItem("perle-ai-friend-model", model);
-                }}
-                isPremium={isPremium}
-              />
-            </div>
             <button
               className="btn-ghost px-3 py-1.5 text-[length:var(--font-xs)] whitespace-nowrap"
               onClick={() => {
@@ -512,7 +514,7 @@ export default function AIFriendPage() {
               New Chat
             </button>
           </div>
-        )}
+        )} */}
 
         {attachedFileName && (
           <div className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3">
@@ -570,68 +572,105 @@ export default function AIFriendPage() {
             />
           </div>
 
-          <div className="flex gap-2">
-            {isListening ? (
+          <div className="flex w-full items-center justify-between gap-3">
+            <div className="flex gap-2">
+              {isListening ? (
+                <button
+                  className="btn w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-[#EF4444]"
+                  onClick={stopVoiceInput}
+                  aria-label="Stop recording"
+                >
+                  <FaStop size={16} />
+                </button>
+              ) : (
+                <button
+                  className="btn-ghost min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center"
+                  onClick={startVoiceInput}
+                  aria-label="Voice input"
+                  disabled={isLoading}
+                >
+                  <MicWaveIcon size={19} active={false} />
+                </button>
+              )}
+
               <button
-                className="btn w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-[#EF4444]"
-                onClick={stopVoiceInput}
-                aria-label="Stop recording"
-              >
-                <FaStop size={16} />
-              </button>
-            ) : (
-              <button
-                className="btn-ghost min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center"
-                onClick={startVoiceInput}
-                aria-label="Voice input"
+                className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${
+                  isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+                } ${
+                  attachedFileName
+                    ? " bg-[rgba(199,168,105,0.15)] text-[var(--accent)]"
+                    : " bg-transparent text-inherit"
+                }`}
+                onClick={handleAttachClick}
+                aria-label="Attach file"
                 disabled={isLoading}
               >
-                <MicWaveIcon size={19} active={false} />
+                <FaPaperclip size={16} />
               </button>
-            )}
 
-            <button
-              className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${
-                isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
-              } ${
-                attachedFileName
-                  ? " bg-[rgba(199,168,105,0.15)] text-[var(--accent)]"
-                  : " bg-transparent text-inherit"
-              }`}
-              onClick={handleAttachClick}
-              aria-label="Attach file"
-              disabled={isLoading}
-            >
-              <FaPaperclip size={16} />
-            </button>
+              <button
+                className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${
+                  showSuggestions
+                    ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]"
+                    : "bg-transparent text-inherit"
+                }`}
+                onClick={() => setShowSuggestions((prev) => !prev)}
+                aria-label="Toggle inspiration replies"
+                aria-expanded={showSuggestions}
+              >
+                <FaLightbulb size={16} />
+              </button>
 
-            <button
-              className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${
-                showSuggestions
-                  ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]"
-                  : "bg-transparent text-inherit"
-              }`}
-              onClick={() => setShowSuggestions((prev) => !prev)}
-              aria-label="Toggle inspiration replies"
-              aria-expanded={showSuggestions}
-            >
-              <FaLightbulb size={16} />
-            </button>
+              <button
+                className="btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 bg-transparent text-inherit"
+                onClick={() => {
+                  // Start new chat - clear messages and reset
+                  setMessages([
+                    {
+                      id: "1",
+                      role: "ai",
+                      content:
+                        "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+                      timestamp: new Date(),
+                    },
+                  ]);
+                  showToast({
+                    message: "New chat started",
+                    type: "success",
+                    duration: 2000,
+                  });
+                }}
+                aria-label="Start new chat"
+              >
+                <FaComments size={16} />
+              </button>
 
-            <button
-              className={`btn md:bg-[var(--accent)]! bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${
-                inputValue.trim() && !isLoading && !isUploading
-                  ? "opacity-100 cursor-pointer"
-                  : "opacity-50 cursor-not-allowed"
-              }`}
-              onClick={handleSendMessage}
-              disabled={!inputValue.trim() || isLoading || isUploading}
-              aria-label="Send message"
-            >
-              <span className="text-[length:var(--font-lg)] font-semibold">
-                <IoIosSend />
-              </span>
-            </button>
+              <button
+                className={`btn bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${
+                  inputValue.trim() && !isLoading && !isUploading
+                    ? "opacity-100 cursor-pointer"
+                    : "opacity-50 cursor-not-allowed"
+                }`}
+                onClick={handleSendMessage}
+                disabled={!inputValue.trim() || isLoading || isUploading}
+                aria-label="Send message"
+              >
+                <span className="text-[length:var(--font-lg)] font-semibold">
+                  <IoIosSend />
+                </span>
+              </button>
+            </div>
+            <div className="w-fit">
+              <LLMModelSelector
+                selectedModel={selectedModel}
+                onModelChange={(model) => {
+                  setSelectedModel(model);
+                  localStorage.setItem("perle-ai-friend-model", model);
+                }}
+                isPremium={isPremium}
+                size="small"
+              />
+            </div>
           </div>
         </div>
 

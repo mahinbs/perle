@@ -144,13 +144,15 @@ interface LLMModelSelectorProps {
   onModelChange: (model: LLMModel) => void;
   disabled?: boolean;
   isPremium?: boolean;
+  size?: 'small' | 'medium' | 'large';
 }
 
 export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   selectedModel,
   onModelChange,
   disabled = false,
-  isPremium = false
+  isPremium = false,
+  size = 'medium'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -213,8 +215,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, isMobile]);
 
   // Handle scroll detection in mobile dropdown
@@ -266,6 +268,39 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       default: return '#6B7280';
     }
   };
+
+  // Size-based styles
+  const sizeStyles = {
+    small: {
+      padding: '2px 4px',
+      fontSize: 'var(--font-xs)',
+      iconSize: 6,
+      gap: 4,
+      minWidth: 70,
+      indicatorSize: 10,
+      height: '28px' // Match w-7 h-7 buttons
+    },
+    medium: {
+      padding: '6px 12px',
+      fontSize: 'var(--font-xs)',
+      iconSize: 8,
+      gap: 6,
+      minWidth: 120,
+      indicatorSize: 12,
+      height: 'auto'
+    },
+    large: {
+      padding: '8px 16px',
+      fontSize: 'var(--font-sm)',
+      iconSize: 10,
+      gap: 8,
+      minWidth: 150,
+      indicatorSize: 14,
+      height: 'auto'
+    }
+  };
+
+  const currentSize = sizeStyles[size];
 
   const renderModelButton = (model: LLMModelInfo, isMobileView: boolean) => (
     <button
@@ -394,34 +429,38 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       )}
       <div ref={dropdownRef} style={{ position: 'relative' }}>
         <button
-          className="btn-ghost text-[length:var(--font-xs)]"
+          className="btn-ghost"
           onClick={() => setIsOpen(!isOpen)}
           disabled={disabled}
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
-            minWidth: 120,
-            justifyContent: 'space-between'
+            gap: currentSize.gap,
+            minWidth: currentSize.minWidth,
+            padding: currentSize.padding,
+            fontSize: currentSize.fontSize,
+            height: currentSize.height,
+            justifyContent: 'space-between',
+            boxSizing: 'border-box'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: currentSize.gap }}>
             <div style={{
-              width: 8,
-              height: 8,
+              width: currentSize.iconSize,
+              height: currentSize.iconSize,
               borderRadius: '50%',
               backgroundColor: getProviderColor(selectedModelInfo?.provider),
             }} />
             <span>{selectedModelInfo?.name || 'Select Model'}</span>
           </div>
-          <span style={{ fontSize: 'var(--font-sm)', opacity: 0.7 }}>
+          <span style={{ fontSize: currentSize.fontSize, opacity: 0.7 }}>
             {isOpen ? '▲' : '▼'}
           </span>
         </button>
 
         {isOpen && (
           isMobile ? createPortal(
-            <div
+            <div 
               ref={mobileDropdownRef}
               onClick={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
