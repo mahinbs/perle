@@ -63,13 +63,6 @@ const premiumModels: LLMModelInfo[] = [
     description: 'Lightweight reasoning model for agentic coding and math problems',
     capabilities: ['Fast', 'Coding', 'Math', '131K Context']
   },
-  // {
-  //   id: 'grok-4', // COMMENTED OUT - temporarily disabled
-  //   name: 'Grok 4',
-  //   provider: 'xAI',
-  //   description: 'Latest Grok model with enhanced performance and features',
-  //   capabilities: ['Latest', 'Advanced Reasoning', 'High Performance']
-  // },
   {
     id: 'grok-4-heavy',
     name: 'Grok 4 Heavy',
@@ -98,14 +91,6 @@ const premiumModels: LLMModelInfo[] = [
     description: 'xAI\'s beta language model with real-time capabilities',
     capabilities: ['Real-time Data', 'Fast Response', 'Beta Features']
   },
-  // Anthropic Claude Models (COMMENTED OUT - No API key)
-  // {
-  //   id: 'claude-4.5',
-  //   name: 'Claude 4.5',
-  //   provider: 'Anthropic',
-  //   description: 'Anthropic\'s latest and most capable model',
-  //   capabilities: ['Advanced Reasoning', 'Long Context', 'Safety Focused']
-  // }
 ];
 
 // Legacy models (kept for backward compatibility, but not shown in selector)
@@ -124,27 +109,6 @@ const legacyModels: LLMModelInfo[] = [
     description: 'Fast and efficient for most tasks',
     capabilities: ['General Purpose', 'Fast Response', 'Cost Effective']
   },
-  // {
-  //   id: 'claude-3-opus',
-  //   name: 'Claude 3 Opus',
-  //   provider: 'Anthropic',
-  //   description: 'Most powerful Claude model for complex tasks',
-  //   capabilities: ['Advanced Reasoning', 'Long Context', 'Analysis']
-  // },
-  // {
-  //   id: 'claude-3-sonnet',
-  //   name: 'Claude 3 Sonnet',
-  //   provider: 'Anthropic',
-  //   description: 'Balanced performance and speed',
-  //   capabilities: ['Balanced Performance', 'Code Generation', 'Analysis']
-  // },
-  // {
-  //   id: 'claude-3-haiku',
-  //   name: 'Claude 3 Haiku',
-  //   provider: 'Anthropic',
-  //   description: 'Fast and lightweight for simple tasks',
-  //   capabilities: ['Fast Response', 'Simple Tasks', 'Cost Effective']
-  // },
   {
     id: 'gemini-pro',
     name: 'Gemini Pro',
@@ -192,6 +156,9 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileDropdownRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const scrollStartYRef = useRef<number | null>(null);
+  const hasScrolledRef = useRef(false);
 
   // Use premium models if user is premium, otherwise return empty (shouldn't be shown)
   const availableModels = isPremium ? premiumModels : [];
@@ -216,40 +183,204 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Close dropdown when clicking outside
+  // Handle backdrop click to close (mobile only)
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node;
-      const isOutsideDropdown = dropdownRef.current && !dropdownRef.current.contains(target);
-      const isOutsideMobileDropdown = mobileDropdownRef.current && !mobileDropdownRef.current.contains(target);
-      
-      // On mobile, check mobile dropdown; on desktop, check regular dropdown
-      if (isMobile) {
-        if (isOutsideMobileDropdown && isOutsideDropdown) {
-          setIsOpen(false);
-        }
-      } else {
-        if (isOutsideDropdown) {
-          setIsOpen(false);
-        }
+    if (!isOpen || !isMobile || !backdropRef.current) return;
+
+    const handleBackdropClick = (e: MouseEvent) => {
+      // Only close if clicking directly on backdrop
+      if (e.target === backdropRef.current) {
+        setIsOpen(false);
       }
     };
 
-    if (isOpen) {
-      // Use click event (fires after mousedown) to allow button mousedown events to process first
-      document.addEventListener('click', handleClickOutside, true);
-      document.addEventListener('touchstart', handleClickOutside, true);
-      return () => {
-        document.removeEventListener('click', handleClickOutside, true);
-        document.removeEventListener('touchstart', handleClickOutside, true);
-      };
-    }
+    const backdrop = backdropRef.current;
+    backdrop.addEventListener('click', handleBackdropClick);
+
+    return () => {
+      backdrop.removeEventListener('click', handleBackdropClick);
+    };
   }, [isOpen, isMobile]);
+
+  // Handle click outside for desktop
+  useEffect(() => {
+    if (!isOpen || isMobile) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen, isMobile]);
+
+  // Handle scroll detection in mobile dropdown
+  const handleScrollStart = (e: React.TouchEvent) => {
+    scrollStartYRef.current = e.touches[0].clientY;
+    hasScrolledRef.current = false;
+  };
+
+  const handleScrollMove = (e: React.TouchEvent) => {
+    if (scrollStartYRef.current !== null && e.touches[0]) {
+      const deltaY = Math.abs(e.touches[0].clientY - scrollStartYRef.current);
+      if (deltaY > 10) {
+        hasScrolledRef.current = true;
+      }
+    }
+  };
+
+  const handleScrollEnd = () => {
+    // Reset after a delay to allow any click events to check
+    setTimeout(() => {
+      hasScrolledRef.current = false;
+      scrollStartYRef.current = null;
+    }, 200);
+  };
+
+  // Handle model button click/tap
+  const handleModelButtonClick = (modelId: LLMModel, e: React.MouseEvent | React.TouchEvent) => {
+    // Don't select if we just scrolled
+    if (hasScrolledRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    handleModelSelect(modelId);
+  };
+
+  const getProviderColor = (provider?: string) => {
+    switch (provider) {
+      case 'OpenAI': return '#10A37F';
+      case 'Anthropic': return '#D97706';
+      case 'Google': return '#4285F4';
+      case 'xAI': return '#000000';
+      case 'SyntraIQ': return '#6366F1';
+      case 'Meta': return '#1877F2';
+      case 'Mistral AI': return '#7C3AED';
+      default: return '#6B7280';
+    }
+  };
+
+  const renderModelButton = (model: LLMModelInfo, isMobileView: boolean) => (
+    <button
+      key={model.id}
+      onMouseDown={isMobileView ? undefined : (e) => {
+        e.preventDefault();
+        handleModelSelect(model.id);
+      }}
+      onTouchStart={isMobileView ? handleScrollStart : undefined}
+      onTouchMove={isMobileView ? handleScrollMove : undefined}
+      onTouchEnd={isMobileView ? (e) => {
+        handleScrollEnd();
+        handleModelButtonClick(model.id, e);
+      } : undefined}
+      onClick={isMobileView ? undefined : () => handleModelSelect(model.id)}
+      style={{
+        width: '100%',
+        padding: isMobileView ? '8px 12px' : '12px 16px',
+        border: 'none',
+        backgroundColor: 'transparent',
+        textAlign: 'left',
+        cursor: 'pointer',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: isMobileView ? 8 : 12,
+        transition: 'background-color 0.2s ease'
+      }}
+      onMouseEnter={(e) => {
+        if (!isMobileView) {
+          e.currentTarget.style.backgroundColor = 'var(--border)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isMobileView) {
+          e.currentTarget.style.backgroundColor = 'transparent';
+        }
+      }}
+    >
+      <div style={{
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        backgroundColor: getProviderColor(model.provider),
+        flexShrink: 0
+      }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontWeight: 600,
+          fontSize: isMobileView ? 'var(--font-sm)' : 'var(--font-sm)',
+          marginBottom: isMobileView ? 1 : 2,
+          color: 'var(--text)'
+        }}>
+          {model.name}
+        </div>
+        <div style={{
+          fontSize: isMobileView ? 'var(--font-xs)' : 'var(--font-sm)',
+          color: 'var(--sub)',
+          marginBottom: isMobileView ? 2 : 4
+        }}>
+          {model.provider}
+        </div>
+        <div style={{
+          fontSize: 'var(--font-xs)',
+          color: 'var(--sub)',
+          lineHeight: isMobileView ? '12px' : '14px'
+        }}>
+          {model.description}
+        </div>
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: isMobileView ? 3 : 4,
+          marginTop: isMobileView ? 4 : 6
+        }}>
+          {model.capabilities.slice(0, isMobileView ? 2 : 3).map((capability) => (
+            <span
+              key={capability}
+              style={{
+                fontSize: 'var(--font-xs)',
+                padding: isMobileView ? '1px 4px' : '2px 6px',
+                backgroundColor: 'var(--border)',
+                borderRadius: isMobileView ? 3 : 4,
+                color: 'var(--sub)'
+              }}
+            >
+              {capability}
+            </span>
+          ))}
+        </div>
+      </div>
+      {selectedModel === model.id && (
+        <div style={{
+          width: isMobileView ? 14 : 16,
+          height: isMobileView ? 14 : 16,
+          borderRadius: '50%',
+          backgroundColor: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 'var(--font-xs)',
+          color: '#111',
+          flexShrink: 0
+        }}>
+          ✓
+        </div>
+      )}
+    </button>
+  );
 
   return (
     <>
       {isOpen && isMobile && (
         <div
+          ref={backdropRef}
           style={{
             position: 'fixed',
             top: 0,
@@ -279,13 +410,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               width: 8,
               height: 8,
               borderRadius: '50%',
-              backgroundColor: selectedModelInfo?.provider === 'OpenAI' ? '#10A37F' :
-                selectedModelInfo?.provider === 'Anthropic' ? '#D97706' :
-                  selectedModelInfo?.provider === 'Google' ? '#4285F4' :
-                    selectedModelInfo?.provider === 'xAI' ? '#000000' :
-                      selectedModelInfo?.provider === 'SyntraIQ' ? '#6366F1' :
-                        selectedModelInfo?.provider === 'Meta' ? '#1877F2' :
-                          selectedModelInfo?.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280'
+              backgroundColor: getProviderColor(selectedModelInfo?.provider),
             }} />
             <span>{selectedModelInfo?.name || 'Select Model'}</span>
           </div>
@@ -296,7 +421,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
 
         {isOpen && (
           isMobile ? createPortal(
-            <div 
+            <div
               ref={mobileDropdownRef}
               onClick={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
@@ -312,116 +437,12 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                 zIndex: 99999,
                 maxHeight: '300px',
                 overflowY: 'auto',
-                minWidth: '100%'
-              }}>
-              {availableModels.map((model) => (
-                <button
-                  key={model.id}
-                  onMouseDown={(e) => {
-                    e.preventDefault(); // Prevent focus issues
-                    e.stopPropagation();
-                    handleModelSelect(model.id);
-                  }}
-                  onTouchEnd={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleModelSelect(model.id);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    borderBottom: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    transition: 'background-color 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'var(--border)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
-                >
-                  <div style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    backgroundColor: model.provider === 'OpenAI' ? '#10A37F' :
-                      model.provider === 'Anthropic' ? '#D97706' :
-                        model.provider === 'Google' ? '#4285F4' :
-                          model.provider === 'xAI' ? '#000000' :
-                            model.provider === 'SyntraIQ' ? '#6366F1' :
-                              model.provider === 'Meta' ? '#1877F2' :
-                                model.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280',
-                    flexShrink: 0
-                  }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontWeight: 600,
-                      fontSize: 'var(--font-sm)',
-                      marginBottom: 1,
-                      color: 'var(--text)'
-                    }}>
-                      {model.name}
-                    </div>
-                    <div style={{
-                      fontSize: 'var(--font-xs)',
-                      color: 'var(--sub)',
-                      marginBottom: 2
-                    }}>
-                      {model.provider}
-                    </div>
-                    <div style={{
-                      fontSize: 'var(--font-xs)',
-                      color: 'var(--sub)',
-                      lineHeight: '12px'
-                    }}>
-                      {model.description}
-                    </div>
-                    <div style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: 3,
-                      marginTop: 4
-                    }}>
-                      {model.capabilities.slice(0, 2).map((capability) => (
-                        <span
-                          key={capability}
-                          style={{
-                            fontSize: 'var(--font-xs)',
-                            padding: '1px 4px',
-                            backgroundColor: 'var(--border)',
-                            borderRadius: 3,
-                            color: 'var(--sub)'
-                          }}
-                        >
-                          {capability}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  {selectedModel === model.id && (
-                    <div style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--accent)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 'var(--font-xs)',
-                      color: '#111'
-                    }}>
-                      ✓
-                    </div>
-                  )}
-                </button>
-              ))}
+                minWidth: '100%',
+                WebkitOverflowScrolling: 'touch',
+                touchAction: 'pan-y' // Allow vertical scrolling
+              }}
+            >
+              {availableModels.map((model) => renderModelButton(model, true))}
             </div>,
             document.body
           ) : (
@@ -440,105 +461,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               marginTop: 4,
               minWidth: 280
             }}>
-              {availableModels.map((model) => (
-                <button
-                  key={model.id}
-                  onClick={() => handleModelSelect(model.id)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    borderBottom: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    transition: 'background-color 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'var(--border)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
-                >
-                  <div style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    backgroundColor: model.provider === 'OpenAI' ? '#10A37F' :
-                      model.provider === 'Anthropic' ? '#D97706' :
-                        model.provider === 'Google' ? '#4285F4' :
-                          model.provider === 'xAI' ? '#000000' :
-                            model.provider === 'SyntraIQ' ? '#6366F1' :
-                              model.provider === 'Meta' ? '#1877F2' :
-                                model.provider === 'Mistral AI' ? '#7C3AED' : '#6B7280',
-                    flexShrink: 0
-                  }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontWeight: 600,
-                      fontSize: 'var(--font-sm)',
-                      marginBottom: 2,
-                      color: 'var(--text)'
-                    }}>
-                      {model.name}
-                    </div>
-                    <div style={{
-                      fontSize: 'var(--font-sm)',
-                      color: 'var(--sub)',
-                      marginBottom: 4
-                    }}>
-                      {model.provider}
-                    </div>
-                    <div style={{
-                      fontSize: 'var(--font-xs)',
-                      color: 'var(--sub)',
-                      lineHeight: '14px'
-                    }}>
-                      {model.description}
-                    </div>
-                    <div style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: 4,
-                      marginTop: 6
-                    }}>
-                      {model.capabilities.slice(0, 3).map((capability) => (
-                        <span
-                          key={capability}
-                          style={{
-                            fontSize: 'var(--font-xs)',
-                            padding: '2px 6px',
-                            backgroundColor: 'var(--border)',
-                            borderRadius: 4,
-                            color: 'var(--sub)'
-                          }}
-                        >
-                          {capability}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  {selectedModel === model.id && (
-                    <div style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--accent)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 'var(--font-xs)',
-                      color: '#111'
-                    }}>
-                      ✓
-                    </div>
-                  )}
-                </button>
-              ))}
+              {availableModels.map((model) => renderModelButton(model, false))}
             </div>
           )
         )}
