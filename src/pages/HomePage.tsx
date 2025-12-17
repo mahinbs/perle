@@ -41,13 +41,13 @@ export default function HomePage() {
   useEffect(() => {
     // Load saved model preference from localStorage
     const savedModel = localStorage.getItem('perle-selected-model') as LLMModel | null;
-    
+
     const updatePremiumStatus = (isInitialLoad = false) => {
       const user = getUserData();
       if (user) {
         const premium = user.isPremium ?? false;
         setIsPremium(premium);
-        
+
         // Only set default model on initial load or if no saved preference
         if (isInitialLoad) {
           if (savedModel && premium) {
@@ -93,7 +93,7 @@ export default function HomePage() {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    
+
     // Also check periodically (for same-tab updates) - but don't reset model
     const interval = setInterval(() => {
       const user = getUserData();
@@ -171,7 +171,7 @@ export default function HomePage() {
   const saveToHistory = useCallback((newQuery: string) => {
     const formatted = formatQuery(newQuery);
     if (!formatted) return;
-    
+
     setSearchHistory(prev => {
       const updated = [formatted, ...prev.filter(q => q !== formatted)].slice(0, 10);
       localStorage.setItem('perle-search-history', JSON.stringify(updated));
@@ -212,11 +212,11 @@ export default function HomePage() {
 
     setIsLoading(true);
     saveToHistory(q);
-    
+
     // Update both query (for editing) and searchedQuery (for display)
     setQuery(finalQuery);
     setSearchedQuery(finalQuery);
-    
+
     // Call the real API
     try {
       const res = await searchAPI(q, mode, selectedModel, newConversation);
@@ -288,10 +288,10 @@ export default function HomePage() {
 
     const handleTouchMove = (e: TouchEvent) => {
       if (!isPulling || hasTriggered) return;
-      
+
       const currentY = e.touches[0].clientY;
       const diff = currentY - startY;
-      
+
       // Only trigger if user is pulling down (not scrolling up) and at top
       if (diff > 100 && window.scrollY === 0 && !hasTriggered) {
         // Only search if there's a previous query to refresh
@@ -311,7 +311,7 @@ export default function HomePage() {
     document.addEventListener('touchstart', handleTouchStart, { passive: true });
     document.addEventListener('touchmove', handleTouchMove, { passive: true });
     document.addEventListener('touchend', handleTouchEnd, { passive: true });
-    
+
     return () => {
       document.removeEventListener('touchstart', handleTouchStart);
       document.removeEventListener('touchmove', handleTouchMove);
@@ -334,8 +334,8 @@ export default function HomePage() {
     if (answer && !isLoading && answerCardRef.current) {
       // Small delay to ensure the answer is rendered
       setTimeout(() => {
-        answerCardRef.current?.scrollIntoView({ 
-          behavior: 'smooth', 
+        answerCardRef.current?.scrollIntoView({
+          behavior: 'smooth',
           block: 'start',
           inline: 'nearest'
         });
@@ -346,7 +346,7 @@ export default function HomePage() {
   return (
     <div className="container">
       <Header />
-      
+
       <div className="sub text-sm" style={{ marginTop: 6 }}>
         An elegant answer engine with citations, comparisons, and summaries.
       </div>
@@ -354,36 +354,19 @@ export default function HomePage() {
       <div className="spacer-8" />
       <ModeBar mode={mode} setMode={setMode} />
 
-      {/* Model Selector - Only show for premium users */}
-      {isPremium && (
-        <>
-          <div className="spacer-8" />
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <LLMModelSelector
-              selectedModel={selectedModel}
-              onModelChange={(model) => {
-                setSelectedModel(model);
-                // Save to localStorage immediately for premium users
-                if (isPremium) {
-                  localStorage.setItem('perle-selected-model', model);
-                }
-              }}
-              isPremium={isPremium}
-            />
-          </div>
-        </>
-      )}
+
 
       <div className="spacer-12" />
-      <SearchBar 
-        query={query} 
+      <SearchBar
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        query={query}
         setQuery={handleQueryChange}
         onSearch={doSearch}
         isLoading={isLoading}
         showHistory={showHistory}
         searchHistory={searchHistory}
         onQuerySelect={handleQuerySelect}
-        selectedModel={selectedModel}
         onModelChange={setSelectedModel}
         uploadedFiles={uploadedFiles}
         onFilesChange={setUploadedFiles}
@@ -402,8 +385,8 @@ export default function HomePage() {
 
       <div className="spacer-12" />
       <div ref={answerCardRef}>
-        <AnswerCard 
-          chunks={answer?.chunks || []} 
+        <AnswerCard
+          chunks={answer?.chunks || []}
           sources={answer?.sources || []}
           isLoading={isLoading}
           mode={answer?.mode || mode}
@@ -422,11 +405,11 @@ export default function HomePage() {
         />
       </div>
 
-      <div className="spacer-16" />
-      <DiscoverRail />
+      {/* <div className="spacer-16" />
+      <DiscoverRail /> */}
 
-      <div className="spacer-24" />
-      <UpgradeCard />
+      {/* <div className="spacer-24" />
+      <UpgradeCard /> */}
 
       <div className="spacer-40" />
     </div>

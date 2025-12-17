@@ -9,10 +9,12 @@ import {
   FaImage,
   FaCamera,
   FaPaperPlane,
+  FaSearch,
 } from "react-icons/fa";
 import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
 import VoiceOverlay from "./VoiceOverlay";
+import { LLMModelSelector } from "./LLMModelSelector";
 
 interface UploadedFile {
   id: string;
@@ -22,6 +24,8 @@ interface UploadedFile {
 }
 
 interface SearchBarProps {
+  selectedModel: LLMModel;
+  setSelectedModel: (model: LLMModel) => void;
   query: string;
   setQuery: (query: string) => void;
   onSearch: (searchQuery?: string) => void;
@@ -29,7 +33,6 @@ interface SearchBarProps {
   showHistory: boolean;
   searchHistory: string[];
   onQuerySelect: (query: string) => void;
-  selectedModel: LLMModel;
   onModelChange: (model: LLMModel) => void;
   uploadedFiles?: UploadedFile[];
   onFilesChange?: (files: UploadedFile[]) => void;
@@ -53,6 +56,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   searchedQuery = '',
   isPremium = false,
   onNewConversation,
+  selectedModel,
+  setSelectedModel,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
@@ -174,7 +179,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         window.speechSynthesis.cancel();
         setIsSpeaking(false);
       }
-    } catch {}
+    } catch { }
 
     if (isListening) {
       stopVoiceInput();
@@ -289,8 +294,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // Check if file is video (should be blocked)
   const isVideoFile = (file: File): boolean => {
-    return file.type.startsWith("video/") || 
-           file.name.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/i) !== null;
+    return file.type.startsWith("video/") ||
+      file.name.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/i) !== null;
   };
 
   const createFilePreview = (file: File): Promise<string | undefined> => {
@@ -535,11 +540,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         <div className="row" style={{ gap: 8, flexShrink: 0 }}>
           {/* <LLMModelSelector
             selectedModel={selectedModel}
-            onModelChange={onModelChange}
+            onModelChange={setSelectedModel}
             disabled={isLoading}
           /> */}
 
-          {query && (
+          {/* {query && (
             <button
               className="btn-ghost"
               onClick={handleCopyQuery}
@@ -548,9 +553,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             >
               <FaCopy size={18} />
             </button>
-          )}
+          )} */}
 
-          <div style={{ position: "relative" }} data-upload-menu>
+          <div style={{ position: "relative" }} className="flex gap-2" data-upload-menu>
             <button
               className="btn-ghost"
               onClick={() => setShowUploadMenu(!showUploadMenu)}
@@ -611,6 +616,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     <FaFolderOpen size={16} /> Upload Files
                   </span>
                 </button>
+
                 <button
                   className="btn-ghost"
                   onClick={() => {
@@ -662,17 +668,56 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 </button>
               </div>
             )}
+            {/* Model Selector - Only show for premium users */}
+            {isPremium && (
+              <div>
+                <LLMModelSelector
+                  selectedModel={selectedModel}
+                  onModelChange={(model) => {
+                    setSelectedModel(model);
+                    // Save to localStorage immediately for premium users
+                    if (isPremium) {
+                      localStorage.setItem('perle-selected-model', model);
+                    }
+                  }}
+                  isPremium={isPremium}
+                />
+              </div>
+            )}
           </div>
 
           {/* Voice Search (no overlay): start/stop dictation, auto-search on end */}
-          {speechSupported && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
+          {/* Voice/Search Button Toggle */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            {query.trim() ? (
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  if (query.trim()) {
+                    onSearch();
+                    // In follow-up mode, keep the query for editing; otherwise clear it
+                    if (!hasAnswer) {
+                      setQuery("");
+                    }
+                  }
+                }}
+                disabled={isLoading}
+                aria-label="Search"
+                style={{
+                  padding: "4px 8px",
+                  fontSize: "var(--font-md)",
+                  color: "inherit",
+                }}
+              >
+                {isLoading ? "…" : <FaSearch size={20} />}
+              </button>
+            ) : speechSupported ? (
               <button
                 className="btn-ghost"
                 onClick={() => {
@@ -694,8 +739,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               >
                 <MicWaveIcon size={25} active={isListening} />
               </button>
-            </div>
-          )}
+            ) : null}
+          </div>
 
           {speechSupported && (
             <button
@@ -715,9 +760,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
           {/* Show conversation options for premium users with existing answers */}
           {isPremium && hasAnswer && (
-            <div style={{ 
-              display: 'flex', 
-              gap: 8, 
+            <div style={{
+              display: 'flex',
+              gap: 8,
               marginRight: 8,
               alignItems: 'center'
             }}>
@@ -739,59 +784,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               >
                 New
               </button>
-              <button
-                className="btn"
-                onClick={() => {
-                  if (query.trim()) {
-                    onSearch();
-                  }
-                }}
-                disabled={isLoading || !query.trim() || isListening}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: 'var(--font-xs)',
-                  whiteSpace: 'nowrap'
-                }}
-                title="Ask a follow-up question"
-              >
-                Follow-up
-              </button>
+              {/* Follow-up button removed - using main search icon */}
             </div>
           )}
-          
-          {/* Regular search button (for free users or when no answer yet) */}
-          {(!isPremium || !hasAnswer) && (
-            <button
-              className="btn"
-              onClick={() => {
-                // Only search if there's input in the search box
-                if (query.trim()) {
-                  onSearch();
-                  // In follow-up mode, keep the query for editing; otherwise clear it
-                  if (!hasAnswer) {
-                    setQuery("");
-                  }
-                }
-              }}
-              disabled={isLoading || !query.trim() || isListening}
-              style={{
-                minWidth: hasAnswer ? 44 : 80,
-                padding: hasAnswer ? '8px' : undefined,
-                opacity: isListening ? 0.5 : 1,
-                cursor: isListening ? "not-allowed" : "pointer",
-              }}
-            >
-              {isLoading ? (
-                "…"
-              ) : isListening ? (
-                <MicWaveIcon size={18} active={true} />
-              ) : hasAnswer ? (
-                <FaPaperPlane size={18} />
-              ) : (
-                "Search"
-              )}
-            </button>
-          )}
+
+          {/* Old Search Button Removed */}
         </div>
       </div>
 
@@ -927,7 +924,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       )}
 
       {/* Search History Dropdown */}
-      {showHistory && searchHistory.length > 0 && (
+      {/* {showHistory && searchHistory.length > 0 && (
         <div
           className="card"
           style={{
@@ -965,7 +962,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </button>
           ))}
         </div>
-      )}
+      )} */}
 
       {/* Quick Actions */}
       {isFocused && query.length > 0 && (

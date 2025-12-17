@@ -32,7 +32,7 @@ export const Header: React.FC = () => {
             width: "100%",
           }}
         >
-          <div
+          {/* <div
             className="row"
             style={{
               gap: 6,
@@ -46,7 +46,34 @@ export const Header: React.FC = () => {
             >
               Syntra<span className="text-gold -ml-2">IQ</span> <Dot />
             </div>
-          </div>
+          </div> */}
+           <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
+          <button
+            className={`btn-ghost active`}
+            onClick={() => navigateTo("/ai-friend")}
+            aria-label="AI Friend"
+            style={{
+              padding: "6px 10px",
+              fontSize: "var(--font-md)",
+              minHeight: 36,
+            }}
+          >
+            AI Friend
+          </button>
+
+          <button
+            className={`btn-ghost active`}
+            onClick={() => navigateTo("/")}
+            aria-label="Home"
+            style={{
+              padding: "6px 10px",
+              fontSize: "var(--font-md)",
+              minHeight: 36,
+            }}
+          >
+            AI Psychology
+          </button>
+        </div>
           <div className="flex items-center gap-2">
             <button
               className={`btn-ghost ${isActive("/discover") ? "active" : ""}`}
@@ -90,7 +117,7 @@ export const Header: React.FC = () => {
           </div>
         </div>
 
-        <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
+        {/* <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
           <button
             className={`btn-ghost active`}
             onClick={() => navigateTo("/ai-friend")}
@@ -116,19 +143,7 @@ export const Header: React.FC = () => {
           >
             AI Psychology
           </button>
-          {/* <button
-            className={`btn-ghost ${isActive("/discover") ? "active" : ""}`}
-            onClick={() => navigateTo("/discover")}
-            aria-label="Discover"
-            style={{
-              padding: "6px 10px",
-              fontSize: "var(--font-md)",
-              minHeight: 36,
-            }}
-          >
-            Discover
-          </button> */}
-        </div>
+        </div> */}
       </header>
       <style>
         {`

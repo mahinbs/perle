@@ -4,16 +4,17 @@ import { useToast } from "../contexts/ToastContext";
 import { LoginForm } from "../components/LoginForm";
 import { SignupForm } from "../components/SignupForm";
 import { GoogleIcon } from "../assets/icons/GoogleIcon";
+import { UpgradeCard } from "../components/UpgradeCard";
 import earth from "../assets/images/earth.png";
-import { 
-  login, 
-  signup, 
-  logout, 
-  verifyToken, 
-  getUserData, 
+import {
+  login,
+  signup,
+  logout,
+  verifyToken,
+  getUserData,
   setUserData,
   getAuthHeaders,
-  type User 
+  type User
 } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
 
@@ -34,6 +35,7 @@ export default function ProfilePage() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Check authentication on mount
   useEffect(() => {
@@ -60,7 +62,7 @@ export default function ProfilePage() {
   // Fetch search history from backend
   const fetchSearchHistory = async () => {
     if (!API_URL || !isAuthenticated) return;
-    
+
     setIsLoadingHistory(true);
     try {
       const response = await fetch(`${API_URL}/api/search/history?limit=50`, {
@@ -89,7 +91,7 @@ export default function ProfilePage() {
   const handleLogin = async (email: string, password: string) => {
     setIsLoading(true);
     setAuthError('');
-    
+
     try {
       const response = await login(email, password);
       setIsAuthenticated(true);
@@ -118,10 +120,10 @@ export default function ProfilePage() {
   const handleSignup = async (name: string, email: string, password: string) => {
     setIsLoading(true);
     setAuthError('');
-    
+
     try {
       const response = await signup(name, email, password);
-      
+
       // Check if verification is required
       if (response.requiresVerification) {
         // Save email for verification page
@@ -136,7 +138,7 @@ export default function ProfilePage() {
         navigateTo('/verify', { email: response.email || '' });
         return;
       }
-      
+
       // If no verification needed (shouldn't happen with new flow)
       setIsAuthenticated(true);
       if (response.user) {
@@ -261,7 +263,7 @@ export default function ProfilePage() {
 
       if (response.ok) {
         const data = await response.json();
-        
+
         // Create downloadable JSON file
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -296,7 +298,7 @@ export default function ProfilePage() {
 
   const handleDeleteAccount = async () => {
     if (!API_URL) return;
-    
+
     if (
       !confirm(
         "Are you sure you want to delete your account? This action cannot be undone.\n\nYou'll be asked to confirm with your password."
@@ -470,18 +472,18 @@ export default function ProfilePage() {
             </button>
           </div> */}
           <div className="splash-logo relative w-full">
-          {/* <img src={logo} alt="SyntraIQ logo" /> */}
-          <h1 className="font-ubuntu text-4xl font-bold translate-y-1">
-            Syntra <span className="text-gold font-bold!">IQ</span>
-          </h1>
-          <div className="relative mb-5">
-            <div className="bg-linear-to-b from-transparent to-[#F8F7F4] dark:to-[#0E0E0E] absolute top-0 left-0 w-full h-full"/>
-            <img src={earth} alt="Earth" className="w-full object-cover" />
+            {/* <img src={logo} alt="SyntraIQ logo" /> */}
+            <h1 className="font-ubuntu text-4xl font-bold translate-y-1">
+              Syntra <span className="text-gold font-bold!">IQ</span>
+            </h1>
+            <div className="relative mb-5">
+              <div className="bg-linear-to-b from-transparent to-[#F8F7F4] dark:to-[#0E0E0E] absolute top-0 left-0 w-full h-full" />
+              <img src={earth} alt="Earth" className="w-full object-cover" />
+            </div>
+            <p className="splash-tagline font-ubuntu text-lg! font-medium">
+              Preparing your Syntra<span className="text-gold">IQ</span> experience…
+            </p>
           </div>
-          <p className="splash-tagline font-ubuntu text-lg! font-medium">
-          Preparing your Syntra<span className="text-gold">IQ</span> experience…
-        </p>
-        </div>
           <button
             className="btn-ghost"
             onClick={() => handleGoogleAuth("signup")}
@@ -566,8 +568,8 @@ export default function ProfilePage() {
               <div className="sub">{userSettings.email}</div>
             </div>
           </div>
-          <button 
-            className="btn-ghost" 
+          <button
+            className="btn-ghost"
             style={{ width: "100%" }}
             onClick={() => {
               setEditName(userSettings.name);
@@ -586,127 +588,159 @@ export default function ProfilePage() {
             Settings
           </div>
 
-        {/* Notifications */}
-        <div
-          className="row"
-          style={{
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <div>
-            <div style={{ fontWeight: 500, marginBottom: 2 }}>
-              Notifications
+          {/* Upgrade Plan */}
+          {!userSettings?.isPremium && (
+            <div
+              className="row"
+              style={{
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                  Upgrade Plan
+                </div>
+                <div className="sub text-sm">
+                  Unlock premium features and models
+                </div>
+              </div>
+              <button
+                className="btn-ghost"
+                onClick={() => setShowUpgradeModal(true)}
+                style={{
+                  color: "var(--accent)",
+                  fontWeight: 600,
+                  fontSize: "var(--font-sm)"
+                }}
+              >
+                View Plans →
+              </button>
             </div>
-            <div className="sub text-sm">
-              Receive search updates and recommendations
-            </div>
-          </div>
-          <button
-            className={`pill ${userSettings.notifications ? "active" : ""}`}
-            onClick={() =>
-              handleSettingChange("notifications", !userSettings.notifications)
-            }
-            disabled={updatingSetting === "notifications"}
-            style={{ 
-              minWidth: 60,
-              opacity: updatingSetting === "notifications" ? 0.6 : 1,
-              cursor: updatingSetting === "notifications" ? "not-allowed" : "pointer"
-            }}
-          >
-            {updatingSetting === "notifications" ? "..." : userSettings.notifications ? "On" : "Off"}
-          </button>
-        </div>
+          )}
 
-        {/* Dark Mode */}
-        <div
-          className="row"
-          style={{
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <div>
-            <div style={{ fontWeight: 500, marginBottom: 2 }}>Dark Mode</div>
-            <div className="sub text-sm">
-              Switch between light and dark themes
-            </div>
-          </div>
-          <button
-            className={`pill ${userSettings.darkMode ? "active" : ""}`}
-            onClick={() =>
-              handleSettingChange("darkMode", !userSettings.darkMode)
-            }
-            disabled={updatingSetting === "darkMode"}
-            style={{ 
-              minWidth: 60,
-              opacity: updatingSetting === "darkMode" ? 0.6 : 1,
-              cursor: updatingSetting === "darkMode" ? "not-allowed" : "pointer"
+          {/* Notifications */}
+          <div
+            className="row"
+            style={{
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
             }}
           >
-            {updatingSetting === "darkMode" ? "..." : userSettings.darkMode ? "On" : "Off"}
-          </button>
-        </div>
+            <div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                Notifications
+              </div>
+              <div className="sub text-sm">
+                Receive search updates and recommendations
+              </div>
+            </div>
+            <button
+              className={`pill ${userSettings.notifications ? "active" : ""}`}
+              onClick={() =>
+                handleSettingChange("notifications", !userSettings.notifications)
+              }
+              disabled={updatingSetting === "notifications"}
+              style={{
+                minWidth: 60,
+                opacity: updatingSetting === "notifications" ? 0.6 : 1,
+                cursor: updatingSetting === "notifications" ? "not-allowed" : "pointer"
+              }}
+            >
+              {updatingSetting === "notifications" ? "..." : userSettings.notifications ? "On" : "Off"}
+            </button>
+          </div>
 
-        {/* Search History */}
-        <div
-          className="row"
-          style={{
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <div>
-            <div style={{ fontWeight: 500, marginBottom: 2 }}>
-              Search History
-            </div>
-            <div className="sub text-sm">
-              Save your search queries for quick access
-            </div>
-          </div>
-          <button
-            className={`pill ${userSettings.searchHistory ? "active" : ""}`}
-            onClick={() =>
-              handleSettingChange("searchHistory", !userSettings.searchHistory)
-            }
-            disabled={updatingSetting === "searchHistory"}
-            style={{ 
-              minWidth: 60,
-              opacity: updatingSetting === "searchHistory" ? 0.6 : 1,
-              cursor: updatingSetting === "searchHistory" ? "not-allowed" : "pointer"
+          {/* Dark Mode */}
+          <div
+            className="row"
+            style={{
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
             }}
           >
-            {updatingSetting === "searchHistory" ? "..." : userSettings.searchHistory ? "On" : "Off"}
-          </button>
-        </div>
+            <div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>Dark Mode</div>
+              <div className="sub text-sm">
+                Switch between light and dark themes
+              </div>
+            </div>
+            <button
+              className={`pill ${userSettings.darkMode ? "active" : ""}`}
+              onClick={() =>
+                handleSettingChange("darkMode", !userSettings.darkMode)
+              }
+              disabled={updatingSetting === "darkMode"}
+              style={{
+                minWidth: 60,
+                opacity: updatingSetting === "darkMode" ? 0.6 : 1,
+                cursor: updatingSetting === "darkMode" ? "not-allowed" : "pointer"
+              }}
+            >
+              {updatingSetting === "darkMode" ? "..." : userSettings.darkMode ? "On" : "Off"}
+            </button>
+          </div>
 
-        {/* Voice Search */}
-        <div
-          className="row"
-          style={{ justifyContent: "space-between", alignItems: "center" }}
-        >
-          <div>
-            <div style={{ fontWeight: 500, marginBottom: 2 }}>Voice Search</div>
-            <div className="sub text-sm">Enable voice input for searches</div>
-          </div>
-          <button
-            className={`pill ${userSettings.voiceSearch ? "active" : ""}`}
-            onClick={() =>
-              handleSettingChange("voiceSearch", !userSettings.voiceSearch)
-            }
-            disabled={updatingSetting === "voiceSearch"}
-            style={{ 
-              minWidth: 60,
-              opacity: updatingSetting === "voiceSearch" ? 0.6 : 1,
-              cursor: updatingSetting === "voiceSearch" ? "not-allowed" : "pointer"
+          {/* Search History */}
+          <div
+            className="row"
+            style={{
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
             }}
           >
-            {updatingSetting === "voiceSearch" ? "..." : userSettings.voiceSearch ? "On" : "Off"}
-          </button>
-        </div>
+            <div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                Search History
+              </div>
+              <div className="sub text-sm">
+                Save your search queries for quick access
+              </div>
+            </div>
+            <button
+              className={`pill ${userSettings.searchHistory ? "active" : ""}`}
+              onClick={() =>
+                handleSettingChange("searchHistory", !userSettings.searchHistory)
+              }
+              disabled={updatingSetting === "searchHistory"}
+              style={{
+                minWidth: 60,
+                opacity: updatingSetting === "searchHistory" ? 0.6 : 1,
+                cursor: updatingSetting === "searchHistory" ? "not-allowed" : "pointer"
+              }}
+            >
+              {updatingSetting === "searchHistory" ? "..." : userSettings.searchHistory ? "On" : "Off"}
+            </button>
+          </div>
+
+          {/* Voice Search */}
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", alignItems: "center" }}
+          >
+            <div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>Voice Search</div>
+              <div className="sub text-sm">Enable voice input for searches</div>
+            </div>
+            <button
+              className={`pill ${userSettings.voiceSearch ? "active" : ""}`}
+              onClick={() =>
+                handleSettingChange("voiceSearch", !userSettings.voiceSearch)
+              }
+              disabled={updatingSetting === "voiceSearch"}
+              style={{
+                minWidth: 60,
+                opacity: updatingSetting === "voiceSearch" ? 0.6 : 1,
+                cursor: updatingSetting === "voiceSearch" ? "not-allowed" : "pointer"
+              }}
+            >
+              {updatingSetting === "voiceSearch" ? "..." : userSettings.voiceSearch ? "On" : "Off"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -721,8 +755,8 @@ export default function ProfilePage() {
               className="btn-ghost"
               onClick={fetchSearchHistory}
               disabled={isLoadingHistory}
-              style={{ 
-                padding: "6px 12px", 
+              style={{
+                padding: "6px 12px",
                 fontSize: "var(--font-sm)",
                 opacity: isLoadingHistory ? 0.6 : 1
               }}
@@ -812,8 +846,8 @@ export default function ProfilePage() {
                     }
                   }
                 }}
-                style={{ 
-                  width: "100%", 
+                style={{
+                  width: "100%",
                   color: "#ff4444",
                   borderColor: "#ff4444"
                 }}
@@ -844,8 +878,8 @@ export default function ProfilePage() {
             className="btn-ghost"
             onClick={handleExportData}
             disabled={isExporting}
-            style={{ 
-              width: "100%", 
+            style={{
+              width: "100%",
               marginBottom: 12,
               opacity: isExporting ? 0.6 : 1,
               cursor: isExporting ? "not-allowed" : "pointer"
@@ -871,25 +905,25 @@ export default function ProfilePage() {
             Account
           </div>
 
-        <button
-          className="btn-ghost"
-          onClick={handleLogout}
-          style={{ width: "100%", marginBottom: 12 }}
-        >
-          🚪 Sign Out
-        </button>
+          <button
+            className="btn-ghost"
+            onClick={handleLogout}
+            style={{ width: "100%", marginBottom: 12 }}
+          >
+            🚪 Sign Out
+          </button>
 
-        <button
-          className="btn-ghost"
-          onClick={handleDeleteAccount}
-          style={{
-            width: "100%",
-            color: "#ff4444",
-            borderColor: "#ff4444",
-          }}
-        >
-          🗑️ Delete Account
-        </button>
+          <button
+            className="btn-ghost"
+            onClick={handleDeleteAccount}
+            style={{
+              width: "100%",
+              color: "#ff4444",
+              borderColor: "#ff4444",
+            }}
+          >
+            🗑️ Delete Account
+          </button>
         </div>
       )}
 
@@ -990,6 +1024,59 @@ export default function ProfilePage() {
       )}
 
       <div className="spacer-40" />
+      {/* Upgrade Modal */}
+      {showUpgradeModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.5)",
+            backdropFilter: "blur(4px)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowUpgradeModal(false);
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 400,
+              position: "relative",
+            }}
+          >
+            <button
+              className="btn-ghost"
+              onClick={() => setShowUpgradeModal(false)}
+              style={{
+                position: "absolute",
+                top: -12,
+                right: -12,
+                background: "var(--card)",
+                borderRadius: "50%",
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "var(--shadow)",
+                zIndex: 1,
+                border: "1px solid var(--border)",
+              }}
+            >
+              ✕
+            </button>
+            <UpgradeCard />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

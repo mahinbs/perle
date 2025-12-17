@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 interface VoiceResponseTextProps {
   text?: string;
@@ -86,84 +86,34 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
     el.scrollTop = el.scrollHeight;
   }, [displayText]);
 
-  const containerStyle = useMemo(
-    () => ({
-      maxWidth: 600,
-      width: "100%",
-      minHeight: "80px",
-      maxHeight: "80px",
-      padding: "12px 16px",
-      textAlign: "center" as const,
-      color: "var(--text)",
-      fontSize: "var(--font-lg)",
-      lineHeight: 1.6,
-      opacity: hasText ? (speaking ? 0.95 : 0.7) : 0,
-      transition:
-        "min-height 0.3s ease-in-out, max-height 0.3s ease-in-out, opacity 0.3s ease-in-out, padding 0.3s ease-in-out",
-      overflowY: "auto" as const,
-      overflowX: "hidden" as const,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      WebkitOverflowScrolling: "touch" as const,
-    }),
-    [hasText, speaking]
-  );
-
   return (
-    <>
-      <div
-        ref={containerRef}
-        className="voice-overlay-text-container"
-        style={containerStyle}
-      >
-        {hasText && (
-          <div
-            style={{
-              width: "100%",
-              overflowWrap: "anywhere",
-            }}
-          >
-            {displayText}
-          </div>
-        )}
-      </div>
+    <div
+      ref={containerRef}
+      className={`
+        w-full text-center text-[var(--text)] text-[length:var(--font-lg)] leading-[1.6]
+        max-w-[600px] min-h-[80px] max-h-[80px] p-[12px_16px]
+        
+        max-md:max-w-full 
+        max-md:min-h-[20px] max-md:max-h-[20px]
 
-      <style>
-        {`
-          .voice-overlay-text-container {
-            scrollbar-width: none;
-          }
-          .voice-overlay-text-container::-webkit-scrollbar {
-            width: 0;
-            height: 0;
-          }
-          .voice-overlay-text-container::-webkit-scrollbar-thumb {
-            background: transparent;
-          }
-          
-          @media (max-width: 768px) {
-            .voice-overlay-text-container {
-              max-width: 100% !important;
-              padding: 12px 16px !important;
-              max-height: 20px !important;
-              min-height: 20px !important;
-              font-size: var(--font-lg) !important;
-            }
-          }
+        max-[480px]:min-h-[40px] 
+        max-[480px]:max-h-[calc(100vh-380px)]
+        max-[480px]:p-[10px_12px]
+        max-[480px]:leading-normal
 
-          @media (max-width: 480px) {
-            .voice-overlay-text-container {
-              padding: 10px 12px !important;
-              max-height: calc(100vh - 380px) !important;
-              min-height: 40px !important;
-              font-size: var(--font-lg) !important;
-              line-height: 1.5 !important;
-            }
-          }
-        `}
-      </style>
-    </>
+        flex items-center justify-center overflow-x-hidden overflow-y-auto
+        [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+        [-webkit-overflow-scrolling:touch]
+        transition-[min-height,max-height,opacity,padding] duration-300 ease-in-out
+        ${hasText ? (speaking ? 'opacity-95' : 'opacity-70') : 'opacity-0'}
+      `}
+    >
+      {hasText && (
+        <div className="w-full break-all">
+          {displayText}
+        </div>
+      )}
+    </div>
   );
 };
 

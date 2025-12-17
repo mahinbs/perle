@@ -5,6 +5,7 @@ import { SourceChip } from './SourceChip';
 import { copyToClipboard, shareContent } from '../utils/helpers';
 import { useToast } from '../contexts/ToastContext';
 import { FaVolumeUp, FaStop, FaBookmark, FaShare, FaClipboard, FaCheck, FaChevronDown } from 'react-icons/fa';
+import loadingVideo from '../assets/gif/loading-video.gif';
 
 interface AnswerCardProps {
   chunks: AnswerChunk[];
@@ -466,24 +467,17 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({ chunks, sources, isLoadi
     return (
       <div className="card" style={{ padding: 18 }}>
         <div className="sub text-sm" style={{ marginBottom: 10 }}>Syntra<span className='text-[var(--accent)]'>IQ</span></div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="flex items-center gap-2" >
+          <div className="w-10 h-10">
+          <img src={loadingVideo} loading='eager' alt="loading" className='rounded-full' />
+         </div>
           <p className="text-base">
             IQ is thinking
             <span className="dot-blink" style={{ animationDelay: '0s' }}>.</span>
             <span className="dot-blink" style={{ animationDelay: '0.2s' }}>.</span>
             <span className="dot-blink" style={{ animationDelay: '0.4s' }}>.</span>
           </p>
-          {/* {[1, 2, 3].map(i => (
-            <div key={i}>
-              <div className="skeleton" style={{ height: 20, borderRadius: 4, marginBottom: 8 }} />
-              <div className="skeleton" style={{ height: 20, borderRadius: 4, width: '80%' }} />
-              <div className="spacer-8" />
-              <div className="row" style={{ gap: 8 }}>
-                <div className="skeleton" style={{ height: 24, width: 120, borderRadius: 12 }} />
-                <div className="skeleton" style={{ height: 24, width: 100, borderRadius: 12 }} />
-              </div>
-            </div>
-          ))} */}
+         
         </div>
       </div>
     );

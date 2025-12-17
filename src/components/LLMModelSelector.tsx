@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouterNavigation } from '../contexts/RouterNavigationContext';
 import type { LLMModel, LLMModelInfo } from '../types';
 
 // Premium models available to premium users
@@ -161,6 +162,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   const backdropRef = useRef<HTMLDivElement>(null);
   const scrollStartYRef = useRef<number | null>(null);
   const hasScrolledRef = useRef(false);
+  const { navigateTo } = useRouterNavigation();
 
   // Use premium models if user is premium, otherwise return empty (shouldn't be shown)
   const availableModels = isPremium ? premiumModels : [];
@@ -215,8 +217,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       }
     };
 
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, isMobile]);
 
   // Handle scroll detection in mobile dropdown
@@ -250,7 +252,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       e.stopPropagation();
       return;
     }
-    
+
     e.preventDefault();
     e.stopPropagation();
     handleModelSelect(modelId);
@@ -460,7 +462,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
 
         {isOpen && (
           isMobile ? createPortal(
-            <div 
+            <div
               ref={mobileDropdownRef}
               onClick={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
@@ -481,6 +483,46 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                 touchAction: 'pan-y' // Allow vertical scrolling
               }}
             >
+              {!isPremium && (
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    navigateTo('/upgrade');
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: 'none',
+                    backgroundColor: 'var(--accent-light)', // Highlight background
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    color: 'var(--accent)',
+                    fontWeight: 600,
+                  }}
+                >
+                  <div style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontSize: '14px'
+                  }}>
+                    ★
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 'var(--font-sm)' }}>Upgrade Plan</div>
+                    <div style={{ fontSize: 'var(--font-xs)', opacity: 0.8, fontWeight: 400 }}>Unlock premium models</div>
+                  </div>
+                </button>
+              )}
               {availableModels.map((model) => renderModelButton(model, true))}
             </div>,
             document.body
@@ -500,11 +542,58 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               marginTop: 4,
               minWidth: 280
             }}>
+              {!isPremium && (
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    navigateTo('/upgrade');
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    border: 'none',
+                    backgroundColor: 'var(--accent-light, #f0f9ff)',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    color: 'var(--accent)',
+                    fontWeight: 600,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--border)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--accent-light, #f0f9ff)';
+                  }}
+                >
+                  <div style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontSize: '12px',
+                    flexShrink: 0
+                  }}>
+                    ★
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 'var(--font-sm)' }}>Upgrade Plan</div>
+                    <div style={{ fontSize: 'var(--font-xs)', opacity: 0.8, fontWeight: 400, color: 'var(--text)' }}>Unlock premium models</div>
+                  </div>
+                </button>
+              )}
               {availableModels.map((model) => renderModelButton(model, false))}
             </div>
           )
         )}
-      </div>
+      </div >
     </>
   );
 };
