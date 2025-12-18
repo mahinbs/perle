@@ -94,10 +94,10 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
         max-w-[600px] min-h-[80px] max-h-[80px] p-[12px_16px]
         
         max-md:max-w-full 
-        max-md:min-h-[20px] max-md:max-h-[20px]
+        max-md:min-h-[100px] max-md:max-h-[100px]
 
         max-[480px]:min-h-[40px] 
-        max-[480px]:max-h-[calc(100vh-380px)]
+        max-[480px]:max-h-[calc(100vh-540px)]
         max-[480px]:p-[10px_12px]
         max-[480px]:leading-normal
 
@@ -109,7 +109,7 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
       `}
     >
       {hasText && (
-        <div className="w-full break-all">
+        <div className="w-full break-after-auto">
           {displayText}
         </div>
       )}
