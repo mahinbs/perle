@@ -2,12 +2,10 @@ import React, { useState, useRef, useEffect } from "react";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel } from "../types";
 import {
-  FaCopy,
   FaPaperclip,
   FaFolderOpen,
   FaImage,
   FaCamera,
-  FaPaperPlane,
   FaSearch,
 } from "react-icons/fa";
 import MicWaveIcon from "./MicWaveIcon";
@@ -47,9 +45,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   setQuery,
   onSearch,
   isLoading,
-  showHistory,
-  searchHistory,
-  onQuerySelect,
   uploadedFiles = [],
   onFilesChange,
   hasAnswer = false,

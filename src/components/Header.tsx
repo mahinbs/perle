@@ -1,6 +1,5 @@
 import React from "react";
 import { FaUserCircle } from "react-icons/fa";
-import { Dot } from "./Dot";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useLocation } from "react-router-dom";
 
