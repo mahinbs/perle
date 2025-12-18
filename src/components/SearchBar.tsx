@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from "react";
-import { copyToClipboard } from "../utils/helpers";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel } from "../types";
 import {
@@ -25,7 +24,6 @@ interface UploadedFile {
 
 interface SearchBarProps {
   selectedModel: LLMModel;
-  setSelectedModel: (model: LLMModel) => void;
   query: string;
   setQuery: (query: string) => void;
   onSearch: (searchQuery?: string) => void;
@@ -34,6 +32,8 @@ interface SearchBarProps {
   searchHistory: string[];
   onQuerySelect: (query: string) => void;
   onModelChange: (model: LLMModel) => void;
+  /** @deprecated Prefer `onModelChange`. Kept for backward compatibility. */
+  setSelectedModel?: (model: LLMModel) => void;
   uploadedFiles?: UploadedFile[];
   onFilesChange?: (files: UploadedFile[]) => void;
   hasAnswer?: boolean;
@@ -58,6 +58,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onNewConversation,
   selectedModel,
   setSelectedModel,
+  onModelChange,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
@@ -150,22 +151,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   };
 
-  const handleCopyQuery = async () => {
-    try {
-      await copyToClipboard(query);
-      showToast({
-        message: "Query copied to clipboard!",
-        type: "success",
-        duration: 2000,
-      });
-    } catch (error) {
-      showToast({
-        message: "Failed to copy query",
-        type: "error",
-        duration: 2000,
-      });
-    }
-  };
+  // NOTE: query copy UX is currently disabled in the UI (button commented out).
 
   const startVoiceInput = () => {
     if (!speechSupported) {
@@ -674,7 +660,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <LLMModelSelector
                   selectedModel={selectedModel}
                   onModelChange={(model) => {
-                    setSelectedModel(model);
+                    // Support either prop to avoid breaking older call sites/tests
+                    (setSelectedModel ?? onModelChange)(model);
                     // Save to localStorage immediately for premium users
                     if (isPremium) {
                       localStorage.setItem('perle-selected-model', model);
