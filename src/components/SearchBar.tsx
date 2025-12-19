@@ -7,6 +7,7 @@ import {
   FaImage,
   FaCamera,
   FaSearch,
+  FaPen,
 } from "react-icons/fa";
 import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
@@ -758,13 +759,13 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 }}
                 disabled={isLoading}
                 style={{
-                  padding: '8px 12px',
-                  fontSize: 'var(--font-xs)',
-                  whiteSpace: 'nowrap'
+                  padding: 8,
+                  fontSize: 'var(--font-md)',
                 }}
+                aria-label="Start a new conversation"
                 title="Start a new conversation"
               >
-                New
+                <FaPen size={18} />
               </button>
               {/* Follow-up button removed - using main search icon */}
             </div>
@@ -947,7 +948,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       )} */}
 
       {/* Quick Actions */}
-      {isFocused && query.length > 0 && (
+      {/* {isFocused && query.length > 0 && (
         <div
           className="row"
           style={{
@@ -975,7 +976,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </button>
           ))}
         </div>
-      )}
+      )} */}
     </div>
   );
 };

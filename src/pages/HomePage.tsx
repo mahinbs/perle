@@ -22,6 +22,7 @@ export default function HomePage() {
   const [query, setQuery] = useState<string>('');
   const [searchedQuery, setSearchedQuery] = useState<string>(''); // Track the query that was actually searched
   const [answer, setAnswer] = useState<AnswerResult | null>(null);
+  const [conversationHistory, setConversationHistory] = useState<AnswerResult[]>([]); // Keep all answers in conversation
   const [isLoading, setIsLoading] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -217,15 +218,23 @@ export default function HomePage() {
     // Call the real API
     try {
       const res = await searchAPI(q, mode, selectedModel, newConversation);
-      setAnswer(res);
-      // Reset newConversation flag after search
+      
+      // Update conversation history
       if (newConversation) {
+        // Start new conversation - clear history and add only this answer
+        setConversationHistory([res]);
         setNewConversation(false);
+      } else {
+        // Follow-up - add to conversation history (keep previous answers)
+        setConversationHistory(prev => [...prev, res]);
       }
+      
+      // Set as current answer (will be moved to history above)
+      setAnswer(res);
     } catch (error: any) {
       console.error('Search API error:', error);
       // Show error to user - no mock fallback
-      setAnswer({
+      const errorAnswer = {
         chunks: [{
           text: `Error: ${error.message || 'Failed to get answer from API. Please check your backend server is running.'}`,
           citationIds: [],
@@ -235,7 +244,17 @@ export default function HomePage() {
         query: q,
         mode,
         timestamp: Date.now()
-      });
+      };
+      
+      // Update conversation history with error
+      if (newConversation) {
+        setConversationHistory([errorAnswer]);
+        setNewConversation(false);
+      } else {
+        setConversationHistory(prev => [...prev, errorAnswer]);
+      }
+      
+      setAnswer(errorAnswer);
     } finally {
       setIsLoading(false);
       isSearchingRef.current = false;
@@ -327,32 +346,83 @@ export default function HomePage() {
   }, []);
 
   // Auto-scroll to AnswerCard when answer is received
-  useEffect(() => {
-    if (answer && !isLoading && answerCardRef.current) {
-      // Small delay to ensure the answer is rendered
-      setTimeout(() => {
-        answerCardRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-          inline: 'nearest'
-        });
-      }, 100);
-    }
-  }, [answer, isLoading]);
+  // Commented out - prevents scrolling to top when answer is received
+  // useEffect(() => {
+  //   if (answer && !isLoading && answerCardRef.current) {
+  //     // Small delay to ensure the answer is rendered
+  //     setTimeout(() => {
+  //       answerCardRef.current?.scrollIntoView({
+  //         behavior: 'smooth',
+  //         block: 'start',
+  //         inline: 'nearest'
+  //       });
+  //     }, 100);
+  //   }
+  // }, [answer, isLoading]);
 
   return (
     <div className="container">
       <Header />
 
-      <div className="sub text-sm" style={{ marginTop: 6 }}>
+      {/* <div className="sub text-sm" style={{ marginTop: 6 }}>
         An elegant answer engine with citations, comparisons, and summaries.
-      </div>
+      </div> */}
 
       <div className="spacer-8" />
-      <ModeBar mode={mode} setMode={setMode} />
+      {/* <ModeBar mode={mode} setMode={setMode} /> */}
 
 
 
+     
+
+      <div className="spacer-12" />
+      <div ref={answerCardRef}>
+        {/* Render all answers in conversation history */}
+        {conversationHistory.map((prevAnswer, index) => (
+          <div key={`answer-${prevAnswer.timestamp}-${index}`} style={{ marginBottom: index < conversationHistory.length - 1 ? 24 : 0 }}>
+            <AnswerCard
+              chunks={prevAnswer.chunks}
+              sources={prevAnswer.sources}
+              isLoading={false}
+              mode={prevAnswer.mode || mode}
+              query={prevAnswer.query}
+              onQueryEdit={(editedQuery) => {
+                setQuery(editedQuery);
+                doSearch(editedQuery);
+              }}
+              onSearch={(searchQuery, searchMode) => {
+                if (searchMode) {
+                  setMode(searchMode);
+                }
+                setQuery(searchQuery);
+                doSearch(searchQuery);
+              }}
+            />
+          </div>
+        ))}
+        
+        {/* Show current answer only if loading (it will be added to history when complete) */}
+        {isLoading && (
+          <AnswerCard
+            chunks={[]}
+            sources={[]}
+            isLoading={true}
+            mode={mode}
+            query={searchedQuery}
+            onQueryEdit={(editedQuery) => {
+              setQuery(editedQuery);
+              doSearch(editedQuery);
+            }}
+            onSearch={(searchQuery, searchMode) => {
+              if (searchMode) {
+                setMode(searchMode);
+              }
+              setQuery(searchQuery);
+              doSearch(searchQuery);
+            }}
+          />
+        )}
+      </div>
       <div className="spacer-12" />
       <SearchBar
         selectedModel={selectedModel}
@@ -373,35 +443,13 @@ export default function HomePage() {
         onNewConversation={() => {
           setNewConversation(true);
           setAnswer(null);
+          setConversationHistory([]); // Clear conversation history
           setSearchedQuery('');
           setQuery('');
           // Trigger search with empty query to clear conversation
           // The actual search will happen when user types and searches
         }}
       />
-
-      <div className="spacer-12" />
-      <div ref={answerCardRef}>
-        <AnswerCard
-          chunks={answer?.chunks || []}
-          sources={answer?.sources || []}
-          isLoading={isLoading}
-          mode={answer?.mode || mode}
-          query={searchedQuery}
-          onQueryEdit={(editedQuery) => {
-            setQuery(editedQuery);
-            doSearch(editedQuery);
-          }}
-          onSearch={(searchQuery, searchMode) => {
-            if (searchMode) {
-              setMode(searchMode);
-            }
-            setQuery(searchQuery);
-            doSearch(searchQuery);
-          }}
-        />
-      </div>
-
       {/* <div className="spacer-16" />
       <DiscoverRail /> */}
 
