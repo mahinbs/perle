@@ -29,7 +29,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   chunks,
   sources,
   isLoading,
-  mode,
+  mode: _mode,
   query,
   onQueryEdit,
   onSearch,

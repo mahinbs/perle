@@ -56,7 +56,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   setSelectedModel,
   onModelChange,
 }) => {
-  const [isFocused, setIsFocused] = useState(false);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -500,11 +499,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
           }}
           onKeyDown={handleKeyDown}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => {
-            setIsFocused(false);
-            // Delay to allow clicks
-          }}
           style={{
             fontSize: "var(--font-lg)",
             resize: "none",

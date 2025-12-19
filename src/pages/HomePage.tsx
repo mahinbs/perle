@@ -1,6 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { Header } from '../components/Header';
-import { ModeBar } from '../components/ModeBar';
 import { SearchBar } from '../components/SearchBar';
 import { AnswerCard } from '../components/AnswerCard';
 import { searchAPI } from '../utils/answerEngine';
