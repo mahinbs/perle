@@ -379,7 +379,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       }
     };
 
-    lines.forEach((line, index) => {
+    lines.forEach((line, _index) => {
       const trimmed = line.trim();
       
       // Empty line - flush current context
