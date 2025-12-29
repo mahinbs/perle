@@ -1,5 +1,7 @@
 export type Mode = 'Ask' | 'Research' | 'Summarize' | 'Compare';
 
+export type ChatMode = 'normal' | 'ai_friend' | 'ai_psychologist';
+
 export type LLMModel =
   | 'auto'
   | 'gpt-5'
@@ -46,12 +48,20 @@ export interface ConversationMessage {
   content: string;
 }
 
+export interface GeneratedImage {
+  url: string;
+  prompt: string;
+  width: number;
+  height: number;
+}
+
 export interface AnswerResult {
   sources: Source[];
   chunks: AnswerChunk[];
   query: string;
   mode: Mode;
   timestamp: number;
+  images?: GeneratedImage[]; // Optional generated images
 }
 
 export interface DiscoverItem {

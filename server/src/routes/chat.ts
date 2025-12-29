@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { generateAIAnswer } from '../utils/aiProviders.js';
-import type { LLMModel, ConversationMessage } from '../types.js';
+import type { LLMModel, ConversationMessage, ChatMode } from '../types.js';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 
@@ -31,7 +31,8 @@ const chatSchema = z.object({
     'llama-2',
     'mistral-7b'
   ]).optional().default('gemini-lite'),
-  newConversation: z.boolean().optional().default(false)
+  newConversation: z.boolean().optional().default(false),
+  chatMode: z.enum(['normal', 'ai_friend', 'ai_psychologist']).optional().default('normal')
 });
 
 // Chat endpoint for AI Friend
@@ -45,7 +46,7 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const { message, model, newConversation } = parse.data;
+    const { message, model, newConversation, chatMode } = parse.data;
     const trimmedMessage = message.trim();
 
     if (!trimmedMessage) {
@@ -90,9 +91,9 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
 
-    // Fetch conversation history for context
+    // Fetch conversation history for context - ISOLATED BY CHAT MODE
     // Free users: 5 messages, Premium users: 20 messages
-    // Context is isolated per user (user_id ensures no mixing)
+    // Context is isolated per user AND chat mode (no mixing between modes)
     let conversationHistory: ConversationMessage[] = [];
     if (req.userId && !newConversation) {
       try {
@@ -101,6 +102,7 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
           .from('conversation_history')
           .select('query, answer')
           .eq('user_id', req.userId)
+          .eq('chat_mode', chatMode) // Filter by chat mode - ensures separate histories
           .order('created_at', { ascending: false })
           .limit(messageLimit);
         
@@ -117,24 +119,26 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
     
-    // If starting new conversation, clear existing history for this user
+    // If starting new conversation, clear existing history for this user and chat mode
+    // Only clears the specific chat mode's history, not all histories
     if (req.userId && newConversation) {
       try {
         await supabase
           .from('conversation_history')
           .delete()
-          .eq('user_id', req.userId);
+          .eq('user_id', req.userId)
+          .eq('chat_mode', chatMode); // Only clear this specific chat mode's history
       } catch (clearError) {
         console.warn('Failed to clear conversation history:', clearError);
         // Continue even if clear fails
       }
     }
 
-    // Generate answer using AI provider
+    // Generate answer using AI provider with chat mode
     let result;
     try {
-      // Use 'Ask' mode for chat
-      result = await generateAIAnswer(trimmedMessage, 'Ask', actualModel, isPremium, conversationHistory);
+      // Pass chat mode to AI provider for appropriate system prompts
+      result = await generateAIAnswer(trimmedMessage, 'Ask', actualModel, isPremium, conversationHistory, chatMode);
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
       const errorMessage = apiError?.message || 'Failed to generate answer';
@@ -146,8 +150,9 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    // Save to conversation history for context (store answer text)
+    // Save to conversation history for context (store answer text with chat mode)
     // Both free and premium users save history (different limits)
+    // History is isolated by chat mode
     if (req.userId) {
       try {
         const answerText = result.chunks.map(c => c.text).join('\n\n');
@@ -158,16 +163,18 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
             query: trimmedMessage,
             answer: answerText,
             mode: 'Ask',
-            model: actualModel
+            model: actualModel,
+            chat_mode: chatMode // Save with chat mode for isolation
           });
         
-        // Keep only last N messages per user (cleanup old ones)
+        // Keep only last N messages per user per chat mode (cleanup old ones)
         // Free: 5 messages, Premium: 20 messages
         const maxHistory = isPremium ? 20 : 5;
         const { data: allHistory } = await supabase
           .from('conversation_history')
           .select('id')
           .eq('user_id', req.userId)
+          .eq('chat_mode', chatMode) // Filter by chat mode
           .order('created_at', { ascending: false });
         
         if (allHistory && allHistory.length > maxHistory) {
@@ -183,11 +190,13 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
 
-    // Return just the answer text for chat
+    // Return answer text with optional images
     const answerText = result.chunks.map(c => c.text).join('\n\n');
     res.json({ 
       message: answerText,
-      model: actualModel
+      model: actualModel,
+      images: result.images || [], // Include generated images if any
+      sources: result.sources || [] // Include sources for citations
     });
   } catch (error) {
     console.error('Chat error:', error);
@@ -195,12 +204,15 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// Get chat history
+// Get chat history (filtered by chat mode)
 router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
   try {
     if (!req.userId) {
       return res.json({ messages: [] });
     }
+
+    // Get chatMode from query parameter (default to 'normal')
+    const chatMode = (req.query.chatMode as ChatMode) || 'normal';
 
     // Check premium status to determine limit
     let isPremium = false;
@@ -223,13 +235,14 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
     }
 
     // Free: 5 messages, Premium: 20 messages
-    // Context is isolated per user (user_id ensures no mixing between different users)
+    // Context is isolated per user AND chat mode (no mixing between modes)
     const messageLimit = isPremium ? 20 : 5;
 
     const { data: history } = await supabase
       .from('conversation_history')
       .select('query, answer, created_at')
-      .eq('user_id', req.userId) // Isolated per user - no mixing
+      .eq('user_id', req.userId) // Isolated per user
+      .eq('chat_mode', chatMode) // Isolated per chat mode - ensures separate histories
       .order('created_at', { ascending: true })
       .limit(messageLimit);
 

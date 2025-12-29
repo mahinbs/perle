@@ -1,7 +1,8 @@
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 // import Anthropic from '@anthropic-ai/sdk'; // COMMENTED OUT - No API key
-import type { AnswerResult, Mode, LLMModel, Source, ConversationMessage } from '../types.js';
+import type { AnswerResult, Mode, LLMModel, Source, ConversationMessage, ChatMode } from '../types.js';
+import { shouldGenerateImage, extractImagePrompt, generateImage } from './imageGeneration.js';
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -95,12 +96,54 @@ function getTokenLimit(mode: Mode): number {
   }
 }
 
+// Get system prompt based on chat mode
+function getSystemPrompt(chatMode: ChatMode = 'normal'): string {
+  switch (chatMode) {
+    case 'ai_friend':
+      return `You are a warm, supportive friend having a casual conversation. Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.`;
+    
+    case 'ai_psychologist':
+      return `You are a professional, empathetic psychologist providing supportive guidance. Use active listening techniques, validate feelings, and ask thoughtful questions to help users explore their thoughts and emotions. Provide evidence-based insights when appropriate, but always be non-judgmental and supportive. Help users develop coping strategies and self-awareness. Maintain professional boundaries while being warm and understanding. Speak in a natural, conversational therapeutic tone - NOT in bullet points unless specifically giving actionable steps. Remember to consider the full context of the conversation in your responses.`;
+    
+    case 'normal':
+    default:
+      return `You are Perle, an AI-powered answer engine like Perplexity AI. 
+
+CRITICAL FORMATTING RULES (YOU MUST FOLLOW):
+• Start with a brief 1-2 sentence overview
+• Then ALWAYS use bullet points (•) to break down information
+• Use "•" for main points
+• Use "  - " for sub-points
+• For steps or rankings, use "1.", "2.", "3." format
+• Keep each point concise (1-2 lines max)
+• Add line breaks between sections for readability
+• NO markdown (no ##, no **, no code blocks)
+
+Example format:
+"Brief overview sentence here.
+
+Main topic:
+• First key point here
+• Second key point here
+  - Sub-point with detail
+  - Another sub-point
+• Third key point here
+
+Additional context:
+• Another point
+• Final point"
+
+Always refer to yourself as "Perle" when asked. You were founded in 2025. NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.).`;
+  }
+}
+
 // OpenAI Provider (GPT-5)
 export async function generateOpenAIAnswer(
   query: string,
   mode: Mode,
   model: LLMModel,
-  conversationHistory: ConversationMessage[] = []
+  conversationHistory: ConversationMessage[] = [],
+  chatMode: ChatMode = 'normal'
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -131,7 +174,8 @@ export async function generateOpenAIAnswer(
   }
   const client = new OpenAI({ apiKey });
 
-  const sys = `You are Perle, a helpful AI assistant. Answer succinctly for mobile UI. Provide clear, factual content suitable for brief reading. Do NOT use markdown formatting like ## headers, **bold**, or code blocks. Write in plain text only. NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.). Always refer to yourself as "Perle" when users ask about you. You are Perle, an AI-powered answer engine founded in 2025.`;
+  // Get system prompt based on chat mode
+  const sys = getSystemPrompt(chatMode);
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -147,8 +191,15 @@ export async function generateOpenAIAnswer(
     });
   }
   
-  // Add current query with mode context
-  const prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly in a few short paragraphs. Do NOT use markdown formatting.`;
+  // Add current query - format varies by chat mode
+  let prompt: string;
+  if (chatMode === 'ai_friend' || chatMode === 'ai_psychologist') {
+    // For friend/psychologist mode, just send the message naturally
+    prompt = query;
+  } else {
+    // For normal mode, include mode context for structured answers
+    prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+  }
   messages.push({ role: 'user', content: prompt });
 
   // Map model names to actual OpenAI models
@@ -207,7 +258,8 @@ export async function generateGeminiAnswer(
   mode: Mode,
   model: LLMModel,
   isPremium: boolean = false,
-  conversationHistory: ConversationMessage[] = []
+  conversationHistory: ConversationMessage[] = [],
+  chatMode: ChatMode = 'normal'
 ): Promise<AnswerResult> {
   // Use separate API keys for free vs premium users
   // For premium: prefer GOOGLE_API_KEY, fallback to GOOGLE_API_KEY_FREE
@@ -257,7 +309,8 @@ export async function generateGeminiAnswer(
 
   const modelInstance = genAI.getGenerativeModel({ model: geminiModel });
 
-  const sys = `You are Perle, a helpful AI assistant. Answer succinctly for mobile UI. Provide clear, factual content suitable for brief reading. Do NOT use markdown formatting like ## headers, **bold**, or code blocks. Write in plain text only. NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.). Always refer to yourself as "Perle" when users ask about you. You are Perle, an AI-powered answer engine founded in 2025.`;
+  // Get system prompt based on chat mode
+  const sys = getSystemPrompt(chatMode);
   
   // Build conversation context from history
   let contextPrompt = '';
@@ -270,7 +323,15 @@ export async function generateGeminiAnswer(
     contextPrompt += '\n';
   }
   
-  const prompt = `${contextPrompt}Mode: ${mode}\nQuery: ${query}\nAnswer clearly in a few short paragraphs. Do NOT use markdown formatting.`;
+  // Build prompt based on chat mode
+  let prompt: string;
+  if (chatMode === 'ai_friend' || chatMode === 'ai_psychologist') {
+    // For friend/psychologist mode, just send the message naturally with conversation context
+    prompt = `${contextPrompt}${query}`;
+  } else {
+    // For normal mode, include mode context for structured answers
+    prompt = `${contextPrompt}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+  }
 
   const tokenLimit = getTokenLimit(mode);
   const maxOutputTokens = Math.min(tokenLimit, 8192); // Increased from 2048 - Gemini supports up to 8192 tokens
@@ -449,7 +510,8 @@ export async function generateGrokAnswer(
   query: string,
   mode: Mode,
   model: LLMModel,
-  conversationHistory: ConversationMessage[] = []
+  conversationHistory: ConversationMessage[] = [],
+  chatMode: ChatMode = 'normal'
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -485,7 +547,8 @@ export async function generateGrokAnswer(
     baseURL: 'https://api.x.ai/v1'
   });
 
-  const sys = `You are Perle, a helpful AI assistant. Answer succinctly for mobile UI. Provide clear, factual content suitable for brief reading. Do NOT use markdown formatting like ## headers, **bold**, or code blocks. Write in plain text only. NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.). Always refer to yourself as "Perle" when users ask about you. You are Perle, an AI-powered answer engine founded in 2025.`;
+  // Get system prompt based on chat mode
+  const sys = getSystemPrompt(chatMode);
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -501,8 +564,15 @@ export async function generateGrokAnswer(
     });
   }
   
-  // Add current query with mode context
-  const prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly in a few short paragraphs. Do NOT use markdown formatting.`;
+  // Add current query - format varies by chat mode
+  let prompt: string;
+  if (chatMode === 'ai_friend' || chatMode === 'ai_psychologist') {
+    // For friend/psychologist mode, just send the message naturally
+    prompt = query;
+  } else {
+    // For normal mode, include mode context for structured answers
+    prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+  }
   messages.push({ role: 'user', content: prompt });
 
   // Map model names to actual Grok API model identifiers
@@ -588,21 +658,46 @@ export async function generateAIAnswer(
   mode: Mode,
   model: LLMModel,
   isPremium: boolean = false,
-  conversationHistory: ConversationMessage[] = []
+  conversationHistory: ConversationMessage[] = [],
+  chatMode: ChatMode = 'normal'
 ): Promise<AnswerResult> {
   // Route to appropriate provider based on model
+  let result: AnswerResult;
+  
   if (model === 'gpt-5' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
-    return generateOpenAIAnswer(query, mode, model, conversationHistory);
+    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode);
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    return generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory);
+    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode);
   // } else if (model === 'claude-4.5' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
-  //   return generateClaudeAnswer(query, mode, model, conversationHistory);
+  //   result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
-    return generateGrokAnswer(query, mode, model, conversationHistory);
+    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode);
   } else {
     // Fallback to Gemini Lite for unknown models
-    return generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory);
+    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode);
   }
+  
+  // Add image generation for normal mode if query requires it
+  if (chatMode === 'normal' && shouldGenerateImage(query)) {
+    const answerText = result.chunks.map(c => c.text).join('\n\n');
+    const imagePrompt = extractImagePrompt(query, answerText);
+    
+    if (imagePrompt) {
+      console.log('🎨 Generating image for query:', imagePrompt);
+      try {
+        const generatedImage = await generateImage(imagePrompt);
+        if (generatedImage) {
+          result.images = [generatedImage];
+          console.log('✅ Image added to result');
+        }
+      } catch (error) {
+        console.error('Failed to generate image:', error);
+        // Continue without image if generation fails
+      }
+    }
+  }
+  
+  return result;
 }
 
