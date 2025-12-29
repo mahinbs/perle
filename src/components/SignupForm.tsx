@@ -304,8 +304,8 @@ export const SignupForm: React.FC<SignupFormProps> = ({
               />
               <span className="sub text-sm">
                 I agree to the{' '}
-                <button
-                  type="button"
+                <a
+                  href="/terms"
                   style={{
                     background: 'none',
                     border: 'none',
@@ -315,10 +315,10 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                   }}
                 >
                   Terms of Service
-                </button>
+                </a>
                 {' '}and{' '}
-                <button
-                  type="button"
+                <a
+                  href="/privacy"
                   style={{
                     background: 'none',
                     border: 'none',
@@ -328,7 +328,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
                   }}
                 >
                   Privacy Policy
-                </button>
+                </a>
               </span>
             </label>
           </div>

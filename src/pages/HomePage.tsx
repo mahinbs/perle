@@ -1,43 +1,47 @@
-import { useCallback, useState, useEffect, useRef } from 'react';
-import { Header } from '../components/Header';
-import { SearchBar } from '../components/SearchBar';
-import { AnswerCard } from '../components/AnswerCard';
-import { searchAPI } from '../utils/answerEngine';
-import { formatQuery } from '../utils/helpers';
-import { useRouterNavigation } from '../contexts/RouterNavigationContext';
-import { getUserData } from '../utils/auth';
-import type { Mode, AnswerResult, LLMModel } from '../types';
+import { useCallback, useState, useEffect, useRef } from "react";
+import { Header } from "../components/Header";
+import { SearchBar } from "../components/SearchBar";
+import { AnswerCard } from "../components/AnswerCard";
+import { searchAPI } from "../utils/answerEngine";
+import { formatQuery } from "../utils/helpers";
+import { useRouterNavigation } from "../contexts/RouterNavigationContext";
+import { getUserData } from "../utils/auth";
+import type { Mode, AnswerResult, LLMModel } from "../types";
 
 interface UploadedFile {
   id: string;
   file: File;
-  type: 'image' | 'document' | 'other';
+  type: "image" | "document" | "other";
   preview?: string;
 }
 
 export default function HomePage() {
   const { state: currentData } = useRouterNavigation();
-  const [mode, setMode] = useState<Mode>('Ask');
-  const [query, setQuery] = useState<string>('');
-  const [searchedQuery, setSearchedQuery] = useState<string>(''); // Track the query that was actually searched
+  const [mode, setMode] = useState<Mode>("Ask");
+  const [query, setQuery] = useState<string>("");
+  const [searchedQuery, setSearchedQuery] = useState<string>(""); // Track the query that was actually searched
   const [answer, setAnswer] = useState<AnswerResult | null>(null);
-  const [conversationHistory, setConversationHistory] = useState<AnswerResult[]>([]); // Keep all answers in conversation
+  const [conversationHistory, setConversationHistory] = useState<
+    AnswerResult[]
+  >([]); // Keep all answers in conversation
   const [isLoading, setIsLoading] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<LLMModel>('gemini-lite'); // Default to gemini-lite for free users
+  const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite"); // Default to gemini-lite for free users
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [newConversation, setNewConversation] = useState(false); // Flag to start new conversation
   const answerCardRef = useRef<HTMLDivElement>(null);
-  const lastSearchedQueryRef = useRef<string>('');
+  const lastSearchedQueryRef = useRef<string>("");
   const isSearchingRef = useRef<boolean>(false);
-  const queryRef = useRef<string>(''); // Keep query in ref to avoid stale closures
+  const queryRef = useRef<string>(""); // Keep query in ref to avoid stale closures
 
   // Load user premium status on mount and when user data changes
   useEffect(() => {
     // Load saved model preference from localStorage
-    const savedModel = localStorage.getItem('perle-selected-model') as LLMModel | null;
+    const savedModel = localStorage.getItem(
+      "perle-selected-model"
+    ) as LLMModel | null;
 
     const updatePremiumStatus = (isInitialLoad = false) => {
       const user = getUserData();
@@ -51,9 +55,9 @@ export default function HomePage() {
             // Restore saved model if user is premium
             setSelectedModel(savedModel);
           } else if (premium) {
-            setSelectedModel('auto'); // Premium users default to 'auto'
+            setSelectedModel("auto"); // Premium users default to 'auto'
           } else {
-            setSelectedModel('gemini-lite'); // Free users always use gemini-lite
+            setSelectedModel("gemini-lite"); // Free users always use gemini-lite
           }
         }
         // Don't reset model on subsequent updates - keep user's selection
@@ -61,7 +65,7 @@ export default function HomePage() {
         // Not logged in = free user
         setIsPremium(false);
         if (isInitialLoad) {
-          setSelectedModel('gemini-lite');
+          setSelectedModel("gemini-lite");
         }
       }
     };
@@ -71,78 +75,80 @@ export default function HomePage() {
 
     // Listen for storage changes (when user logs in/out or premium status changes)
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'perle-user-data') {
+      if (e.key === "perle-user-data") {
         const user = getUserData();
         if (user) {
           const premium = user.isPremium ?? false;
           setIsPremium(premium);
           // Don't reset model - keep user's selection
-          if (!premium && selectedModel !== 'gemini-lite') {
-            setSelectedModel('gemini-lite');
+          if (!premium && selectedModel !== "gemini-lite") {
+            setSelectedModel("gemini-lite");
           }
         } else {
           setIsPremium(false);
-          if (selectedModel !== 'gemini-lite') {
-            setSelectedModel('gemini-lite');
+          if (selectedModel !== "gemini-lite") {
+            setSelectedModel("gemini-lite");
           }
         }
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener("storage", handleStorageChange);
 
     // Also check periodically (for same-tab updates) - but don't reset model
     const interval = setInterval(() => {
       const user = getUserData();
-      const currentModel = localStorage.getItem('perle-selected-model') as LLMModel | null;
+      const currentModel = localStorage.getItem(
+        "perle-selected-model"
+      ) as LLMModel | null;
       if (user) {
         const premium = user.isPremium ?? false;
         setIsPremium(premium);
         // Don't reset model - keep user's selection
         // Only force gemini-lite for free users
         if (!premium) {
-          setSelectedModel('gemini-lite');
+          setSelectedModel("gemini-lite");
         } else if (currentModel) {
           // Restore saved model for premium users
           setSelectedModel(currentModel);
         }
       } else {
         setIsPremium(false);
-        setSelectedModel('gemini-lite');
+        setSelectedModel("gemini-lite");
       }
     }, 2000);
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener("storage", handleStorageChange);
       clearInterval(interval);
     };
   }, []); // Remove selectedModel from dependencies to prevent reset loop
 
   // Ensure free users always use gemini-lite (even if they try to change it)
   useEffect(() => {
-    if (!isPremium && selectedModel !== 'gemini-lite') {
-      setSelectedModel('gemini-lite');
+    if (!isPremium && selectedModel !== "gemini-lite") {
+      setSelectedModel("gemini-lite");
     }
   }, [isPremium, selectedModel]);
 
   // Save model selection to localStorage when it changes (for premium users)
   useEffect(() => {
-    if (isPremium && selectedModel !== 'auto') {
-      localStorage.setItem('perle-selected-model', selectedModel);
-    } else if (isPremium && selectedModel === 'auto') {
+    if (isPremium && selectedModel !== "auto") {
+      localStorage.setItem("perle-selected-model", selectedModel);
+    } else if (isPremium && selectedModel === "auto") {
       // Remove saved preference if user selects 'auto' (use default)
-      localStorage.removeItem('perle-selected-model');
+      localStorage.removeItem("perle-selected-model");
     }
   }, [selectedModel, isPremium]);
 
   // Load search history from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem('perle-search-history');
+    const saved = localStorage.getItem("perle-search-history");
     if (saved) {
       try {
         setSearchHistory(JSON.parse(saved));
       } catch (e) {
-        console.warn('Failed to parse search history:', e);
+        console.warn("Failed to parse search history:", e);
       }
     }
   }, []);
@@ -152,7 +158,10 @@ export default function HomePage() {
     if (currentData?.searchQuery) {
       setQuery(currentData.searchQuery);
       // Set mode if provided
-      if (currentData.mode && ['Ask', 'Research', 'Summarize', 'Compare'].includes(currentData.mode)) {
+      if (
+        currentData.mode &&
+        ["Ask", "Research", "Summarize", "Compare"].includes(currentData.mode)
+      ) {
         setMode(currentData.mode as Mode);
       }
       // Auto-trigger search when coming from Discover
@@ -169,9 +178,12 @@ export default function HomePage() {
     const formatted = formatQuery(newQuery);
     if (!formatted) return;
 
-    setSearchHistory(prev => {
-      const updated = [formatted, ...prev.filter(q => q !== formatted)].slice(0, 10);
-      localStorage.setItem('perle-search-history', JSON.stringify(updated));
+    setSearchHistory((prev) => {
+      const updated = [formatted, ...prev.filter((q) => q !== formatted)].slice(
+        0,
+        10
+      );
+      localStorage.setItem("perle-search-history", JSON.stringify(updated));
       return updated;
     });
   }, []);
@@ -181,97 +193,105 @@ export default function HomePage() {
     queryRef.current = query;
   }, [query]);
 
-  const doSearch = useCallback(async (searchQuery?: string) => {
-    // Use the provided searchQuery or get current query from ref (avoids stale closure)
-    const currentQuery = searchQuery || queryRef.current;
-    const q = formatQuery(currentQuery);
-    if (!q) {
-      setAnswer(null);
-      setSearchedQuery('');
-      lastSearchedQueryRef.current = '';
-      return;
-    }
-
-    // Prevent duplicate searches if already searching
-    if (isSearchingRef.current) {
-      return;
-    }
-
-    // Prevent duplicate searches if this is the same query as the last one
-    const finalQuery = searchQuery || queryRef.current;
-    if (finalQuery === lastSearchedQueryRef.current) {
-      return; // Don't search again if it's the same query
-    }
-
-    // Mark as searching and store the query
-    isSearchingRef.current = true;
-    lastSearchedQueryRef.current = finalQuery;
-
-    setIsLoading(true);
-    saveToHistory(q);
-
-    // Update both query (for editing) and searchedQuery (for display)
-    setQuery(finalQuery);
-    setSearchedQuery(finalQuery);
-
-    // Call the real API
-    try {
-      const res = await searchAPI(q, mode, selectedModel, newConversation);
-      
-      // Update conversation history
-      if (newConversation) {
-        // Start new conversation - clear history and add only this answer
-        setConversationHistory([res]);
-        setNewConversation(false);
-      } else {
-        // Follow-up - add to conversation history (keep previous answers)
-        setConversationHistory(prev => [...prev, res]);
+  const doSearch = useCallback(
+    async (searchQuery?: string) => {
+      // Use the provided searchQuery or get current query from ref (avoids stale closure)
+      const currentQuery = searchQuery || queryRef.current;
+      const q = formatQuery(currentQuery);
+      if (!q) {
+        setAnswer(null);
+        setSearchedQuery("");
+        lastSearchedQueryRef.current = "";
+        return;
       }
-      
-      // Set as current answer (will be moved to history above)
-      setAnswer(res);
-    } catch (error: any) {
-      console.error('Search API error:', error);
-      // Show error to user - no mock fallback
-      const errorAnswer = {
-        chunks: [{
-          text: `Error: ${error.message || 'Failed to get answer from API. Please check your backend server is running.'}`,
-          citationIds: [],
-          confidence: 0
-        }],
-        sources: [],
-        query: q,
-        mode,
-        timestamp: Date.now()
-      };
-      
-      // Update conversation history with error
-      if (newConversation) {
-        setConversationHistory([errorAnswer]);
-        setNewConversation(false);
-      } else {
-        setConversationHistory(prev => [...prev, errorAnswer]);
+
+      // Prevent duplicate searches if already searching
+      if (isSearchingRef.current) {
+        return;
       }
-      
-      setAnswer(errorAnswer);
-    } finally {
-      setIsLoading(false);
-      isSearchingRef.current = false;
-    }
-    // Removed 'query' from dependencies to prevent re-creation on every query change
-    // The function uses query from closure, which is fine since we pass it explicitly when needed
-  }, [mode, selectedModel, saveToHistory, uploadedFiles]);
+
+      // Prevent duplicate searches if this is the same query as the last one
+      const finalQuery = searchQuery || queryRef.current;
+      if (finalQuery === lastSearchedQueryRef.current) {
+        return; // Don't search again if it's the same query
+      }
+
+      // Mark as searching and store the query
+      isSearchingRef.current = true;
+      lastSearchedQueryRef.current = finalQuery;
+
+      setIsLoading(true);
+      saveToHistory(q);
+
+      // Update both query (for editing) and searchedQuery (for display)
+      setQuery(finalQuery);
+      setSearchedQuery(finalQuery);
+
+      // Call the real API
+      try {
+        const res = await searchAPI(q, mode, selectedModel, newConversation);
+
+        // Update conversation history
+        if (newConversation) {
+          // Start new conversation - clear history and add only this answer
+          setConversationHistory([res]);
+          setNewConversation(false);
+        } else {
+          // Follow-up - add to conversation history (keep previous answers)
+          setConversationHistory((prev) => [...prev, res]);
+        }
+
+        // Set as current answer (will be moved to history above)
+        setAnswer(res);
+      } catch (error: any) {
+        console.error("Search API error:", error);
+        // Show error to user - no mock fallback
+        const errorAnswer = {
+          chunks: [
+            {
+              text: `Error: ${
+                error.message ||
+                "Failed to get answer from API. Please check your backend server is running."
+              }`,
+              citationIds: [],
+              confidence: 0,
+            },
+          ],
+          sources: [],
+          query: q,
+          mode,
+          timestamp: Date.now(),
+        };
+
+        // Update conversation history with error
+        if (newConversation) {
+          setConversationHistory([errorAnswer]);
+          setNewConversation(false);
+        } else {
+          setConversationHistory((prev) => [...prev, errorAnswer]);
+        }
+
+        setAnswer(errorAnswer);
+      } finally {
+        setIsLoading(false);
+        isSearchingRef.current = false;
+      }
+      // Removed 'query' from dependencies to prevent re-creation on every query change
+      // The function uses query from closure, which is fine since we pass it explicitly when needed
+    },
+    [mode, selectedModel, saveToHistory, uploadedFiles]
+  );
 
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
         switch (e.key) {
-          case 'k':
+          case "k":
             e.preventDefault();
-            document.querySelector('input')?.focus();
+            document.querySelector("input")?.focus();
             break;
-          case 'Enter':
+          case "Enter":
             e.preventDefault();
             doSearch();
             break;
@@ -279,8 +299,8 @@ export default function HomePage() {
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [doSearch]);
 
   // Handle pull-to-refresh on mobile
@@ -323,14 +343,16 @@ export default function HomePage() {
       hasTriggered = false;
     };
 
-    document.addEventListener('touchstart', handleTouchStart, { passive: true });
-    document.addEventListener('touchmove', handleTouchMove, { passive: true });
-    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+    document.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+    document.addEventListener("touchmove", handleTouchMove, { passive: true });
+    document.addEventListener("touchend", handleTouchEnd, { passive: true });
 
     return () => {
-      document.removeEventListener('touchstart', handleTouchStart);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
     };
   }, [doSearch]);
 
@@ -360,31 +382,56 @@ export default function HomePage() {
   // }, [answer, isLoading]);
 
   return (
-    <div className="container">
+    <div className="container flex flex-col justify-between h-full">
       <Header />
 
-      {/* <div className="sub text-sm" style={{ marginTop: 6 }}>
+      <>
+        {/* <div className="sub text-sm" style={{ marginTop: 6 }}>
         An elegant answer engine with citations, comparisons, and summaries.
       </div> */}
 
-      <div className="spacer-8" />
-      {/* <ModeBar mode={mode} setMode={setMode} /> */}
+        <div className="spacer-8" />
+        {/* <ModeBar mode={mode} setMode={setMode} /> */}
 
+        <div className="spacer-12" />
+        <div ref={answerCardRef}>
+          {/* Render all answers in conversation history */}
+          {conversationHistory.map((prevAnswer, index) => (
+            <div
+              key={`answer-${prevAnswer.timestamp}-${index}`}
+              style={{
+                marginBottom: index < conversationHistory.length - 1 ? 24 : 0,
+              }}
+            >
+              <AnswerCard
+                chunks={prevAnswer.chunks}
+                sources={prevAnswer.sources}
+                isLoading={false}
+                mode={prevAnswer.mode || mode}
+                query={prevAnswer.query}
+                onQueryEdit={(editedQuery) => {
+                  setQuery(editedQuery);
+                  doSearch(editedQuery);
+                }}
+                onSearch={(searchQuery, searchMode) => {
+                  if (searchMode) {
+                    setMode(searchMode);
+                  }
+                  setQuery(searchQuery);
+                  doSearch(searchQuery);
+                }}
+              />
+            </div>
+          ))}
 
-
-     
-
-      <div className="spacer-12" />
-      <div ref={answerCardRef}>
-        {/* Render all answers in conversation history */}
-        {conversationHistory.map((prevAnswer, index) => (
-          <div key={`answer-${prevAnswer.timestamp}-${index}`} style={{ marginBottom: index < conversationHistory.length - 1 ? 24 : 0 }}>
+          {/* Show current answer only if loading (it will be added to history when complete) */}
+          {isLoading && (
             <AnswerCard
-              chunks={prevAnswer.chunks}
-              sources={prevAnswer.sources}
-              isLoading={false}
-              mode={prevAnswer.mode || mode}
-              query={prevAnswer.query}
+              chunks={[]}
+              sources={[]}
+              isLoading={true}
+              mode={mode}
+              query={searchedQuery}
               onQueryEdit={(editedQuery) => {
                 setQuery(editedQuery);
                 doSearch(editedQuery);
@@ -397,65 +444,46 @@ export default function HomePage() {
                 doSearch(searchQuery);
               }}
             />
-          </div>
-        ))}
-        
-        {/* Show current answer only if loading (it will be added to history when complete) */}
-        {isLoading && (
-          <AnswerCard
-            chunks={[]}
-            sources={[]}
-            isLoading={true}
-            mode={mode}
-            query={searchedQuery}
-            onQueryEdit={(editedQuery) => {
-              setQuery(editedQuery);
-              doSearch(editedQuery);
-            }}
-            onSearch={(searchQuery, searchMode) => {
-              if (searchMode) {
-                setMode(searchMode);
-              }
-              setQuery(searchQuery);
-              doSearch(searchQuery);
-            }}
-          />
-        )}
+          )}
+        </div>
+        <div className="spacer-12" />
+      </>
+
+      <div className="sticky bottom-0 left-0 w-full mt-3">
+        <SearchBar
+          selectedModel={selectedModel}
+          setSelectedModel={setSelectedModel}
+          query={query}
+          setQuery={handleQueryChange}
+          onSearch={doSearch}
+          isLoading={isLoading}
+          showHistory={showHistory}
+          searchHistory={searchHistory}
+          onQuerySelect={handleQuerySelect}
+          onModelChange={setSelectedModel}
+          uploadedFiles={uploadedFiles}
+          onFilesChange={setUploadedFiles}
+          hasAnswer={!!answer && !isLoading}
+          searchedQuery={searchedQuery}
+          isPremium={isPremium}
+          onNewConversation={() => {
+            setNewConversation(true);
+            setAnswer(null);
+            setConversationHistory([]); // Clear conversation history
+            setSearchedQuery("");
+            setQuery("");
+            // Trigger search with empty query to clear conversation
+            // The actual search will happen when user types and searches
+          }}
+        />
       </div>
-      <div className="spacer-12" />
-      <SearchBar
-        selectedModel={selectedModel}
-        setSelectedModel={setSelectedModel}
-        query={query}
-        setQuery={handleQueryChange}
-        onSearch={doSearch}
-        isLoading={isLoading}
-        showHistory={showHistory}
-        searchHistory={searchHistory}
-        onQuerySelect={handleQuerySelect}
-        onModelChange={setSelectedModel}
-        uploadedFiles={uploadedFiles}
-        onFilesChange={setUploadedFiles}
-        hasAnswer={!!answer && !isLoading}
-        searchedQuery={searchedQuery}
-        isPremium={isPremium}
-        onNewConversation={() => {
-          setNewConversation(true);
-          setAnswer(null);
-          setConversationHistory([]); // Clear conversation history
-          setSearchedQuery('');
-          setQuery('');
-          // Trigger search with empty query to clear conversation
-          // The actual search will happen when user types and searches
-        }}
-      />
       {/* <div className="spacer-16" />
       <DiscoverRail /> */}
 
       {/* <div className="spacer-24" />
       <UpgradeCard /> */}
 
-      <div className="spacer-40" />
+      {/* <div className="spacer-40" /> */}
     </div>
   );
 }

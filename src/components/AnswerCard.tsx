@@ -279,6 +279,188 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     startVoiceOutput();
   }, [chunks, isLoading]);
 
+  // Format text with markdown-like formatting
+  const formatText = (text: string, appendDot?: boolean): React.ReactNode => {
+    if (!text) return null;
+
+    // Process the text line by line to detect structure
+    const lines = text.split('\n');
+    const result: React.ReactNode[] = [];
+    let currentParagraph: string[] = [];
+    let currentList: Array<{ bullet: string; content: string }> = [];
+    let inList = false;
+
+    const flushParagraph = (isLast = false) => {
+      if (currentParagraph.length > 0) {
+        const paraText = currentParagraph.join(' ').trim();
+        if (paraText) {
+          result.push(
+            <p
+              key={`para-${result.length}`}
+              style={{
+                marginTop: result.length > 0 ? 12 : 0,
+                marginBottom: 12,
+                lineHeight: 1.7,
+              }}
+            >
+              {paraText}
+              {isLast && appendDot && (
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: "3px",
+                    height: "3px",
+                    borderRadius: "50%",
+                    backgroundColor: "var(--text)",
+                    marginLeft: "4px",
+                    verticalAlign: "middle",
+                    animation: "blink 1s infinite",
+                  }}
+                />
+              )}
+            </p>
+          );
+        }
+        currentParagraph = [];
+      }
+    };
+
+    const flushList = (isLast = false) => {
+      if (currentList.length > 0) {
+        result.push(
+          <ul
+            key={`list-${result.length}`}
+            style={{
+              marginTop: result.length > 0 ? 12 : 0,
+              marginBottom: 12,
+              paddingLeft: 20,
+              listStyle: 'none',
+            }}
+          >
+            {currentList.map((item, idx) => {
+              const isLastItem = isLast && appendDot && idx === currentList.length - 1;
+              return (
+                <li
+                  key={`li-${idx}`}
+                  style={{
+                    marginBottom: 8,
+                    lineHeight: 1.7,
+                    display: 'flex',
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ flexShrink: 0, color: 'var(--accent)', fontWeight: 600 }}>
+                    {item.bullet}
+                  </span>
+                  <span style={{ flex: 1 }}>
+                    {item.content}
+                    {isLastItem && (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: "3px",
+                          height: "3px",
+                          borderRadius: "50%",
+                          backgroundColor: "var(--text)",
+                          marginLeft: "4px",
+                          verticalAlign: "middle",
+                          animation: "blink 1s infinite",
+                        }}
+                      />
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        );
+        currentList = [];
+        inList = false;
+      }
+    };
+
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      
+      // Empty line - flush current context
+      if (!trimmed) {
+        if (inList) {
+          flushList(false);
+        } else {
+          flushParagraph(false);
+        }
+        return;
+      }
+
+      // Check if it's a heading (ends with colon, single line, reasonable length)
+      if (trimmed.endsWith(':') && trimmed.length < 150 && !trimmed.includes('•') && !trimmed.match(/^[-•\d]/)) {
+        flushParagraph(false);
+        flushList(false);
+        result.push(
+          <h3
+            key={`heading-${result.length}`}
+            style={{
+              fontSize: 'var(--font-lg)',
+              fontWeight: 600,
+              marginTop: result.length > 0 ? 24 : 0,
+              marginBottom: 12,
+              color: 'var(--text)',
+            }}
+          >
+            {trimmed}
+          </h3>
+        );
+        return;
+      }
+
+      // Check if it's a bullet point
+      if (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.match(/^\d+\./)) {
+        flushParagraph(false);
+        inList = true;
+        
+        let bullet = '•';
+        let content = trimmed;
+        
+        if (trimmed.startsWith('•')) {
+          content = trimmed.substring(1).trim();
+        } else if (trimmed.startsWith('-')) {
+          content = trimmed.substring(1).trim();
+        } else if (trimmed.match(/^\d+\./)) {
+          const match = trimmed.match(/^(\d+\.)\s*(.*)/);
+          if (match) {
+            bullet = match[1];
+            content = match[2];
+          }
+        }
+
+        if (content) {
+          currentList.push({ bullet, content });
+        }
+        return;
+      }
+
+      // Regular text line
+      if (inList) {
+        flushList(false);
+      }
+      currentParagraph.push(trimmed);
+    });
+
+    // Flush any remaining content (these are the last elements)
+    if (inList && currentList.length > 0) {
+      // We're in a list, so the list is the last element
+      flushList(true);
+    } else if (currentParagraph.length > 0) {
+      // Paragraph is the last element
+      flushParagraph(true);
+    } else if (currentList.length > 0) {
+      // List is the last element (shouldn't normally happen, but handle it)
+      flushList(true);
+    }
+
+    return result.length > 0 ? <>{result}</> : text;
+  };
+
   const handleCopyChunk = async (chunk: AnswerChunk, index: number) => {
     try {
       await copyToClipboard(chunk.text);
@@ -338,7 +520,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
   const startVoiceOutput = () => {
     if (!speechSupported) {
-      alert("Voice output is not supported in this browser");
+      // Silently fail if text-to-speech is not supported
+      // This allows voice input to work even without voice output support
+      console.log("Text-to-speech is not supported in this browser");
       return;
     }
 
@@ -511,7 +695,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               src={loadingVideo}
               loading="eager"
               alt="loading"
-              className="rounded-full"
+              className="rounded-full animate-spin"
             />
           </div>
           <p className="text-base">
@@ -716,22 +900,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 color: "var(--text)",
               }}
             >
-              {displayedTexts[index] || ""}
-              {isTypingComplete && index === chunks.length - 1 && (
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: "3px",
-                    height: "3px",
-                    borderRadius: "50%",
-                    backgroundColor: "var(--text)",
-                    marginLeft: "4px",
-                    verticalAlign: "middle",
-                    animation: "blink 1s infinite",
-                  }}
-                  className="mt-2"
-                />
-              )}
+              {formatText(displayedTexts[index] || "", isTypingComplete && index === chunks.length - 1)}
             </div>
 
             <div

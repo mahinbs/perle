@@ -10,6 +10,8 @@ import SpacesPage from '../pages/SpacesPage';
 import UpgradePlansPage from '../pages/UpgradePlansPage';
 import SubscriptionPage from '../pages/SubscriptionPage';
 import VerificationPage from '../pages/VerificationPage';
+import TermsPage from '../pages/TermsPage';
+import PrivacyPage from '../pages/PrivacyPage';
 
 // Set this to true to enable maintenance mode
 const MAINTENANCE_MODE = false;
@@ -36,6 +38,8 @@ export function AppRouter() {
       <Route path="/subscription" element={<SubscriptionPage />} />
       <Route path="/details/:id" element={<DetailsPage />} />
       <Route path="/verify" element={<VerificationPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/maintenance" element={<MaintenancePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

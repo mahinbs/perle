@@ -75,8 +75,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   useEffect(() => {
     const hasSpeechRecognition =
       "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
-    const hasSpeechSynthesis = "speechSynthesis" in window;
-    setSpeechSupported(hasSpeechRecognition && hasSpeechSynthesis);
+    // For voice input (microphone), we only need speech recognition
+    // Voice output (text-to-speech) is checked separately when used
+    // Enable the mic button if speech recognition is available
+    setSpeechSupported(hasSpeechRecognition);
   }, []);
 
   // Handle keyboard navigation

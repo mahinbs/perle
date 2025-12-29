@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 import { createPortal } from "react-dom";
 import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
@@ -48,11 +54,11 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       gainNode.gain.setValueAtTime(0.001, audioCtx.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(
         0.25,
-        audioCtx.currentTime + 0.01,
+        audioCtx.currentTime + 0.01
       );
       gainNode.gain.exponentialRampToValueAtTime(
         0.0001,
-        audioCtx.currentTime + 0.25,
+        audioCtx.currentTime + 0.25
       );
 
       oscillator.connect(gainNode);
@@ -62,13 +68,13 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         oscillator.onended = () => {
           try {
             audioCtx.close();
-          } catch { }
+          } catch {}
           resolve();
         };
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.3);
       });
-    } catch { }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -105,7 +111,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
           window.speechSynthesis.cancel();
         }
-      } catch { }
+      } catch {}
 
       // Clear any existing answer text from localStorage
       localStorage.removeItem("perle-current-answer-text");
@@ -121,7 +127,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
-    } catch { }
+    } catch {}
 
     // Clear any stored answer text on mount
     localStorage.removeItem("perle-current-answer-text");
@@ -133,7 +139,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
           window.speechSynthesis.cancel();
         }
-      } catch { }
+      } catch {}
     };
   }, []);
 
@@ -171,7 +177,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           onClick={() => {
             try {
               if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-            } catch { }
+            } catch {}
             onClose();
           }}
           aria-label="Close"
@@ -205,13 +211,15 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         />
       </div>
 
-      {/* Bottom actions */}
-      <VoiceOverlayControls
-        isListening={isListening}
-        onClose={onClose}
-        onToggleListening={onToggleListening}
-        isMac={os === "mac"}
-      />
+      <div className="absolute left-0 bottom-0 w-full z-[1] p-2">
+        {/* Bottom actions */}
+        <VoiceOverlayControls
+          isListening={isListening}
+          onClose={onClose}
+          onToggleListening={onToggleListening}
+          isMac={os === "mac"}
+        />
+      </div>
     </div>
   );
 
@@ -252,7 +260,7 @@ const SpeakingGradientCircle: React.FC<{
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
-    } catch { }
+    } catch {}
   }, []); // Empty deps - only run on mount
 
   useEffect(() => {
@@ -266,7 +274,7 @@ const SpeakingGradientCircle: React.FC<{
             : false;
 
         setSpeaking(isSpeaking);
-      } catch { }
+      } catch {}
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
