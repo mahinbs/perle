@@ -33,7 +33,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   mode: _mode,
   query,
   onQueryEdit,
-  onSearch,
+  onSearch: _onSearch,
 }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
@@ -1167,9 +1167,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               tabIndex={0}
               onClick={() => {
                 if (query) {
-                  onSearch?.(`${query} ${action.text}`, action.mode);
+                  _onSearch?.(`${query} ${action.text}`, action.mode);
                 } else {
-                  onSearch?.(action.text, action.mode);
+                  _onSearch?.(action.text, action.mode);
                 }
               }}
               style={{ cursor: "pointer" }}

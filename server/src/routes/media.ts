@@ -150,7 +150,7 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
 
     console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio})`);
 
-    // Check premium status (video requires Max tier)
+    // Check premium status (video requires Pro or Max tier)
     let premiumTier = 'free';
     if (req.userId) {
       const { data: profile } = await supabase
@@ -171,17 +171,40 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
 
-    // Video generation requires Max tier
-    if (premiumTier !== 'max') {
+    // Video generation requires Pro or Max tier
+    if (premiumTier !== 'pro' && premiumTier !== 'max') {
       return res.status(403).json({ 
-        error: 'Video generation requires Max subscription',
+        error: 'Video generation requires Pro or Max subscription',
         currentTier: premiumTier,
-        requiredTier: 'max'
+        requiredTier: 'pro or max'
+      });
+    }
+
+    // Check daily video generation limits
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    
+    const { count: videoCount } = await supabase
+      .from('generated_media')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', req.userId)
+      .eq('media_type', 'video')
+      .gte('created_at', todayStart.toISOString());
+    
+    // Pro tier: 3 videos per day, Max tier: 6 videos per day
+    const dailyLimit = premiumTier === 'max' ? 6 : 3;
+    
+    if (videoCount && videoCount >= dailyLimit) {
+      return res.status(429).json({ 
+        error: `Daily video generation limit reached. ${premiumTier === 'pro' ? 'Upgrade to Max for 6 videos per day.' : 'You have reached your daily limit of 6 videos.'}`,
+        limit: dailyLimit,
+        used: videoCount,
+        tier: premiumTier
       });
     }
 
     // Generate video using Gemini Veo
-    console.log(`🎥 Generating video with Max tier`);
+    console.log(`🎥 Generating video with ${premiumTier} tier (${videoCount || 0}/${dailyLimit} used today)`);
     const video = await generateVideo(prompt, duration, aspectRatio);
 
     if (!video) {
@@ -235,6 +258,77 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
 
   } catch (error) {
     console.error('Video generation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/media/quota - Get user's video generation quota
+router.get('/quota', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Get user's premium tier
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('premium_tier, subscription_status, subscription_end_date')
+      .eq('user_id', req.userId)
+      .single();
+    
+    let premiumTier = 'free';
+    if (profile) {
+      const hasActiveSubscription = 
+        profile.subscription_status === 'active' && 
+        profile.subscription_end_date && 
+        new Date(profile.subscription_end_date) > new Date();
+      
+      if (hasActiveSubscription) {
+        premiumTier = profile.premium_tier || 'free';
+      }
+    }
+
+    // Get today's video count
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    
+    const { count: videoCount } = await supabase
+      .from('generated_media')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', req.userId)
+      .eq('media_type', 'video')
+      .gte('created_at', todayStart.toISOString());
+
+    // Get today's image count
+    const { count: imageCount } = await supabase
+      .from('generated_media')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', req.userId)
+      .eq('media_type', 'image')
+      .gte('created_at', todayStart.toISOString());
+
+    // Determine limits based on tier
+    const videoLimit = premiumTier === 'max' ? 6 : premiumTier === 'pro' ? 3 : 0;
+    const imageLimit = (premiumTier === 'pro' || premiumTier === 'max') ? -1 : 3; // -1 means unlimited
+
+    res.json({
+      tier: premiumTier,
+      video: {
+        used: videoCount || 0,
+        limit: videoLimit,
+        remaining: videoLimit - (videoCount || 0),
+        hasAccess: premiumTier === 'pro' || premiumTier === 'max'
+      },
+      image: {
+        used: imageCount || 0,
+        limit: imageLimit,
+        remaining: imageLimit === -1 ? -1 : imageLimit - (imageCount || 0),
+        hasAccess: true
+      },
+      resetTime: new Date(todayStart.getTime() + 24 * 60 * 60 * 1000).toISOString() // Next midnight
+    });
+  } catch (error) {
+    console.error('Get quota error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

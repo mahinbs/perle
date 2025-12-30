@@ -61,9 +61,9 @@ export const Header: React.FC = () => {
             </button>
 
             <button
-              className={`btn-ghost active`}
-              onClick={() => navigateTo("/")}
-              aria-label="Home"
+              className={`btn-ghost ${isActive("/ai-psychology") ? "active" : ""}`}
+              onClick={() => navigateTo("/ai-psychology")}
+              aria-label="AI Psychology"
               style={{
                 padding: "6px 10px",
                 fontSize: "var(--font-md)",

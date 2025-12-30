@@ -5,6 +5,7 @@ import ProfilePage from '../pages/ProfilePage';
 import LibraryPage from '../pages/LibraryPage';
 import DetailsPage from '../pages/DetailsPage';
 import AIFriendPage from '../pages/AIFriendPage';
+import AIPsychologyPage from '../pages/AIPsychologyPage';
 import MaintenancePage from '../pages/MaintenancePage';
 import SpacesPage from '../pages/SpacesPage';
 import UpgradePlansPage from '../pages/UpgradePlansPage';
@@ -34,6 +35,7 @@ export function AppRouter() {
       <Route path="/library" element={<LibraryPage />} />
       <Route path="/spaces" element={<SpacesPage />} />
       <Route path="/ai-friend" element={<AIFriendPage />} />
+      <Route path="/ai-psychology" element={<AIPsychologyPage />} />
       <Route path="/upgrade" element={<UpgradePlansPage />} />
       <Route path="/subscription" element={<SubscriptionPage />} />
       <Route path="/details/:id" element={<DetailsPage />} />

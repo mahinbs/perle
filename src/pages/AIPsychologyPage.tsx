@@ -24,7 +24,7 @@ interface Message {
   timestamp: Date;
 }
 
-export default function AIFriendPage() {
+export default function AIPsychologyPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
   // Get user data for avatar
@@ -33,9 +33,9 @@ export default function AIFriendPage() {
 
   // Generate avatars using UI Avatars service
   const aiProfile = {
-    name: "Nani",
-    handle: "@syntraIQ companion",
-    avatar: `https://ui-avatars.com/api/?name=Perle+AI&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
+    name: "Dr. Maya",
+    handle: "@syntraIQ psychologist",
+    avatar: `https://ui-avatars.com/api/?name=Dr+Maya&background=9B59B6&color=fff&size=120&bold=true&font-size=0.5`,
   };
   const userProfile = {
     name: userName,
@@ -48,7 +48,7 @@ export default function AIFriendPage() {
       id: "1",
       role: "ai",
       content:
-        "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+        "Hello, I'm Dr. Maya, your AI psychologist. I'm here to provide a safe, supportive space for you to explore your thoughts and feelings. How are you doing today?",
       timestamp: new Date(),
     },
   ]);
@@ -60,9 +60,9 @@ export default function AIFriendPage() {
   const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite");
   const [newConversation, setNewConversation] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([
-    "I'll heat up the dal if you promise to share how your day's been going.",
-    "Maybe we can cook together sometime—what's your favorite comfort meal?",
-    "Want me to send you a quick recipe to make that dinner extra special?",
+    "I've been feeling stressed lately and could use some guidance.",
+    "Can you help me understand my emotions better?",
+    "I'd like to talk about coping strategies for anxiety.",
   ]);
   const [dailySuggestionUses, setDailySuggestionUses] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -91,7 +91,7 @@ export default function AIFriendPage() {
 
       // Load saved model preference
       const savedModel = localStorage.getItem(
-        "perle-ai-friend-model"
+        "perle-ai-psychologist-model"
       ) as LLMModel | null;
       if (savedModel && premium) {
         setSelectedModel(savedModel);
@@ -113,7 +113,7 @@ export default function AIFriendPage() {
       if (!API_URL) return;
 
       try {
-        const response = await fetch(`${API_URL}/api/chat/history?chatMode=ai_friend`, {
+        const response = await fetch(`${API_URL}/api/chat/history?chatMode=ai_psychologist`, {
           method: "GET",
           headers: getAuthHeaders(),
         });
@@ -137,7 +137,7 @@ export default function AIFriendPage() {
                 id: "1",
                 role: "ai",
                 content:
-                  "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+                  "Hello, I'm Dr. Maya, your AI psychologist. I'm here to provide a safe, supportive space for you to explore your thoughts and feelings. How are you doing today?",
                 timestamp: new Date(),
               },
               ...historyMessages,
@@ -253,7 +253,7 @@ export default function AIFriendPage() {
     }
     setIsLoading(true);
 
-    // Call real API
+    // Call real API with ai_psychologist mode
     const API_URL = import.meta.env.VITE_API_URL;
     if (!API_URL) {
       showToast({
@@ -273,7 +273,7 @@ export default function AIFriendPage() {
           message: messageText,
           model: selectedModel,
           newConversation: newConversation,
-          chatMode: "ai_friend", // Use AI friend mode
+          chatMode: "ai_psychologist", // Use AI psychologist mode
         }),
       });
 
@@ -315,7 +315,7 @@ export default function AIFriendPage() {
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
-        content: `Sorry, I encountered an error: ${
+        content: `I apologize, but I encountered an error: ${
           error.message || "Failed to connect to the server"
         }. Please try again.`,
         timestamp: new Date(),
@@ -334,12 +334,12 @@ export default function AIFriendPage() {
   };
 
   const inspirationPool = [
-    "I'll grab a plate too—food tastes better when we share it.",
-    "Let's keep chatting while you eat. I don't mind being your dinner guest.",
-    "Maybe your appetite will come back if I tell you a story. Want to hear one?",
-    "I'll wait while you warm it up. We can plan dessert together.",
-    "Sometimes good company is the secret ingredient. I'm here as long as you need.",
-    "How about we set a timer and make dinner together, step by step?",
+    "I'm feeling anxious and need some coping strategies.",
+    "Can you help me understand why I feel this way?",
+    "I'd like to talk about managing stress at work.",
+    "How can I improve my emotional well-being?",
+    "I'm struggling with negative thoughts lately.",
+    "Can you guide me through a difficult situation?",
   ];
 
   const refreshSuggestions = () => {
@@ -389,9 +389,9 @@ export default function AIFriendPage() {
                 <img
                   src={aiProfile.avatar}
                   alt={`${aiProfile.name} avatar`}
-                  className="w-11 h-11 rounded-full object-cover border-2 border-[var(--accent)]"
+                  className="w-11 h-11 rounded-full object-cover border-2 border-[#9B59B6]"
                 />
-                <div className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#9B59B6] shadow-[0_0_8px_rgba(155,89,182,0.5)] absolute bottom-0 right-0 animate-pulse" />
               </div>
               <div>
                 <div className="h3 mb-0.5">{aiProfile.name}</div>
@@ -433,7 +433,7 @@ export default function AIFriendPage() {
               className={`w-9 h-9 rounded-full object-cover border-2 ${
                 message.role === "user"
                   ? "border-[var(--accent)]"
-                  : "border-[rgba(16,163,127,0.5)]"
+                  : "border-[rgba(155,89,182,0.5)]"
               }`}
             />
             <div
@@ -465,7 +465,7 @@ export default function AIFriendPage() {
             <img
               src={aiProfile.avatar}
               alt={`${aiProfile.name} avatar`}
-              className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(16,163,127,0.5)]"
+              className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(155,89,182,0.5)]"
             />
             <div className="px-4 py-3 rounded-[var(--radius-sm)] bg-[var(--card)] border border-[var(--border)]">
               <div className="flex gap-1 items-center">
@@ -482,41 +482,6 @@ export default function AIFriendPage() {
 
       {/* Input Area */}
       <div className="p-3 px-4 border-none border-[var(--border)] bg-[var(--card)] sticky bottom-0">
-        {/* Model Selector and New Chat Button (Premium Users) - Moved to bottom */}
-        {/* <div className="flex-1">
-          <LLMModelSelector
-            selectedModel={selectedModel}
-            onModelChange={(model) => {
-              setSelectedModel(model);
-              localStorage.setItem("perle-ai-friend-model", model);
-            }}
-            isPremium={isPremium}
-            size="large"
-          />
-        </div> */}
-        {/* {isPremium && (
-          <div className="flex justify-between items-center mb-2 gap-2">
-            <button
-              className="btn-ghost px-3 py-1.5 text-[length:var(--font-xs)] whitespace-nowrap"
-              onClick={() => {
-                setNewConversation(true);
-                setMessages([
-                  {
-                    id: "1",
-                    role: "ai",
-                    content:
-                      "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
-                    timestamp: new Date(),
-                  },
-                ]);
-              }}
-              title="Start a new conversation"
-            >
-              New Chat
-            </button>
-          </div>
-        )} */}
-
         {attachedFileName && (
           <div className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3">
             <div className="flex items-center gap-2.5 text-[length:var(--font-sm)] text-[var(--text)] flex-1 min-w-0">
@@ -566,7 +531,7 @@ export default function AIFriendPage() {
                 )}px`;
               }}
               onKeyDown={handleKeyPress}
-              placeholder="Type your message..."
+              placeholder="Share what's on your mind..."
               className="flex-1 border-none bg-transparent resize-none py-1 text-[length:var(--font-md)] text-[var(--text)] outline-none font-inherit leading-relaxed min-h-[24px] max-h-[100px] overflow-y-auto h-auto"
               rows={1}
               disabled={isLoading}
@@ -616,7 +581,7 @@ export default function AIFriendPage() {
                     : "bg-transparent text-inherit"
                 }`}
                 onClick={() => setShowSuggestions((prev) => !prev)}
-                aria-label="Toggle inspiration replies"
+                aria-label="Toggle topic suggestions"
                 aria-expanded={showSuggestions}
               >
                 <FaLightbulb size={16} />
@@ -631,17 +596,17 @@ export default function AIFriendPage() {
                       id: "1",
                       role: "ai",
                       content:
-                        "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+                        "Hello, I'm Dr. Maya, your AI psychologist. I'm here to provide a safe, supportive space for you to explore your thoughts and feelings. How are you doing today?",
                       timestamp: new Date(),
                     },
                   ]);
                   showToast({
-                    message: "New chat started",
+                    message: "New session started",
                     type: "success",
                     duration: 2000,
                   });
                 }}
-                aria-label="Start new chat"
+                aria-label="Start new session"
               >
                 <FaComments size={16} />
               </button>
@@ -666,7 +631,7 @@ export default function AIFriendPage() {
                 selectedModel={selectedModel}
                 onModelChange={(model) => {
                   setSelectedModel(model);
-                  localStorage.setItem("perle-ai-friend-model", model);
+                  localStorage.setItem("perle-ai-psychologist-model", model);
                 }}
                 isPremium={isPremium}
                 size="small"
@@ -680,15 +645,15 @@ export default function AIFriendPage() {
         </div>
 
         {showSuggestions && (
-          <div className="mt-4 p-3 rounded-[var(--radius-sm)] bg-[rgba(199,168,105,0.08)] border border-[rgba(199,168,105,0.2)]">
+          <div className="mt-4 p-3 rounded-[var(--radius-sm)] bg-[rgba(155,89,182,0.08)] border border-[rgba(155,89,182,0.2)]">
             <div className="row flex justify-between items-center mb-2.5">
               <div className="row flex items-center gap-2">
-                <span className="w-7 h-7 rounded-full bg-[rgba(199,168,105,0.2)] flex items-center justify-center text-[var(--accent)]">
+                <span className="w-7 h-7 rounded-full bg-[rgba(155,89,182,0.2)] flex items-center justify-center text-[#9B59B6]">
                   <FaLightbulb size={14} />
                 </span>
                 <div>
                   <div className="sub text-[length:var(--font-sm)] font-semibold">
-                    Inspiration Reply
+                    Topic Suggestions
                   </div>
                   <div className="sub text-sm text-[length:var(--font-xs)] opacity-70">
                     Free: {Math.max(0, 10 - dailySuggestionUses)}/10 today
@@ -698,7 +663,7 @@ export default function AIFriendPage() {
               <button
                 className="btn-ghost w-8 min-w-[32px] h-8 rounded-[10%] flex items-center justify-center p-0"
                 onClick={refreshSuggestions}
-                aria-label="Refresh inspiration replies"
+                aria-label="Refresh topic suggestions"
               >
                 <FaSyncAlt size={14} />
               </button>
@@ -711,7 +676,7 @@ export default function AIFriendPage() {
                   onClick={() => handleUseSuggestion(suggestion)}
                   className="text-left bg-[var(--card)] border border-[var(--border)] rounded-[var(--radius-sm)] px-3.5 py-3 flex gap-3 items-start cursor-pointer transition-all duration-200 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-px"
                 >
-                  <span className="text-[var(--accent)] flex items-center justify-center mt-0.5">
+                  <span className="text-[#9B59B6] flex items-center justify-center mt-0.5">
                     <FaPen size={12} />
                   </span>
                   <span className="text-[length:var(--font-sm)] text-[var(--text)] leading-relaxed">
@@ -726,3 +691,4 @@ export default function AIFriendPage() {
     </div>
   );
 }
+
