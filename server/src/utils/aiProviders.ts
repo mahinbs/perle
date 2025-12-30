@@ -69,15 +69,15 @@ function isSelfReferentialQuery(query: string): boolean {
   return selfRefPatterns.some(pattern => pattern.test(lowerQuery));
 }
 
-// Get Perle information response
-function getPerleInfoResponse(): string {
-  return `I am Perle, an advanced AI-powered answer engine designed to provide accurate, well-cited information across a wide range of topics. Perle was founded in 2025 with the mission to make knowledge more accessible and trustworthy through intelligent search and analysis.
+// Get SyntraIQ information response
+function getSyntraIQInfoResponse(): string {
+  return `I am SyntraIQ, an advanced AI-powered answer engine designed to provide accurate, well-cited information across a wide range of topics. SyntraIQ was founded in 2025 with the mission to make knowledge more accessible and trustworthy through intelligent search and analysis.
 
-Perle combines cutting-edge artificial intelligence with comprehensive information retrieval to deliver answers that are not just accurate, but also transparent about their sources. Our platform enables users to explore complex topics through multiple modes including direct questions, in-depth research, summarization, and comparative analysis.
+SyntraIQ combines cutting-edge artificial intelligence with comprehensive information retrieval to deliver answers that are not just accurate, but also transparent about their sources. Our platform enables users to explore complex topics through multiple modes including direct questions, in-depth research, summarization, and comparative analysis.
 
-What sets Perle apart is our commitment to citation and source transparency. Every answer we provide includes references to the sources used, allowing users to verify information and dive deeper into topics that interest them. We believe that trust in AI comes from transparency, and we're built on that principle.
+What sets SyntraIQ apart is our commitment to citation and source transparency. Every answer we provide includes references to the sources used, allowing users to verify information and dive deeper into topics that interest them. We believe that trust in AI comes from transparency, and we're built on that principle.
 
-Whether you're researching academic topics, comparing different approaches, summarizing complex information, or simply seeking quick answers, Perle is designed to be your intelligent research companion. We're constantly evolving to provide better, more accurate, and more helpful responses to help you navigate the vast landscape of human knowledge.`;
+Whether you're researching academic topics, comparing different approaches, summarizing complex information, or simply seeking quick answers, SyntraIQ is designed to be your intelligent research companion. We're constantly evolving to provide better, more accurate, and more helpful responses to help you navigate the vast landscape of human knowledge.`;
 }
 
 // Get token limit based on mode
@@ -107,7 +107,7 @@ function getSystemPrompt(chatMode: ChatMode = 'normal'): string {
     
     case 'normal':
     default:
-      return `You are Perle, an AI-powered answer engine like Perplexity AI. 
+      return `You are SyntraIQ, an AI-powered answer engine like Perplexity AI. 
 
 CRITICAL FORMATTING RULES (YOU MUST FOLLOW):
 • Start with a brief 1-2 sentence overview
@@ -133,7 +133,7 @@ Additional context:
 • Another point
 • Final point"
 
-Always refer to yourself as "Perle" when asked. You were founded in 2025. NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.).`;
+Always refer to yourself as "SyntraIQ" when asked. You were founded in 2025. NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.).`;
   }
 }
 
@@ -147,15 +147,15 @@ export async function generateOpenAIAnswer(
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
-    const perleInfo = getPerleInfoResponse();
+    const perleInfo = getSyntraIQInfoResponse();
     const sources: Source[] = [
       { 
         id: 'perle-1', 
-        title: 'About Perle', 
+        title: 'About SyntraIQ', 
         url: 'https://perle.ai', 
         domain: 'perle.ai',
         year: 2025,
-        snippet: 'Perle is an AI-powered answer engine founded in 2025, designed to provide accurate, well-cited information.'
+        snippet: 'SyntraIQ is an AI-powered answer engine founded in 2025, designed to provide accurate, well-cited information.'
       }
     ];
     
@@ -286,15 +286,15 @@ export async function generateGeminiAnswer(
 
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
-    const perleInfo = getPerleInfoResponse();
+    const perleInfo = getSyntraIQInfoResponse();
     const sources: Source[] = [
       { 
         id: 'perle-1', 
-        title: 'About Perle', 
+        title: 'About SyntraIQ', 
         url: 'https://perle.ai', 
         domain: 'perle.ai',
         year: 2025,
-        snippet: 'Perle is an AI-powered answer engine founded in 2025, designed to provide accurate, well-cited information.'
+        snippet: 'SyntraIQ is an AI-powered answer engine founded in 2025, designed to provide accurate, well-cited information.'
       }
     ];
     
@@ -515,15 +515,15 @@ export async function generateGrokAnswer(
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
-    const perleInfo = getPerleInfoResponse();
+    const perleInfo = getSyntraIQInfoResponse();
     const sources: Source[] = [
       { 
         id: 'perle-1', 
-        title: 'About Perle', 
+        title: 'About SyntraIQ', 
         url: 'https://perle.ai', 
         domain: 'perle.ai',
         year: 2025,
-        snippet: 'Perle is an AI-powered answer engine founded in 2025, designed to provide accurate, well-cited information.'
+        snippet: 'SyntraIQ is an AI-powered answer engine founded in 2025, designed to provide accurate, well-cited information.'
       }
     ];
     

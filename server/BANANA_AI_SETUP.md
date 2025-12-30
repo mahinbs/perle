@@ -131,3 +131,4 @@ Edit `server/src/utils/imageGeneration.ts` to customize:
 
 For video generation with Veo 3.1, see: `VEO_SETUP.md` (coming soon)
 
+

@@ -76,10 +76,21 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
           darkMode: false,
           searchHistory: true,
           voiceSearch: true,
-          isPremium: false
+          isPremium: false,
+          premiumTier: 'free',
+          subscription: {
+            status: 'inactive',
+            tier: 'free',
+            startDate: null,
+            endDate: null,
+            autoRenew: false,
+            razorpaySubscriptionId: null
+          }
         });
       }
 
+      const premiumTier = (newProfile as any).premium_tier || 'free';
+      
       return res.json({
         id: user.id,
         name: name,
@@ -88,9 +99,27 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
         darkMode: (newProfile as any).dark_mode,
         searchHistory: (newProfile as any).search_history,
         voiceSearch: (newProfile as any).voice_search,
-        isPremium: (newProfile as any).is_premium ?? false
+        isPremium: false,
+        premiumTier: premiumTier,
+        subscription: {
+          status: 'inactive',
+          tier: 'free',
+          startDate: null,
+          endDate: null,
+          autoRenew: false,
+          razorpaySubscriptionId: null
+        }
       });
     }
+
+    // Check if subscription is active
+    const subscriptionEndDate = (profile as any).subscription_end_date;
+    const isSubscriptionActive = (profile as any).subscription_status === 'active' && 
+      subscriptionEndDate && 
+      new Date(subscriptionEndDate) > new Date();
+    
+    const premiumTier = (profile as any).premium_tier || 'free';
+    const isPremium = premiumTier !== 'free' && isSubscriptionActive;
 
     res.json({
       id: user.id,
@@ -100,7 +129,16 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
       darkMode: (profile as any).dark_mode,
       searchHistory: (profile as any).search_history,
       voiceSearch: (profile as any).voice_search,
-      isPremium: (profile as any).is_premium ?? false
+      isPremium: isPremium,
+      premiumTier: premiumTier, // 'free', 'pro', or 'max'
+      subscription: {
+        status: (profile as any).subscription_status || 'inactive',
+        tier: premiumTier,
+        startDate: (profile as any).subscription_start_date || null,
+        endDate: (profile as any).subscription_end_date || null,
+        autoRenew: (profile as any).auto_renew ?? false,
+        razorpaySubscriptionId: (profile as any).razorpay_subscription_id || null
+      }
     });
   } catch (error) {
     console.error('Get profile error:', error);
@@ -216,6 +254,13 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       }
     }
 
+    const premiumTier = (profileResult as any).premium_tier || 'free';
+    const subscriptionEndDate = (profileResult as any).subscription_end_date;
+    const isSubscriptionActive = (profileResult as any).subscription_status === 'active' && 
+      subscriptionEndDate && 
+      new Date(subscriptionEndDate) > new Date();
+    const isPremium = premiumTier !== 'free' && isSubscriptionActive;
+
     res.json({
       id: req.userId,
       name: name,
@@ -224,7 +269,16 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       darkMode: (profileResult as any).dark_mode,
       searchHistory: (profileResult as any).search_history,
       voiceSearch: (profileResult as any).voice_search,
-      isPremium: (profileResult as any).is_premium ?? false
+      isPremium: isPremium,
+      premiumTier: premiumTier,
+      subscription: {
+        status: (profileResult as any).subscription_status || 'inactive',
+        tier: premiumTier,
+        startDate: (profileResult as any).subscription_start_date || null,
+        endDate: (profileResult as any).subscription_end_date || null,
+        autoRenew: (profileResult as any).auto_renew ?? false,
+        razorpaySubscriptionId: (profileResult as any).razorpay_subscription_id || null
+      }
     });
   } catch (error) {
     console.error('Update profile error:', error);

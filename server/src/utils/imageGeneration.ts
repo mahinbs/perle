@@ -52,7 +52,10 @@ export function extractImagePrompt(query: string, answer: string): string | null
 }
 
 // Generate image using Gemini Imagen API
-export async function generateImageWithGemini(prompt: string): Promise<GeneratedImage | null> {
+export async function generateImageWithGemini(
+  prompt: string, 
+  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'
+): Promise<GeneratedImage | null> {
   // Use the same API key as your Gemini chat
   const apiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_FREE;
   
@@ -62,7 +65,12 @@ export async function generateImageWithGemini(prompt: string): Promise<Generated
   }
   
   try {
-    console.log('🎨 Generating image with Gemini Imagen:', prompt);
+    console.log('═'.repeat(60));
+    console.log(`🎨 [GEMINI IMAGEN 3] Generating image`);
+    console.log(`   Prompt: "${prompt}"`);
+    console.log(`   Aspect Ratio: ${aspectRatio}`);
+    console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001`);
+    console.log('═'.repeat(60));
     
     // Use Gemini's image generation endpoint (Imagen 3)
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`, {
@@ -76,7 +84,7 @@ export async function generateImageWithGemini(prompt: string): Promise<Generated
         }],
         parameters: {
           sampleCount: 1,
-          aspectRatio: '1:1', // Square images
+          aspectRatio: aspectRatio,
           negativePrompt: 'nsfw, ugly, bad quality, blurry, distorted',
           safetySetting: 'block_some'
         }
@@ -113,16 +121,33 @@ export async function generateImageWithGemini(prompt: string): Promise<Generated
   }
 }
 
-// Alternative: Use DALL-E if Gemini image generation fails
-export async function generateImageWithDALLE(prompt: string): Promise<GeneratedImage | null> {
+// Alternative: Use DALL-E 3 if Gemini image generation fails
+export async function generateImageWithDALLE(
+  prompt: string,
+  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'
+): Promise<GeneratedImage | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   
   if (!apiKey) {
+    console.warn('⚠️ OpenAI API key not configured. Cannot fallback to DALL-E.');
     return null;
   }
   
   try {
-    console.log('🎨 Generating image with DALL-E:', prompt);
+    console.log('═'.repeat(60));
+    console.log(`🎨 [OPENAI DALL-E 3] Generating image (FALLBACK)`);
+    console.log(`   Prompt: "${prompt}"`);
+    console.log(`   Aspect Ratio: ${aspectRatio}`);
+    console.log(`   API: https://api.openai.com/v1/images/generations`);
+    console.log('═'.repeat(60));
+    
+    // Map aspect ratios to DALL-E 3 sizes
+    let size: '1024x1024' | '1792x1024' | '1024x1792' = '1024x1024';
+    if (aspectRatio === '16:9' || aspectRatio === '4:3') {
+      size = '1792x1024'; // Landscape
+    } else if (aspectRatio === '9:16' || aspectRatio === '3:4') {
+      size = '1024x1792'; // Portrait
+    }
     
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
@@ -131,11 +156,12 @@ export async function generateImageWithDALLE(prompt: string): Promise<GeneratedI
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
+        model: 'dall-e-3', // Latest DALL-E model
         prompt: prompt,
         n: 1,
-        size: '1024x1024',
-        quality: 'standard'
+        size: size,
+        quality: 'hd', // Use HD quality for better results
+        style: 'vivid' // More hyper-real and dramatic images
       })
     });
     
@@ -148,12 +174,24 @@ export async function generateImageWithDALLE(prompt: string): Promise<GeneratedI
     const data = await response.json();
     
     if (data.data && data.data[0]?.url) {
-      console.log('✅ Image generated with DALL-E');
+      console.log('✅ Image generated successfully with DALL-E 3');
+      
+      // Calculate dimensions based on size
+      let width = 1024;
+      let height = 1024;
+      if (size === '1792x1024') {
+        width = 1792;
+        height = 1024;
+      } else if (size === '1024x1792') {
+        width = 1024;
+        height = 1792;
+      }
+      
       return {
         url: data.data[0].url,
         prompt: prompt,
-        width: 1024,
-        height: 1024
+        width: width,
+        height: height
       };
     }
     
@@ -165,16 +203,24 @@ export async function generateImageWithDALLE(prompt: string): Promise<GeneratedI
   }
 }
 
-// Main function - uses Gemini Imagen API (same key as chat)
-export async function generateImage(prompt: string): Promise<GeneratedImage | null> {
+// Main function - uses Gemini Imagen API with DALL-E 3 fallback
+export async function generateImage(
+  prompt: string, 
+  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'
+): Promise<GeneratedImage | null> {
   // Try Gemini Imagen first (you already have the API key!)
-  const geminiImage = await generateImageWithGemini(prompt);
-  if (geminiImage) {
-    return geminiImage;
+  try {
+    const geminiImage = await generateImageWithGemini(prompt, aspectRatio);
+    if (geminiImage) {
+      return geminiImage;
+    }
+  } catch (error) {
+    console.warn('⚠️ Gemini image generation failed, trying DALL-E 3 fallback...');
   }
   
-  // Fallback to DALL-E if Gemini fails and OpenAI key is available
-  const dalleImage = await generateImageWithDALLE(prompt);
+  // Fallback to DALL-E 3 if Gemini fails (quota, errors, etc.)
+  console.log('🔄 Using OpenAI DALL-E 3 as fallback for image generation');
+  const dalleImage = await generateImageWithDALLE(prompt, aspectRatio);
   return dalleImage;
 }
 

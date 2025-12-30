@@ -76,19 +76,21 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
 
-    // Determine actual model to use
+    // Determine actual model to use (works for ALL chat modes: normal, ai_friend, ai_psychologist)
     let actualModel: LLMModel = model as LLMModel;
     
     if (!isPremium) {
-      // Free users always use gemini-lite
+      // Free users always use gemini-lite regardless of chat mode
       actualModel = 'gemini-lite';
+      console.log(`🔒 Free user - forcing gemini-lite for ${chatMode} mode`);
     } else {
-      // Premium users: if 'auto' is selected, use gemini-lite
+      // Premium users can use ANY model in ANY chat mode
       if (model === 'auto') {
         actualModel = 'gemini-lite';
       } else {
         actualModel = model as LLMModel;
       }
+      console.log(`✅ Premium user - using ${actualModel} for ${chatMode} mode`);
     }
 
     // Fetch conversation history for context - ISOLATED BY CHAT MODE
