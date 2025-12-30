@@ -495,3 +495,4 @@ curl -X GET "http://localhost:3333/api/media/my-media?type=image&limit=10" \
 
 **Everything is implemented and ready to use!** 🎉
 
+
