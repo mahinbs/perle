@@ -5,7 +5,9 @@ const config: Config = {
   darkMode: "class",
   theme: {
     extend: {
-      
+      colors: {
+        'yellow-gold': '#dfb768',
+      },
     },
   },
   plugins: [],

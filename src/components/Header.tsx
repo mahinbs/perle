@@ -46,33 +46,33 @@ export const Header: React.FC = () => {
               Syntra<span className="text-gold -ml-2">IQ</span> <Dot />
             </div>
           </div> */}
-           <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
-          <button
-            className={`btn-ghost active`}
-            onClick={() => navigateTo("/ai-friend")}
-            aria-label="AI Friend"
-            style={{
-              padding: "6px 10px",
-              fontSize: "var(--font-md)",
-              minHeight: 36,
-            }}
-          >
-            AI Friend
-          </button>
+          <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
+            <button
+              className={`btn-ghost active`}
+              onClick={() => navigateTo("/ai-friend")}
+              aria-label="AI Friend"
+              style={{
+                padding: "6px 10px",
+                fontSize: "var(--font-md)",
+                minHeight: 36,
+              }}
+            >
+              AI Friend
+            </button>
 
-          <button
-            className={`btn-ghost active`}
-            onClick={() => navigateTo("/")}
-            aria-label="Home"
-            style={{
-              padding: "6px 10px",
-              fontSize: "var(--font-md)",
-              minHeight: 36,
-            }}
-          >
-            AI Psychology
-          </button>
-        </div>
+            <button
+              className={`btn-ghost active`}
+              onClick={() => navigateTo("/")}
+              aria-label="Home"
+              style={{
+                padding: "6px 10px",
+                fontSize: "var(--font-md)",
+                minHeight: 36,
+              }}
+            >
+              AI Psychology
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             <button
               className={`btn-ghost ${isActive("/discover") ? "active" : ""}`}
@@ -80,7 +80,7 @@ export const Header: React.FC = () => {
               aria-label="Discover"
               style={{
                 padding: 4,
-                minHeight: 36,
+                minHeight: 42,
                 minWidth: 48,
                 display: "flex",
                 alignItems: "center",
@@ -107,11 +107,11 @@ export const Header: React.FC = () => {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                minHeight: 36,
+                minHeight: 40,
                 minWidth: 48,
               }}
             >
-              <FaUserCircle className="min-w-8 min-h-9" size={33} />
+              <FaUserCircle className="min-w-6 min-h-6" size={33} />
             </button>
           </div>
         </div>
@@ -148,17 +148,19 @@ export const Header: React.FC = () => {
         {`
           .discover-icon {
             position: relative;
-            width: 35px;
-            height: 35px;
+            width: 1.525rem;
+            height: 1.525rem;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            aspect-ratio: 1/1;
+            
           }
 
           .discover-icon img {
             position: absolute;
-            width: 26px;
-            height: 26px;
+            width: 1.45rem;
+            height: 1.45rem;
             object-fit: cover;
             border-radius: 12px;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);

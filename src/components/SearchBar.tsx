@@ -8,6 +8,8 @@ import {
   FaCamera,
   FaSearch,
   FaPen,
+  FaVideo,
+  FaTools,
 } from "react-icons/fa";
 import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
@@ -57,6 +59,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onModelChange,
 }) => {
   const [showUploadMenu, setShowUploadMenu] = useState(false);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -144,6 +147,29 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         if (!hasAnswer) {
           setQuery("");
         }
+        // Scroll to bottom of page when search is triggered
+        // Use multiple attempts to ensure it works even if page is still loading
+        const scrollToBottom = () => {
+          const scrollHeight = Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight,
+            document.body.offsetHeight,
+            document.documentElement.offsetHeight,
+            document.body.clientHeight,
+            document.documentElement.clientHeight
+          );
+          window.scrollTo({
+            top: scrollHeight,
+            behavior: 'smooth'
+          });
+        };
+        
+        // Try immediately and after delays to catch different render states
+        requestAnimationFrame(() => {
+          scrollToBottom();
+          setTimeout(scrollToBottom, 300);
+          setTimeout(scrollToBottom, 600);
+        });
       }
     }
   };
@@ -455,6 +481,24 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [showUploadMenu]);
 
+  // Close tools menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        showToolsMenu &&
+        !(event.target as Element).closest("[data-tools-menu]")
+      ) {
+        setShowToolsMenu(false);
+      }
+    };
+
+    if (showToolsMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showToolsMenu]);
+
   return (
     <div
       className="card"
@@ -479,15 +523,109 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         onClose={() => setShowVoiceOverlay(false)}
       />
       <div className="row search-container">
-        {/* <div
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 99,
-            background: "var(--accent)",
-            flexShrink: 0,
-          }}
-        /> */}
+        {/* Tools Dropdown */}
+        <div style={{ position: "relative" }} data-tools-menu>
+          <button
+            className="btn-ghost !border-[#dfb768]"
+            onClick={() => setShowToolsMenu(!showToolsMenu)}
+            aria-label="Tools"
+            disabled={isListening}
+            style={{
+              padding: "8px 12px",
+              opacity: isListening ? 0.5 : 1,
+              cursor: isListening ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexShrink: 0,
+            }}
+          >
+            <FaTools size={16} />
+            <span style={{ fontSize: "var(--font-md)" }}>Tools</span>
+          </button>
+
+          {showToolsMenu && (
+            <div
+              className="card"
+              data-tools-menu
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                marginTop: 8,
+                padding: 8,
+                zIndex: 9999,
+                minWidth: 200,
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                boxShadow: "var(--shadow)",
+                borderRadius: "var(--radius-sm)",
+                color: "var(--text)",
+                backdropFilter: "blur(6px)",
+                transition: "background 0.2s ease, border 0.2s ease",
+              }}
+            >
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  showToast({
+                    message: "Selected Image Generation",
+                    type: "success",
+                    duration: 3000,
+                  });
+                  setShowToolsMenu(false);
+                }}
+                disabled={isListening}
+                style={{
+                  width: "100%",
+                  justifyContent: "flex-start",
+                  marginBottom: 4,
+                  opacity: isListening ? 0.5 : 1,
+                  cursor: isListening ? "not-allowed" : "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <FaImage size={16} /> Generate Image
+                </span>
+              </button>
+
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  showToast({
+                    message: "Selected Video Generation",
+                    type: "success",
+                    duration: 3000,
+                  });
+                  setShowToolsMenu(false);
+                }}
+                disabled={isListening}
+                style={{
+                  width: "100%",
+                  justifyContent: "flex-start",
+                  opacity: isListening ? 0.5 : 1,
+                  cursor: isListening ? "not-allowed" : "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <FaVideo size={16} /> Generate Video
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
 
         <textarea
           ref={inputRef}
@@ -535,7 +673,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
           <div style={{ position: "relative" }} className="flex gap-2" data-upload-menu>
             <button
-              className="btn-ghost"
+              className="btn-ghost !border-[#dfb768]"
               onClick={() => setShowUploadMenu(!showUploadMenu)}
               aria-label="Upload files"
               disabled={isListening}
@@ -660,6 +798,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     }
                   }}
                   isPremium={isPremium}
+                  
                 />
               </div>
             )}
@@ -676,7 +815,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           >
             {query.trim() ? (
               <button
-                className="btn-ghost"
+                className="btn-ghost !border-[#dfb768]"
                 onClick={() => {
                   if (query.trim()) {
                     onSearch();
@@ -698,7 +837,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </button>
             ) : speechSupported ? (
               <button
-                className="btn-ghost"
+                className="btn-ghost !border-[#dfb768]"
                 onClick={() => {
                   if (isListening) {
                     stopVoiceInput();
@@ -723,7 +862,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
           {speechSupported && (
             <button
-              className="btn-ghost"
+              className="btn-ghost !border-[#dfb768]"
               onClick={() => setShowVoiceOverlay(true)}
               disabled={isListening}
               style={{

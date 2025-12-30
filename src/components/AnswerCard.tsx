@@ -51,6 +51,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const offcanvasRef = useRef<HTMLDivElement>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const typewriterTimeoutRef = useRef<number | null>(null);
+  const answerContentRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
 
   // Check for speech synthesis support
@@ -268,6 +269,82 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       }
     };
   }, [chunks, isLoading]);
+
+  // Auto-scroll to follow typewriter effect
+  useEffect(() => {
+    if (!answerContentRef.current || isLoading || chunks.length === 0) return;
+    
+    // Find the last chunk that has displayed text
+    const getLastChunkWithText = (): HTMLElement | null => {
+      if (!answerContentRef.current) return null;
+      
+      const chunkElements = answerContentRef.current.querySelectorAll('[data-chunk]');
+      if (chunkElements.length === 0) return null;
+      
+      // Find the last chunk that has text
+      for (let i = chunkElements.length - 1; i >= 0; i--) {
+        const chunk = chunkElements[i] as HTMLElement;
+        const chunkIndex = parseInt(chunk.getAttribute('data-chunk-index') || '-1');
+        if (chunkIndex >= 0 && displayedTexts[chunkIndex] && displayedTexts[chunkIndex].length > 0) {
+          return chunk;
+        }
+      }
+      
+      // Fallback: return the last chunk element
+      return chunkElements[chunkElements.length - 1] as HTMLElement;
+    };
+
+    // Scroll to the last chunk being typed
+    const scrollToLastChunk = () => {
+      const lastChunk = getLastChunkWithText();
+      if (!lastChunk) return;
+      
+      // Use scrollIntoView for reliable scrolling
+      // During typing, use instant scroll (block: 'end' to show bottom of element)
+      // After completion, use smooth scroll
+      lastChunk.scrollIntoView({
+        behavior: isTypingComplete ? 'smooth' : 'auto',
+        block: 'end',
+        inline: 'nearest'
+      });
+    };
+
+    // During typing, scroll immediately using requestAnimationFrame
+    // After completion, scroll to bottom of page
+    if (isTypingComplete) {
+      const scrollToBottom = () => {
+        const scrollHeight = Math.max(
+          document.body.scrollHeight,
+          document.documentElement.scrollHeight,
+          document.body.offsetHeight,
+          document.documentElement.offsetHeight,
+          document.body.clientHeight,
+          document.documentElement.clientHeight
+        );
+        window.scrollTo({
+          top: scrollHeight,
+          behavior: 'smooth'
+        });
+      };
+      
+      // Use multiple attempts to ensure it works even if page is still rendering
+      const timeoutId = setTimeout(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom();
+          // Try again after a delay to catch any late DOM updates
+          setTimeout(scrollToBottom, 300);
+          setTimeout(scrollToBottom, 600);
+        });
+      }, 200);
+      return () => clearTimeout(timeoutId);
+    } else {
+      // During typing, scroll immediately every time displayedTexts changes
+      requestAnimationFrame(() => {
+        scrollToLastChunk();
+      });
+      return;
+    }
+  }, [displayedTexts, isLoading, chunks.length, isTypingComplete]);
 
   // Auto-speak the next answer when triggered from voice overlay
   useEffect(() => {
@@ -889,9 +966,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div 
+        ref={answerContentRef}
+        style={{ display: "flex", flexDirection: "column", gap: 20 }}
+      >
         {chunks.map((chunk, index) => (
-          <div key={index} style={{ position: "relative" }}>
+          <div key={index} style={{ position: "relative" }} data-chunk data-chunk-index={index}>
             <div
               className="text-[1.26rem] leading-relaxed"
               style={{
@@ -1013,7 +1093,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       <div className="spacer-16" />
 
       {/* Follow-up Actions */}
-      <div>
+      {/* <div>
         <div
           style={{
             fontSize: "var(--font-md)",
@@ -1057,7 +1137,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             </span>
           ))}
         </div>
-      </div>
+      </div> */}
 
       {/* Edit Query Offcanvas */}
       {showEditModal &&

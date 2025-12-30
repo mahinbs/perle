@@ -351,7 +351,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontWeight: 600,
+          fontWeight: 700,
           fontSize: isMobileView ? 'var(--font-sm)' : 'var(--font-sm)',
           marginBottom: isMobileView ? 1 : 2,
           color: 'var(--text)'
@@ -431,7 +431,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       )}
       <div ref={dropdownRef} style={{ position: 'relative' }}>
         <button
-          className="btn-ghost"
+          className="btn-ghost !border-[#dfb768]"
           onClick={() => setIsOpen(!isOpen)}
           disabled={disabled}
           style={{
