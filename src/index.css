@@ -414,6 +414,30 @@ body {
   background: var(--sub);
 }
 
+/* Custom scrollbar for search input */
+.search-input-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.search-input-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.search-input-scrollbar::-webkit-scrollbar-thumb {
+  background: #4B4B4B;
+  border-radius: 2px;
+}
+
+.search-input-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #6B6B6B;
+}
+
+/* Firefox scrollbar */
+.search-input-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #4B4B4B transparent;
+}
+
 /* Mobile-specific utilities */
 .touch-target {
   min-height: var(--touch-target);
@@ -454,6 +478,15 @@ body {
 }
 
 /* Animation utilities */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }

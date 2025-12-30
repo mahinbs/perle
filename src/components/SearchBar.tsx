@@ -10,11 +10,16 @@ import {
   FaPen,
   FaVideo,
   FaTools,
+  FaPlus,
+  FaTimes,
+  FaSpinner,
+  FaDownload,
 } from "react-icons/fa";
 import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
 import VoiceOverlay from "./VoiceOverlay";
 import { LLMModelSelector } from "./LLMModelSelector";
+import { getAuthHeaders } from "../utils/auth";
 
 interface UploadedFile {
   id: string;
@@ -51,7 +56,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   uploadedFiles = [],
   onFilesChange,
   hasAnswer = false,
-  searchedQuery = '',
+  searchedQuery = "",
   isPremium = false,
   onNewConversation,
   selectedModel,
@@ -60,6 +65,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 }) => {
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [toolMode, setToolMode] = useState<"image" | "video" | null>(null);
+  const [toolDescription, setToolDescription] = useState("");
+  const [toolAttachedImages, setToolAttachedImages] = useState<UploadedFile[]>(
+    []
+  );
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingPrompt, setGeneratingPrompt] = useState<string>("");
+  const [generatedMedia, setGeneratedMedia] = useState<{
+    type: "image" | "video";
+    url: string;
+    prompt: string;
+  } | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -118,7 +135,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (hasAnswer && !isListening && query && !hasClearedForAnswerRef.current) {
       // Clear the input field when answer is first received
       // The searchedQuery will still be displayed in AnswerCard
-      setQuery('');
+      setQuery("");
       hasClearedForAnswerRef.current = true;
     } else if (!hasAnswer) {
       // Reset the flag when there's no answer (new search started)
@@ -160,10 +177,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           );
           window.scrollTo({
             top: scrollHeight,
-            behavior: 'smooth'
+            behavior: "smooth",
           });
         };
-        
+
         // Try immediately and after delays to catch different render states
         requestAnimationFrame(() => {
           scrollToBottom();
@@ -188,7 +205,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         window.speechSynthesis.cancel();
         setIsSpeaking(false);
       }
-    } catch { }
+    } catch {}
 
     if (isListening) {
       stopVoiceInput();
@@ -241,21 +258,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       setIsListening(false);
       if (event.error === "not-allowed") {
         showToast({
-          message: "Microphone access denied. Please allow microphone access in your browser settings and try again.",
+          message:
+            "Microphone access denied. Please allow microphone access in your browser settings and try again.",
           type: "error",
-          duration: 4000
+          duration: 4000,
         });
       } else if (event.error === "no-speech") {
         showToast({
           message: "No speech detected. Please try again.",
           type: "error",
-          duration: 3000
+          duration: 3000,
         });
       } else {
         showToast({
           message: `Speech recognition error: ${event.error}. Please try again.`,
           type: "error",
-          duration: 3000
+          duration: 3000,
         });
       }
     };
@@ -303,8 +321,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // Check if file is video (should be blocked)
   const isVideoFile = (file: File): boolean => {
-    return file.type.startsWith("video/") ||
-      file.name.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/i) !== null;
+    return (
+      file.type.startsWith("video/") ||
+      file.name.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/i) !== null
+    );
   };
 
   const createFilePreview = (file: File): Promise<string | undefined> => {
@@ -319,8 +339,273 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     });
   };
 
+  // API functions for media generation
+  const generateImage = async (
+    prompt: string,
+    aspectRatio: string = "1:1"
+  ): Promise<{
+    url: string;
+    prompt: string;
+    width: number;
+    height: number;
+    aspectRatio: string;
+    provider: string;
+  }> => {
+    const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
+    if (!baseUrl) {
+      throw new Error(
+        "API URL not configured. Please set VITE_API_URL in your .env file."
+      );
+    }
+
+    const res = await fetch(
+      `${baseUrl.replace(/\/+$/, "")}/api/media/generate-image`,
+      {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ prompt, aspectRatio }),
+      }
+    );
+
+    if (!res.ok) {
+      const errorData = await res
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
+      throw new Error(
+        errorData.error || `Image generation failed with status ${res.status}`
+      );
+    }
+
+    const data = await res.json();
+    return data.image;
+  };
+
+  const generateVideo = async (
+    prompt: string,
+    duration: number = 5,
+    aspectRatio: string = "16:9"
+  ): Promise<{
+    url: string;
+    prompt: string;
+    duration: number;
+    width: number;
+    height: number;
+    aspectRatio: string;
+    provider: string;
+  }> => {
+    const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
+    if (!baseUrl) {
+      throw new Error(
+        "API URL not configured. Please set VITE_API_URL in your .env file."
+      );
+    }
+
+    const res = await fetch(
+      `${baseUrl.replace(/\/+$/, "")}/api/media/generate-video`,
+      {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ prompt, duration, aspectRatio }),
+      }
+    );
+
+    if (!res.ok) {
+      const errorData = await res
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
+      throw new Error(
+        errorData.error || `Video generation failed with status ${res.status}`
+      );
+    }
+
+    const data = await res.json();
+    return data.video;
+  };
+
+  // Handle tool generation
+  const handleGenerateMedia = async () => {
+    if (!toolDescription.trim()) {
+      showToast({
+        message: "Please enter a description",
+        type: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
+    const promptToUse = toolDescription.trim();
+    setIsGenerating(true);
+    setGeneratingPrompt(promptToUse);
+    setGeneratedMedia(null);
+    setToolDescription(""); // Clear the input immediately
+
+    try {
+      if (toolMode === "image") {
+        const result = await generateImage(promptToUse, "1:1");
+        setGeneratedMedia({
+          type: "image",
+          url: result.url,
+          prompt: result.prompt,
+        });
+        showToast({
+          message: "Image generated successfully!",
+          type: "success",
+          duration: 3000,
+        });
+      } else if (toolMode === "video") {
+        const result = await generateVideo(promptToUse, 5, "16:9");
+        setGeneratedMedia({
+          type: "video",
+          url: result.url,
+          prompt: result.prompt,
+        });
+        showToast({
+          message: "Video generated successfully!",
+          type: "success",
+          duration: 3000,
+        });
+      }
+    } catch (error: any) {
+      console.error("Media generation error:", error);
+      let errorMessage = "Failed to generate media. Please try again.";
+
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+
+      // Handle specific error cases
+      if (
+        errorMessage.includes("limit reached") ||
+        errorMessage.includes("Daily")
+      ) {
+        showToast({
+          message: errorMessage,
+          type: "error",
+          duration: 5000,
+        });
+      } else if (
+        errorMessage.includes("requires") ||
+        errorMessage.includes("subscription") ||
+        errorMessage.includes("tier")
+      ) {
+        showToast({
+          message: errorMessage,
+          type: "error",
+          duration: 5000,
+        });
+      } else {
+        showToast({
+          message: errorMessage,
+          type: "error",
+          duration: 4000,
+        });
+      }
+    } finally {
+      setIsGenerating(false);
+      setGeneratingPrompt("");
+    }
+  };
+
+  // Handle download of generated media
+  const handleDownloadMedia = async () => {
+    if (!generatedMedia) return;
+
+    try {
+      const response = await fetch(generatedMedia.url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `generated-${generatedMedia.type}-${Date.now()}.${
+        generatedMedia.type === "image" ? "png" : "mp4"
+      }`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      showToast({
+        message: `${
+          generatedMedia.type === "image" ? "Image" : "Video"
+        } downloaded successfully!`,
+        type: "success",
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error("Download error:", error);
+      showToast({
+        message: "Failed to download media",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  };
+
   const handleFileUpload = async (files: FileList | null) => {
-    if (!files || !onFilesChange) return;
+    if (!files) return;
+
+    // Handle tool mode file uploads (for image generation reference)
+    if (toolMode) {
+      const maxFiles = 1; // Only allow 1 image for tool mode
+      const currentFileCount = toolAttachedImages.length;
+
+      if (currentFileCount >= maxFiles) {
+        showToast({
+          message: `Only ${maxFiles} image allowed for ${
+            toolMode === "image" ? "image" : "video"
+          } generation.`,
+          type: "error",
+          duration: 3000,
+        });
+        return;
+      }
+
+      const newFiles: UploadedFile[] = [];
+      const rejectedFiles: string[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        // Only allow images for tool mode
+        if (!file.type.startsWith("image/")) {
+          rejectedFiles.push(file.name);
+          continue;
+        }
+
+        if (currentFileCount + newFiles.length >= maxFiles) {
+          break;
+        }
+
+        const preview = await createFilePreview(file);
+
+        newFiles.push({
+          id: `${Date.now()}-${Math.random()}`,
+          file,
+          type: "image",
+          preview,
+        });
+      }
+
+      if (rejectedFiles.length > 0) {
+        showToast({
+          message: `Only image files are supported for ${
+            toolMode === "image" ? "image" : "video"
+          } generation.`,
+          type: "error",
+          duration: 3000,
+        });
+      }
+
+      if (newFiles.length > 0) {
+        setToolAttachedImages([...toolAttachedImages, ...newFiles]);
+      }
+      return;
+    }
+
+    // Handle regular file uploads
+    if (!onFilesChange) return;
 
     const maxFiles = isPremium ? 5 : 2;
     const currentFileCount = uploadedFiles.length;
@@ -328,9 +613,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     // Check total file limit
     if (currentFileCount >= maxFiles) {
       showToast({
-        message: `Maximum ${maxFiles} file${maxFiles > 1 ? 's' : ''} allowed. ${isPremium ? 'Premium' : 'Free'} users can upload up to ${maxFiles} files.`,
-        type: 'error',
-        duration: 4000
+        message: `Maximum ${maxFiles} file${maxFiles > 1 ? "s" : ""} allowed. ${
+          isPremium ? "Premium" : "Free"
+        } users can upload up to ${maxFiles} files.`,
+        type: "error",
+        duration: 4000,
       });
       return;
     }
@@ -350,9 +637,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       // Check if adding this file would exceed limit
       if (currentFileCount + newFiles.length >= maxFiles) {
         showToast({
-          message: `Maximum ${maxFiles} file${maxFiles > 1 ? 's' : ''} allowed. Some files were not added.`,
-          type: 'error',
-          duration: 4000
+          message: `Maximum ${maxFiles} file${
+            maxFiles > 1 ? "s" : ""
+          } allowed. Some files were not added.`,
+          type: "error",
+          duration: 4000,
         });
         break;
       }
@@ -370,9 +659,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     if (rejectedFiles.length > 0) {
       showToast({
-        message: `Video files are not supported. ${rejectedFiles.length} file${rejectedFiles.length > 1 ? 's' : ''} rejected.`,
-        type: 'error',
-        duration: 4000
+        message: `Video files are not supported. ${rejectedFiles.length} file${
+          rejectedFiles.length > 1 ? "s" : ""
+        } rejected.`,
+        type: "error",
+        duration: 4000,
       });
     }
 
@@ -509,6 +800,150 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         zIndex: 1,
       }}
     >
+      {/* Generating State Display - Above Search Bar */}
+      {isGenerating && generatingPrompt && (
+        <div style={{ marginBottom: 16 }}>
+          <div
+            className="sub text-sm"
+            style={{ marginBottom: 8, fontWeight: 500 }}
+          >
+            Generating {toolMode === "image" ? "Image" : "Video"}
+          </div>
+          <div className="card" style={{ padding: 12, position: "relative" }}>
+            <div
+              style={{
+                fontSize: "var(--font-md)",
+                color: "var(--text)",
+                fontWeight: 500,
+                padding: "8px 12px",
+                background: "var(--border)",
+                borderRadius: "var(--radius-sm)",
+                marginBottom: 12,
+              }}
+            >
+              {generatingPrompt}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <FaSpinner
+                size={20}
+                style={{
+                  animation: "spin 1s linear infinite",
+                  display: "inline-block",
+                  color: "var(--accent)",
+                }}
+              />
+              <span
+                style={{ fontSize: "var(--font-md)", color: "var(--text)" }}
+              >
+                Generating {toolMode === "image" ? "image" : "video"}...
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generated Media Display - Above Search Bar */}
+      {generatedMedia && !isGenerating && (
+        <div style={{ marginBottom: 16 }}>
+          <div
+            className="sub text-sm"
+            style={{ marginBottom: 8, fontWeight: 500 }}
+          >
+            Generated {generatedMedia.type === "image" ? "Image" : "Video"}
+          </div>
+          <div className="card" style={{ padding: 12, position: "relative" }}>
+            {generatedMedia.type === "image" ? (
+              <img
+                src={generatedMedia.url}
+                alt={generatedMedia.prompt}
+                style={{
+                  width: "100%",
+                  maxHeight: "300px",
+                  objectFit: "contain",
+                  borderRadius: "8px",
+                }}
+                onError={() => {
+                  showToast({
+                    message: "Failed to load generated image",
+                    type: "error",
+                    duration: 3000,
+                  });
+                }}
+              />
+            ) : (
+              <video
+                src={generatedMedia.url}
+                controls
+                style={{
+                  width: "100%",
+                  maxHeight: "500px",
+                  borderRadius: "8px",
+                }}
+                onError={() => {
+                  showToast({
+                    message: "Failed to load generated video",
+                    type: "error",
+                    duration: 3000,
+                  });
+                }}
+              />
+            )}
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: "var(--font-md)",
+                color: "var(--text)",
+                fontWeight: 500,
+                padding: "8px 12px",
+                background: "var(--border)",
+                borderRadius: "var(--radius-sm)",
+              }}
+            >
+              {generatedMedia.prompt}
+            </div>
+            <button
+              className="btn-ghost"
+              onClick={() => setGeneratedMedia(null)}
+              style={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                padding: 6,
+                background: "rgba(0, 0, 0, 0.5)",
+                borderRadius: "50%",
+              }}
+              aria-label="Close"
+            >
+              <FaTimes size={14} style={{ color: "white" }} />
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={handleDownloadMedia}
+              style={{
+                position: "absolute",
+                top: 8,
+                left: 8,
+                padding: 8,
+                background: "rgba(0, 0, 0, 0.6)",
+                borderRadius: "50%",
+              }}
+              aria-label="Download"
+              title="Download"
+            >
+              <FaDownload size={16} style={{ color: "white" }} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Voice Overlay */}
       <VoiceOverlay
         isOpen={showVoiceOverlay}
@@ -524,20 +959,118 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       />
       <div className="row search-container">
         {/* Tools Dropdown */}
+
         <div style={{ position: "relative" }} data-tools-menu>
+          {/* Attached Images Display - Above textarea */}
+          {toolAttachedImages.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+                marginBottom: 4,
+              }}
+            >
+              {toolAttachedImages.map((img) => (
+                <div
+                  key={img.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 12px",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    fontSize: "var(--font-sm)",
+                    boxShadow: "var(--shadow)",
+                    maxWidth: "250px",
+                  }}
+                >
+                  {img.preview ? (
+                    <img
+                      src={img.preview}
+                      alt="Reference"
+                      style={{
+                        width: 32,
+                        height: 32,
+                        objectFit: "cover",
+                        borderRadius: "6px",
+                      }}
+                    />
+                  ) : (
+                    <span style={{ fontSize: "20px" }}>🖼️</span>
+                  )}
+                  {/* <span
+                      style={{
+                        color: "var(--text)",
+                        fontWeight: 500,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        flex: 1,
+                        minWidth: 0,
+                      }}
+                    >
+                      {img.file.name.length > 20
+                        ? img.file.name.substring(0, 20) + "..."
+                        : img.file.name}
+                    </span> */}
+                  <button
+                    className="btn-ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setToolAttachedImages(
+                        toolAttachedImages.filter((i) => i.id !== img.id)
+                      );
+                    }}
+                    disabled={isGenerating}
+                    style={{
+                      padding: 4,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: isGenerating ? 0.5 : 1,
+                      minWidth: "24px",
+                      height: "24px",
+                      flexShrink: 0,
+                    }}
+                    aria-label="Remove"
+                    title="Remove image"
+                  >
+                    <FaTimes size={14} style={{ color: "var(--text)" }} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <button
-            className="btn-ghost !border-[#dfb768]"
-            onClick={() => setShowToolsMenu(!showToolsMenu)}
+            className={`btn-ghost !border-[#dfb768] ${toolMode ? "!text-black" : ""}`}
+            onClick={() => {
+              if (toolMode) {
+                // Exit tool mode
+                setToolMode(null);
+                setToolDescription("");
+                setToolAttachedImages([]);
+                setGeneratedMedia(null);
+              } else {
+                // Toggle tools menu
+                setShowToolsMenu(!showToolsMenu);
+              }
+            }}
             aria-label="Tools"
-            disabled={isListening}
+            disabled={isListening || isGenerating}
             style={{
               padding: "8px 12px",
-              opacity: isListening ? 0.5 : 1,
-              cursor: isListening ? "not-allowed" : "pointer",
+              opacity: isListening || isGenerating ? 0.5 : 1,
+              cursor: isListening || isGenerating ? "not-allowed" : "pointer",
               display: "flex",
               alignItems: "center",
               gap: 6,
               flexShrink: 0,
+              background: toolMode ? "var(--accent)" : "transparent",
+              color: toolMode ? "white" : "inherit",
             }}
           >
             <FaTools size={16} />
@@ -568,20 +1101,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <button
                 className="btn-ghost"
                 onClick={() => {
-                  showToast({
-                    message: "Selected Image Generation",
-                    type: "success",
-                    duration: 3000,
-                  });
+                  setToolMode("image");
                   setShowToolsMenu(false);
+                  setToolDescription("");
+                  setToolAttachedImages([]);
+                  setGeneratedMedia(null);
                 }}
-                disabled={isListening}
+                disabled={isListening || isGenerating}
                 style={{
                   width: "100%",
                   justifyContent: "flex-start",
                   marginBottom: 4,
-                  opacity: isListening ? 0.5 : 1,
-                  cursor: isListening ? "not-allowed" : "pointer",
+                  opacity: isListening || isGenerating ? 0.5 : 1,
+                  cursor:
+                    isListening || isGenerating ? "not-allowed" : "pointer",
                 }}
               >
                 <span
@@ -598,19 +1131,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <button
                 className="btn-ghost"
                 onClick={() => {
-                  showToast({
-                    message: "Selected Video Generation",
-                    type: "success",
-                    duration: 3000,
-                  });
+                  setToolMode("video");
                   setShowToolsMenu(false);
+                  setToolDescription("");
+                  setToolAttachedImages([]);
+                  setGeneratedMedia(null);
                 }}
-                disabled={isListening}
+                disabled={isListening || isGenerating}
                 style={{
                   width: "100%",
                   justifyContent: "flex-start",
-                  opacity: isListening ? 0.5 : 1,
-                  cursor: isListening ? "not-allowed" : "pointer",
+                  opacity: isListening || isGenerating ? 0.5 : 1,
+                  cursor:
+                    isListening || isGenerating ? "not-allowed" : "pointer",
                 }}
               >
                 <span
@@ -627,31 +1160,162 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           )}
         </div>
 
-        <textarea
-          ref={inputRef}
-          className="input"
-          aria-label="Search"
-          placeholder={hasAnswer ? "Ask follow-up..." : "Ask anything — we'll cite every answer"}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            e.target.style.height = "auto";
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-          }}
-          onKeyDown={handleKeyDown}
-          style={{
-            fontSize: "var(--font-lg)",
-            resize: "none",
-            minHeight: 44,
-            maxHeight: 120,
-            lineHeight: 1.5,
-            overflowY: "auto",
-            fontFamily: "inherit",
-            borderRadius: ".5rem",
-            paddingInline: 8,
-          }}
-          rows={1}
-        />
+        {toolMode ? (
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              position: "relative",
+            }}
+          >
+            <textarea
+              ref={inputRef}
+              className="input search-input-scrollbar"
+              aria-label={
+                toolMode === "image"
+                  ? "Describe your image"
+                  : "Describe your video"
+              }
+              placeholder={
+                toolMode === "image"
+                  ? "Describe your image"
+                  : "Describe your video"
+              }
+              value={toolDescription}
+              onChange={(e) => {
+                setToolDescription(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = `${Math.min(
+                  e.target.scrollHeight,
+                  120
+                )}px`;
+              }}
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  (e.metaKey || e.ctrlKey)
+                ) {
+                  e.preventDefault();
+                  handleGenerateMedia();
+                }
+              }}
+              disabled={isGenerating}
+              style={{
+                fontSize: "var(--font-lg)",
+                resize: "none",
+                minHeight: 44,
+                maxHeight: 120,
+                lineHeight: 1.5,
+                overflowY: "auto",
+                fontFamily: "inherit",
+                borderRadius: ".5rem",
+                paddingRight: 8,
+                paddingLeft: 44, // Make room for buttons on the left
+                paddingBottom: 8,
+                paddingTop: 8,
+                opacity: isGenerating ? 0.6 : 1,
+              }}
+              rows={1}
+            />
+
+            {/* Action Buttons - Left side of textarea */}
+            {toolAttachedImages.length === 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  left: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  pointerEvents: "none",
+                }}
+              >
+                <button
+                  className="btn-ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={
+                    isListening ||
+                    isGenerating ||
+                    toolAttachedImages.length >= 1
+                  }
+                  style={{
+                    padding: 6,
+                    opacity:
+                      isListening ||
+                      isGenerating ||
+                      toolAttachedImages.length >= 1
+                        ? 0.5
+                        : 1,
+                    cursor:
+                      isListening ||
+                      isGenerating ||
+                      toolAttachedImages.length >= 1
+                        ? "not-allowed"
+                        : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    pointerEvents: "auto",
+                    background: "rgba(0, 0, 0, 0.05)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    minWidth: "28px",
+                    height: "28px",
+                  }}
+                  aria-label="Add reference image"
+                  title={
+                    toolAttachedImages.length >= 1
+                      ? "Only one image allowed"
+                      : "Add reference image (optional)"
+                  }
+                >
+                  <FaPlus size={14} style={{ color: "var(--text)" }} />
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <textarea
+            ref={inputRef}
+            className="input search-input-scrollbar"
+            aria-label="Search"
+            placeholder={
+              hasAnswer
+                ? "Ask follow-up..."
+                : "Ask anything — we'll cite every answer"
+            }
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(
+                e.target.scrollHeight,
+                120
+              )}px`;
+            }}
+            onKeyDown={handleKeyDown}
+            style={{
+              fontSize: "var(--font-lg)",
+              resize: "none",
+              minHeight: 44,
+              maxHeight: 120,
+              lineHeight: 1.5,
+              overflowY: "auto",
+              fontFamily: "inherit",
+              borderRadius: ".5rem",
+              paddingInline: 8,
+            }}
+            rows={1}
+          />
+        )}
 
         <div className="row" style={{ gap: 8, flexShrink: 0 }}>
           {/* <LLMModelSelector
@@ -671,138 +1335,145 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </button>
           )} */}
 
-          <div style={{ position: "relative" }} className="flex gap-2" data-upload-menu>
-            <button
-              className="btn-ghost !border-[#dfb768]"
-              onClick={() => setShowUploadMenu(!showUploadMenu)}
-              aria-label="Upload files"
-              disabled={isListening}
-              style={{
-                padding: 8,
-                opacity: isListening ? 0.5 : 1,
-                cursor: isListening ? "not-allowed" : "pointer",
-              }}
+          {/* Attach File - Hide when tool mode is active */}
+          {!toolMode && (
+            <div
+              style={{ position: "relative" }}
+              className="flex gap-2"
+              data-upload-menu
             >
-              <FaPaperclip size={18} />
-            </button>
-
-            {showUploadMenu && (
-              <div
-                className="card"
-                data-upload-menu
+              <button
+                className="btn-ghost !border-[#dfb768]"
+                onClick={() => setShowUploadMenu(!showUploadMenu)}
+                aria-label="Upload files"
+                disabled={isListening}
                 style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  marginTop: 8,
                   padding: 8,
-                  zIndex: 9999,
-                  minWidth: 220,
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  boxShadow: "var(--shadow)",
-                  borderRadius: "var(--radius-sm)",
-                  color: "var(--text)",
-                  backdropFilter: "blur(6px)",
-                  transition: "background 0.2s ease, border 0.2s ease",
+                  opacity: isListening ? 0.5 : 1,
+                  cursor: isListening ? "not-allowed" : "pointer",
                 }}
               >
-                <button
-                  className="btn-ghost"
-                  onClick={() => {
-                    fileInputRef.current?.click();
-                    setShowUploadMenu(false);
-                  }}
-                  disabled={isListening}
-                  style={{
-                    width: "100%",
-                    justifyContent: "flex-start",
-                    marginBottom: 4,
-                    opacity: isListening ? 0.5 : 1,
-                    cursor: isListening ? "not-allowed" : "pointer",
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <FaFolderOpen size={16} /> Upload Files
-                  </span>
-                </button>
+                <FaPaperclip size={18} />
+              </button>
 
-                <button
-                  className="btn-ghost"
-                  onClick={() => {
-                    fileInputRef.current?.click();
-                    setShowUploadMenu(false);
-                  }}
-                  disabled={isListening}
+              {showUploadMenu && (
+                <div
+                  className="card"
+                  data-upload-menu
                   style={{
-                    width: "100%",
-                    justifyContent: "flex-start",
-                    marginBottom: 4,
-                    opacity: isListening ? 0.5 : 1,
-                    cursor: isListening ? "not-allowed" : "pointer",
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    marginTop: 8,
+                    padding: 8,
+                    zIndex: 9999,
+                    minWidth: 220,
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    boxShadow: "var(--shadow)",
+                    borderRadius: "var(--radius-sm)",
+                    color: "var(--text)",
+                    backdropFilter: "blur(6px)",
+                    transition: "background 0.2s ease, border 0.2s ease",
                   }}
                 >
-                  <span
+                  <button
+                    className="btn-ghost"
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                      setShowUploadMenu(false);
+                    }}
+                    disabled={isListening}
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
+                      width: "100%",
+                      justifyContent: "flex-start",
+                      marginBottom: 4,
+                      opacity: isListening ? 0.5 : 1,
+                      cursor: isListening ? "not-allowed" : "pointer",
                     }}
                   >
-                    <FaImage size={16} /> Upload Images
-                  </span>
-                </button>
-                <button
-                  className="btn-ghost"
-                  onClick={() => {
-                    startCameraCapture();
-                    setShowUploadMenu(false);
-                  }}
-                  disabled={isListening}
-                  style={{
-                    width: "100%",
-                    justifyContent: "flex-start",
-                    opacity: isListening ? 0.5 : 1,
-                    cursor: isListening ? "not-allowed" : "pointer",
-                  }}
-                >
-                  <span
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <FaFolderOpen size={16} /> Upload Files
+                    </span>
+                  </button>
+
+                  <button
+                    className="btn-ghost"
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                      setShowUploadMenu(false);
+                    }}
+                    disabled={isListening}
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
+                      width: "100%",
+                      justifyContent: "flex-start",
+                      marginBottom: 4,
+                      opacity: isListening ? 0.5 : 1,
+                      cursor: isListening ? "not-allowed" : "pointer",
                     }}
                   >
-                    <FaCamera size={16} /> Take Photo
-                  </span>
-                </button>
-              </div>
-            )}
-            {/* Model Selector - Only show for premium users */}
-            {isPremium && (
-              <div>
-                <LLMModelSelector
-                  selectedModel={selectedModel}
-                  onModelChange={(model) => {
-                    // Support either prop to avoid breaking older call sites/tests
-                    (setSelectedModel ?? onModelChange)(model);
-                    // Save to localStorage immediately for premium users
-                    if (isPremium) {
-                      localStorage.setItem('perle-selected-model', model);
-                    }
-                  }}
-                  isPremium={isPremium}
-                  
-                />
-              </div>
-            )}
-          </div>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <FaImage size={16} /> Upload Images
+                    </span>
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => {
+                      startCameraCapture();
+                      setShowUploadMenu(false);
+                    }}
+                    disabled={isListening}
+                    style={{
+                      width: "100%",
+                      justifyContent: "flex-start",
+                      opacity: isListening ? 0.5 : 1,
+                      cursor: isListening ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <FaCamera size={16} /> Take Photo
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Model Selector - Only show for premium users, disabled during tool mode */}
+          {isPremium && !toolMode && (
+            <div>
+              <LLMModelSelector
+                selectedModel={selectedModel}
+                onModelChange={(model) => {
+                  // Support either prop to avoid breaking older call sites/tests
+                  (setSelectedModel ?? onModelChange)(model);
+                  // Save to localStorage immediately for premium users
+                  if (isPremium) {
+                    localStorage.setItem("perle-selected-model", model);
+                  }
+                }}
+                isPremium={isPremium}
+              />
+            </div>
+          )}
 
           {/* Voice Search (no overlay): start/stop dictation, auto-search on end */}
           {/* Voice/Search Button Toggle */}
@@ -813,7 +1484,45 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               gap: 8,
             }}
           >
-            {query.trim() ? (
+            {toolMode ? (
+              <button
+                className="btn !border-[#dfb768] !text-black"
+                onClick={handleGenerateMedia}
+                disabled={isGenerating || !toolDescription.trim()}
+                aria-label={
+                  toolMode === "image" ? "Generate image" : "Generate video"
+                }
+                style={{
+                  padding: "4px 12px",
+                  fontSize: "var(--font-md)",
+                  background: "var(--accent)",
+                  color: "white",
+                  opacity: isGenerating || !toolDescription.trim() ? 0.6 : 1,
+                  cursor:
+                    isGenerating || !toolDescription.trim()
+                      ? "not-allowed"
+                      : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                {isGenerating ? (
+                  <>
+                    <FaSpinner
+                      size={16}
+                      style={{
+                        animation: "spin 1s linear infinite",
+                        display: "inline-block",
+                      }}
+                    />
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <span>Generate</span>
+                )}
+              </button>
+            ) : query.trim() ? (
               <button
                 className="btn-ghost !border-[#dfb768]"
                 onClick={() => {
@@ -878,12 +1587,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
           {/* Show conversation options for premium users with existing answers */}
           {isPremium && hasAnswer && (
-            <div style={{
-              display: 'flex',
-              gap: 8,
-              marginRight: 8,
-              alignItems: 'center'
-            }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                marginRight: 8,
+                alignItems: "center",
+              }}
+            >
               <button
                 className="btn-ghost"
                 onClick={() => {
@@ -895,7 +1606,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 disabled={isLoading}
                 style={{
                   padding: 8,
-                  fontSize: 'var(--font-md)',
+                  fontSize: "var(--font-md)",
                 }}
                 aria-label="Start a new conversation"
                 title="Start a new conversation"
@@ -914,9 +1625,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        multiple
-        accept="image/*,.pdf,.doc,.docx,.txt,.csv,.odt,.xls,.xlsx"
-        onChange={(e) => handleFileUpload(e.target.files)}
+        multiple={!toolMode}
+        accept={
+          toolMode
+            ? "image/*"
+            : "image/*,.pdf,.doc,.docx,.txt,.csv,.odt,.xls,.xlsx"
+        }
+        onChange={(e) => {
+          handleFileUpload(e.target.files);
+          // Reset input so same file can be selected again
+          if (e.target) {
+            e.target.value = "";
+          }
+        }}
         style={{ display: "none" }}
       />
 
