@@ -42,3 +42,4 @@ COMMENT ON TABLE generated_media IS 'Stores user-generated images and videos fro
 COMMENT ON COLUMN generated_media.provider IS 'AI provider used: gemini (Imagen/Veo), openai (DALL-E/Sora), other';
 COMMENT ON COLUMN generated_media.metadata IS 'Additional info like model name, generation time, etc.';
 
+

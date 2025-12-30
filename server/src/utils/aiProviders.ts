@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-// import Anthropic from '@anthropic-ai/sdk'; // COMMENTED OUT - No API key
+import Anthropic from '@anthropic-ai/sdk';
 import type { AnswerResult, Mode, LLMModel, Source, ConversationMessage, ChatMode } from '../types.js';
 import { shouldGenerateImage, extractImagePrompt, generateImage } from './imageGeneration.js';
 
@@ -456,45 +456,117 @@ export async function generateGeminiAnswer(
   };
 }
 
-// Anthropic Claude Provider (Claude 4.5) - COMMENTED OUT (No API key)
-/* export async function generateClaudeAnswer(
+// Anthropic Claude Provider (Claude 3.5 Sonnet, Claude 3 Opus, etc.)
+export async function generateClaudeAnswer(
   query: string,
   mode: Mode,
-  model: LLMModel
+  model: LLMModel,
+  conversationHistory: ConversationMessage[] = [],
+  chatMode: ChatMode = 'normal'
 ): Promise<AnswerResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // Check if this is a self-referential query about the AI
+  if (isSelfReferentialQuery(query)) {
+    const syntraiqInfo = getSyntraIQInfoResponse();
+    const sources: Source[] = [
+      { 
+        id: 'syntraiq-1', 
+        title: 'About SyntraIQ', 
+        url: 'https://syntraiq.com', 
+        domain: 'syntraiq.com',
+        year: 2025,
+        snippet: 'SyntraIQ is an advanced AI-powered answer engine founded in 2025, designed to provide accurate, well-cited information.'
+      }
+    ];
+    
+    return {
+      sources,
+      chunks: chunkTextToAnswer(syntraiqInfo, sources),
+      query,
+      mode,
+      timestamp: Date.now()
+    };
+  }
+
+  const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY_MISSING');
+    throw new Error('CLAUDE_API_KEY_MISSING: Please set CLAUDE_API_KEY in .env');
   }
   const client = new Anthropic({ apiKey });
 
-  const sys = `You are a helpful assistant. Answer succinctly for mobile UI. Provide clear, factual content suitable for brief reading.`;
-  const prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly in a few short paragraphs.`;
+  // Get system prompt based on chat mode
+  const sys = getSystemPrompt(chatMode);
+  
+  // Build messages array with conversation history
+  const messages: any[] = [];
+  
+  // Add conversation history (last 10 messages)
+  const recentHistory = conversationHistory.slice(-10);
+  for (const msg of recentHistory) {
+    messages.push({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content
+    });
+  }
+  
+  // Add current query - format varies by chat mode
+  let prompt: string;
+  if (chatMode === 'ai_friend' || chatMode === 'ai_psychologist') {
+    // For friend/psychologist mode, just send the message naturally
+    prompt = query;
+  } else {
+    // For normal mode, include mode context for structured answers
+    prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+  }
+  messages.push({ role: 'user', content: prompt });
 
   // Map model names to actual Claude models
-  let claudeModel = 'claude-3-5-sonnet-20241022'; // Latest available
-  if (model === 'claude-4.5') {
-    claudeModel = 'claude-3-5-sonnet-20241022'; // Use latest for Claude 4.5
+  let claudeModel = 'claude-4-5-sonnet-20250929'; // Default to latest Claude 4.5 Sonnet
+  if (model === 'claude-4.5-sonnet') {
+    claudeModel = 'claude-4-5-sonnet-20250929'; // Latest - Best coding model
+  } else if (model === 'claude-4.5-opus') {
+    claudeModel = 'claude-4-5-opus-20251124'; // Maximum intelligence
+  } else if (model === 'claude-4.5-haiku') {
+    claudeModel = 'claude-4-5-haiku-20251015'; // Fastest, most cost-effective
+  } else if (model === 'claude-4-sonnet') {
+    claudeModel = 'claude-4-sonnet-20250522'; // Claude 4.0
+  } else if (model === 'claude-3.5-sonnet') {
+    claudeModel = 'claude-3-5-sonnet-20241022';
+  } else if (model === 'claude-3-opus') {
+    claudeModel = 'claude-3-opus-20240229';
+  } else if (model === 'claude-3-sonnet') {
+    claudeModel = 'claude-3-sonnet-20240229';
+  } else if (model === 'claude-3-haiku') {
+    claudeModel = 'claude-3-haiku-20240307';
   }
+
+  const tokenLimit = getTokenLimit(mode);
 
   const response = await withTimeout(
     client.messages.create({
       model: claudeModel,
-      max_tokens: 600,
+      max_tokens: tokenLimit,
       system: sys,
-      messages: [
-        { role: 'user', content: prompt }
-      ]
+      messages: messages
     }),
     15_000 // 15s timeout
   ) as any;
 
   const content = response?.content?.[0]?.type === 'text' 
     ? response.content[0].text 
-    : 'No answer generated.';
-  const sources: Source[] = [
-    { id: 'claude-1', title: 'Model output', url: 'https://anthropic.com', domain: 'anthropic.com' }
-  ];
+    : '';
+  
+  // Check if content is empty or invalid
+  if (!content || content.trim().length === 0) {
+    console.error('Claude API returned empty response:', {
+      model: claudeModel,
+      hasContent: !!response?.content,
+      contentLength: response?.content?.length || 0
+    });
+    throw new Error('AI model returned an empty response. Please try again.');
+  }
+  
+  // No sources - AI models don't provide citation sources by default
+  const sources: Source[] = [];
 
   return {
     sources,
@@ -503,7 +575,7 @@ export async function generateGeminiAnswer(
     mode,
     timestamp: Date.now()
   };
-} */
+}
 
 // xAI Grok Provider (Grok 4)
 export async function generateGrokAnswer(
@@ -669,8 +741,8 @@ export async function generateAIAnswer(
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
     result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode);
-  // } else if (model === 'claude-4.5' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
-  //   result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode);
+  } else if (model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
+    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
     result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode);
   } else {

@@ -49,6 +49,63 @@ const premiumModels: LLMModelInfo[] = [
     description: 'Google\'s latest and most powerful model',
     capabilities: ['Latest Version', 'Multimodal', 'Advanced AI']
   },
+  // Anthropic Claude Models (Latest First)
+  {
+    id: 'claude-4.5-sonnet',
+    name: 'Claude 4.5 Sonnet',
+    provider: 'Anthropic',
+    description: 'Best coding model with 30+ hour autonomous operation',
+    capabilities: ['200K Context', 'Best Coding', 'Autonomous', 'Latest']
+  },
+  {
+    id: 'claude-4.5-opus',
+    name: 'Claude 4.5 Opus',
+    provider: 'Anthropic',
+    description: 'Maximum intelligence with extended thinking support',
+    capabilities: ['200K Context', 'Max Intelligence', 'Extended Thinking', 'Latest']
+  },
+  {
+    id: 'claude-4.5-haiku',
+    name: 'Claude 4.5 Haiku',
+    provider: 'Anthropic',
+    description: 'Near-frontier quality with ultra-low latency',
+    capabilities: ['200K Context', 'Ultra Fast', 'Cost Effective', 'Latest']
+  },
+  {
+    id: 'claude-4-sonnet',
+    name: 'Claude 4 Sonnet',
+    provider: 'Anthropic',
+    description: 'Balanced hybrid model with dual-mode reasoning',
+    capabilities: ['200K Context', 'Dual Mode', 'Coding', 'Balanced']
+  },
+  {
+    id: 'claude-3.5-sonnet',
+    name: 'Claude 3.5 Sonnet',
+    provider: 'Anthropic',
+    description: 'Most intelligent model for complex tasks, coding, and analysis',
+    capabilities: ['200K Context', 'Advanced Reasoning', 'Coding', 'Fast']
+  },
+  {
+    id: 'claude-3-opus',
+    name: 'Claude 3 Opus',
+    provider: 'Anthropic',
+    description: 'Top-level performance for demanding tasks and analysis',
+    capabilities: ['200K Context', 'Advanced', 'Reasoning', 'Multimodal']
+  },
+  {
+    id: 'claude-3-sonnet',
+    name: 'Claude 3 Sonnet',
+    provider: 'Anthropic',
+    description: 'Balanced performance and speed for everyday tasks',
+    capabilities: ['200K Context', 'Balanced', 'Efficient', 'Multimodal']
+  },
+  {
+    id: 'claude-3-haiku',
+    name: 'Claude 3 Haiku',
+    provider: 'Anthropic',
+    description: 'Fastest model for quick responses and high throughput',
+    capabilities: ['200K Context', 'Fast', 'Cost Effective', 'Lightweight']
+  },
   // xAI Grok Models
   {
     id: 'grok-3',
