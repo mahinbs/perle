@@ -13,7 +13,8 @@ import {
   FaCheck,
   FaChevronDown,
 } from "react-icons/fa";
-import loadingVideo from "../assets/gif/loading-video.gif";
+import loadingGif from "../assets/gif/loading-video.gif";
+import loadingVideo from "../assets/loading.mp4";
 
 interface AnswerCardProps {
   chunks: AnswerChunk[];
@@ -52,6 +53,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const typewriterTimeoutRef = useRef<number | null>(null);
   const answerContentRef = useRef<HTMLDivElement>(null);
+  const loadingVideoRef = useRef<HTMLVideoElement>(null);
+  const [showVideoFallback, setShowVideoFallback] = useState(true); // Start with gif, switch to video when ready
+  const [videoReady, setVideoReady] = useState(false);
   const { showToast } = useToast();
 
   // Check for speech synthesis support
@@ -760,6 +764,14 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     // Note: fallbackInterval will be cleared in onend/onerror handlers
   };
 
+  // Reset video state when loading starts
+  useEffect(() => {
+    if (isLoading) {
+      setShowVideoFallback(true); // Show gif initially
+      setVideoReady(false);
+    }
+  }, [isLoading]);
+
   if (isLoading) {
     return (
       <div className="card" style={{ padding: 18 }}>
@@ -767,13 +779,42 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           Syntra<span className="text-[var(--accent)]">IQ</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10">
-            <img
-              src={loadingVideo}
-              loading="eager"
-              alt="loading"
-              className="rounded-full animate-spin"
-            />
+          <div className="w-10 h-10" style={{ position: 'relative' }}>
+            {showVideoFallback ? (
+              <img
+                src={loadingGif}
+                loading="eager"
+                alt="loading"
+                className="rounded-full w-full h-full object-cover"
+                style={{ display: 'block' }}
+              />
+            ) : (
+              <video
+                ref={loadingVideoRef}
+                src={loadingVideo}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="rounded-full w-full h-full object-cover"
+                onError={() => setShowVideoFallback(true)}
+                onCanPlay={() => {
+                  if (loadingVideoRef.current) {
+                    loadingVideoRef.current.playbackRate = 4.0;
+                    setVideoReady(true);
+                    setShowVideoFallback(false);
+                  }
+                }}
+                onLoadedData={() => {
+                  if (loadingVideoRef.current && !videoReady) {
+                    loadingVideoRef.current.playbackRate = 4.0;
+                    setVideoReady(true);
+                    setShowVideoFallback(false);
+                  }
+                }}
+                style={{ display: 'block' }}
+              />
+            )}
           </div>
           <p className="text-base">
             IQ is thinking
