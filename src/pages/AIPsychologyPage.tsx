@@ -510,7 +510,7 @@ export default function AIPsychologyPage() {
           </div>
         )}
 
-        <div className="flex gap-2 items-end flex-wrap bg-[var(--input-bg)] sm:bg-none p-1 rounded-xl border border-[var(--border)]">
+        <div className="flex gap-2 items-end flex-wrap bg-[var(--input-bg)] sm:bg-none p-3 rounded-xl border border-[var(--border)]">
           <input
             ref={fileInputRef}
             type="file"
