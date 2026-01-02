@@ -518,7 +518,7 @@ export default function AIPsychologyPage() {
             onChange={handleFileSelected}
             aria-hidden
           />
-          <div className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-1 sm:border border-[var(--border)] min-h-[34px] max-h-[120px]">
+          <div className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-1 sm:border border-[var(--border)] min-h-[34px] max-h-[80px]">
             <textarea
               ref={inputRef}
               value={inputValue}
