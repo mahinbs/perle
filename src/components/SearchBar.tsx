@@ -792,7 +792,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   return (
     <div
-      className="card"
+      className="card font-ubuntu"
       style={{
         padding: 16,
         position: "relative",
@@ -1046,7 +1046,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </div>
           )}
           <button
-            className={`btn-ghost !border-[#dfb768] ${toolMode ? "!text-black" : ""}`}
+            className={`btn-ghost !border-[#dfb768] !font-normal ${
+              toolMode ? "!text-black" : ""
+            }`}
             onClick={() => {
               if (toolMode) {
                 // Exit tool mode
@@ -1079,7 +1081,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
           {showToolsMenu && (
             <div
-              className="card"
+              className="card !font-normal"
               data-tools-menu
               style={{
                 position: "absolute",
@@ -1317,33 +1319,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           />
         )}
 
-        <div className="row" style={{ gap: 8, flexShrink: 0 }}>
-          {/* <LLMModelSelector
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-            disabled={isLoading}
-          /> */}
-
-          {/* {query && (
-            <button
-              className="btn-ghost"
-              onClick={handleCopyQuery}
-              aria-label="Copy query"
-              style={{ padding: 8 }}
-            >
-              <FaCopy size={18} />
-            </button>
-          )} */}
+        <div className="row" style={{ gap: 5, flexShrink: 0 }}>
+        
 
           {/* Attach File - Hide when tool mode is active */}
           {!toolMode && (
             <div
               style={{ position: "relative" }}
-              className="flex gap-2"
+              className="flex gap-0"
               data-upload-menu
             >
               <button
-                className="btn-ghost !border-[#dfb768]"
+                className="btn-ghost aspect-square !border-[#dfb768]"
                 onClick={() => setShowUploadMenu(!showUploadMenu)}
                 aria-label="Upload files"
                 disabled={isListening}
@@ -1458,7 +1445,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           )}
 
           {/* Model Selector - Only show for premium users, disabled during tool mode */}
-          {isPremium && !toolMode && (
+          {!toolMode && (
             <div>
               <LLMModelSelector
                 selectedModel={selectedModel}
@@ -1522,31 +1509,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   <span>Generate</span>
                 )}
               </button>
-            ) : query.trim() ? (
-              <button
-                className="btn-ghost !border-[#dfb768]"
-                onClick={() => {
-                  if (query.trim()) {
-                    onSearch();
-                    // In follow-up mode, keep the query for editing; otherwise clear it
-                    if (!hasAnswer) {
-                      setQuery("");
-                    }
-                  }
-                }}
-                disabled={isLoading}
-                aria-label="Search"
-                style={{
-                  padding: "4px 8px",
-                  fontSize: "var(--font-md)",
-                  color: "inherit",
-                }}
-              >
-                {isLoading ? "…" : <FaSearch size={20} />}
-              </button>
             ) : speechSupported ? (
               <button
-                className="btn-ghost !border-[#dfb768]"
+                className="btn-ghost aspect-square !border-[#dfb768]"
                 onClick={() => {
                   if (isListening) {
                     stopVoiceInput();
@@ -1569,9 +1534,32 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             ) : null}
           </div>
 
-          {speechSupported && (
+          {query.trim() ? (
             <button
-              className="btn-ghost !border-[#dfb768]"
+              className="btn-ghost aspect-square !border-[#dfb768]"
+              onClick={() => {
+                if (query.trim()) {
+                  onSearch();
+                  // In follow-up mode, keep the query for editing; otherwise clear it
+                  if (!hasAnswer) {
+                    setQuery("");
+                  }
+                }
+              }}
+              disabled={isLoading}
+              aria-label="Search"
+              style={{
+                padding: 8,
+                color: "",
+                opacity: isLoading ? 0.5 : 1,
+                cursor: isLoading ? "not-allowed" : "pointer",
+              }}
+            >
+              {isLoading ? "…" : <FaSearch size={20} />}
+            </button>
+          ) : speechSupported ? (
+            <button
+              className="btn-ghost aspect-square !border-[#dfb768]"
               onClick={() => setShowVoiceOverlay(true)}
               disabled={isListening}
               style={{
@@ -1583,7 +1571,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             >
               <HeadsetWaveIcon size={27} />
             </button>
-          )}
+          ) : null}
 
           {/* Show conversation options for premium users with existing answers */}
           {isPremium && hasAnswer && (
