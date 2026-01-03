@@ -75,7 +75,7 @@ export const Header: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <button
-              className={`btn-ghost aspect-square !border-[#dfb768] ${isActive("/discover") ? "active" : ""}`}
+              className={`btn-ghost !border-[#dfb768] ${isActive("/discover") ? "active" : ""}`}
               onClick={() => navigateTo("/discover")}
               aria-label="Discover"
               style={{
