@@ -1584,7 +1584,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               }}
             >
               <button
-                className="btn-ghost"
+                className="btn-ghost aspect-square !border-[#dfb768]"
                 onClick={() => {
                   if (onNewConversation) {
                     onNewConversation();
