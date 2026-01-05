@@ -1,18 +1,69 @@
 -- Supabase Storage Bucket Setup for AI Friend Logos
--- This SQL file helps set up RLS policies for the storage bucket
--- Note: You still need to create the bucket manually in Supabase Dashboard
+-- IMPORTANT: Storage policies must be created via Supabase Dashboard or Storage API
+-- This SQL file provides the policy definitions, but you need to create them manually
 
--- Step 1: Create the bucket in Supabase Dashboard
--- Go to Storage → Buckets → New Bucket
--- Name: ai-friend-logos
--- Public: Yes
--- File size limit: 2 MB
--- Allowed MIME types: image/*
+-- ============================================
+-- OPTION 1: Create via Supabase Dashboard (RECOMMENDED)
+-- ============================================
+-- 
+-- Step 1: Create the bucket
+-- 1. Go to Supabase Dashboard → Storage → Buckets
+-- 2. Click "New Bucket"
+-- 3. Configure:
+--    - Name: ai-friend-logos
+--    - Public: Yes (checked)
+--    - File size limit: 2 MB
+--    - Allowed MIME types: image/*
+-- 4. Click "Create bucket"
+--
+-- Step 2: Create RLS Policies (via Dashboard)
+-- 1. Go to Storage → Policies → ai-friend-logos bucket
+-- 2. Click "New Policy" for each policy below
+--
+-- Policy 1: "Users can upload their own logos"
+--   - Policy name: Users can upload their own logos
+--   - Allowed operation: INSERT
+--   - Target roles: authenticated
+--   - USING expression: (storage.foldername(name))[1] = auth.uid()::text
+--   - WITH CHECK expression: bucket_id = 'ai-friend-logos' AND (storage.foldername(name))[1] = auth.uid()::text
+--
+-- Policy 2: "Users can read their own logos"
+--   - Policy name: Users can read their own logos
+--   - Allowed operation: SELECT
+--   - Target roles: authenticated
+--   - USING expression: bucket_id = 'ai-friend-logos' AND (storage.foldername(name))[1] = auth.uid()::text
+--
+-- Policy 3: "Users can delete their own logos"
+--   - Policy name: Users can delete their own logos
+--   - Allowed operation: DELETE
+--   - Target roles: authenticated
+--   - USING expression: bucket_id = 'ai-friend-logos' AND (storage.foldername(name))[1] = auth.uid()::text
+--
+-- Policy 4: "Public can read logos"
+--   - Policy name: Public can read logos
+--   - Allowed operation: SELECT
+--   - Target roles: public
+--   - USING expression: bucket_id = 'ai-friend-logos'
 
--- Step 2: Run these RLS policies
+-- ============================================
+-- OPTION 2: Create via SQL (Requires superuser/owner access)
+-- ============================================
+-- If you have owner/superuser access, you can run these SQL commands:
 
--- Allow authenticated users to upload their own logos
-CREATE POLICY IF NOT EXISTS "Users can upload their own logos"
+-- Enable RLS on storage.objects (if not already enabled)
+-- ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can upload their own logos" ON storage.objects;
+DROP POLICY IF EXISTS "Users can read their own logos" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete their own logos" ON storage.objects;
+DROP POLICY IF EXISTS "Public can read logos" ON storage.objects;
+
+-- Create policies (only works if you have owner permissions)
+-- Uncomment these if you have the required permissions:
+
+/*
+CREATE POLICY "Users can upload their own logos"
 ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (
@@ -20,8 +71,7 @@ WITH CHECK (
   (storage.foldername(name))[1] = auth.uid()::text
 );
 
--- Allow authenticated users to read their own logos
-CREATE POLICY IF NOT EXISTS "Users can read their own logos"
+CREATE POLICY "Users can read their own logos"
 ON storage.objects FOR SELECT
 TO authenticated
 USING (
@@ -29,8 +79,7 @@ USING (
   (storage.foldername(name))[1] = auth.uid()::text
 );
 
--- Allow authenticated users to delete their own logos
-CREATE POLICY IF NOT EXISTS "Users can delete their own logos"
+CREATE POLICY "Users can delete their own logos"
 ON storage.objects FOR DELETE
 TO authenticated
 USING (
@@ -38,14 +87,14 @@ USING (
   (storage.foldername(name))[1] = auth.uid()::text
 );
 
--- Allow public read access (for displaying logos in UI)
-CREATE POLICY IF NOT EXISTS "Public can read logos"
+CREATE POLICY "Public can read logos"
 ON storage.objects FOR SELECT
 TO public
 USING (bucket_id = 'ai-friend-logos');
+*/
 
-COMMENT ON POLICY "Users can upload their own logos" ON storage.objects IS 'Allows users to upload logos to their own folder in ai-friend-logos bucket';
-COMMENT ON POLICY "Users can read their own logos" ON storage.objects IS 'Allows users to read their own uploaded logos';
-COMMENT ON POLICY "Users can delete their own logos" ON storage.objects IS 'Allows users to delete their own uploaded logos';
-COMMENT ON POLICY "Public can read logos" ON storage.objects IS 'Allows public read access to all logos for display purposes';
-
+-- ============================================
+-- OPTION 3: Use Supabase Management API (Programmatic)
+-- ============================================
+-- You can also create policies programmatically using the Supabase Management API
+-- or by using the Supabase client with service role key in a Node.js script

@@ -90,10 +90,12 @@ router.post('/ai-friends/upload-logo', authenticateToken, upload.single('logo'),
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    // Generate unique filename: ai-friend-logos/{userId}/{timestamp}-{originalname}
+    // Generate unique filename: {userId}/{timestamp}-{random}.{ext}
     const fileExt = req.file.originalname.split('.').pop();
-    const fileName = `${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const filePath = `ai-friend-logos/${fileName}`;
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const filePath = `${req.userId}/${fileName}`;
+
+    console.log(`📤 Uploading logo to ai-friend-logos bucket: ${filePath}`);
 
     // Upload to Supabase Storage bucket 'ai-friend-logos'
     const { data, error } = await supabase.storage
@@ -104,18 +106,26 @@ router.post('/ai-friends/upload-logo', authenticateToken, upload.single('logo'),
       });
 
     if (error) {
-      console.error('Storage upload error:', error);
-      return res.status(500).json({ error: 'Failed to upload logo' });
+      console.error('❌ Storage upload error:', error);
+      return res.status(500).json({ 
+        error: 'Failed to upload logo',
+        details: error.message 
+      });
     }
+
+    console.log('✅ Logo uploaded successfully:', data?.path);
 
     // Get public URL
     const { data: urlData } = supabase.storage
       .from('ai-friend-logos')
       .getPublicUrl(filePath);
+    
+    console.log('🔗 Public URL:', urlData.publicUrl);
 
     res.json({ 
       url: urlData.publicUrl,
-      path: filePath
+      path: filePath,
+      bucket: 'ai-friend-logos'
     });
   } catch (error) {
     console.error('Upload logo error:', error);
@@ -352,12 +362,20 @@ router.delete('/ai-friends/:id', authenticateToken, async (req: AuthRequest, res
     if (friend?.logo_url && friend.logo_url.includes('ai-friend-logos')) {
       try {
         // Extract path from URL
+        // URL format: https://[project].supabase.co/storage/v1/object/public/ai-friend-logos/{userId}/{filename}
         const urlParts = friend.logo_url.split('/ai-friend-logos/');
         if (urlParts.length > 1) {
-          const filePath = `ai-friend-logos/${urlParts[1]}`;
-          await supabase.storage
+          const filePath = urlParts[1]; // Just the path after bucket name: {userId}/{filename}
+          console.log(`🗑️ Deleting logo from storage: ${filePath}`);
+          const { error: deleteError } = await supabase.storage
             .from('ai-friend-logos')
             .remove([filePath]);
+          
+          if (deleteError) {
+            console.warn('Failed to delete logo from storage:', deleteError);
+          } else {
+            console.log('✅ Logo deleted from storage successfully');
+          }
         }
       } catch (storageError) {
         console.warn('Failed to delete logo from storage:', storageError);

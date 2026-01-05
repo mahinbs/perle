@@ -72,3 +72,4 @@ COMMENT ON COLUMN ai_friends.name IS 'Custom name for the AI friend (1-50 charac
 COMMENT ON COLUMN ai_friends.description IS 'Description of the AI friend personality/behavior (10-500 characters)';
 COMMENT ON COLUMN ai_friends.logo_url IS 'URL to custom logo image (can be base64 data URL or external URL)';
 
+
