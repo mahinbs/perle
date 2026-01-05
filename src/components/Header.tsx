@@ -48,7 +48,7 @@ export const Header: React.FC = () => {
           </div> */}
           <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
             <button
-              className={`btn-ghost active !font-bold font-ubuntu`}
+              className={`btn-ghost btn-shadow active !font-bold font-ubuntu`}
               onClick={() => navigateTo("/ai-friend")}
               aria-label="AI Friend"
               style={{
@@ -61,7 +61,7 @@ export const Header: React.FC = () => {
             </button>
 
             <button
-              className={`btn-ghost active !font-bold font-ubuntu`}
+              className={`btn-ghost btn-shadow active !font-bold font-ubuntu`}
               onClick={() => navigateTo("/ai-psychology")}
               aria-label="AI Psychology"
               style={{
@@ -75,7 +75,7 @@ export const Header: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <button
-              className={`btn-ghost !border-[#dfb768] ${isActive("/discover") ? "active" : ""}`}
+              className={`btn-ghost btn-shadow !border-[#dfb768] ${isActive("/discover") ? "active" : ""}`}
               onClick={() => navigateTo("/discover")}
               aria-label="Discover"
               style={{
@@ -99,7 +99,7 @@ export const Header: React.FC = () => {
               </span>
             </button>
             <button
-              className={`btn-ghost !border-[#dfb768] ${isActive("/profile") ? "active" : ""}`}
+              className={`btn-ghost btn-shadow !border-[#dfb768] ${isActive("/profile") ? "active" : ""}`}
               onClick={() => navigateTo("/profile")}
               aria-label="Profile"
               style={{
@@ -118,7 +118,7 @@ export const Header: React.FC = () => {
 
         {/* <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
           <button
-            className={`btn-ghost active`}
+            className={`btn-ghost btn-shadow active`}
             onClick={() => navigateTo("/ai-friend")}
             aria-label="AI Friend"
             style={{
@@ -131,7 +131,7 @@ export const Header: React.FC = () => {
           </button>
 
           <button
-            className={`btn-ghost active`}
+            className={`btn-ghost btn-shadow active`}
             onClick={() => navigateTo("/")}
             aria-label="Home"
             style={{
@@ -180,7 +180,7 @@ export const Header: React.FC = () => {
             filter: brightness(0.92);
           }
 
-          .btn-ghost:hover .discover-icon img {
+          .btn-ghost btn-shadow:hover .discover-icon img {
             box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
           }
 
@@ -207,7 +207,7 @@ export const Header: React.FC = () => {
               gap: 6px !important;
             }
             
-            .header-right .btn-ghost {
+            .header-right .btn-ghost btn-shadow {
               padding: 8px 12px !important;
               font-size: var(--font-md) !important;
               min-height: 40px !important;
@@ -239,7 +239,7 @@ export const Header: React.FC = () => {
               gap: 4px !important;
             }
             
-            .header-right .btn-ghost {
+            .header-right .btn-ghost btn-shadow {
               padding: 7px 10px !important;
               font-size: var(--font-sm) !important;
               min-height: 38px !important;

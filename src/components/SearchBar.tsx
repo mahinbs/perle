@@ -910,7 +910,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               {generatedMedia.prompt}
             </div>
             <button
-              className="btn-ghost"
+              className="btn-ghost btn-shadow"
               onClick={() => setGeneratedMedia(null)}
               style={{
                 position: "absolute",
@@ -925,7 +925,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <FaTimes size={14} style={{ color: "white" }} />
             </button>
             <button
-              className="btn-ghost"
+              className="btn-ghost btn-shadow"
               onClick={handleDownloadMedia}
               style={{
                 position: "absolute",
@@ -1018,7 +1018,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                         : img.file.name}
                     </span> */}
                   <button
-                    className="btn-ghost"
+                    className="btn-ghost btn-shadow"
                     onClick={(e) => {
                       e.stopPropagation();
                       setToolAttachedImages(
@@ -1046,7 +1046,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </div>
           )}
           <button
-            className={`btn-ghost !border-[#dfb768] !font-normal ${
+            className={`btn-ghost btn-shadow !border-[#dfb768] !font-normal ${
               toolMode ? "!text-black" : ""
             }`}
             onClick={() => {
@@ -1101,7 +1101,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               }}
             >
               <button
-                className="btn-ghost"
+                className="btn-ghost btn-shadow"
                 onClick={() => {
                   setToolMode("image");
                   setShowToolsMenu(false);
@@ -1131,7 +1131,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </button>
 
               <button
-                className="btn-ghost"
+                className="btn-ghost btn-shadow"
                 onClick={() => {
                   setToolMode("video");
                   setShowToolsMenu(false);
@@ -1238,7 +1238,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 }}
               >
                 <button
-                  className="btn-ghost"
+                  className="btn-ghost btn-shadow"
                   onClick={(e) => {
                     e.stopPropagation();
                     fileInputRef.current?.click();
@@ -1330,7 +1330,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               data-upload-menu
             >
               <button
-                className="btn-ghost aspect-square !border-[#dfb768]"
+                className="btn-ghost btn-shadow aspect-square !border-[#dfb768]"
                 onClick={() => setShowUploadMenu(!showUploadMenu)}
                 aria-label="Upload files"
                 disabled={isListening}
@@ -1365,7 +1365,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   }}
                 >
                   <button
-                    className="btn-ghost"
+                    className="btn-ghost btn-shadow"
                     onClick={() => {
                       fileInputRef.current?.click();
                       setShowUploadMenu(false);
@@ -1391,7 +1391,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   </button>
 
                   <button
-                    className="btn-ghost"
+                    className="btn-ghost btn-shadow"
                     onClick={() => {
                       fileInputRef.current?.click();
                       setShowUploadMenu(false);
@@ -1416,7 +1416,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     </span>
                   </button>
                   <button
-                    className="btn-ghost"
+                    className="btn-ghost btn-shadow"
                     onClick={() => {
                       startCameraCapture();
                       setShowUploadMenu(false);
@@ -1511,7 +1511,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </button>
             ) : speechSupported ? (
               <button
-                className="btn-ghost aspect-square !border-[#dfb768]"
+                className="btn-ghost btn-shadow aspect-square !border-[#dfb768]"
                 onClick={() => {
                   if (isListening) {
                     stopVoiceInput();
@@ -1536,7 +1536,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
           {query.trim() ? (
             <button
-              className="btn-ghost aspect-square !border-[#dfb768]"
+              className="btn-ghost btn-shadow aspect-square !border-[#dfb768]"
               onClick={() => {
                 if (query.trim()) {
                   onSearch();
@@ -1559,7 +1559,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </button>
           ) : speechSupported ? (
             <button
-              className="btn-ghost aspect-square !border-[#dfb768]"
+              className="btn-ghost btn-shadow aspect-square !border-[#dfb768]"
               onClick={() => setShowVoiceOverlay(true)}
               disabled={isListening}
               style={{
@@ -1584,7 +1584,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               }}
             >
               <button
-                className="btn-ghost aspect-square !border-[#dfb768]"
+                className="btn-ghost btn-shadow aspect-square !border-[#dfb768]"
                 onClick={() => {
                   if (onNewConversation) {
                     onNewConversation();
@@ -1665,7 +1665,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               📸 Capture
             </button>
             <button
-              className="btn-ghost"
+              className="btn-ghost btn-shadow"
               onClick={stopCameraCapture}
               style={{ padding: "12px 24px" }}
             >
@@ -1737,7 +1737,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   </div>
                 </div>
                 <button
-                  className="btn-ghost"
+                  className="btn-ghost btn-shadow"
                   onClick={() => removeFile(file.id)}
                   style={{ padding: 4 }}
                   aria-label="Remove file"
@@ -1775,7 +1775,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           {searchHistory.slice(0, 5).map((item, index) => (
             <button
               key={index}
-              className="btn-ghost"
+              className="btn-ghost btn-shadow"
               onClick={() => onQuerySelect(item)}
               style={{
                 width: "100%",
