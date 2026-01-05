@@ -16,7 +16,7 @@ import {
   FaChevronDown,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, getAuthHeaders, isAuthenticated } from "../utils/auth";
+import { getUserData, getAuthHeaders, getAuthToken, isAuthenticated } from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
@@ -55,8 +55,7 @@ export default function AIFriendPage() {
   const [friendDescription, setFriendDescription] = useState("");
   const [friendLogoUrl, setFriendLogoUrl] = useState("");
   const [selectedDefaultLogo, setSelectedDefaultLogo] = useState<string | null>(null);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+  const [_isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [defaultLogos, setDefaultLogos] = useState<Array<{ id: string; name: string; url: string }>>([]);
 
@@ -495,7 +494,6 @@ export default function AIFriendPage() {
       return;
     }
 
-    setLogoFile(file);
     setIsUploadingLogo(true);
     setSelectedDefaultLogo(null); // Clear default logo selection
 
@@ -510,11 +508,11 @@ export default function AIFriendPage() {
       const formData = new FormData();
       formData.append("logo", file);
 
-      const authHeaders = getAuthHeaders();
+      const token = getAuthToken();
       const response = await fetch(`${API_URL}/api/ai-friends/upload-logo`, {
         method: "POST",
         headers: {
-          ...(authHeaders.Authorization && { Authorization: authHeaders.Authorization }),
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
         body: formData,
       });
@@ -534,7 +532,6 @@ export default function AIFriendPage() {
           type: "error",
           duration: 3000,
         });
-        setLogoFile(null);
       }
     } catch (error: any) {
       showToast({
@@ -542,7 +539,6 @@ export default function AIFriendPage() {
         type: "error",
         duration: 3000,
       });
-      setLogoFile(null);
     } finally {
       setIsUploadingLogo(false);
     }
@@ -550,7 +546,6 @@ export default function AIFriendPage() {
 
   const handleSelectDefaultLogo = (logoId: string) => {
     setSelectedDefaultLogo(logoId);
-    setLogoFile(null);
     setFriendLogoUrl(""); // Clear custom logo
   };
 
@@ -699,7 +694,6 @@ export default function AIFriendPage() {
     setFriendDescription("");
     setFriendLogoUrl("");
     setSelectedDefaultLogo(null);
-    setLogoFile(null);
     setEditingFriend(null);
   };
 
@@ -722,7 +716,6 @@ export default function AIFriendPage() {
       setFriendLogoUrl(friend.logo_url || "");
       setSelectedDefaultLogo(null);
     }
-    setLogoFile(null);
     setShowFriendModal(true);
   };
 

@@ -19,7 +19,7 @@ import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
 import VoiceOverlay from "./VoiceOverlay";
 import { LLMModelSelector } from "./LLMModelSelector";
-import { getAuthHeaders } from "../utils/auth";
+import { getAuthHeaders, getAuthToken } from "../utils/auth";
 
 interface UploadedFile {
   id: string;
@@ -452,17 +452,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     formData.append("duration", duration.toString());
     formData.append("aspectRatio", aspectRatio);
 
-    const authHeaders = getAuthHeaders();
-    const res = await fetch(
-      `${baseUrl.replace(/\/+$/, "")}/api/media/generate-video-from-image`,
-      {
-        method: "POST",
-        headers: {
-          ...(authHeaders.Authorization && { Authorization: authHeaders.Authorization }),
-        },
-        body: formData,
-      }
-    );
+      const token = getAuthToken();
+      const res = await fetch(
+        `${baseUrl.replace(/\/+$/, "")}/api/media/generate-video-from-image`,
+        {
+          method: "POST",
+          headers: {
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: formData,
+        }
+      );
 
     if (!res.ok) {
       const errorData = await res
