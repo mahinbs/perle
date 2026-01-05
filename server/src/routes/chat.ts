@@ -40,7 +40,8 @@ const chatSchema = z.object({
     'mistral-7b'
   ]).optional().default('gemini-lite'),
   newConversation: z.boolean().optional().default(false),
-  chatMode: z.enum(['normal', 'ai_friend', 'ai_psychologist']).optional().default('normal')
+  chatMode: z.enum(['normal', 'ai_friend', 'ai_psychologist']).optional().default('normal'),
+  aiFriendId: z.string().uuid().optional() // Optional AI friend ID for custom friends
 });
 
 // Chat endpoint for AI Friend
@@ -54,11 +55,33 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const { message, model, newConversation, chatMode } = parse.data;
+    const { message, model, newConversation, chatMode, aiFriendId } = parse.data;
     const trimmedMessage = message.trim();
 
     if (!trimmedMessage) {
       return res.status(400).json({ error: 'Message cannot be empty' });
+    }
+
+    // Fetch AI friend details if aiFriendId is provided (only for ai_friend mode)
+    let aiFriendDescription: string | null = null;
+    let aiFriendName: string | null = null;
+    if (chatMode === 'ai_friend' && aiFriendId && req.userId) {
+      try {
+        const { data: friend } = await supabase
+          .from('ai_friends')
+          .select('name, description')
+          .eq('id', aiFriendId)
+          .eq('user_id', req.userId)
+          .single();
+
+        if (friend) {
+          aiFriendDescription = friend.description;
+          aiFriendName = friend.name;
+        }
+      } catch (friendError) {
+        console.warn('Failed to fetch AI friend:', friendError);
+        // Continue without friend description if fetch fails
+      }
     }
 
     // Check premium status
@@ -147,8 +170,8 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
     // Generate answer using AI provider with chat mode
     let result;
     try {
-      // Pass chat mode to AI provider for appropriate system prompts
-      result = await generateAIAnswer(trimmedMessage, 'Ask', actualModel, isPremium, conversationHistory, chatMode);
+      // Pass chat mode and AI friend description to AI provider for appropriate system prompts
+      result = await generateAIAnswer(trimmedMessage, 'Ask', actualModel, isPremium, conversationHistory, chatMode, aiFriendDescription, aiFriendName);
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
       const errorMessage = apiError?.message || 'Failed to generate answer';

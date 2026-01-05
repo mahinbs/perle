@@ -10,9 +10,13 @@ import {
   FaPaperclip,
   FaTimes,
   FaComments,
+  FaPlus,
+  FaEdit,
+  FaTrash,
+  FaChevronDown,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, getAuthHeaders } from "../utils/auth";
+import { getUserData, getAuthHeaders, isAuthenticated } from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
@@ -24,19 +28,60 @@ interface Message {
   timestamp: Date;
 }
 
+interface AIFriend {
+  id: string;
+  name: string;
+  description: string;
+  logo_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function AIFriendPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
   // Get user data for avatar
   const userData = getUserData();
   const userName = userData?.name || "You";
+  const isLoggedIn = isAuthenticated();
 
-  // Generate avatars using UI Avatars service
-  const aiProfile = {
-    name: "Nani",
-    handle: "@syntraIQ companion",
-    avatar: `https://ui-avatars.com/api/?name=Perle+AI&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
+  // AI Friends state
+  const [aiFriends, setAiFriends] = useState<AIFriend[]>([]);
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [showFriendSelector, setShowFriendSelector] = useState(false);
+  const [showFriendModal, setShowFriendModal] = useState(false);
+  const [editingFriend, setEditingFriend] = useState<AIFriend | null>(null);
+  const [friendName, setFriendName] = useState("");
+  const [friendDescription, setFriendDescription] = useState("");
+  const [friendLogoUrl, setFriendLogoUrl] = useState("");
+  const [selectedDefaultLogo, setSelectedDefaultLogo] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [defaultLogos, setDefaultLogos] = useState<Array<{ id: string; name: string; url: string }>>([]);
+
+  // Get selected friend or default
+  const selectedFriend = selectedFriendId
+    ? aiFriends.find((f) => f.id === selectedFriendId)
+    : null;
+
+  // Default AI profile for logged-out users or when no friend selected
+  const defaultAiProfile = {
+    name: isLoggedIn ? "AI Friend" : "SyntraIQ Friend",
+    handle: isLoggedIn ? "@syntraIQ companion" : "@syntraIQ friend",
+    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      isLoggedIn ? "AI+Friend" : "SyntraIQ+Friend"
+    )}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
   };
+
+  // Use selected friend's info or default
+  const aiProfile = selectedFriend
+    ? {
+        name: selectedFriend.name,
+        handle: `@${selectedFriend.name.toLowerCase().replace(/\s+/g, "")}`,
+        avatar: selectedFriend.logo_url || defaultAiProfile.avatar,
+      }
+    : defaultAiProfile;
   const userProfile = {
     name: userName,
     avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(
@@ -82,6 +127,34 @@ export default function AIFriendPage() {
     inputRef.current?.focus();
   }, []);
 
+  // Load AI friends for logged-in users
+  useEffect(() => {
+    if (isLoggedIn) {
+      loadAIFriends();
+      loadDefaultLogos();
+    }
+  }, [isLoggedIn]);
+
+  // Load default logos
+  const loadDefaultLogos = async () => {
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL || !isLoggedIn) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/ai-friends/default-logos`, {
+        method: "GET",
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDefaultLogos(data.logos || []);
+      }
+    } catch (error) {
+      console.error("Failed to load default logos:", error);
+    }
+  };
+
   // Load user premium status and model preference
   useEffect(() => {
     const user = getUserData();
@@ -105,6 +178,33 @@ export default function AIFriendPage() {
       setSelectedModel("gemini-lite");
     }
   }, []);
+
+  // Load AI friends from API
+  const loadAIFriends = async () => {
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL || !isLoggedIn) return;
+
+    setIsLoadingFriends(true);
+    try {
+      const response = await fetch(`${API_URL}/api/ai-friends`, {
+        method: "GET",
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAiFriends(data.friends || []);
+        // Auto-select first friend if available and none selected
+        if (data.friends && data.friends.length > 0 && !selectedFriendId) {
+          setSelectedFriendId(data.friends[0].id);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load AI friends:", error);
+    } finally {
+      setIsLoadingFriends(false);
+    }
+  };
 
   // Load conversation history on mount (for both free and premium users)
   useEffect(() => {
@@ -274,6 +374,7 @@ export default function AIFriendPage() {
           model: selectedModel,
           newConversation: newConversation,
           chatMode: "ai_friend", // Use AI friend mode
+          aiFriendId: selectedFriendId || undefined, // Include friend ID if selected
         }),
       });
 
@@ -371,6 +472,260 @@ export default function AIFriendPage() {
     }, 1000);
   };
 
+  // Friend management functions
+  const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      showToast({
+        message: "Logo file must be less than 2MB",
+        type: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      showToast({
+        message: "Please select an image file",
+        type: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
+    setLogoFile(file);
+    setIsUploadingLogo(true);
+    setSelectedDefaultLogo(null); // Clear default logo selection
+
+    // Upload to Supabase Storage
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) {
+      setIsUploadingLogo(false);
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("logo", file);
+
+      const authHeaders = getAuthHeaders();
+      const response = await fetch(`${API_URL}/api/ai-friends/upload-logo`, {
+        method: "POST",
+        headers: {
+          ...(authHeaders.Authorization && { Authorization: authHeaders.Authorization }),
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFriendLogoUrl(data.url);
+        showToast({
+          message: "Logo uploaded successfully!",
+          type: "success",
+          duration: 2000,
+        });
+      } else {
+        const error = await response.json();
+        showToast({
+          message: error.error || "Failed to upload logo",
+          type: "error",
+          duration: 3000,
+        });
+        setLogoFile(null);
+      }
+    } catch (error: any) {
+      showToast({
+        message: error.message || "Failed to upload logo",
+        type: "error",
+        duration: 3000,
+      });
+      setLogoFile(null);
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleSelectDefaultLogo = (logoId: string) => {
+    setSelectedDefaultLogo(logoId);
+    setLogoFile(null);
+    setFriendLogoUrl(""); // Clear custom logo
+  };
+
+  const handleCreateFriend = async () => {
+    if (!friendName.trim() || !friendDescription.trim()) {
+      showToast({
+        message: "Please fill in name and description",
+        type: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/ai-friends`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          name: friendName.trim(),
+          description: friendDescription.trim(),
+          logoUrl: friendLogoUrl || undefined,
+          defaultLogo: selectedDefaultLogo || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        await loadAIFriends();
+        setSelectedFriendId(data.friend.id);
+        setShowFriendModal(false);
+        resetFriendForm();
+        showToast({
+          message: "AI Friend created successfully!",
+          type: "success",
+          duration: 2000,
+        });
+      } else {
+        const error = await response.json();
+        showToast({
+          message: error.error || "Failed to create AI friend",
+          type: "error",
+          duration: 3000,
+        });
+      }
+    } catch (error: any) {
+      showToast({
+        message: error.message || "Failed to create AI friend",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  };
+
+  const handleUpdateFriend = async () => {
+    if (!editingFriend || !friendName.trim() || !friendDescription.trim()) {
+      return;
+    }
+
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/ai-friends/${editingFriend.id}`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          name: friendName.trim(),
+          description: friendDescription.trim(),
+          logoUrl: friendLogoUrl || undefined,
+          defaultLogo: selectedDefaultLogo || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        await loadAIFriends();
+        setShowFriendModal(false);
+        resetFriendForm();
+        showToast({
+          message: "AI Friend updated successfully!",
+          type: "success",
+          duration: 2000,
+        });
+      } else {
+        const error = await response.json();
+        showToast({
+          message: error.error || "Failed to update AI friend",
+          type: "error",
+          duration: 3000,
+        });
+      }
+    } catch (error: any) {
+      showToast({
+        message: error.message || "Failed to update AI friend",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  };
+
+  const handleDeleteFriend = async (friendId: string) => {
+    if (!confirm("Are you sure you want to delete this AI friend?")) {
+      return;
+    }
+
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/ai-friends/${friendId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        await loadAIFriends();
+        if (selectedFriendId === friendId) {
+          setSelectedFriendId(null);
+        }
+        showToast({
+          message: "AI Friend deleted successfully!",
+          type: "success",
+          duration: 2000,
+        });
+      } else {
+        const error = await response.json();
+        showToast({
+          message: error.error || "Failed to delete AI friend",
+          type: "error",
+          duration: 3000,
+        });
+      }
+    } catch (error: any) {
+      showToast({
+        message: error.message || "Failed to delete AI friend",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  };
+
+  const resetFriendForm = () => {
+    setFriendName("");
+    setFriendDescription("");
+    setFriendLogoUrl("");
+    setSelectedDefaultLogo(null);
+    setLogoFile(null);
+    setEditingFriend(null);
+  };
+
+  const openCreateFriendModal = () => {
+    resetFriendForm();
+    setShowFriendModal(true);
+  };
+
+  const openEditFriendModal = (friend: AIFriend) => {
+    setEditingFriend(friend);
+    setFriendName(friend.name);
+    setFriendDescription(friend.description);
+    
+    // Check if logo is a default logo
+    const defaultLogo = defaultLogos.find(l => l.url === friend.logo_url);
+    if (defaultLogo) {
+      setSelectedDefaultLogo(defaultLogo.id);
+      setFriendLogoUrl("");
+    } else {
+      setFriendLogoUrl(friend.logo_url || "");
+      setSelectedDefaultLogo(null);
+    }
+    setLogoFile(null);
+    setShowFriendModal(true);
+  };
+
   return (
     <div className="container h-screen flex flex-col !p-0">
       {/* Header */}
@@ -385,20 +740,123 @@ export default function AIFriendPage() {
               <IoIosArrowBack size={24} />
             </button>
             <div className="row flex items-center gap-3">
-              <div className="relative">
-                <img
-                  src={aiProfile.avatar}
-                  alt={`${aiProfile.name} avatar`}
-                  className="w-11 h-11 rounded-full object-cover border-2 border-[var(--accent)]"
-                />
-                <div className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
-              </div>
-              <div>
-                <div className="h3 mb-0.5">{aiProfile.name}</div>
-                <div className="sub text-sm text-[length:var(--font-sm)] opacity-80">
-                  {aiProfile.handle}
+              {isLoggedIn && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowFriendSelector(!showFriendSelector)}
+                    className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[var(--input-bg)] transition-colors"
+                  >
+                    <div className="relative">
+                      <img
+                        src={aiProfile.avatar}
+                        alt={`${aiProfile.name} avatar`}
+                        className="w-11 h-11 rounded-full object-cover border-2 border-[var(--accent)]"
+                      />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
+                    </div>
+                    <div className="text-left">
+                      <div className="h3 mb-0.5">{aiProfile.name}</div>
+                      <div className="sub text-sm text-[length:var(--font-sm)] opacity-80">
+                        {aiProfile.handle}
+                      </div>
+                    </div>
+                    <FaChevronDown
+                      size={14}
+                      className={`transition-transform ${
+                        showFriendSelector ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {showFriendSelector && (
+                    <div className="absolute top-full left-0 mt-2 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg z-50 min-w-[280px] max-h-[400px] overflow-y-auto">
+                      <div className="p-2">
+                        <button
+                          onClick={openCreateFriendModal}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--input-bg)] transition-colors text-left mb-2"
+                        >
+                          <FaPlus size={14} />
+                          <span className="text-sm font-semibold">
+                            {aiFriends.length >= 4
+                              ? "Maximum 4 friends reached"
+                              : "Create New Friend"}
+                          </span>
+                        </button>
+                        {aiFriends.map((friend) => (
+                          <div
+                            key={friend.id}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--input-bg)] transition-colors cursor-pointer mb-1 ${
+                              selectedFriendId === friend.id
+                                ? "bg-[rgba(199,168,105,0.15)]"
+                                : ""
+                            }`}
+                            onClick={() => {
+                              setSelectedFriendId(friend.id);
+                              setShowFriendSelector(false);
+                            }}
+                          >
+                            <img
+                              src={
+                                friend.logo_url ||
+                                `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                                  friend.name
+                                )}&background=C7A869&color=111&size=40&bold=true`
+                              }
+                              alt={friend.name}
+                              className="w-10 h-10 rounded-full object-cover border border-[var(--border)]"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold truncate">
+                                {friend.name}
+                              </div>
+                              <div className="text-xs opacity-70 truncate">
+                                {friend.description.substring(0, 40)}...
+                              </div>
+                            </div>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEditFriendModal(friend);
+                                }}
+                                className="p-1.5 rounded hover:bg-[var(--input-bg)]"
+                              >
+                                <FaEdit size={12} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteFriend(friend.id);
+                                }}
+                                className="p-1.5 rounded hover:bg-[var(--input-bg)] text-red-500"
+                              >
+                                <FaTrash size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+              {!isLoggedIn && (
+                <>
+                  <div className="relative">
+                    <img
+                      src={aiProfile.avatar}
+                      alt={`${aiProfile.name} avatar`}
+                      className="w-11 h-11 rounded-full object-cover border-2 border-[var(--accent)]"
+                    />
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="h3 mb-0.5">{aiProfile.name}</div>
+                    <div className="sub text-sm text-[length:var(--font-sm)] opacity-80">
+                      {aiProfile.handle}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="row flex items-center gap-2.5">
@@ -723,6 +1181,132 @@ export default function AIFriendPage() {
           </div>
         )}
       </div>
+
+      {/* Friend Management Modal */}
+      {showFriendModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[var(--card)] rounded-lg border border-[var(--border)] max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-bold mb-4">
+                {editingFriend ? "Edit AI Friend" : "Create AI Friend"}
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Name (1-50 characters)
+                  </label>
+                  <input
+                    type="text"
+                    value={friendName}
+                    onChange={(e) => setFriendName(e.target.value)}
+                    maxLength={50}
+                    className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--text)]"
+                    placeholder="e.g., Alex, Sam, Jordan"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Description (10-500 characters)
+                  </label>
+                  <textarea
+                    value={friendDescription}
+                    onChange={(e) => setFriendDescription(e.target.value)}
+                    maxLength={500}
+                    rows={4}
+                    className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--text)] resize-none"
+                    placeholder="Describe how this friend should behave, their personality, interests, etc."
+                  />
+                  <div className="text-xs opacity-70 mt-1">
+                    {friendDescription.length}/500
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Logo (Optional)
+                  </label>
+                  
+                  {/* Default Logo Options */}
+                  <div className="mb-4">
+                    <div className="text-xs opacity-70 mb-2">Choose a default avatar:</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {defaultLogos.map((logo) => (
+                        <button
+                          key={logo.id}
+                          type="button"
+                          onClick={() => handleSelectDefaultLogo(logo.id)}
+                          className={`p-2 rounded-lg border-2 transition-all ${
+                            selectedDefaultLogo === logo.id
+                              ? "border-[var(--accent)] bg-[rgba(199,168,105,0.15)]"
+                              : "border-[var(--border)] hover:border-[var(--accent)]"
+                          }`}
+                        >
+                          <img
+                            src={logo.url}
+                            alt={logo.name}
+                            className="w-full aspect-square rounded-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Custom Upload */}
+                  <div className="border-t border-[var(--border)] pt-4">
+                    <div className="text-xs opacity-70 mb-2">Or upload your own (Max 2MB):</div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoFileChange}
+                      disabled={isUploadingLogo}
+                      className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--text)] disabled:opacity-50"
+                    />
+                    {isUploadingLogo && (
+                      <div className="text-xs text-[var(--accent)] mt-1">
+                        Uploading...
+                      </div>
+                    )}
+                    {(friendLogoUrl && !selectedDefaultLogo) && (
+                      <div className="mt-2">
+                        <img
+                          src={friendLogoUrl}
+                          alt="Logo preview"
+                          className="w-20 h-20 rounded-full object-cover border border-[var(--border)]"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowFriendModal(false);
+                    resetFriendForm();
+                  }}
+                  className="flex-1 px-4 py-2 bg-[var(--input-bg)] rounded-lg hover:bg-[var(--border)] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={editingFriend ? handleUpdateFriend : handleCreateFriend}
+                  disabled={
+                    !friendName.trim() ||
+                    !friendDescription.trim() ||
+                    friendDescription.length < 10
+                  }
+                  className="flex-1 px-4 py-2 bg-[var(--accent)] text-[#111] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                >
+                  {editingFriend ? "Update" : "Create"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

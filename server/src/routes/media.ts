@@ -2,10 +2,26 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { optionalAuth, authenticateToken, type AuthRequest } from '../middleware/auth.js';
 import { generateImage } from '../utils/imageGeneration.js';
-import { generateVideo } from '../utils/videoGeneration.js';
+import { generateVideo, generateVideoFromImage } from '../utils/videoGeneration.js';
 import { supabase } from '../lib/supabase.js';
+import multer from 'multer';
 
 const router = Router();
+
+// Configure multer for image uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit for images
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 // Image generation schema
 const imageSchema = z.object({
@@ -17,6 +33,13 @@ const imageSchema = z.object({
 const videoSchema = z.object({
   prompt: z.string().min(1, 'Prompt cannot be empty').max(500, 'Prompt too long'),
   duration: z.number().min(2).max(10).optional().default(5), // 2-10 seconds
+  aspectRatio: z.enum(['16:9', '9:16', '1:1']).optional().default('16:9')
+});
+
+// Image-to-video generation schema (for form data)
+const imageToVideoSchema = z.object({
+  prompt: z.string().max(500, 'Prompt too long').optional().default(''), // Optional description
+  duration: z.string().optional().default('5'), // Will be parsed to number
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).optional().default('16:9')
 });
 
@@ -258,6 +281,155 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
 
   } catch (error) {
     console.error('Video generation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/media/generate-video-from-image - Generate video from uploaded image
+router.post('/generate-video-from-image', optionalAuth, upload.single('image'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Image file is required' });
+    }
+
+    // Parse form data
+    const parse = imageToVideoSchema.safeParse({
+      prompt: req.body.prompt || '',
+      duration: req.body.duration || '5',
+      aspectRatio: req.body.aspectRatio || '16:9'
+    });
+
+    if (!parse.success) {
+      return res.status(400).json({ 
+        error: 'Invalid request', 
+        details: parse.error.flatten().fieldErrors 
+      });
+    }
+
+    const { prompt, duration: durationStr, aspectRatio } = parse.data;
+    const duration = parseInt(durationStr) || 5;
+
+    // Validate duration
+    if (duration < 2 || duration > 10) {
+      return res.status(400).json({ error: 'Duration must be between 2 and 10 seconds' });
+    }
+
+    console.log(`🎥 Image-to-video generation request: "${prompt || 'No description'}" (${duration}s, ${aspectRatio})`);
+
+    // Check premium status (video requires Pro or Max tier)
+    let premiumTier = 'free';
+    if (req.userId) {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('premium_tier, subscription_status, subscription_end_date')
+        .eq('user_id', req.userId)
+        .single();
+      
+      if (profile) {
+        const hasActiveSubscription = 
+          profile.subscription_status === 'active' && 
+          profile.subscription_end_date && 
+          new Date(profile.subscription_end_date) > new Date();
+        
+        if (hasActiveSubscription) {
+          premiumTier = profile.premium_tier || 'free';
+        }
+      }
+    }
+
+    // Video generation requires Pro or Max tier
+    if (premiumTier !== 'pro' && premiumTier !== 'max') {
+      return res.status(403).json({ 
+        error: 'Video generation requires Pro or Max subscription',
+        currentTier: premiumTier,
+        requiredTier: 'pro or max'
+      });
+    }
+
+    // Check daily video generation limits
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    
+    const { count: videoCount } = await supabase
+      .from('generated_media')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', req.userId)
+      .eq('media_type', 'video')
+      .gte('created_at', todayStart.toISOString());
+    
+    // Pro tier: 3 videos per day, Max tier: 6 videos per day
+    const dailyLimit = premiumTier === 'max' ? 6 : 3;
+    
+    if (videoCount && videoCount >= dailyLimit) {
+      return res.status(429).json({ 
+        error: `Daily video generation limit reached. ${premiumTier === 'pro' ? 'Upgrade to Max for 6 videos per day.' : 'You have reached your daily limit of 6 videos.'}`,
+        limit: dailyLimit,
+        used: videoCount,
+        tier: premiumTier
+      });
+    }
+
+    // Convert image buffer to base64 data URL
+    const imageBase64 = req.file.buffer.toString('base64');
+    const imageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
+
+    // Generate video from image using Gemini Veo or RunPod
+    console.log(`🎥 Generating video from image with ${premiumTier} tier (${videoCount || 0}/${dailyLimit} used today)`);
+    const video = await generateVideoFromImage(imageDataUrl, prompt || undefined, duration, aspectRatio);
+
+    if (!video) {
+      return res.status(500).json({ 
+        error: 'Failed to generate video from image. Please try again.' 
+      });
+    }
+
+    // Determine provider
+    const provider = video.url.includes('openai') ? 'openai' : video.url.includes('supabase') ? 'runpod' : 'gemini';
+
+    // Save to database
+    if (req.userId) {
+      try {
+        await supabase
+          .from('generated_media')
+          .insert({
+            user_id: req.userId,
+            media_type: 'video',
+            prompt: prompt || 'Video generated from image',
+            url: video.url,
+            provider: provider,
+            width: video.width,
+            height: video.height,
+            aspect_ratio: aspectRatio,
+            duration: duration,
+            metadata: {
+              model: provider === 'runpod' ? 'skyreels-i2v' : provider === 'gemini' ? 'veo-3.1' : 'sora',
+              source: 'image-to-video',
+              timestamp: new Date().toISOString()
+            }
+          });
+        console.log('✅ Video saved to database');
+      } catch (dbError) {
+        console.error('Failed to save video to database:', dbError);
+        // Don't fail the request if DB save fails
+      }
+    }
+
+    res.json({
+      success: true,
+      video: {
+        url: video.url,
+        prompt: prompt || 'Video generated from image',
+        duration: video.duration,
+        width: video.width,
+        height: video.height,
+        aspectRatio: aspectRatio,
+        provider: provider,
+        source: 'image'
+      }
+    });
+
+  } catch (error) {
+    console.error('Image-to-video generation error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

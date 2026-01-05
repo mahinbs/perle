@@ -96,10 +96,16 @@ function getTokenLimit(mode: Mode): number {
   }
 }
 
-// Get system prompt based on chat mode
-function getSystemPrompt(chatMode: ChatMode = 'normal'): string {
+// Get system prompt based on chat mode and optional AI friend description
+function getSystemPrompt(chatMode: ChatMode = 'normal', friendDescription?: string | null, friendName?: string | null): string {
   switch (chatMode) {
     case 'ai_friend':
+      // If custom friend description is provided, use it; otherwise use default
+      if (friendDescription && friendName) {
+        return `You are ${friendName}, a friend having a casual conversation. ${friendDescription}
+
+Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.`;
+      }
       return `You are a warm, supportive friend having a casual conversation. Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.`;
     
     case 'ai_psychologist':
@@ -143,7 +149,9 @@ export async function generateOpenAIAnswer(
   mode: Mode,
   model: LLMModel,
   conversationHistory: ConversationMessage[] = [],
-  chatMode: ChatMode = 'normal'
+  chatMode: ChatMode = 'normal',
+  friendDescription?: string | null,
+  friendName?: string | null
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -174,8 +182,8 @@ export async function generateOpenAIAnswer(
   }
   const client = new OpenAI({ apiKey });
 
-  // Get system prompt based on chat mode
-  const sys = getSystemPrompt(chatMode);
+  // Get system prompt based on chat mode and friend description
+  const sys = getSystemPrompt(chatMode, friendDescription, friendName);
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -259,7 +267,9 @@ export async function generateGeminiAnswer(
   model: LLMModel,
   isPremium: boolean = false,
   conversationHistory: ConversationMessage[] = [],
-  chatMode: ChatMode = 'normal'
+  chatMode: ChatMode = 'normal',
+  friendDescription?: string | null,
+  friendName?: string | null
 ): Promise<AnswerResult> {
   // Use separate API keys for free vs premium users
   // For premium: prefer GOOGLE_API_KEY, fallback to GOOGLE_API_KEY_FREE
@@ -309,8 +319,8 @@ export async function generateGeminiAnswer(
 
   const modelInstance = genAI.getGenerativeModel({ model: geminiModel });
 
-  // Get system prompt based on chat mode
-  const sys = getSystemPrompt(chatMode);
+  // Get system prompt based on chat mode and friend description
+  const sys = getSystemPrompt(chatMode, friendDescription, friendName);
   
   // Build conversation context from history
   let contextPrompt = '';
@@ -462,7 +472,9 @@ export async function generateClaudeAnswer(
   mode: Mode,
   model: LLMModel,
   conversationHistory: ConversationMessage[] = [],
-  chatMode: ChatMode = 'normal'
+  chatMode: ChatMode = 'normal',
+  friendDescription?: string | null,
+  friendName?: string | null
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -493,8 +505,8 @@ export async function generateClaudeAnswer(
   }
   const client = new Anthropic({ apiKey });
 
-  // Get system prompt based on chat mode
-  const sys = getSystemPrompt(chatMode);
+  // Get system prompt based on chat mode and friend description
+  const sys = getSystemPrompt(chatMode, friendDescription, friendName);
   
   // Build messages array with conversation history
   const messages: any[] = [];
@@ -583,7 +595,9 @@ export async function generateGrokAnswer(
   mode: Mode,
   model: LLMModel,
   conversationHistory: ConversationMessage[] = [],
-  chatMode: ChatMode = 'normal'
+  chatMode: ChatMode = 'normal',
+  friendDescription?: string | null,
+  friendName?: string | null
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -619,8 +633,8 @@ export async function generateGrokAnswer(
     baseURL: 'https://api.x.ai/v1'
   });
 
-  // Get system prompt based on chat mode
-  const sys = getSystemPrompt(chatMode);
+  // Get system prompt based on chat mode and friend description
+  const sys = getSystemPrompt(chatMode, friendDescription, friendName);
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -731,23 +745,25 @@ export async function generateAIAnswer(
   model: LLMModel,
   isPremium: boolean = false,
   conversationHistory: ConversationMessage[] = [],
-  chatMode: ChatMode = 'normal'
+  chatMode: ChatMode = 'normal',
+  friendDescription?: string | null,
+  friendName?: string | null
 ): Promise<AnswerResult> {
   // Route to appropriate provider based on model
   let result: AnswerResult;
   
   if (model === 'gpt-5' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
-    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode);
+    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName);
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode);
+    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName);
   } else if (model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
-    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode);
+    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
-    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode);
+    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName);
   } else {
     // Fallback to Gemini Lite for unknown models
-    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode);
+    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName);
   }
   
   // Add image generation for normal mode if query requires it

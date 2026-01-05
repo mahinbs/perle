@@ -422,8 +422,110 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     return data.video;
   };
 
+  // Generate video from image
+  const generateVideoFromImage = async (
+    imageFile: File,
+    prompt?: string,
+    duration: number = 5,
+    aspectRatio: string = "16:9"
+  ): Promise<{
+    url: string;
+    prompt: string;
+    duration: number;
+    width: number;
+    height: number;
+    aspectRatio: string;
+    provider: string;
+  }> => {
+    const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
+    if (!baseUrl) {
+      throw new Error(
+        "API URL not configured. Please set VITE_API_URL in your .env file."
+      );
+    }
+
+    const formData = new FormData();
+    formData.append("image", imageFile);
+    if (prompt) {
+      formData.append("prompt", prompt);
+    }
+    formData.append("duration", duration.toString());
+    formData.append("aspectRatio", aspectRatio);
+
+    const authHeaders = getAuthHeaders();
+    const res = await fetch(
+      `${baseUrl.replace(/\/+$/, "")}/api/media/generate-video-from-image`,
+      {
+        method: "POST",
+        headers: {
+          ...(authHeaders.Authorization && { Authorization: authHeaders.Authorization }),
+        },
+        body: formData,
+      }
+    );
+
+    if (!res.ok) {
+      const errorData = await res
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
+      throw new Error(
+        errorData.error || `Video generation failed with status ${res.status}`
+      );
+    }
+
+    const data = await res.json();
+    return data.video;
+  };
+
   // Handle tool generation
   const handleGenerateMedia = async () => {
+    // For video mode with attached image, use image-to-video
+    if (toolMode === "video" && toolAttachedImages.length > 0) {
+      const imageFile = toolAttachedImages[0].file;
+      const promptToUse = toolDescription.trim() || undefined; // Optional prompt
+      
+      setIsGenerating(true);
+      setGeneratingPrompt(promptToUse || "Generating video from image...");
+      setGeneratedMedia(null);
+      setToolDescription(""); // Clear the input immediately
+
+      try {
+        const result = await generateVideoFromImage(imageFile, promptToUse, 5, "16:9");
+        setGeneratedMedia({
+          type: "video",
+          url: result.url,
+          prompt: result.prompt,
+        });
+        showToast({
+          message: "Video generated from image successfully!",
+          type: "success",
+          duration: 3000,
+        });
+        // Clear attached image after successful generation
+        setToolAttachedImages([]);
+      } catch (error: any) {
+        console.error("Image-to-video generation error:", error);
+        let errorMessage = "Failed to generate video from image. Please try again.";
+
+        if (error.message) {
+          errorMessage = error.message;
+        } else if (typeof error === "string") {
+          errorMessage = error;
+        }
+
+        showToast({
+          message: errorMessage,
+          type: "error",
+          duration: 5000,
+        });
+      } finally {
+        setIsGenerating(false);
+        setGeneratingPrompt("");
+      }
+      return;
+    }
+
+    // For regular text-to-image or text-to-video
     if (!toolDescription.trim()) {
       showToast({
         message: "Please enter a description",
@@ -1183,6 +1285,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               placeholder={
                 toolMode === "image"
                   ? "Describe your image"
+                  : toolAttachedImages.length > 0
+                  ? "Describe your video (optional)"
                   : "Describe your video"
               }
               value={toolDescription}
@@ -1475,18 +1579,33 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <button
                 className="btn !border-[#dfb768] !text-black"
                 onClick={handleGenerateMedia}
-                disabled={isGenerating || !toolDescription.trim()}
+                disabled={
+                  isGenerating ||
+                  (!toolDescription.trim() &&
+                    !(toolMode === "video" && toolAttachedImages.length > 0))
+                }
                 aria-label={
-                  toolMode === "image" ? "Generate image" : "Generate video"
+                  toolMode === "image"
+                    ? "Generate image"
+                    : toolAttachedImages.length > 0
+                    ? "Generate video from image"
+                    : "Generate video"
                 }
                 style={{
                   padding: "4px 12px",
                   fontSize: "var(--font-md)",
                   background: "var(--accent)",
                   color: "white",
-                  opacity: isGenerating || !toolDescription.trim() ? 0.6 : 1,
+                  opacity:
+                    isGenerating ||
+                    (!toolDescription.trim() &&
+                      !(toolMode === "video" && toolAttachedImages.length > 0))
+                      ? 0.6
+                      : 1,
                   cursor:
-                    isGenerating || !toolDescription.trim()
+                    isGenerating ||
+                    (!toolDescription.trim() &&
+                      !(toolMode === "video" && toolAttachedImages.length > 0))
                       ? "not-allowed"
                       : "pointer",
                   display: "flex",
