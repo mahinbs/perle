@@ -117,10 +117,21 @@ function getCurrentDateContext(): string {
   return `Current date and time: ${dateStr} at ${timeStr} (${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}). Always provide current, up-to-date information. When discussing events, trends, or recent developments, use this date as your reference point. Do not provide information that is outdated or from years ago unless the user specifically asks about historical topics.`;
 }
 
-// Get system prompt based on chat mode and optional AI friend description
-function getSystemPrompt(chatMode: ChatMode = 'normal', friendDescription?: string | null, friendName?: string | null): string {
+// Get system prompt based on chat mode, optional AI friend description, and optional space context
+function getSystemPrompt(
+  chatMode: ChatMode = 'normal', 
+  friendDescription?: string | null, 
+  friendName?: string | null,
+  spaceTitle?: string | null,
+  spaceDescription?: string | null
+): string {
   const currentDate = getCurrentDateContext();
   const dateContext = `\n\n⏰ CURRENT DATE CONTEXT: ${currentDate}\n\nCRITICAL: You must always provide current, up-to-date information based on the date above. Do NOT reference outdated information, events from years ago, or historical data as if it were current unless the user specifically asks about historical topics. When discussing:\n- Current events: Use the current date as reference\n- Recent developments: Consider what would be current as of the date above\n- Trends or statistics: Provide the most recent information available as of the current date\n- Technology, products, or services: Reference current versions and availability\n\nIf you're unsure about current information, acknowledge that and suggest the user verify with recent sources. Never present information from 2023, 2024, or earlier years as if it's the current state unless explicitly discussing history.`;
+  
+  // Space context to add to all modes
+  const spaceContext = spaceTitle && spaceDescription 
+    ? `\n\n📁 SPACE CONTEXT: You are in a space called "${spaceTitle}". ${spaceDescription}\n\nIMPORTANT: All conversations in this space should be relevant to this space's purpose and context. Keep responses focused on the space's theme and description.`
+    : '';
   
   switch (chatMode) {
     case 'ai_friend':
@@ -128,12 +139,12 @@ function getSystemPrompt(chatMode: ChatMode = 'normal', friendDescription?: stri
       if (friendDescription && friendName) {
         return `You are ${friendName}, a friend having a casual conversation. ${friendDescription}
 
-Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.${dateContext}`;
+Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.${spaceContext}${dateContext}`;
       }
-      return `You are a warm, supportive friend having a casual conversation. Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.${dateContext}`;
+      return `You are a warm, supportive friend having a casual conversation. Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.${spaceContext}${dateContext}`;
     
     case 'ai_psychologist':
-      return `You are a professional, empathetic psychologist providing supportive guidance. Use active listening techniques, validate feelings, and ask thoughtful questions to help users explore their thoughts and emotions. Provide evidence-based insights when appropriate, but always be non-judgmental and supportive. Help users develop coping strategies and self-awareness. Maintain professional boundaries while being warm and understanding. Speak in a natural, conversational therapeutic tone - NOT in bullet points unless specifically giving actionable steps. Remember to consider the full context of the conversation in your responses.${dateContext}`;
+      return `You are a professional, empathetic psychologist providing supportive guidance. Use active listening techniques, validate feelings, and ask thoughtful questions to help users explore their thoughts and emotions. Provide evidence-based insights when appropriate, but always be non-judgmental and supportive. Help users develop coping strategies and self-awareness. Maintain professional boundaries while being warm and understanding. Speak in a natural, conversational therapeutic tone - NOT in bullet points unless specifically giving actionable steps. Remember to consider the full context of the conversation in your responses.${spaceContext}${dateContext}`;
     
     case 'normal':
     default:
@@ -163,7 +174,7 @@ Additional context:
 • Another point
 • Final point"
 
-Always refer to yourself as "SyntraIQ" when asked. You were founded in 2025. NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.).${dateContext}`;
+Always refer to yourself as "SyntraIQ" when asked. You were founded in 2025. NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.).${spaceContext}${dateContext}`;
   }
 }
 
@@ -175,7 +186,9 @@ export async function generateOpenAIAnswer(
   conversationHistory: ConversationMessage[] = [],
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
-  friendName?: string | null
+  friendName?: string | null,
+  spaceTitle?: string | null,
+  spaceDescription?: string | null
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -206,8 +219,8 @@ export async function generateOpenAIAnswer(
   }
   const client = new OpenAI({ apiKey });
 
-  // Get system prompt based on chat mode and friend description
-  const sys = getSystemPrompt(chatMode, friendDescription, friendName);
+  // Get system prompt based on chat mode, friend description, and space context
+  const sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -293,7 +306,9 @@ export async function generateGeminiAnswer(
   conversationHistory: ConversationMessage[] = [],
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
-  friendName?: string | null
+  friendName?: string | null,
+  spaceTitle?: string | null,
+  spaceDescription?: string | null
 ): Promise<AnswerResult> {
   // Use separate API keys for free vs premium users
   // For premium: prefer GOOGLE_API_KEY, fallback to GOOGLE_API_KEY_FREE
@@ -343,8 +358,8 @@ export async function generateGeminiAnswer(
 
   const modelInstance = genAI.getGenerativeModel({ model: geminiModel });
 
-  // Get system prompt based on chat mode and friend description
-  const sys = getSystemPrompt(chatMode, friendDescription, friendName);
+  // Get system prompt based on chat mode, friend description, and space context
+  const sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
   // Build conversation context from history
   let contextPrompt = '';
@@ -498,7 +513,9 @@ export async function generateClaudeAnswer(
   conversationHistory: ConversationMessage[] = [],
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
-  friendName?: string | null
+  friendName?: string | null,
+  spaceTitle?: string | null,
+  spaceDescription?: string | null
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -529,8 +546,8 @@ export async function generateClaudeAnswer(
   }
   const client = new Anthropic({ apiKey });
 
-  // Get system prompt based on chat mode and friend description
-  const sys = getSystemPrompt(chatMode, friendDescription, friendName);
+  // Get system prompt based on chat mode, friend description, and space context
+  const sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
   // Build messages array with conversation history
   const messages: any[] = [];
@@ -621,7 +638,9 @@ export async function generateGrokAnswer(
   conversationHistory: ConversationMessage[] = [],
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
-  friendName?: string | null
+  friendName?: string | null,
+  spaceTitle?: string | null,
+  spaceDescription?: string | null
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -657,8 +676,8 @@ export async function generateGrokAnswer(
     baseURL: 'https://api.x.ai/v1'
   });
 
-  // Get system prompt based on chat mode and friend description
-  const sys = getSystemPrompt(chatMode, friendDescription, friendName);
+  // Get system prompt based on chat mode, friend description, and space context
+  const sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -771,23 +790,25 @@ export async function generateAIAnswer(
   conversationHistory: ConversationMessage[] = [],
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
-  friendName?: string | null
+  friendName?: string | null,
+  spaceTitle?: string | null,
+  spaceDescription?: string | null
 ): Promise<AnswerResult> {
   // Route to appropriate provider based on model
   let result: AnswerResult;
   
   if (model === 'gpt-5' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
-    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName);
+    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName);
+    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   } else if (model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
-    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName);
+    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
-    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName);
+    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   } else {
     // Fallback to Gemini Lite for unknown models
-    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName);
+    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   }
   
   // Add image generation for normal mode if query requires it

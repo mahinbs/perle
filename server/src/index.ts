@@ -11,6 +11,7 @@ import adminRouter from './routes/admin.js';
 import chatRouter from './routes/chat.js';
 import mediaRouter from './routes/media.js';
 import aiFriendsRouter from './routes/aiFriends.js';
+import spacesRouter from './routes/spaces.js';
 import { errorHandler } from './utils/errorHandler.js';
 import { cleanupExpiredSessions } from './utils/auth.js';
 
@@ -55,6 +56,7 @@ app.use('/api', adminRouter);
 app.use('/api', chatRouter);
 app.use('/api/media', mediaRouter);
 app.use('/api', aiFriendsRouter);
+app.use('/api', spacesRouter);
 
 // 404 handler
 app.use((_req, res) => {

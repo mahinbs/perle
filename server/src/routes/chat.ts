@@ -41,7 +41,8 @@ const chatSchema = z.object({
   ]).optional().default('gemini-lite'),
   newConversation: z.boolean().optional().default(false),
   chatMode: z.enum(['normal', 'ai_friend', 'ai_psychologist']).optional().default('normal'),
-  aiFriendId: z.string().uuid().optional() // Optional AI friend ID for custom friends
+  aiFriendId: z.string().uuid().optional(), // Optional AI friend ID for custom friends
+  spaceId: z.string().uuid().optional() // Optional space ID for space-specific conversations
 });
 
 // Chat endpoint for AI Friend
@@ -55,7 +56,7 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const { message, model, newConversation, chatMode, aiFriendId } = parse.data;
+    const { message, model, newConversation, chatMode, aiFriendId, spaceId } = parse.data;
     const trimmedMessage = message.trim();
 
     if (!trimmedMessage) {
@@ -81,6 +82,42 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       } catch (friendError) {
         console.warn('Failed to fetch AI friend:', friendError);
         // Continue without friend description if fetch fails
+      }
+    }
+
+    // Fetch space details if spaceId is provided
+    let spaceTitle: string | null = null;
+    let spaceDescription: string | null = null;
+    if (spaceId && req.userId) {
+      try {
+        // First try to get as owner
+        const { data: ownSpace } = await supabase
+          .from('spaces')
+          .select('title, description')
+          .eq('id', spaceId)
+          .eq('user_id', req.userId)
+          .single();
+
+        if (ownSpace) {
+          spaceTitle = ownSpace.title;
+          spaceDescription = ownSpace.description;
+        } else {
+          // If not owner, check if it's public
+          const { data: publicSpace } = await supabase
+            .from('spaces')
+            .select('title, description')
+            .eq('id', spaceId)
+            .eq('is_public', true)
+            .single();
+
+          if (publicSpace) {
+            spaceTitle = publicSpace.title;
+            spaceDescription = publicSpace.description;
+          }
+        }
+      } catch (spaceError) {
+        console.warn('Failed to fetch space:', spaceError);
+        // Continue without space context if fetch fails
       }
     }
 
@@ -124,18 +161,27 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       console.log(`✅ Premium user - using ${actualModel} for ${chatMode} mode`);
     }
 
-    // Fetch conversation history for context - ISOLATED BY CHAT MODE
+    // Fetch conversation history for context - ISOLATED BY CHAT MODE AND SPACE
     // Free users: 5 messages, Premium users: 20 messages
-    // Context is isolated per user AND chat mode (no mixing between modes)
+    // Context is isolated per user, chat mode, AND space (no mixing between spaces)
     let conversationHistory: ConversationMessage[] = [];
     if (req.userId && !newConversation) {
       try {
         const messageLimit = isPremium ? 20 : 5; // Premium: 20, Free: 5
-        const { data: history } = await supabase
+        let query = supabase
           .from('conversation_history')
           .select('query, answer')
           .eq('user_id', req.userId)
-          .eq('chat_mode', chatMode) // Filter by chat mode - ensures separate histories
+          .eq('chat_mode', chatMode); // Filter by chat mode - ensures separate histories
+        
+        // If spaceId is provided, filter by space. Otherwise, only get non-space conversations
+        if (spaceId) {
+          query = query.eq('space_id', spaceId);
+        } else {
+          query = query.is('space_id', null);
+        }
+        
+        const { data: history } = await query
           .order('created_at', { ascending: false })
           .limit(messageLimit);
         
@@ -152,15 +198,24 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
     
-    // If starting new conversation, clear existing history for this user and chat mode
-    // Only clears the specific chat mode's history, not all histories
+    // If starting new conversation, clear existing history for this user, chat mode, and space
+    // Only clears the specific chat mode's and space's history, not all histories
     if (req.userId && newConversation) {
       try {
-        await supabase
+        let deleteQuery = supabase
           .from('conversation_history')
           .delete()
           .eq('user_id', req.userId)
           .eq('chat_mode', chatMode); // Only clear this specific chat mode's history
+        
+        // If spaceId is provided, clear only that space's history. Otherwise, clear non-space conversations
+        if (spaceId) {
+          deleteQuery = deleteQuery.eq('space_id', spaceId);
+        } else {
+          deleteQuery = deleteQuery.is('space_id', null);
+        }
+        
+        await deleteQuery;
       } catch (clearError) {
         console.warn('Failed to clear conversation history:', clearError);
         // Continue even if clear fails
@@ -170,8 +225,8 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
     // Generate answer using AI provider with chat mode
     let result;
     try {
-      // Pass chat mode and AI friend description to AI provider for appropriate system prompts
-      result = await generateAIAnswer(trimmedMessage, 'Ask', actualModel, isPremium, conversationHistory, chatMode, aiFriendDescription, aiFriendName);
+      // Pass chat mode, AI friend description, and space context to AI provider for appropriate system prompts
+      result = await generateAIAnswer(trimmedMessage, 'Ask', actualModel, isPremium, conversationHistory, chatMode, aiFriendDescription, aiFriendName, spaceTitle, spaceDescription);
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
       const errorMessage = apiError?.message || 'Failed to generate answer';
@@ -197,17 +252,27 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
             answer: answerText,
             mode: 'Ask',
             model: actualModel,
-            chat_mode: chatMode // Save with chat mode for isolation
+            chat_mode: chatMode, // Save with chat mode for isolation
+            space_id: spaceId || null // Save with space ID for isolation
           });
         
         // Keep only last N messages per user per chat mode (cleanup old ones)
         // Free: 5 messages, Premium: 20 messages
         const maxHistory = isPremium ? 20 : 5;
-        const { data: allHistory } = await supabase
+        let cleanupQuery = supabase
           .from('conversation_history')
           .select('id')
           .eq('user_id', req.userId)
-          .eq('chat_mode', chatMode) // Filter by chat mode
+          .eq('chat_mode', chatMode); // Filter by chat mode
+        
+        // If spaceId is provided, filter by space. Otherwise, only get non-space conversations
+        if (spaceId) {
+          cleanupQuery = cleanupQuery.eq('space_id', spaceId);
+        } else {
+          cleanupQuery = cleanupQuery.is('space_id', null);
+        }
+        
+        const { data: allHistory } = await cleanupQuery
           .order('created_at', { ascending: false });
         
         if (allHistory && allHistory.length > maxHistory) {
@@ -271,11 +336,23 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
     // Context is isolated per user AND chat mode (no mixing between modes)
     const messageLimit = isPremium ? 20 : 5;
 
-    const { data: history } = await supabase
+    // Get spaceId from query parameter if provided
+    const spaceId = req.query.spaceId as string | undefined;
+    
+    let historyQuery = supabase
       .from('conversation_history')
       .select('query, answer, created_at')
       .eq('user_id', req.userId) // Isolated per user
-      .eq('chat_mode', chatMode) // Isolated per chat mode - ensures separate histories
+      .eq('chat_mode', chatMode); // Isolated per chat mode - ensures separate histories
+    
+    // If spaceId is provided, filter by space. Otherwise, only get non-space conversations
+    if (spaceId) {
+      historyQuery = historyQuery.eq('space_id', spaceId);
+    } else {
+      historyQuery = historyQuery.is('space_id', null);
+    }
+    
+    const { data: history } = await historyQuery
       .order('created_at', { ascending: true })
       .limit(messageLimit);
 
