@@ -258,39 +258,59 @@ router.post('/auth/login', async (req, res) => {
     const subscriptionEndDate = (profile as any)?.subscription_end_date;
 
     // Check if subscription is expired
+    // Valid statuses: 'active', 'inactive', 'cancelled', 'expired', 'paused'
     if (subscriptionEndDate) {
       const endDate = new Date(subscriptionEndDate);
       const now = new Date();
       
-      if (endDate < now && (subscriptionStatus === 'active' || subscriptionStatus === 'cancelled')) {
-        // Subscription expired - auto-downgrade to free
-        subscriptionStatus = 'expired';
-        premiumTier = 'free';
-        isPremium = false;
-        
-        // Update database
-        await supabase
-          .from('user_profiles')
-          .update({
-            premium_tier: 'free',
-            is_premium: false,
-            subscription_status: 'expired'
-          } as any)
-          .eq('user_id', authData.user.id);
-      } else if (subscriptionStatus === 'active' && endDate >= now) {
-        // Active subscription
-        isPremium = premiumTier !== 'free';
-      } else {
-        // Inactive or other status
-        isPremium = false;
-        if (premiumTier !== 'free') {
+      if (endDate < now) {
+        // Subscription period has ended
+        if (subscriptionStatus === 'active' || subscriptionStatus === 'cancelled' || subscriptionStatus === 'paused') {
+          // Subscription expired - auto-downgrade to free
+          subscriptionStatus = 'expired';
           premiumTier = 'free';
+          isPremium = false;
+          
+          // Update database
+          await supabase
+            .from('user_profiles')
+            .update({
+              premium_tier: 'free',
+              is_premium: false,
+              subscription_status: 'expired'
+            } as any)
+            .eq('user_id', authData.user.id);
+        } else if (subscriptionStatus === 'expired' || subscriptionStatus === 'inactive') {
+          // Already expired or inactive
+          isPremium = false;
+          premiumTier = 'free';
+        }
+      } else {
+        // Subscription period hasn't ended yet
+        if (subscriptionStatus === 'active') {
+          // Active subscription
+          isPremium = premiumTier !== 'free';
+        } else if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'paused') {
+          // Cancelled or paused but still has access until endDate
+          isPremium = premiumTier !== 'free';
+        } else {
+          // Inactive or expired (but endDate hasn't passed - shouldn't happen, but handle it)
+          isPremium = false;
+          if (premiumTier !== 'free') {
+            premiumTier = 'free';
+          }
         }
       }
     } else {
-      // No subscription end date - treat as free
-      isPremium = false;
-      premiumTier = 'free';
+      // No subscription end date
+      if (subscriptionStatus === 'active') {
+        // Active but no end date - treat as premium (edge case)
+        isPremium = premiumTier !== 'free';
+      } else {
+        // Inactive, cancelled, expired, or paused without end date - treat as free
+        isPremium = false;
+        premiumTier = 'free';
+      }
     }
 
     res.json({
@@ -370,39 +390,59 @@ router.get('/auth/verify', authenticateToken, async (req: AuthRequest, res) => {
     const subscriptionEndDate = (profile as any)?.subscription_end_date;
 
     // Check if subscription is expired
+    // Valid statuses: 'active', 'inactive', 'cancelled', 'expired', 'paused'
     if (subscriptionEndDate) {
       const endDate = new Date(subscriptionEndDate);
       const now = new Date();
       
-      if (endDate < now && (subscriptionStatus === 'active' || subscriptionStatus === 'cancelled')) {
-        // Subscription expired - auto-downgrade to free
-        subscriptionStatus = 'expired';
-        premiumTier = 'free';
-        isPremium = false;
-        
-        // Update database
-        await supabase
-          .from('user_profiles')
-          .update({
-            premium_tier: 'free',
-            is_premium: false,
-            subscription_status: 'expired'
-          } as any)
-          .eq('user_id', user.id);
-      } else if (subscriptionStatus === 'active' && endDate >= now) {
-        // Active subscription
-        isPremium = premiumTier !== 'free';
-      } else {
-        // Inactive or other status
-        isPremium = false;
-        if (premiumTier !== 'free') {
+      if (endDate < now) {
+        // Subscription period has ended
+        if (subscriptionStatus === 'active' || subscriptionStatus === 'cancelled' || subscriptionStatus === 'paused') {
+          // Subscription expired - auto-downgrade to free
+          subscriptionStatus = 'expired';
           premiumTier = 'free';
+          isPremium = false;
+          
+          // Update database
+          await supabase
+            .from('user_profiles')
+            .update({
+              premium_tier: 'free',
+              is_premium: false,
+              subscription_status: 'expired'
+            } as any)
+            .eq('user_id', user.id);
+        } else if (subscriptionStatus === 'expired' || subscriptionStatus === 'inactive') {
+          // Already expired or inactive
+          isPremium = false;
+          premiumTier = 'free';
+        }
+      } else {
+        // Subscription period hasn't ended yet
+        if (subscriptionStatus === 'active') {
+          // Active subscription
+          isPremium = premiumTier !== 'free';
+        } else if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'paused') {
+          // Cancelled or paused but still has access until endDate
+          isPremium = premiumTier !== 'free';
+        } else {
+          // Inactive or expired (but endDate hasn't passed - shouldn't happen, but handle it)
+          isPremium = false;
+          if (premiumTier !== 'free') {
+            premiumTier = 'free';
+          }
         }
       }
     } else {
-      // No subscription end date - treat as free
-      isPremium = false;
-      premiumTier = 'free';
+      // No subscription end date
+      if (subscriptionStatus === 'active') {
+        // Active but no end date - treat as premium (edge case)
+        isPremium = premiumTier !== 'free';
+      } else {
+        // Inactive, cancelled, expired, or paused without end date - treat as free
+        isPremium = false;
+        premiumTier = 'free';
+      }
     }
 
     res.json({
