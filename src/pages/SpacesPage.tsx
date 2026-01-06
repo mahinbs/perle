@@ -9,7 +9,7 @@ import {
   FaTimes,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, getAuthHeaders, getAuthToken, isAuthenticated } from "../utils/auth";
+import { getUserData, getAuthHeaders, getAuthToken, isAuthenticated, removeAuthToken } from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
@@ -166,6 +166,13 @@ export default function SpacesPage() {
           headers: getAuthHeaders(),
         }
       );
+
+      // Handle 401 - user logged out
+      if (response.status === 401) {
+        removeAuthToken();
+        // Silently handle - don't show error for history loading
+        return;
+      }
 
       if (response.ok) {
         const data = await response.json();
@@ -377,6 +384,13 @@ export default function SpacesPage() {
           newConversation: newConversation,
         }),
       });
+
+      // Handle 401 - user logged out, continue as free user
+      if (response.status === 401) {
+        removeAuthToken();
+        // Continue with free user experience - don't redirect
+        return;
+      }
 
       if (response.ok) {
         const data = await response.json();

@@ -251,6 +251,48 @@ router.post('/auth/login', async (req, res) => {
       .eq('user_id', authData.user.id)
       .single();
 
+    // Check subscription status and auto-downgrade if expired
+    let premiumTier = (profile as any)?.premium_tier || 'free';
+    let subscriptionStatus = (profile as any)?.subscription_status || 'inactive';
+    let isPremium = false;
+    const subscriptionEndDate = (profile as any)?.subscription_end_date;
+
+    // Check if subscription is expired
+    if (subscriptionEndDate) {
+      const endDate = new Date(subscriptionEndDate);
+      const now = new Date();
+      
+      if (endDate < now && (subscriptionStatus === 'active' || subscriptionStatus === 'cancelled')) {
+        // Subscription expired - auto-downgrade to free
+        subscriptionStatus = 'expired';
+        premiumTier = 'free';
+        isPremium = false;
+        
+        // Update database
+        await supabase
+          .from('user_profiles')
+          .update({
+            premium_tier: 'free',
+            is_premium: false,
+            subscription_status: 'expired'
+          } as any)
+          .eq('user_id', authData.user.id);
+      } else if (subscriptionStatus === 'active' && endDate >= now) {
+        // Active subscription
+        isPremium = premiumTier !== 'free';
+      } else {
+        // Inactive or other status
+        isPremium = false;
+        if (premiumTier !== 'free') {
+          premiumTier = 'free';
+        }
+      }
+    } else {
+      // No subscription end date - treat as free
+      isPremium = false;
+      premiumTier = 'free';
+    }
+
     res.json({
       token: authData.session.access_token,
       user: {
@@ -261,7 +303,14 @@ router.post('/auth/login', async (req, res) => {
         darkMode: profile?.dark_mode ?? false,
         searchHistory: profile?.search_history ?? true,
         voiceSearch: profile?.voice_search ?? true,
-        isPremium: (profile as any)?.is_premium ?? false
+        isPremium: isPremium,
+        premiumTier: premiumTier,
+        subscription: {
+          status: subscriptionStatus,
+          tier: premiumTier,
+          endDate: subscriptionEndDate || null,
+          autoRenew: (profile as any)?.auto_renew ?? false
+        }
       }
     });
   } catch (error) {
@@ -314,6 +363,48 @@ router.get('/auth/verify', authenticateToken, async (req: AuthRequest, res) => {
       .eq('user_id', user.id)
       .single();
 
+    // Check subscription status and auto-downgrade if expired
+    let premiumTier = (profile as any)?.premium_tier || 'free';
+    let subscriptionStatus = (profile as any)?.subscription_status || 'inactive';
+    let isPremium = false;
+    const subscriptionEndDate = (profile as any)?.subscription_end_date;
+
+    // Check if subscription is expired
+    if (subscriptionEndDate) {
+      const endDate = new Date(subscriptionEndDate);
+      const now = new Date();
+      
+      if (endDate < now && (subscriptionStatus === 'active' || subscriptionStatus === 'cancelled')) {
+        // Subscription expired - auto-downgrade to free
+        subscriptionStatus = 'expired';
+        premiumTier = 'free';
+        isPremium = false;
+        
+        // Update database
+        await supabase
+          .from('user_profiles')
+          .update({
+            premium_tier: 'free',
+            is_premium: false,
+            subscription_status: 'expired'
+          } as any)
+          .eq('user_id', user.id);
+      } else if (subscriptionStatus === 'active' && endDate >= now) {
+        // Active subscription
+        isPremium = premiumTier !== 'free';
+      } else {
+        // Inactive or other status
+        isPremium = false;
+        if (premiumTier !== 'free') {
+          premiumTier = 'free';
+        }
+      }
+    } else {
+      // No subscription end date - treat as free
+      isPremium = false;
+      premiumTier = 'free';
+    }
+
     res.json({
       user: {
         id: user.id,
@@ -323,7 +414,14 @@ router.get('/auth/verify', authenticateToken, async (req: AuthRequest, res) => {
         darkMode: profile?.dark_mode ?? false,
         searchHistory: profile?.search_history ?? true,
         voiceSearch: profile?.voice_search ?? true,
-        isPremium: (profile as any)?.is_premium ?? false
+        isPremium: isPremium,
+        premiumTier: premiumTier,
+        subscription: {
+          status: subscriptionStatus,
+          tier: premiumTier,
+          endDate: subscriptionEndDate || null,
+          autoRenew: (profile as any)?.auto_renew ?? false
+        }
       }
     });
   } catch (error) {

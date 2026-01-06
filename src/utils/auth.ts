@@ -18,6 +18,13 @@ export interface User {
   searchHistory: boolean;
   voiceSearch: boolean;
   isPremium?: boolean;
+  premiumTier?: 'free' | 'pro' | 'max';
+  subscription?: {
+    status: string;
+    tier: string;
+    endDate: string | null;
+    autoRenew: boolean;
+  };
 }
 
 export interface AuthResponse {
@@ -171,6 +178,12 @@ export async function verifyToken(): Promise<User | null> {
       headers: getAuthHeaders(),
     });
 
+    // If 401, token is invalid - silently clear and return null
+    if (response.status === 401) {
+      removeAuthToken();
+      return null;
+    }
+
     if (!response.ok) {
       removeAuthToken();
       return null;
@@ -180,7 +193,7 @@ export async function verifyToken(): Promise<User | null> {
     setUserData(data.user);
     return data.user;
   } catch (error) {
-    console.error('Token verification error:', error);
+    // Silently handle errors - don't show error messages for token verification
     removeAuthToken();
     return null;
   }
@@ -188,5 +201,56 @@ export async function verifyToken(): Promise<User | null> {
 
 export function isAuthenticated(): boolean {
   return getAuthToken() !== null;
+}
+
+// Helper function to handle API responses and check for authentication errors
+export async function handleApiResponse<T>(
+  response: Response,
+  onUnauthorized?: () => void
+): Promise<T> {
+  // If 401 Unauthorized, clear auth and handle gracefully
+  if (response.status === 401) {
+    removeAuthToken();
+    if (onUnauthorized) {
+      onUnauthorized();
+    }
+    // Return a rejected promise with a user-friendly message
+    const errorData = await response.json().catch(() => ({ error: 'Session expired. Please log in again.' }));
+    throw new Error(errorData.error || 'Session expired. Please log in again.');
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(errorData.error || `Request failed with status ${response.status}`);
+  }
+
+  return await response.json();
+}
+
+// Enhanced fetch wrapper that handles authentication errors
+export async function authenticatedFetch(
+  url: string,
+  options: RequestInit = {},
+  onUnauthorized?: () => void
+): Promise<Response> {
+  const headers = {
+    ...getAuthHeaders(),
+    ...options.headers,
+  };
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  // If 401, clear auth immediately
+  if (response.status === 401) {
+    removeAuthToken();
+    if (onUnauthorized) {
+      onUnauthorized();
+    }
+  }
+
+  return response;
 }
 

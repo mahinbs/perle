@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import { getAuthHeaders, isAuthenticated } from "../utils/auth";
+import { getAuthHeaders, isAuthenticated, removeAuthToken } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
 
 const API_URL = import.meta.env.VITE_API_URL as string | undefined;
@@ -117,6 +117,14 @@ export default function LibraryPage() {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
+
+      // Handle 401 - user logged out
+      if (response.status === 401) {
+        removeAuthToken();
+        // Silently handle - item will be removed from local state
+        setLibraryItems((prev) => prev.filter((item) => item.id !== id));
+        return;
+      }
 
       if (response.ok || response.status === 204) {
         setLibraryItems((prev) => prev.filter((item) => item.id !== id));

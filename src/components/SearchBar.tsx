@@ -14,12 +14,14 @@ import {
   FaTimes,
   FaSpinner,
   FaDownload,
+  FaImages,
 } from "react-icons/fa";
 import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
 import VoiceOverlay from "./VoiceOverlay";
 import { LLMModelSelector } from "./LLMModelSelector";
-import { getAuthHeaders, getAuthToken } from "../utils/auth";
+import { getAuthHeaders, getAuthToken, isAuthenticated } from "../utils/auth";
+import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 
 interface UploadedFile {
   id: string;
@@ -83,6 +85,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const [speechSupported, setSpeechSupported] = useState(false);
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
   const { showToast } = useToast();
+  const { navigateTo } = useRouterNavigation();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1258,6 +1261,48 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   }}
                 >
                   <FaVideo size={16} /> Generate Video
+                </span>
+              </button>
+
+              <div
+                style={{
+                  height: 1,
+                  background: "var(--border)",
+                  margin: "8px 0",
+                }}
+              />
+
+              <button
+                className="btn-ghost btn-shadow"
+                onClick={() => {
+                  setShowToolsMenu(false);
+                  if (isAuthenticated()) {
+                    navigateTo("/gallery");
+                  } else {
+                    showToast({
+                      message: "Please log in to view your gallery",
+                      type: "error",
+                      duration: 3000,
+                    });
+                  }
+                }}
+                disabled={isListening || isGenerating}
+                style={{
+                  width: "100%",
+                  justifyContent: "flex-start",
+                  opacity: isListening || isGenerating ? 0.5 : 1,
+                  cursor:
+                    isListening || isGenerating ? "not-allowed" : "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <FaImages size={16} /> View Gallery
                 </span>
               </button>
             </div>

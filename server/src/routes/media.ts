@@ -434,6 +434,50 @@ router.post('/generate-video-from-image', optionalAuth, upload.single('image'), 
   }
 });
 
+// GET /api/media/gallery - Get user's generated media (images and videos)
+router.get('/gallery', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Get query parameters for filtering and pagination
+    const mediaType = req.query.type as 'image' | 'video' | undefined;
+    const limit = Math.min(Number(req.query.limit) || 50, 100); // Max 100 items
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    // Build query
+    let query = supabase
+      .from('generated_media')
+      .select('*')
+      .eq('user_id', req.userId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    // Filter by media type if provided
+    if (mediaType && (mediaType === 'image' || mediaType === 'video')) {
+      query = query.eq('media_type', mediaType);
+    }
+
+    const { data: media, error } = await query;
+
+    if (error) {
+      console.error('Error fetching gallery:', error);
+      return res.status(500).json({ error: 'Failed to fetch gallery' });
+    }
+
+    res.json({ 
+      media: media || [],
+      total: media?.length || 0,
+      limit,
+      offset
+    });
+  } catch (error) {
+    console.error('Gallery fetch error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/media/quota - Get user's video generation quota
 router.get('/quota', authenticateToken, async (req: AuthRequest, res) => {
   try {

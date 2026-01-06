@@ -16,7 +16,7 @@ import {
   FaChevronDown,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, getAuthHeaders, getAuthToken, isAuthenticated } from "../utils/auth";
+import { getUserData, getAuthHeaders, getAuthToken, isAuthenticated, removeAuthToken } from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
@@ -256,6 +256,13 @@ export default function AIFriendPage() {
           headers: getAuthHeaders(),
         });
 
+        // Handle 401 - user logged out
+        if (response.status === 401) {
+          removeAuthToken();
+          // Silently handle - don't show error for history loading
+          return;
+        }
+
         if (response.ok) {
           const data = await response.json();
           if (data.messages && data.messages.length > 0) {
@@ -486,6 +493,13 @@ export default function AIFriendPage() {
               }),
             });
 
+            // Handle 401 - user logged out, continue as free user
+            if (response.status === 401) {
+              removeAuthToken();
+              // Skip this friend's response, continue with others
+              throw new Error("Session expired");
+            }
+
             if (!response.ok) {
               const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
               throw new Error(errorData.error || `Failed to get response from ${friend.name}`);
@@ -502,31 +516,41 @@ export default function AIFriendPage() {
         );
 
         // Add all responses to messages
-        responses.forEach((result, index) => {
-          if (result.status === "fulfilled") {
-            const aiResponse: Message = {
-              id: `${Date.now()}-${index}`,
-              role: "ai",
-              content: result.value.message,
-              timestamp: new Date(),
-              friendId: result.value.friendId,
-              friendName: result.value.friendName,
-            };
-            setMessages((prev) => [...prev, aiResponse]);
-          } else {
-            // Error response
-            const friendName = friendsToMessage[index]?.name || "Unknown";
-            const errorResponse: Message = {
-              id: `${Date.now()}-error-${index}`,
-              role: "ai",
-              content: `Sorry, ${friendName} encountered an error: ${result.reason?.message || "Failed to connect"}.`,
-              timestamp: new Date(),
-              friendId: friendsToMessage[index]?.id,
-              friendName: friendName,
-            };
-            setMessages((prev) => [...prev, errorResponse]);
+          // Check if any error is a 401 (session expired)
+          const has401Error = responses.some(
+            (result) => result.status === "rejected" && result.reason?.message?.includes("Session expired")
+          );
+
+          if (has401Error) {
+            removeAuthToken();
+            // Continue as free user - show remaining responses if any
           }
-        });
+
+          responses.forEach((result, index) => {
+            if (result.status === "fulfilled") {
+              const aiResponse: Message = {
+                id: `${Date.now()}-${index}`,
+                role: "ai",
+                content: result.value.message,
+                timestamp: new Date(),
+                friendId: result.value.friendId,
+                friendName: result.value.friendName,
+              };
+              setMessages((prev) => [...prev, aiResponse]);
+            } else {
+              // Error response
+              const friendName = friendsToMessage[index]?.name || "Unknown";
+              const errorResponse: Message = {
+                id: `${Date.now()}-error-${index}`,
+                role: "ai",
+                content: `Sorry, ${friendName} encountered an error: ${result.reason?.message || "Failed to connect"}.`,
+                timestamp: new Date(),
+                friendId: friendsToMessage[index]?.id,
+                friendName: friendName,
+              };
+              setMessages((prev) => [...prev, errorResponse]);
+            }
+          });
       } else {
         // Individual chat: send to selected friend or default
         const response = await fetch(`${API_URL}/api/chat`, {
@@ -540,6 +564,13 @@ export default function AIFriendPage() {
             aiFriendId: selectedFriendId || undefined, // Include friend ID if selected
           }),
         });
+
+        // Handle 401 - user logged out, continue as free user
+        if (response.status === 401) {
+          removeAuthToken();
+          // Continue with free user experience - don't redirect
+          return;
+        }
 
         if (!response.ok) {
           const errorData = await response

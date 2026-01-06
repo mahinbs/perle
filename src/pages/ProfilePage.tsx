@@ -14,6 +14,7 @@ import {
   getUserData,
   setUserData,
   getAuthHeaders,
+  removeAuthToken,
   type User
 } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
@@ -70,6 +71,15 @@ export default function ProfilePage() {
         headers: getAuthHeaders(),
       });
 
+      // Handle 401 - user logged out, update state silently
+      if (response.status === 401) {
+        removeAuthToken();
+        setIsAuthenticated(false);
+        setUserSettings(null);
+        // Don't show error - just update state to show login screen
+        return;
+      }
+
       if (response.ok) {
         const history = await response.json();
         setSearchHistory(history || []);
@@ -97,13 +107,32 @@ export default function ProfilePage() {
       setIsAuthenticated(true);
       if (response.user) {
         setUserSettings(response.user as any);
+        
+        // Show plan information on login
+        const user = response.user as any;
+        if (user.premiumTier && user.premiumTier !== 'free' && user.isPremium) {
+          const planName = user.premiumTier === 'pro' ? 'Pro' : 'Max';
+          const endDate = user.subscription?.endDate 
+            ? new Date(user.subscription.endDate).toLocaleDateString()
+            : null;
+          
+          showToast({
+            message: endDate 
+              ? `Welcome back! You're on ${planName} Plan (expires ${endDate})`
+              : `Welcome back! You're on ${planName} Plan`,
+            type: 'success',
+            duration: 4000
+          });
+        } else {
+          showToast({
+            message: "Welcome back! You're on Free Plan",
+            type: 'success',
+            duration: 3000
+          });
+        }
       }
       setShowLogin(false);
       setShowSignup(false);
-      showToast({
-        message: 'Welcome back!',
-        type: 'success'
-      });
     } catch (error: any) {
       const errorMessage = error.message || 'Invalid email or password';
       setAuthError(errorMessage);
@@ -261,6 +290,15 @@ export default function ProfilePage() {
         headers: getAuthHeaders(),
       });
 
+      // Handle 401 - user logged out, update state silently
+      if (response.status === 401) {
+        removeAuthToken();
+        setIsAuthenticated(false);
+        setUserSettings(null);
+        // Don't show error - just update state to show login screen
+        return;
+      }
+
       if (response.ok) {
         const data = await response.json();
 
@@ -319,6 +357,15 @@ export default function ProfilePage() {
         headers: getAuthHeaders(),
         body: JSON.stringify({ password }),
       });
+
+      // Handle 401 - user logged out, update state silently
+      if (response.status === 401) {
+        removeAuthToken();
+        setIsAuthenticated(false);
+        setUserSettings(null);
+        // Don't show error - just update state to show login screen
+        return;
+      }
 
       if (response.ok) {
         await logout();
@@ -561,11 +608,64 @@ export default function ProfilePage() {
             >
               {userSettings.name.charAt(0).toUpperCase()}
             </div>
-            <div>
+            <div style={{ flex: 1 }}>
               <div className="h3" style={{ marginBottom: 4 }}>
                 {userSettings.name}
               </div>
-              <div className="sub">{userSettings.email}</div>
+              <div className="sub" style={{ marginBottom: 4 }}>{userSettings.email}</div>
+              {/* Plan Badge */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                {userSettings.premiumTier && userSettings.premiumTier !== 'free' && userSettings.isPremium ? (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "4px 12px",
+                      borderRadius: "12px",
+                      background: "var(--accent)",
+                      color: "#111",
+                      fontSize: "var(--font-xs)",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    <span>★</span>
+                    {userSettings.premiumTier === 'pro' ? 'Pro Plan' : 'Max Plan'}
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "4px 12px",
+                      borderRadius: "12px",
+                      background: "var(--input-bg)",
+                      color: "var(--text)",
+                      fontSize: "var(--font-xs)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Free Plan
+                  </span>
+                )}
+                {userSettings.subscription?.endDate && userSettings.isPremium && (
+                  <span
+                    className="sub text-xs"
+                    style={{ opacity: 0.7 }}
+                  >
+                    Expires: {new Date(userSettings.subscription.endDate).toLocaleDateString()}
+                  </span>
+                )}
+                {userSettings.subscription?.status === 'expired' && (
+                  <span
+                    className="sub text-xs"
+                    style={{ color: "var(--accent)", opacity: 0.9 }}
+                  >
+                    (Expired)
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <button
@@ -588,37 +688,71 @@ export default function ProfilePage() {
             Settings
           </div>
 
-          {/* Upgrade Plan */}
-          {!userSettings?.isPremium && (
-            <div
-              className="row"
-              style={{
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 16,
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 500, marginBottom: 2 }}>
-                  Upgrade Plan
-                </div>
-                <div className="sub text-sm">
-                  Unlock premium features and models
-                </div>
+          {/* Current Plan Display */}
+          <div
+            className="row"
+            style={{
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
+              padding: 16,
+              background: userSettings?.isPremium ? "rgba(199,168,105,0.1)" : "var(--input-bg)",
+              borderRadius: "var(--radius-sm)",
+              border: `1px solid ${userSettings?.isPremium ? "var(--accent)" : "var(--border)"}`,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                {userSettings?.premiumTier && userSettings.premiumTier !== 'free' && userSettings.isPremium ? (
+                  <>
+                    <span>★</span>
+                    {userSettings.premiumTier === 'pro' ? 'Pro Plan' : 'Max Plan'}
+                  </>
+                ) : (
+                  'Free Plan'
+                )}
               </div>
+              <div className="sub text-sm" style={{ marginBottom: 4 }}>
+                {userSettings?.isPremium 
+                  ? userSettings.subscription?.endDate
+                    ? `Active until ${new Date(userSettings.subscription.endDate).toLocaleDateString()}`
+                    : 'Active subscription'
+                  : 'Unlock premium features and models'}
+              </div>
+              {userSettings?.subscription?.status === 'expired' && (
+                <div className="sub text-xs" style={{ color: "var(--accent)", marginTop: 4 }}>
+                  Your subscription has expired. Renew to continue using premium features.
+                </div>
+              )}
+            </div>
+            {!userSettings?.isPremium && (
+              <button
+                className="btn"
+                onClick={() => setShowUpgradeModal(true)}
+                style={{
+                  color: "#111",
+                  fontWeight: 600,
+                  fontSize: "var(--font-sm)",
+                  background: "var(--accent)",
+                }}
+              >
+                Upgrade →
+              </button>
+            )}
+            {userSettings?.isPremium && userSettings.subscription?.endDate && (
               <button
                 className="btn-ghost"
-                onClick={() => setShowUpgradeModal(true)}
+                onClick={() => navigateTo("/subscription")}
                 style={{
                   color: "var(--accent)",
                   fontWeight: 600,
                   fontSize: "var(--font-sm)"
                 }}
               >
-                View Plans →
+                Manage →
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Notifications */}
           <div
@@ -832,6 +966,13 @@ export default function ProfilePage() {
                           method: 'DELETE',
                           headers: getAuthHeaders(),
                         });
+                        // Handle 401 - user logged out
+                        if (response.status === 401) {
+                          removeAuthToken();
+                          setIsAuthenticated(false);
+                          setUserSettings(null);
+                          return;
+                        }
                         if (response.ok) {
                           setSearchHistory([]);
                           alert('Search history cleared');
