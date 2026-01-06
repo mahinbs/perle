@@ -20,7 +20,8 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3333;
 
 // Allow multiple origins for CORS (development + production)
 const allowedOrigins = [
-  process.env.CORS_ORIGIN // Add custom origin from env if provided
+  process.env.CORS_ORIGIN,
+  'http://localhost:3000' // Add custom origin from env if provided
 ].filter(Boolean); // Remove undefined values
 
 app.use(cors({ 
