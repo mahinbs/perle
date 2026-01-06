@@ -16,7 +16,13 @@ import {
   FaChevronDown,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, getAuthHeaders, getAuthToken, isAuthenticated, removeAuthToken } from "../utils/auth";
+import {
+  getUserData,
+  getAuthHeaders,
+  getAuthToken,
+  isAuthenticated,
+  removeAuthToken,
+} from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
@@ -59,10 +65,14 @@ export default function AIFriendPage() {
   const [friendDescription, setFriendDescription] = useState("");
   const [friendLogoUrl, setFriendLogoUrl] = useState("");
   const [friendCustomGreeting, setFriendCustomGreeting] = useState("");
-  const [selectedDefaultLogo, setSelectedDefaultLogo] = useState<string | null>(null);
+  const [selectedDefaultLogo, setSelectedDefaultLogo] = useState<string | null>(
+    null
+  );
   const [_isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [defaultLogos, setDefaultLogos] = useState<Array<{ id: string; name: string; url: string }>>([]);
+  const [defaultLogos, setDefaultLogos] = useState<
+    Array<{ id: string; name: string; url: string }>
+  >([]);
 
   // Get selected friend or default
   const selectedFriend = selectedFriendId
@@ -94,6 +104,14 @@ export default function AIFriendPage() {
   };
   // Generate greeting based on selected friend or default
   const getGreeting = (): string => {
+    // Group chat greeting
+    if (isGroupChat) {
+      return isLoggedIn
+        ? "Hey! This is a group chat with all your AI friends. Tag them with @ to get specific responses, or just chat and everyone will reply! 😊"
+        : "Hey! I'm SyntraIQ Friend. How can I help you today?";
+    }
+    
+    // Individual chat greeting
     if (selectedFriend) {
       if (selectedFriend.custom_greeting) {
         return selectedFriend.custom_greeting;
@@ -132,6 +150,8 @@ export default function AIFriendPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const friendSelectorRef = useRef<HTMLDivElement>(null);
+  const friendSelectorContainerRef = useRef<HTMLDivElement>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -151,6 +171,27 @@ export default function AIFriendPage() {
       loadDefaultLogos();
     }
   }, [isLoggedIn]);
+
+  // Close friend selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        showFriendSelector &&
+        friendSelectorContainerRef.current &&
+        !friendSelectorContainerRef.current.contains(event.target as Node)
+      ) {
+        setShowFriendSelector(false);
+      }
+    };
+
+    if (showFriendSelector) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showFriendSelector]);
 
   // Load default logos
   const loadDefaultLogos = async () => {
@@ -223,34 +264,60 @@ export default function AIFriendPage() {
     }
   };
 
-  // Load conversation history on mount and when friend changes (for both free and premium users)
+  // Handle greeting and history loading when chat mode or friend selection changes
   useEffect(() => {
+    const greeting = getGreeting();
+
+    // Update greeting immediately (synchronously) for instant feedback
+    // For group chat: always show only the greeting
+    if (isGroupChat) {
+      setMessages([
+        {
+          id: "1",
+          role: "ai",
+          content: greeting,
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
+
+    // For individual chat: show greeting immediately, then load history
+    // Wait for friend data if a friend is selected but data isn't loaded yet
+    if (selectedFriendId && aiFriends.length === 0) {
+      // Show greeting even if friend data isn't loaded yet
+      setMessages([
+        {
+          id: "1",
+          role: "ai",
+          content: greeting,
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
+
+    // Show greeting immediately
+    setMessages([
+      {
+        id: "1",
+        role: "ai",
+        content: greeting,
+        timestamp: new Date(),
+      },
+    ]);
+
+    // Load history in the background and append it
     const loadHistory = async () => {
       const API_URL = import.meta.env.VITE_API_URL;
       if (!API_URL) return;
 
-      // Only load history for individual chats (not group chats)
-      if (isGroupChat) {
-        // For group chat, show greeting only
-        setMessages([
-          {
-            id: "1",
-            role: "ai",
-            content: isLoggedIn 
-              ? "Hey! This is a group chat with all your AI friends. Tag them with @ to get specific responses, or just chat and everyone will reply! 😊"
-              : "Hey! I'm SyntraIQ Friend. How can I help you today?",
-            timestamp: new Date(),
-          },
-        ]);
-        return;
-      }
-
       try {
         // Load history for specific friend if selected, otherwise load default
-        const historyUrl = selectedFriendId 
+        const historyUrl = selectedFriendId
           ? `${API_URL}/api/chat/history?chatMode=ai_friend&aiFriendId=${selectedFriendId}`
           : `${API_URL}/api/chat/history?chatMode=ai_friend`;
-        
+
         const response = await fetch(historyUrl, {
           method: "GET",
           headers: getAuthHeaders(),
@@ -259,7 +326,6 @@ export default function AIFriendPage() {
         // Handle 401 - user logged out
         if (response.status === 401) {
           removeAuthToken();
-          // Silently handle - don't show error for history loading
           return;
         }
 
@@ -276,54 +342,33 @@ export default function AIFriendPage() {
               })
             );
 
-            // Replace initial greeting with history
-            setMessages([
-              {
-                id: "1",
-                role: "ai",
-                content: getGreeting(),
-                timestamp: new Date(),
-              },
-              ...historyMessages,
-            ]);
-          } else {
-            // No history, just show greeting
-            setMessages([
-              {
-                id: "1",
-                role: "ai",
-                content: getGreeting(),
-                timestamp: new Date(),
-              },
-            ]);
+            // Append history to existing greeting
+            setMessages((prev) => {
+              // Keep the greeting and append history
+              if (prev.length > 0 && prev[0]?.id === "1" && prev[0]?.role === "ai") {
+                return [prev[0], ...historyMessages];
+              }
+              return [
+                {
+                  id: "1",
+                  role: "ai",
+                  content: greeting,
+                  timestamp: new Date(),
+                },
+                ...historyMessages,
+              ];
+            });
           }
-        } else {
-          // Error loading history, show greeting
-          setMessages([
-            {
-              id: "1",
-              role: "ai",
-              content: getGreeting(),
-              timestamp: new Date(),
-            },
-          ]);
         }
       } catch (error) {
         console.error("Failed to load chat history:", error);
-        // On error, show greeting
-        setMessages([
-          {
-            id: "1",
-            role: "ai",
-            content: getGreeting(),
-            timestamp: new Date(),
-          },
-        ]);
+        // Keep the greeting even if history fails to load
       }
     };
 
     loadHistory();
-  }, [isPremium, selectedFriendId, isGroupChat, selectedFriend]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGroupChat, selectedFriendId, selectedFriend, aiFriends]);
 
   // Speech recognition setup
   useEffect(() => {
@@ -410,19 +455,19 @@ export default function AIFriendPage() {
     const mentionRegex = /@(\w+)/g;
     const matches = text.match(mentionRegex);
     if (!matches) return [];
-    
+
     // Extract friend names (remove @)
-    const mentionedNames = matches.map(m => m.substring(1).toLowerCase());
-    
+    const mentionedNames = matches.map((m) => m.substring(1).toLowerCase());
+
     // Find friend IDs by matching names
     const mentionedIds: string[] = [];
-    aiFriends.forEach(friend => {
+    aiFriends.forEach((friend) => {
       const friendNameLower = friend.name.toLowerCase().replace(/\s+/g, "");
       if (mentionedNames.includes(friendNameLower)) {
         mentionedIds.push(friend.id);
       }
     });
-    
+
     return mentionedIds;
   };
 
@@ -464,13 +509,15 @@ export default function AIFriendPage() {
       if (isGroupChat && isLoggedIn && aiFriends.length > 0) {
         // Group chat: parse @ mentions
         const mentionedIds = parseMentions(messageText);
-        const friendsToMessage = mentionedIds.length > 0 
-          ? aiFriends.filter(f => mentionedIds.includes(f.id))
-          : aiFriends; // If no mentions, message all friends
-        
+        const friendsToMessage =
+          mentionedIds.length > 0
+            ? aiFriends.filter((f) => mentionedIds.includes(f.id))
+            : aiFriends; // If no mentions, message all friends
+
         if (friendsToMessage.length === 0) {
           showToast({
-            message: "No friends found to message. Please check your @ mentions.",
+            message:
+              "No friends found to message. Please check your @ mentions.",
             type: "error",
             duration: 3000,
           });
@@ -501,8 +548,12 @@ export default function AIFriendPage() {
             }
 
             if (!response.ok) {
-              const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-              throw new Error(errorData.error || `Failed to get response from ${friend.name}`);
+              const errorData = await response
+                .json()
+                .catch(() => ({ error: "Unknown error" }));
+              throw new Error(
+                errorData.error || `Failed to get response from ${friend.name}`
+              );
             }
 
             const data = await response.json();
@@ -516,41 +567,45 @@ export default function AIFriendPage() {
         );
 
         // Add all responses to messages
-          // Check if any error is a 401 (session expired)
-          const has401Error = responses.some(
-            (result) => result.status === "rejected" && result.reason?.message?.includes("Session expired")
-          );
+        // Check if any error is a 401 (session expired)
+        const has401Error = responses.some(
+          (result) =>
+            result.status === "rejected" &&
+            result.reason?.message?.includes("Session expired")
+        );
 
-          if (has401Error) {
-            removeAuthToken();
-            // Continue as free user - show remaining responses if any
+        if (has401Error) {
+          removeAuthToken();
+          // Continue as free user - show remaining responses if any
+        }
+
+        responses.forEach((result, index) => {
+          if (result.status === "fulfilled") {
+            const aiResponse: Message = {
+              id: `${Date.now()}-${index}`,
+              role: "ai",
+              content: result.value.message,
+              timestamp: new Date(),
+              friendId: result.value.friendId,
+              friendName: result.value.friendName,
+            };
+            setMessages((prev) => [...prev, aiResponse]);
+          } else {
+            // Error response
+            const friendName = friendsToMessage[index]?.name || "Unknown";
+            const errorResponse: Message = {
+              id: `${Date.now()}-error-${index}`,
+              role: "ai",
+              content: `Sorry, ${friendName} encountered an error: ${
+                result.reason?.message || "Failed to connect"
+              }.`,
+              timestamp: new Date(),
+              friendId: friendsToMessage[index]?.id,
+              friendName: friendName,
+            };
+            setMessages((prev) => [...prev, errorResponse]);
           }
-
-          responses.forEach((result, index) => {
-            if (result.status === "fulfilled") {
-              const aiResponse: Message = {
-                id: `${Date.now()}-${index}`,
-                role: "ai",
-                content: result.value.message,
-                timestamp: new Date(),
-                friendId: result.value.friendId,
-                friendName: result.value.friendName,
-              };
-              setMessages((prev) => [...prev, aiResponse]);
-            } else {
-              // Error response
-              const friendName = friendsToMessage[index]?.name || "Unknown";
-              const errorResponse: Message = {
-                id: `${Date.now()}-error-${index}`,
-                role: "ai",
-                content: `Sorry, ${friendName} encountered an error: ${result.reason?.message || "Failed to connect"}.`,
-                timestamp: new Date(),
-                friendId: friendsToMessage[index]?.id,
-                friendName: friendName,
-              };
-              setMessages((prev) => [...prev, errorResponse]);
-            }
-          });
+        });
       } else {
         // Individual chat: send to selected friend or default
         const response = await fetch(`${API_URL}/api/chat`, {
@@ -577,7 +632,8 @@ export default function AIFriendPage() {
             .json()
             .catch(() => ({ error: "Unknown error" }));
           throw new Error(
-            errorData.error || `API request failed with status ${response.status}`
+            errorData.error ||
+              `API request failed with status ${response.status}`
           );
         }
 
@@ -668,7 +724,9 @@ export default function AIFriendPage() {
   };
 
   // Friend management functions
-  const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -808,17 +866,20 @@ export default function AIFriendPage() {
     if (!API_URL) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/ai-friends/${editingFriend.id}`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          name: friendName.trim(),
-          description: friendDescription.trim(),
-          logoUrl: friendLogoUrl || undefined,
-          defaultLogo: selectedDefaultLogo || undefined,
-          customGreeting: friendCustomGreeting.trim() || undefined,
-        }),
-      });
+      const response = await fetch(
+        `${API_URL}/api/ai-friends/${editingFriend.id}`,
+        {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            name: friendName.trim(),
+            description: friendDescription.trim(),
+            logoUrl: friendLogoUrl || undefined,
+            defaultLogo: selectedDefaultLogo || undefined,
+            customGreeting: friendCustomGreeting.trim() || undefined,
+          }),
+        }
+      );
 
       if (response.ok) {
         await loadAIFriends();
@@ -906,9 +967,9 @@ export default function AIFriendPage() {
     setFriendName(friend.name);
     setFriendDescription(friend.description);
     setFriendCustomGreeting(friend.custom_greeting || "");
-    
+
     // Check if logo is a default logo
-    const defaultLogo = defaultLogos.find(l => l.url === friend.logo_url);
+    const defaultLogo = defaultLogos.find((l) => l.url === friend.logo_url);
     if (defaultLogo) {
       setSelectedDefaultLogo(defaultLogo.id);
       setFriendLogoUrl("");
@@ -934,7 +995,7 @@ export default function AIFriendPage() {
             </button>
             <div className="row flex items-center gap-3">
               {isLoggedIn && (
-                <div className="relative">
+                <div ref={friendSelectorContainerRef} className="relative">
                   <button
                     onClick={() => setShowFriendSelector(!showFriendSelector)}
                     className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[var(--input-bg)] transition-colors"
@@ -960,8 +1021,11 @@ export default function AIFriendPage() {
                       }`}
                     />
                   </button>
-                  {showFriendSelector && (
-                    <div className="absolute top-full left-0 mt-2 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg z-50 min-w-[280px] max-h-[400px] overflow-y-auto">
+                  {showFriendSelector && !showFriendModal && (
+                    <div
+                      ref={friendSelectorRef}
+                      className="absolute top-full left-0 mt-2 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg z-50 min-w-[280px] max-h-[400px] overflow-y-auto"
+                    >
                       <div className="p-2">
                         <button
                           onClick={openCreateFriendModal}
@@ -984,6 +1048,7 @@ export default function AIFriendPage() {
                             }`}
                             onClick={() => {
                               setSelectedFriendId(friend.id);
+                              setIsGroupChat(false); // Switch to individual chat when friend is selected
                               setShowFriendSelector(false);
                             }}
                           >
@@ -1055,7 +1120,7 @@ export default function AIFriendPage() {
           <div className="row flex items-center gap-2.5">
             {isLoggedIn && aiFriends.length > 0 && (
               <button
-                className={`btn-ghost p-2 rounded-lg transition-colors ${
+                className={`btn-ghost !p-2 flex gap-2 rounded-lg transition-colors ${
                   isGroupChat ? "bg-[rgba(199,168,105,0.15)]" : ""
                 }`}
                 onClick={() => {
@@ -1063,18 +1128,26 @@ export default function AIFriendPage() {
                   setSelectedFriendId(null); // Clear selection when switching modes
                   setNewConversation(true); // Start fresh when switching
                 }}
-                aria-label={isGroupChat ? "Switch to individual chat" : "Switch to group chat"}
+                aria-label={
+                  isGroupChat
+                    ? "Switch to individual chat"
+                    : "Switch to group chat"
+                }
                 title={isGroupChat ? "Individual Chat" : "Group Chat"}
               >
-                <FaComments size={18} color={isGroupChat ? "var(--accent)" : "var(--text)"} />
+                {/* <FaComments
+                  size={18}
+                  color={isGroupChat ? "var(--accent)" : "var(--text)"}
+                />{" "} */}
+                <span className={`text-sm ${isGroupChat ? "var(--accent)" : "var(--text)"}`}>Group Chat</span>
               </button>
             )}
-            <button
+            {/* <button
               className="btn-ghost p-2"
               aria-label="Favorite conversation"
             >
               <FaStar size={18} color="var(--accent)" />
-            </button>
+            </button> */}
           </div>
         </div>
       </div>
@@ -1083,17 +1156,19 @@ export default function AIFriendPage() {
       <div className="flex-1 overflow-y-auto px-4 py-5 bg-[var(--bg)]">
         {messages.map((message) => {
           // For group chat AI messages, get friend avatar and name
-          let messageAvatar = message.role === "user" ? userProfile.avatar : aiProfile.avatar;
-          let messageName = message.role === "user" ? userProfile.name : aiProfile.name;
-          
+          let messageAvatar =
+            message.role === "user" ? userProfile.avatar : aiProfile.avatar;
+          let messageName =
+            message.role === "user" ? userProfile.name : aiProfile.name;
+
           if (message.role === "ai" && message.friendId && isGroupChat) {
-            const friend = aiFriends.find(f => f.id === message.friendId);
+            const friend = aiFriends.find((f) => f.id === message.friendId);
             if (friend) {
               messageAvatar = friend.logo_url || defaultAiProfile.avatar;
               messageName = friend.name;
             }
           }
-          
+
           return (
             <div
               key={message.id}
@@ -1406,7 +1481,7 @@ export default function AIFriendPage() {
 
       {/* Friend Management Modal */}
       {showFriendModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[101] p-4">
           <div className="bg-[var(--card)] rounded-lg border border-[var(--border)] max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-bold mb-4">
@@ -1455,13 +1530,16 @@ export default function AIFriendPage() {
                     maxLength={500}
                     rows={3}
                     className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--text)] resize-none"
-                    placeholder={`Leave empty to use default: "Hi! I'm ${friendName || '[Name]'}, your friend. How can I help you today? Feel free to ask me anything or just chat! 😊"`}
+                    placeholder={`Leave empty to use default: "Hi! I'm ${
+                      friendName || "[Name]"
+                    }, your friend. How can I help you today? Feel free to ask me anything or just chat! 😊"`}
                   />
                   <div className="text-xs opacity-70 mt-1">
                     {friendCustomGreeting.length}/500
                   </div>
                   <div className="text-xs opacity-60 mt-1">
-                    If set, this will be used as the greeting message instead of the default.
+                    If set, this will be used as the greeting message instead of
+                    the default.
                   </div>
                 </div>
 
@@ -1469,10 +1547,12 @@ export default function AIFriendPage() {
                   <label className="block text-sm font-semibold mb-2">
                     Logo (Optional)
                   </label>
-                  
+
                   {/* Default Logo Options */}
                   <div className="mb-4">
-                    <div className="text-xs opacity-70 mb-2">Choose a default avatar:</div>
+                    <div className="text-xs opacity-70 mb-2">
+                      Choose a default avatar:
+                    </div>
                     <div className="grid grid-cols-3 gap-2">
                       {defaultLogos.map((logo) => (
                         <button
@@ -1497,7 +1577,9 @@ export default function AIFriendPage() {
 
                   {/* Custom Upload */}
                   <div className="border-t border-[var(--border)] pt-4">
-                    <div className="text-xs opacity-70 mb-2">Or upload your own (Max 2MB):</div>
+                    <div className="text-xs opacity-70 mb-2">
+                      Or upload your own (Max 2MB):
+                    </div>
                     <input
                       type="file"
                       accept="image/*"
@@ -1510,7 +1592,7 @@ export default function AIFriendPage() {
                         Uploading...
                       </div>
                     )}
-                    {(friendLogoUrl && !selectedDefaultLogo) && (
+                    {friendLogoUrl && !selectedDefaultLogo && (
                       <div className="mt-2">
                         <img
                           src={friendLogoUrl}
@@ -1534,7 +1616,9 @@ export default function AIFriendPage() {
                   Cancel
                 </button>
                 <button
-                  onClick={editingFriend ? handleUpdateFriend : handleCreateFriend}
+                  onClick={
+                    editingFriend ? handleUpdateFriend : handleCreateFriend
+                  }
                   disabled={
                     !friendName.trim() ||
                     !friendDescription.trim() ||
