@@ -12,3 +12,4 @@ WHERE space_id IS NULL;
 
 COMMENT ON COLUMN conversation_history.space_id IS 'Optional space ID - if set, conversation is isolated to this specific space. NULL means normal conversation.';
 
+

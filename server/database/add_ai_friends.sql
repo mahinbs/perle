@@ -73,3 +73,4 @@ COMMENT ON COLUMN ai_friends.description IS 'Description of the AI friend person
 COMMENT ON COLUMN ai_friends.logo_url IS 'URL to custom logo image (can be base64 data URL or external URL)';
 
 
+

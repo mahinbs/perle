@@ -64,3 +64,4 @@ COMMENT ON COLUMN spaces.description IS 'Description of the space purpose/contex
 COMMENT ON COLUMN spaces.logo_url IS 'URL to custom logo image (can be default avatar or custom upload)';
 COMMENT ON COLUMN spaces.is_public IS 'If true, space is shared with community. If false, space is private to the creator.';
 
+

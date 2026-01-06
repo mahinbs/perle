@@ -137,3 +137,4 @@ curl -X POST http://localhost:3333/api/ai-friends/upload-logo \
 You should receive a public URL that you can use for the AI friend logo.
 
 
+
