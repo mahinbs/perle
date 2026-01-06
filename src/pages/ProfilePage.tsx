@@ -755,7 +755,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Notifications */}
-          <div
+          {/* <div
             className="row"
             style={{
               justifyContent: "space-between",
@@ -785,7 +785,7 @@ export default function ProfilePage() {
             >
               {updatingSetting === "notifications" ? "..." : userSettings.notifications ? "On" : "Off"}
             </button>
-          </div>
+          </div> */}
 
           {/* Dark Mode */}
           <div
