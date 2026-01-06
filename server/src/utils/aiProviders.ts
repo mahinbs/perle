@@ -84,15 +84,15 @@ Whether you're researching academic topics, comparing different approaches, summ
 function getTokenLimit(mode: Mode): number {
   switch (mode) {
     case 'Ask':
-      return 1000; // Increased from 400 - was too low
+      return 4000; // Significantly increased to prevent truncation
     case 'Research':
-      return 2000; // Increased from 1200
+      return 6000; // Increased for comprehensive research
     case 'Summarize':
-      return 1500; // Increased from 800
+      return 4000; // Increased for detailed summaries
     case 'Compare':
-      return 1800; // Increased from 1000
+      return 5000; // Increased for thorough comparisons
     default:
-      return 1000; // Increased from 600
+      return 4000; // Increased default
   }
 }
 
@@ -270,17 +270,26 @@ export async function generateOpenAIAnswer(
       temperature: 0.3,
       max_tokens: tokenLimit
     }),
-    15_000 // 15s timeout
+    60_000 // 60s timeout - increased to allow complete responses
   );
 
-  const content = response.choices?.[0]?.message?.content?.trim();
+  const choice = response.choices?.[0];
+  const content = choice?.message?.content?.trim();
+  const finishReason = choice?.finish_reason;
+  
+  // Check if response was truncated
+  if (finishReason === 'length') {
+    console.warn('OpenAI response was truncated due to token limit. Consider increasing max_tokens.');
+    // Continue with partial response but log warning
+  }
   
   // Check if content is empty or invalid
   if (!content || content.length === 0) {
     console.error('OpenAI API returned empty response:', {
       model: openaiModel,
       hasChoices: !!response.choices,
-      choicesLength: response.choices?.length || 0
+      choicesLength: response.choices?.length || 0,
+      finishReason: finishReason
     });
     throw new Error('AI model returned an empty response. Please try again.');
   }
@@ -383,7 +392,7 @@ export async function generateGeminiAnswer(
   }
 
   const tokenLimit = getTokenLimit(mode);
-  const maxOutputTokens = Math.min(tokenLimit, 8192); // Increased from 2048 - Gemini supports up to 8192 tokens
+  const maxOutputTokens = Math.min(tokenLimit, 8192); // Gemini supports up to 8192 tokens, use full limit to prevent truncation
 
   // Enable grounding with Google Search for citations (only for premium users with gemini-2.0)
   const useGrounding = isPremium && model === 'gemini-2.0-latest';
@@ -405,7 +414,7 @@ export async function generateGeminiAnswer(
 
   const result = await withTimeout(
     modelInstance.generateContent(generateContentParams),
-    15_000 // 15s timeout
+    60_000 // 60s timeout - increased to allow complete responses
   ) as any;
 
   const response = result.response;
@@ -435,7 +444,8 @@ export async function generateGeminiAnswer(
     }
     // MAX_TOKENS means response was cut off, but we should still try to get partial content
     if (candidate.finishReason === 'MAX_TOKENS') {
-      console.warn('Response hit MAX_TOKENS limit, attempting to extract partial content');
+      console.warn('Gemini response hit MAX_TOKENS limit, response may be truncated. Consider increasing maxOutputTokens.');
+      // Continue with partial response but log warning
     }
     // Try to get text from parts
     if (candidate.content?.parts) {
@@ -601,19 +611,27 @@ export async function generateClaudeAnswer(
       system: sys,
       messages: messages
     }),
-    15_000 // 15s timeout
+    60_000 // 60s timeout - increased to allow complete responses
   ) as any;
 
   const content = response?.content?.[0]?.type === 'text' 
     ? response.content[0].text 
     : '';
   
+  // Check if response was truncated
+  const stopReason = response?.stop_reason;
+  if (stopReason === 'max_tokens') {
+    console.warn('Claude response was truncated due to token limit. Consider increasing max_tokens.');
+    // Continue with partial response but log warning
+  }
+  
   // Check if content is empty or invalid
   if (!content || content.trim().length === 0) {
     console.error('Claude API returned empty response:', {
       model: claudeModel,
       hasContent: !!response?.content,
-      contentLength: response?.content?.length || 0
+      contentLength: response?.content?.length || 0,
+      stopReason: stopReason
     });
     throw new Error('AI model returned an empty response. Please try again.');
   }
@@ -736,7 +754,7 @@ export async function generateGrokAnswer(
         temperature: 0.3,
         max_tokens: tokenLimit
       }),
-      15_000 // 15s timeout
+      60_000 // 60s timeout - increased to allow complete responses
     );
   } catch (error: any) {
     // If grok-4 fails (not available yet), fallback to grok-3
@@ -757,14 +775,23 @@ export async function generateGrokAnswer(
     // }
   }
 
-  const content = response.choices?.[0]?.message?.content?.trim();
+  const choice = response.choices?.[0];
+  const content = choice?.message?.content?.trim();
+  const finishReason = choice?.finish_reason;
+  
+  // Check if response was truncated
+  if (finishReason === 'length') {
+    console.warn('Grok response was truncated due to token limit. Consider increasing max_tokens.');
+    // Continue with partial response but log warning
+  }
   
   // Check if content is empty or invalid
   if (!content || content.length === 0) {
     console.error('Grok API returned empty response:', {
       model: grokModel,
       hasChoices: !!response.choices,
-      choicesLength: response.choices?.length || 0
+      choicesLength: response.choices?.length || 0,
+      finishReason: finishReason
     });
     throw new Error('AI model returned an empty response. Please try again.');
   }

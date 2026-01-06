@@ -160,7 +160,7 @@ export default function SpacesPage() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/chat/history?chatMode=normal&spaceId=${selectedSpace.id}`,
+        `${API_URL}/api/chat/history?chatMode=space&spaceId=${selectedSpace.id}`,
         {
           method: "GET",
           headers: getAuthHeaders(),
@@ -372,7 +372,7 @@ export default function SpacesPage() {
         body: JSON.stringify({
           message: userMessage.content,
           model: selectedModel,
-          chatMode: "normal",
+          chatMode: "space",
           spaceId: selectedSpace.id,
           newConversation: newConversation,
         }),

@@ -26,6 +26,8 @@ interface Message {
   role: "user" | "ai";
   content: string;
   timestamp: Date;
+  friendId?: string; // For group chat: which friend sent this
+  friendName?: string; // For group chat: friend's name
 }
 
 interface AIFriend {
@@ -33,6 +35,7 @@ interface AIFriend {
   name: string;
   description: string;
   logo_url: string | null;
+  custom_greeting: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -48,12 +51,14 @@ export default function AIFriendPage() {
   // AI Friends state
   const [aiFriends, setAiFriends] = useState<AIFriend[]>([]);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [isGroupChat, setIsGroupChat] = useState(false); // Toggle between individual and group chat
   const [showFriendSelector, setShowFriendSelector] = useState(false);
   const [showFriendModal, setShowFriendModal] = useState(false);
   const [editingFriend, setEditingFriend] = useState<AIFriend | null>(null);
   const [friendName, setFriendName] = useState("");
   const [friendDescription, setFriendDescription] = useState("");
   const [friendLogoUrl, setFriendLogoUrl] = useState("");
+  const [friendCustomGreeting, setFriendCustomGreeting] = useState("");
   const [selectedDefaultLogo, setSelectedDefaultLogo] = useState<string | null>(null);
   const [_isLoadingFriends, setIsLoadingFriends] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -87,12 +92,25 @@ export default function AIFriendPage() {
       userName
     )}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
   };
+  // Generate greeting based on selected friend or default
+  const getGreeting = (): string => {
+    if (selectedFriend) {
+      if (selectedFriend.custom_greeting) {
+        return selectedFriend.custom_greeting;
+      }
+      return `Hi! I'm ${selectedFriend.name}, your friend. How can I help you today? Feel free to ask me anything or just chat! 😊`;
+    }
+    if (isLoggedIn) {
+      return "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊";
+    }
+    return "Hey! I'm SyntraIQ Friend. How can I help you today? Feel free to ask me anything or just chat! 😊";
+  };
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
       role: "ai",
-      content:
-        "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+      content: getGreeting(),
       timestamp: new Date(),
     },
   ]);
@@ -205,14 +223,35 @@ export default function AIFriendPage() {
     }
   };
 
-  // Load conversation history on mount (for both free and premium users)
+  // Load conversation history on mount and when friend changes (for both free and premium users)
   useEffect(() => {
     const loadHistory = async () => {
       const API_URL = import.meta.env.VITE_API_URL;
       if (!API_URL) return;
 
+      // Only load history for individual chats (not group chats)
+      if (isGroupChat) {
+        // For group chat, show greeting only
+        setMessages([
+          {
+            id: "1",
+            role: "ai",
+            content: isLoggedIn 
+              ? "Hey! This is a group chat with all your AI friends. Tag them with @ to get specific responses, or just chat and everyone will reply! 😊"
+              : "Hey! I'm SyntraIQ Friend. How can I help you today?",
+            timestamp: new Date(),
+          },
+        ]);
+        return;
+      }
+
       try {
-        const response = await fetch(`${API_URL}/api/chat/history?chatMode=ai_friend`, {
+        // Load history for specific friend if selected, otherwise load default
+        const historyUrl = selectedFriendId 
+          ? `${API_URL}/api/chat/history?chatMode=ai_friend&aiFriendId=${selectedFriendId}`
+          : `${API_URL}/api/chat/history?chatMode=ai_friend`;
+        
+        const response = await fetch(historyUrl, {
           method: "GET",
           headers: getAuthHeaders(),
         });
@@ -235,21 +274,49 @@ export default function AIFriendPage() {
               {
                 id: "1",
                 role: "ai",
-                content:
-                  "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+                content: getGreeting(),
                 timestamp: new Date(),
               },
               ...historyMessages,
             ]);
+          } else {
+            // No history, just show greeting
+            setMessages([
+              {
+                id: "1",
+                role: "ai",
+                content: getGreeting(),
+                timestamp: new Date(),
+              },
+            ]);
           }
+        } else {
+          // Error loading history, show greeting
+          setMessages([
+            {
+              id: "1",
+              role: "ai",
+              content: getGreeting(),
+              timestamp: new Date(),
+            },
+          ]);
         }
       } catch (error) {
         console.error("Failed to load chat history:", error);
+        // On error, show greeting
+        setMessages([
+          {
+            id: "1",
+            role: "ai",
+            content: getGreeting(),
+            timestamp: new Date(),
+          },
+        ]);
       }
     };
 
     loadHistory();
-  }, [isPremium]);
+  }, [isPremium, selectedFriendId, isGroupChat, selectedFriend]);
 
   // Speech recognition setup
   useEffect(() => {
@@ -331,6 +398,27 @@ export default function AIFriendPage() {
     setIsListening(false);
   };
 
+  // Parse @ mentions from message text
+  const parseMentions = (text: string): string[] => {
+    const mentionRegex = /@(\w+)/g;
+    const matches = text.match(mentionRegex);
+    if (!matches) return [];
+    
+    // Extract friend names (remove @)
+    const mentionedNames = matches.map(m => m.substring(1).toLowerCase());
+    
+    // Find friend IDs by matching names
+    const mentionedIds: string[] = [];
+    aiFriends.forEach(friend => {
+      const friendNameLower = friend.name.toLowerCase().replace(/\s+/g, "");
+      if (mentionedNames.includes(friendNameLower)) {
+        mentionedIds.push(friend.id);
+      }
+    });
+    
+    return mentionedIds;
+  };
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
@@ -365,45 +453,122 @@ export default function AIFriendPage() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/chat`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          message: messageText,
-          model: selectedModel,
-          newConversation: newConversation,
-          chatMode: "ai_friend", // Use AI friend mode
-          aiFriendId: selectedFriendId || undefined, // Include friend ID if selected
-        }),
-      });
+      // Handle group chat vs individual chat
+      if (isGroupChat && isLoggedIn && aiFriends.length > 0) {
+        // Group chat: parse @ mentions
+        const mentionedIds = parseMentions(messageText);
+        const friendsToMessage = mentionedIds.length > 0 
+          ? aiFriends.filter(f => mentionedIds.includes(f.id))
+          : aiFriends; // If no mentions, message all friends
+        
+        if (friendsToMessage.length === 0) {
+          showToast({
+            message: "No friends found to message. Please check your @ mentions.",
+            type: "error",
+            duration: 3000,
+          });
+          setIsLoading(false);
+          return;
+        }
 
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(
-          errorData.error || `API request failed with status ${response.status}`
+        // Send message to each friend in parallel
+        const responses = await Promise.allSettled(
+          friendsToMessage.map(async (friend) => {
+            const response = await fetch(`${API_URL}/api/chat`, {
+              method: "POST",
+              headers: getAuthHeaders(),
+              body: JSON.stringify({
+                message: messageText,
+                model: selectedModel,
+                newConversation: false, // Group chat maintains history
+                chatMode: "ai_friend",
+                aiFriendId: friend.id, // Individual friend ID for context
+              }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+              throw new Error(errorData.error || `Failed to get response from ${friend.name}`);
+            }
+
+            const data = await response.json();
+            return {
+              friendId: friend.id,
+              friendName: friend.name,
+              friendAvatar: friend.logo_url || defaultAiProfile.avatar,
+              message: data.message || "No response",
+            };
+          })
         );
-      }
 
-      const data = await response.json();
+        // Add all responses to messages
+        responses.forEach((result, index) => {
+          if (result.status === "fulfilled") {
+            const aiResponse: Message = {
+              id: `${Date.now()}-${index}`,
+              role: "ai",
+              content: result.value.message,
+              timestamp: new Date(),
+              friendId: result.value.friendId,
+              friendName: result.value.friendName,
+            };
+            setMessages((prev) => [...prev, aiResponse]);
+          } else {
+            // Error response
+            const friendName = friendsToMessage[index]?.name || "Unknown";
+            const errorResponse: Message = {
+              id: `${Date.now()}-error-${index}`,
+              role: "ai",
+              content: `Sorry, ${friendName} encountered an error: ${result.reason?.message || "Failed to connect"}.`,
+              timestamp: new Date(),
+              friendId: friendsToMessage[index]?.id,
+              friendName: friendName,
+            };
+            setMessages((prev) => [...prev, errorResponse]);
+          }
+        });
+      } else {
+        // Individual chat: send to selected friend or default
+        const response = await fetch(`${API_URL}/api/chat`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            message: messageText,
+            model: selectedModel,
+            newConversation: newConversation,
+            chatMode: "ai_friend",
+            aiFriendId: selectedFriendId || undefined, // Include friend ID if selected
+          }),
+        });
 
-      // Check if response is empty or invalid
-      if (!data.message || data.message.trim().length === 0) {
-        throw new Error("AI returned an empty response. Please try again.");
-      }
+        if (!response.ok) {
+          const errorData = await response
+            .json()
+            .catch(() => ({ error: "Unknown error" }));
+          throw new Error(
+            errorData.error || `API request failed with status ${response.status}`
+          );
+        }
 
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "ai",
-        content: data.message,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, aiResponse]);
+        const data = await response.json();
 
-      // Reset newConversation flag after first message
-      if (newConversation) {
-        setNewConversation(false);
+        // Check if response is empty or invalid
+        if (!data.message || data.message.trim().length === 0) {
+          throw new Error("AI returned an empty response. Please try again.");
+        }
+
+        const aiResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "ai",
+          content: data.message,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiResponse]);
+
+        // Reset newConversation flag after first message
+        if (newConversation) {
+          setNewConversation(false);
+        }
       }
     } catch (error: any) {
       console.error("Chat API error:", error);
@@ -571,6 +736,7 @@ export default function AIFriendPage() {
           description: friendDescription.trim(),
           logoUrl: friendLogoUrl || undefined,
           defaultLogo: selectedDefaultLogo || undefined,
+          customGreeting: friendCustomGreeting.trim() || undefined,
         }),
       });
 
@@ -619,6 +785,7 @@ export default function AIFriendPage() {
           description: friendDescription.trim(),
           logoUrl: friendLogoUrl || undefined,
           defaultLogo: selectedDefaultLogo || undefined,
+          customGreeting: friendCustomGreeting.trim() || undefined,
         }),
       });
 
@@ -693,6 +860,7 @@ export default function AIFriendPage() {
     setFriendName("");
     setFriendDescription("");
     setFriendLogoUrl("");
+    setFriendCustomGreeting("");
     setSelectedDefaultLogo(null);
     setEditingFriend(null);
   };
@@ -706,6 +874,7 @@ export default function AIFriendPage() {
     setEditingFriend(friend);
     setFriendName(friend.name);
     setFriendDescription(friend.description);
+    setFriendCustomGreeting(friend.custom_greeting || "");
     
     // Check if logo is a default logo
     const defaultLogo = defaultLogos.find(l => l.url === friend.logo_url);
@@ -853,6 +1022,22 @@ export default function AIFriendPage() {
             </div>
           </div>
           <div className="row flex items-center gap-2.5">
+            {isLoggedIn && aiFriends.length > 0 && (
+              <button
+                className={`btn-ghost p-2 rounded-lg transition-colors ${
+                  isGroupChat ? "bg-[rgba(199,168,105,0.15)]" : ""
+                }`}
+                onClick={() => {
+                  setIsGroupChat(!isGroupChat);
+                  setSelectedFriendId(null); // Clear selection when switching modes
+                  setNewConversation(true); // Start fresh when switching
+                }}
+                aria-label={isGroupChat ? "Switch to individual chat" : "Switch to group chat"}
+                title={isGroupChat ? "Individual Chat" : "Group Chat"}
+              >
+                <FaComments size={18} color={isGroupChat ? "var(--accent)" : "var(--text)"} />
+              </button>
+            )}
             <button
               className="btn-ghost p-2"
               aria-label="Favorite conversation"
@@ -865,51 +1050,65 @@ export default function AIFriendPage() {
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-4 py-5 bg-[var(--bg)]">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex items-end gap-3 mb-4 ${
-              message.role === "user" ? "flex-row-reverse" : "flex-row"
-            }`}
-          >
-            <img
-              src={
-                message.role === "user" ? userProfile.avatar : aiProfile.avatar
-              }
-              alt={
-                message.role === "user"
-                  ? `${userProfile.name} avatar`
-                  : `${aiProfile.name} avatar`
-              }
-              className={`w-9 h-9 rounded-full object-cover border-2 ${
-                message.role === "user"
-                  ? "border-[var(--accent)]"
-                  : "border-[rgba(16,163,127,0.5)]"
-              }`}
-            />
+        {messages.map((message) => {
+          // For group chat AI messages, get friend avatar and name
+          let messageAvatar = message.role === "user" ? userProfile.avatar : aiProfile.avatar;
+          let messageName = message.role === "user" ? userProfile.name : aiProfile.name;
+          
+          if (message.role === "ai" && message.friendId && isGroupChat) {
+            const friend = aiFriends.find(f => f.id === message.friendId);
+            if (friend) {
+              messageAvatar = friend.logo_url || defaultAiProfile.avatar;
+              messageName = friend.name;
+            }
+          }
+          
+          return (
             <div
-              className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${
-                message.role === "user"
-                  ? "bg-[var(--accent)] text-[#111]"
-                  : "bg-[var(--card)] text-[var(--text)] border border-[var(--border)]"
+              key={message.id}
+              className={`flex items-end gap-3 mb-4 ${
+                message.role === "user" ? "flex-row-reverse" : "flex-row"
               }`}
             >
-              <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
-                {message.content}
-              </div>
+              <img
+                src={messageAvatar}
+                alt={`${messageName} avatar`}
+                className={`w-9 h-9 rounded-full object-cover border-2 ${
+                  message.role === "user"
+                    ? "border-[var(--accent)]"
+                    : "border-[rgba(16,163,127,0.5)]"
+                }`}
+              />
               <div
-                className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${
-                  message.role === "user" ? "text-right" : "text-left"
+                className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${
+                  message.role === "user"
+                    ? "bg-[var(--accent)] text-[#111]"
+                    : "bg-[var(--card)] text-[var(--text)] border border-[var(--border)]"
                 }`}
               >
-                {message.timestamp.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {/* Show friend name in group chat */}
+                {message.role === "ai" && message.friendName && isGroupChat && (
+                  <div className="text-[length:var(--font-xs)] font-semibold mb-1 opacity-80">
+                    {message.friendName}
+                  </div>
+                )}
+                <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
+                  {message.content}
+                </div>
+                <div
+                  className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${
+                    message.role === "user" ? "text-right" : "text-left"
+                  }`}
+                >
+                  {message.timestamp.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isLoading && (
           <div className="flex items-end gap-3 mb-4">
@@ -1081,8 +1280,7 @@ export default function AIFriendPage() {
                     {
                       id: "1",
                       role: "ai",
-                      content:
-                        "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
+                      content: getGreeting(),
                       timestamp: new Date(),
                     },
                   ]);
@@ -1213,6 +1411,26 @@ export default function AIFriendPage() {
                   />
                   <div className="text-xs opacity-70 mt-1">
                     {friendDescription.length}/500
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">
+                    Custom Greeting (Optional, max 500 characters)
+                  </label>
+                  <textarea
+                    value={friendCustomGreeting}
+                    onChange={(e) => setFriendCustomGreeting(e.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--text)] resize-none"
+                    placeholder={`Leave empty to use default: "Hi! I'm ${friendName || '[Name]'}, your friend. How can I help you today? Feel free to ask me anything or just chat! 😊"`}
+                  />
+                  <div className="text-xs opacity-70 mt-1">
+                    {friendCustomGreeting.length}/500
+                  </div>
+                  <div className="text-xs opacity-60 mt-1">
+                    If set, this will be used as the greeting message instead of the default.
                   </div>
                 </div>
 

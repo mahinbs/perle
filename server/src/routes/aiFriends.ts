@@ -25,14 +25,16 @@ const createAIFriendSchema = z.object({
   name: z.string().min(1).max(50, 'Name must be between 1 and 50 characters'),
   description: z.string().min(10, 'Description must be at least 10 characters').max(500, 'Description must be at most 500 characters'),
   logoUrl: z.string().optional(), // Can be a URL or default logo identifier
-  defaultLogo: z.string().optional() // e.g., "avatar-1", "avatar-2", etc.
+  defaultLogo: z.string().optional(), // e.g., "avatar-1", "avatar-2", etc.
+  customGreeting: z.string().max(500, 'Custom greeting must be at most 500 characters').optional()
 });
 
 const updateAIFriendSchema = z.object({
   name: z.string().min(1).max(50).optional(),
   description: z.string().min(10).max(500).optional(),
   logoUrl: z.string().optional(),
-  defaultLogo: z.string().optional()
+  defaultLogo: z.string().optional(),
+  customGreeting: z.string().max(500).optional()
 });
 
 // Default logo options (5-6 avatar images)
@@ -204,7 +206,7 @@ router.post('/ai-friends', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    const { name, description, logoUrl, defaultLogo } = parse.data;
+    const { name, description, logoUrl, defaultLogo, customGreeting } = parse.data;
 
     // Check if user already has 4 friends
     const { count, error: countError } = await supabase
@@ -248,7 +250,8 @@ router.post('/ai-friends', authenticateToken, async (req: AuthRequest, res) => {
         user_id: req.userId,
         name: name.trim(),
         description: description.trim(),
-        logo_url: finalLogoUrl
+        logo_url: finalLogoUrl,
+        custom_greeting: customGreeting?.trim() || null
       } as any)
       .select()
       .single();
@@ -293,6 +296,9 @@ router.put('/ai-friends/:id', authenticateToken, async (req: AuthRequest, res) =
     }
     if (parse.data.description !== undefined) {
       updates.description = parse.data.description.trim();
+    }
+    if (parse.data.customGreeting !== undefined) {
+      updates.custom_greeting = parse.data.customGreeting?.trim() || null;
     }
     
     // Handle logo update: defaultLogo takes precedence over logoUrl

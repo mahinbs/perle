@@ -1,6 +1,6 @@
 export type Mode = 'Ask' | 'Research' | 'Summarize' | 'Compare';
 
-export type ChatMode = 'normal' | 'ai_friend' | 'ai_psychologist';
+export type ChatMode = 'normal' | 'ai_friend' | 'ai_psychologist' | 'space';
 
 export type LLMModel =
   | 'auto'

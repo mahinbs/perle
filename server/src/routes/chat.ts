@@ -40,8 +40,9 @@ const chatSchema = z.object({
     'mistral-7b'
   ]).optional().default('gemini-lite'),
   newConversation: z.boolean().optional().default(false),
-  chatMode: z.enum(['normal', 'ai_friend', 'ai_psychologist']).optional().default('normal'),
-  aiFriendId: z.string().uuid().optional(), // Optional AI friend ID for custom friends
+  chatMode: z.enum(['normal', 'ai_friend', 'ai_psychologist', 'space']).optional().default('normal'),
+  aiFriendId: z.string().uuid().optional(), // Optional AI friend ID for individual chat
+  mentionedFriendIds: z.array(z.string().uuid()).optional(), // Array of friend IDs for group chat (@ mentions)
   spaceId: z.string().uuid().optional() // Optional space ID for space-specific conversations
 });
 
@@ -56,7 +57,7 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const { message, model, newConversation, chatMode, aiFriendId, spaceId } = parse.data;
+    const { message, model, newConversation, chatMode, aiFriendId, mentionedFriendIds, spaceId } = parse.data;
     const trimmedMessage = message.trim();
 
     if (!trimmedMessage) {
@@ -161,9 +162,9 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       console.log(`✅ Premium user - using ${actualModel} for ${chatMode} mode`);
     }
 
-    // Fetch conversation history for context - ISOLATED BY CHAT MODE AND SPACE
+    // Fetch conversation history for context - ISOLATED BY CHAT MODE, SPACE, AND AI FRIEND
     // Free users: 5 messages, Premium users: 20 messages
-    // Context is isolated per user, chat mode, AND space (no mixing between spaces)
+    // Context is isolated per user, chat mode, space, AND ai_friend_id (no mixing between friends)
     let conversationHistory: ConversationMessage[] = [];
     if (req.userId && !newConversation) {
       try {
@@ -179,6 +180,17 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
           query = query.eq('space_id', spaceId);
         } else {
           query = query.is('space_id', null);
+        }
+        
+        // If aiFriendId is provided (individual chat), filter by friend. Otherwise, get group chats (null ai_friend_id)
+        if (chatMode === 'ai_friend' && aiFriendId) {
+          query = query.eq('ai_friend_id', aiFriendId);
+        } else if (chatMode === 'ai_friend') {
+          // Group chat: get conversations with null ai_friend_id
+          query = query.is('ai_friend_id', null);
+        } else {
+          // Non-ai_friend modes: ensure ai_friend_id is null
+          query = query.is('ai_friend_id', null);
         }
         
         const { data: history } = await query
@@ -198,8 +210,8 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
     
-    // If starting new conversation, clear existing history for this user, chat mode, and space
-    // Only clears the specific chat mode's and space's history, not all histories
+    // If starting new conversation, clear existing history for this user, chat mode, space, and ai friend
+    // Only clears the specific chat mode's, space's, and friend's history, not all histories
     if (req.userId && newConversation) {
       try {
         let deleteQuery = supabase
@@ -213,6 +225,15 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
           deleteQuery = deleteQuery.eq('space_id', spaceId);
         } else {
           deleteQuery = deleteQuery.is('space_id', null);
+        }
+        
+        // If aiFriendId is provided (individual chat), clear only that friend's history. Otherwise, clear group chats
+        if (chatMode === 'ai_friend' && aiFriendId) {
+          deleteQuery = deleteQuery.eq('ai_friend_id', aiFriendId);
+        } else if (chatMode === 'ai_friend') {
+          deleteQuery = deleteQuery.is('ai_friend_id', null);
+        } else {
+          deleteQuery = deleteQuery.is('ai_friend_id', null);
         }
         
         await deleteQuery;
@@ -244,19 +265,22 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
     if (req.userId) {
       try {
         const answerText = result.chunks.map(c => c.text).join('\n\n');
+        let insertData: any = {
+          user_id: req.userId,
+          query: trimmedMessage,
+          answer: answerText,
+          mode: 'Ask',
+          model: actualModel,
+          chat_mode: chatMode, // Save with chat mode for isolation
+          space_id: spaceId || null, // Save with space ID for isolation
+          ai_friend_id: (chatMode === 'ai_friend' && aiFriendId) ? aiFriendId : null // Save with ai friend ID for isolation
+        };
+        
         await supabase
           .from('conversation_history')
-          .insert({
-            user_id: req.userId,
-            query: trimmedMessage,
-            answer: answerText,
-            mode: 'Ask',
-            model: actualModel,
-            chat_mode: chatMode, // Save with chat mode for isolation
-            space_id: spaceId || null // Save with space ID for isolation
-          });
+          .insert(insertData);
         
-        // Keep only last N messages per user per chat mode (cleanup old ones)
+        // Keep only last N messages per user per chat mode per friend/space (cleanup old ones)
         // Free: 5 messages, Premium: 20 messages
         const maxHistory = isPremium ? 20 : 5;
         let cleanupQuery = supabase
@@ -270,6 +294,15 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
           cleanupQuery = cleanupQuery.eq('space_id', spaceId);
         } else {
           cleanupQuery = cleanupQuery.is('space_id', null);
+        }
+        
+        // If aiFriendId is provided (individual chat), filter by friend. Otherwise, get group chats
+        if (chatMode === 'ai_friend' && aiFriendId) {
+          cleanupQuery = cleanupQuery.eq('ai_friend_id', aiFriendId);
+        } else if (chatMode === 'ai_friend') {
+          cleanupQuery = cleanupQuery.is('ai_friend_id', null);
+        } else {
+          cleanupQuery = cleanupQuery.is('ai_friend_id', null);
         }
         
         const { data: allHistory } = await cleanupQuery
@@ -336,8 +369,9 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
     // Context is isolated per user AND chat mode (no mixing between modes)
     const messageLimit = isPremium ? 20 : 5;
 
-    // Get spaceId from query parameter if provided
+    // Get spaceId and aiFriendId from query parameters if provided
     const spaceId = req.query.spaceId as string | undefined;
+    const aiFriendId = req.query.aiFriendId as string | undefined;
     
     let historyQuery = supabase
       .from('conversation_history')
@@ -350,6 +384,17 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
       historyQuery = historyQuery.eq('space_id', spaceId);
     } else {
       historyQuery = historyQuery.is('space_id', null);
+    }
+    
+    // If aiFriendId is provided (individual chat), filter by friend. Otherwise, get group chats (null ai_friend_id)
+    if (chatMode === 'ai_friend' && aiFriendId) {
+      historyQuery = historyQuery.eq('ai_friend_id', aiFriendId);
+    } else if (chatMode === 'ai_friend') {
+      // Group chat: get conversations with null ai_friend_id
+      historyQuery = historyQuery.is('ai_friend_id', null);
+    } else {
+      // Non-ai_friend modes: ensure ai_friend_id is null
+      historyQuery = historyQuery.is('ai_friend_id', null);
     }
     
     const { data: history } = await historyQuery
