@@ -114,6 +114,61 @@ router.post('/generate-image', optionalAuth, async (req: AuthRequest, res) => {
         ? 'gemini' 
         : 'other';
 
+    // Download image and upload to Supabase (like we do for videos)
+    let finalImageUrl = image.url;
+    
+    if (req.userId) {
+      try {
+        console.log('📥 Downloading generated image...');
+        
+        let imageBuffer: Buffer;
+        
+        // Handle different URL types
+        if (image.url.startsWith('data:image')) {
+          // Gemini returns base64 data URL
+          const base64Data = image.url.split(',')[1];
+          imageBuffer = Buffer.from(base64Data, 'base64');
+        } else {
+          // OpenAI/DALL-E returns regular URL
+          const imageResponse = await fetch(image.url);
+          if (!imageResponse.ok) {
+            throw new Error(`Failed to download image: ${imageResponse.status}`);
+          }
+          imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+        }
+        
+        const imageSizeMB = (imageBuffer.length / 1024 / 1024).toFixed(2);
+        console.log(`📦 Image size: ${imageSizeMB}MB`);
+        
+        // Upload to Supabase Storage
+        const fileName = `${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('generated-images')
+          .upload(fileName, imageBuffer, {
+            contentType: 'image/png',
+            upsert: false
+          });
+        
+        if (uploadError) {
+          console.error('Supabase upload error:', uploadError);
+          throw uploadError;
+        }
+        
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('generated-images')
+          .getPublicUrl(fileName);
+        
+        finalImageUrl = urlData.publicUrl;
+        console.log(`✅ Image uploaded to Supabase: ${imageSizeMB}MB`);
+      } catch (uploadError) {
+        console.error('Failed to download/upload image:', uploadError);
+        // Fall back to original URL if upload fails
+        console.log('⚠️ Using original image URL (may expire soon!)');
+      }
+    }
+
     // Save to database if user is logged in
     if (req.userId) {
       try {
@@ -123,14 +178,15 @@ router.post('/generate-image', optionalAuth, async (req: AuthRequest, res) => {
             user_id: req.userId,
             media_type: 'image',
             prompt: prompt,
-            url: image.url,
+            url: finalImageUrl,
             provider: provider,
             width: image.width,
             height: image.height,
             aspect_ratio: aspectRatio,
             metadata: {
               model: provider === 'gemini' ? 'imagen-3' : 'dall-e-3',
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              originalUrl: image.url
             }
           });
         console.log('✅ Image saved to database');
@@ -143,7 +199,7 @@ router.post('/generate-image', optionalAuth, async (req: AuthRequest, res) => {
     res.json({
       success: true,
       image: {
-        url: image.url,
+        url: finalImageUrl,
         prompt: image.prompt,
         width: image.width,
         height: image.height,
@@ -214,12 +270,12 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
       .eq('media_type', 'video')
       .gte('created_at', todayStart.toISOString());
     
-    // Pro tier: 3 videos per day, Max tier: 6 videos per day
-    const dailyLimit = premiumTier === 'max' ? 6 : 3;
+    // Pro tier: 6 videos per day, Max tier: 12 videos per day (DOUBLED)
+    const dailyLimit = premiumTier === 'max' ? 12 : 6;
     
     if (videoCount && videoCount >= dailyLimit) {
       return res.status(429).json({ 
-        error: `Daily video generation limit reached. ${premiumTier === 'pro' ? 'Upgrade to Max for 6 videos per day.' : 'You have reached your daily limit of 6 videos.'}`,
+        error: `Daily video generation limit reached. ${premiumTier === 'pro' ? 'Upgrade to Max for 12 videos per day.' : 'You have reached your daily limit of 12 videos.'}`,
         limit: dailyLimit,
         used: videoCount,
         tier: premiumTier
@@ -239,6 +295,69 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
     // Determine provider
     const provider = video.url.includes('openai') ? 'openai' : 'gemini';
 
+    // Gemini video URLs are temporary - download IMMEDIATELY and upload to Supabase
+    let finalVideoUrl = video.url;
+    
+    if (provider === 'gemini' && req.userId) {
+      try {
+        console.log('📥 Downloading video from Gemini (temporary URL)...');
+        
+        // Use the same API key logic as video generation
+        const geminiApiKey = (process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_FREE || process.env.GEMINI_API_KEY)?.trim();
+        
+        if (!geminiApiKey) {
+          throw new Error('Gemini/Google API key is missing');
+        }
+        
+        console.log(`🔗 Fetching: ${video.url}`);
+        
+        // Use header authentication instead of query param
+        const videoResponse = await fetch(video.url, {
+          headers: {
+            'x-goog-api-key': geminiApiKey
+          }
+        });
+        
+        if (!videoResponse.ok) {
+          const errorText = await videoResponse.text();
+          console.error(`Download failed: ${videoResponse.status}`, errorText.substring(0, 300));
+          throw new Error(`Failed to download video: ${videoResponse.status}`);
+        }
+        
+        const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+        const videoSizeMB = (videoBuffer.length / 1024 / 1024).toFixed(2);
+        console.log(`📦 Video size: ${videoSizeMB}MB`);
+        
+        // Upload to Supabase Storage
+        const fileName = `${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.mp4`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('generated-videos')
+          .upload(fileName, videoBuffer, {
+            contentType: 'video/mp4',
+            upsert: false
+          });
+        
+        if (uploadError) {
+          console.error('Supabase upload error:', uploadError);
+          throw uploadError;
+        }
+        
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('generated-videos')
+          .getPublicUrl(fileName);
+        
+        finalVideoUrl = urlData.publicUrl;
+        console.log(`✅ Video uploaded to Supabase: ${videoSizeMB}MB`);
+        
+      } catch (error) {
+        console.error('Failed to download/upload video:', error);
+        console.warn('⚠️ Using original Gemini URL (will expire soon!)');
+        // Keep original URL as fallback (but it will expire!)
+      }
+    }
+
     // Save to database
     if (req.userId) {
       try {
@@ -248,7 +367,7 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
             user_id: req.userId,
             media_type: 'video',
             prompt: prompt,
-            url: video.url,
+            url: finalVideoUrl,
             provider: provider,
             width: video.width,
             height: video.height,
@@ -256,7 +375,8 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
             duration: duration,
             metadata: {
               model: provider === 'gemini' ? 'veo-3.1' : 'sora',
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              originalUrl: video.url
             }
           });
         console.log('✅ Video saved to database');
@@ -269,7 +389,7 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
     res.json({
       success: true,
       video: {
-        url: video.url,
+        url: finalVideoUrl,
         prompt: video.prompt,
         duration: video.duration,
         width: video.width,
@@ -357,12 +477,12 @@ router.post('/generate-video-from-image', optionalAuth, upload.single('image'), 
       .eq('media_type', 'video')
       .gte('created_at', todayStart.toISOString());
     
-    // Pro tier: 3 videos per day, Max tier: 6 videos per day
-    const dailyLimit = premiumTier === 'max' ? 6 : 3;
+    // Pro tier: 6 videos per day, Max tier: 12 videos per day (DOUBLED)
+    const dailyLimit = premiumTier === 'max' ? 12 : 6;
     
     if (videoCount && videoCount >= dailyLimit) {
       return res.status(429).json({ 
-        error: `Daily video generation limit reached. ${premiumTier === 'pro' ? 'Upgrade to Max for 6 videos per day.' : 'You have reached your daily limit of 6 videos.'}`,
+        error: `Daily video generation limit reached. ${premiumTier === 'pro' ? 'Upgrade to Max for 12 videos per day.' : 'You have reached your daily limit of 12 videos.'}`,
         limit: dailyLimit,
         used: videoCount,
         tier: premiumTier
@@ -626,6 +746,56 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
     res.json({ success: true, message: 'Media deleted successfully' });
   } catch (error) {
     console.error('Delete media error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/media/proxy-video/:fileId - Proxy Gemini video downloads
+router.get('/proxy-video/:fileId', async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    
+    if (!fileId) {
+      return res.status(400).json({ error: 'File ID is required' });
+    }
+    
+    // Construct Gemini download URL with API key
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const downloadUrl = `https://generativelanguage.googleapis.com/v1beta/files/${fileId}:download?alt=media&key=${geminiApiKey}`;
+    
+    console.log(`📥 Proxying video download for file: ${fileId}`);
+    
+    // Fetch video from Gemini
+    const videoResponse = await fetch(downloadUrl);
+    
+    if (!videoResponse.ok) {
+      const errorText = await videoResponse.text();
+      console.error(`Failed to fetch video from Gemini: ${videoResponse.status}`, errorText);
+      return res.status(videoResponse.status).json({ 
+        error: 'Failed to fetch video from Gemini',
+        details: errorText 
+      });
+    }
+    
+    // Get content type and content length
+    const contentType = videoResponse.headers.get('content-type') || 'video/mp4';
+    const contentLength = videoResponse.headers.get('content-length');
+    
+    // Set response headers
+    res.setHeader('Content-Type', contentType);
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    
+    // Stream the video to the client
+    const arrayBuffer = await videoResponse.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    res.send(buffer);
+    
+  } catch (error) {
+    console.error('Video proxy error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

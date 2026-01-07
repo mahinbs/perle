@@ -65,10 +65,11 @@ export async function generateImageWithGemini(
   }
   
   // Try models in order: fast -> standard -> ultra (based on your quota)
+  // These are the actual available model names from Google AI
   const models = [
-    { name: 'imagen-4.0-fast-generate', displayName: 'Imagen 4.0 Fast' },
-    { name: 'imagen-4.0-generate', displayName: 'Imagen 4.0 Standard' },
-    { name: 'imagen-4.0-ultra-generate', displayName: 'Imagen 4.0 Ultra' },
+    { name: 'imagen-4.0-fast-generate-001', displayName: 'Imagen 4.0 Fast' },
+    { name: 'imagen-4.0-generate-001', displayName: 'Imagen 4.0 Standard' },
+    { name: 'imagen-4.0-ultra-generate-001', displayName: 'Imagen 4.0 Ultra' },
   ];
   
   for (const model of models) {
@@ -93,8 +94,7 @@ export async function generateImageWithGemini(
           parameters: {
             sampleCount: 1,
             aspectRatio: aspectRatio,
-            negativePrompt: 'nsfw, ugly, bad quality, blurry, distorted',
-            safetySetting: 'block_some'
+            safetySetting: 'block_low_and_above'
           }
         }),
         signal: AbortSignal.timeout(30000) // 30 second timeout

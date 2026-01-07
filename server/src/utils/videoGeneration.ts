@@ -37,9 +37,10 @@ export async function generateVideoWithGemini(
   }
   
   // Try models in order: fast -> standard (based on your quota)
+  // These are the actual available model names from Google AI
   const models = [
-    { name: 'veo-3.0-fast-generate', displayName: 'Veo 3.0 Fast' },
-    { name: 'veo-3.0-generate', displayName: 'Veo 3.0 Standard' },
+    { name: 'veo-3.0-fast-generate-001', displayName: 'Veo 3.0 Fast' },
+    { name: 'veo-3.0-generate-001', displayName: 'Veo 3.0 Standard' },
   ];
   
   for (const model of models) {
@@ -52,20 +53,17 @@ export async function generateVideoWithGemini(
       console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/${model.name}`);
       console.log('═'.repeat(60));
       
-      // Use Gemini's Veo video generation endpoint
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:generateVideo?key=${apiKey}`, {
+      // Use Gemini's Veo video generation endpoint (predictLongRunning method)
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predictLongRunning?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          prompt: prompt,
-          videoDuration: `${duration}s`,
-          aspectRatio: aspectRatio,
-          safetySettings: {
-            category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-            threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-          }
+          instances: [{
+            prompt: prompt
+          }],
+          parameters: {}
         }),
         signal: AbortSignal.timeout(120000) // 120 second timeout for initial request
       });
@@ -86,13 +84,19 @@ export async function generateVideoWithGemini(
       
       const data = await response.json();
       
+      console.log(`📋 Response from ${model.displayName}:`, JSON.stringify(data).substring(0, 200));
+      
       // Gemini Veo returns an operation ID for async processing
       const operationId = data.name || data.operationId;
       
       if (!operationId) {
-        console.error(`No operation ID returned from ${model.displayName}`);
+        console.error(`❌ No operation ID returned from ${model.displayName}`);
+        console.error(`Response keys:`, Object.keys(data));
         continue;
       }
+      
+      console.log(`✅ Got operation ID: ${operationId}`);
+      console.log(`🔄 Starting to poll for video completion...`);
       
       // Poll for video generation completion
       let attempts = 0;
@@ -109,23 +113,30 @@ export async function generateVideoWithGemini(
         
         const statusData = await statusResponse.json();
         
-        if (statusData.done) {
-          if (statusData.error) {
-            console.error(`${model.displayName} generation failed:`, statusData.error);
-            // If rate limit error, try next model
-            if (statusData.error.message?.includes('quota') || statusData.error.message?.includes('rate limit')) {
-              console.log(`⚠️ ${model.displayName} quota error, trying next model...`);
-              break;
-            }
-            return null;
+      if (statusData.done) {
+        if (statusData.error) {
+          console.error(`${model.displayName} generation failed:`, statusData.error);
+          // If rate limit error OR internal error, try next model
+          if (
+            statusData.error.message?.includes('quota') || 
+            statusData.error.message?.includes('rate limit') ||
+            statusData.error.code === 13 || // Internal server error
+            statusData.error.message?.includes('internal server')
+          ) {
+            console.log(`⚠️ ${model.displayName} error (code ${statusData.error.code}), trying next model...`);
+            break;
           }
-          
-          // Extract video URL from response
-          const videoData = statusData.response?.videoData;
-          const videoUrl = videoData?.uri || videoData?.url;
+          return null;
+        }
+        
+        // Extract video URL from response
+        // The structure is: response.generateVideoResponse.generatedSamples[0].video.uri
+        const videoData = statusData.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+        const videoUrl = videoData?.uri;
           
           if (videoUrl) {
             console.log(`✅ Video generated successfully with ${model.displayName}`);
+            console.log(`🎬 Video URL: ${videoUrl}`);
             return {
               url: videoUrl,
               prompt: prompt,
@@ -133,10 +144,11 @@ export async function generateVideoWithGemini(
               width: width,
               height: height
             };
+          } else {
+            console.error(`❌ No video URL in response.`);
+            console.log(`📦 Response structure:`, JSON.stringify(statusData.response).substring(0, 500));
           }
         }
-        
-        attempts++;
       }
       
       console.warn(`${model.displayName} generation timed out, trying next model...`);
@@ -237,10 +249,11 @@ export async function generateVideoFromImage(
     height = 720;
   }
   
-  // Try models in order: fast -> standard (same as regular video generation)
+  // Try models in order: fast -> standard (based on your quota)
+  // These are the actual available model names from Google AI
   const models = [
-    { name: 'veo-3.0-fast-generate', displayName: 'Veo 3.0 Fast I2V' },
-    { name: 'veo-3.0-generate', displayName: 'Veo 3.0 Standard I2V' },
+    { name: 'veo-3.0-fast-generate-001', displayName: 'Veo 3.0 Fast I2V' },
+    { name: 'veo-3.0-generate-001', displayName: 'Veo 3.0 Standard I2V' },
   ];
   
   for (const model of models) {
@@ -253,21 +266,18 @@ export async function generateVideoFromImage(
       console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/${model.name}`);
       console.log('═'.repeat(60));
       
-      // Try Gemini Veo with image input
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:generateVideo?key=${apiKey}`, {
+      // Try Gemini Veo with image input (predictLongRunning method)
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predictLongRunning?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          prompt: prompt || 'Animate this image',
-          image: imageDataUrl, // Include image data
-          videoDuration: `${duration}s`,
-          aspectRatio: aspectRatio,
-          safetySettings: {
-            category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-            threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-          }
+          instances: [{
+            prompt: prompt || 'Animate this image',
+            image: imageDataUrl
+          }],
+          parameters: {}
         }),
         signal: AbortSignal.timeout(120000) // 120 second timeout
       });
@@ -298,16 +308,32 @@ export async function generateVideoFromImage(
       let attempts = 0;
       const maxAttempts = 120; // 2 minutes max wait
       
+      console.log(`⏳ Polling for video completion (max ${maxAttempts} attempts)...`);
+      
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        attempts++;
         
-        const statusResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`, {
+        const pollUrl = `https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`;
+        
+        const statusResponse = await fetch(pollUrl, {
           headers: {
             'Content-Type': 'application/json'
           }
         });
         
+        if (!statusResponse.ok) {
+          const errorText = await statusResponse.text();
+          console.error(`❌ Polling error (attempt ${attempts}):`, statusResponse.status, errorText.substring(0, 200));
+          continue;
+        }
+        
         const statusData = await statusResponse.json();
+        
+        // Log progress every 10 attempts
+        if (attempts % 10 === 0) {
+          console.log(`   Attempt ${attempts}/${maxAttempts} - Status: ${statusData.done ? 'DONE' : 'Processing...'}`);
+        }
         
         if (statusData.done) {
           if (statusData.error) {
