@@ -91,10 +91,10 @@ export default function AIFriendPage() {
   // Use selected friend's info or default
   const aiProfile = selectedFriend
     ? {
-        name: selectedFriend.name,
-        handle: `@${selectedFriend.name.toLowerCase().replace(/\s+/g, "")}`,
-        avatar: selectedFriend.logo_url || defaultAiProfile.avatar,
-      }
+      name: selectedFriend.name,
+      handle: `@${selectedFriend.name.toLowerCase().replace(/\s+/g, "")}`,
+      avatar: selectedFriend.logo_url || defaultAiProfile.avatar,
+    }
     : defaultAiProfile;
   const userProfile = {
     name: userName,
@@ -110,7 +110,7 @@ export default function AIFriendPage() {
         ? "Hey! This is a group chat with all your AI friends. Tag them with @ to get specific responses, or just chat and everyone will reply! 😊"
         : "Hey! I'm SyntraIQ Friend. How can I help you today?";
     }
-    
+
     // Individual chat greeting
     if (selectedFriend) {
       if (selectedFriend.custom_greeting) {
@@ -146,6 +146,13 @@ export default function AIFriendPage() {
   ]);
   const [dailySuggestionUses, setDailySuggestionUses] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Mention system state
+  const [showMentionList, setShowMentionList] = useState(false);
+  const [filteredFriends, setFilteredFriends] = useState<AIFriend[]>([]);
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -596,9 +603,8 @@ export default function AIFriendPage() {
             const errorResponse: Message = {
               id: `${Date.now()}-error-${index}`,
               role: "ai",
-              content: `Sorry, ${friendName} encountered an error: ${
-                result.reason?.message || "Failed to connect"
-              }.`,
+              content: `Sorry, ${friendName} encountered an error: ${result.reason?.message || "Failed to connect"
+                }.`,
               timestamp: new Date(),
               friendId: friendsToMessage[index]?.id,
               friendName: friendName,
@@ -633,7 +639,7 @@ export default function AIFriendPage() {
             .catch(() => ({ error: "Unknown error" }));
           throw new Error(
             errorData.error ||
-              `API request failed with status ${response.status}`
+            `API request failed with status ${response.status}`
           );
         }
 
@@ -667,9 +673,8 @@ export default function AIFriendPage() {
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
-        content: `Sorry, I encountered an error: ${
-          error.message || "Failed to connect to the server"
-        }. Please try again.`,
+        content: `Sorry, I encountered an error: ${error.message || "Failed to connect to the server"
+          }. Please try again.`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorResponse]);
@@ -679,6 +684,33 @@ export default function AIFriendPage() {
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showMentionList && filteredFriends.length > 0) {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedMentionIndex((prev) =>
+          prev > 0 ? prev - 1 : filteredFriends.length - 1
+        );
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedMentionIndex((prev) =>
+          prev < filteredFriends.length - 1 ? prev + 1 : 0
+        );
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        handleMentionSelect(filteredFriends[selectedMentionIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowMentionList(false);
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -721,6 +753,90 @@ export default function AIFriendPage() {
     setTimeout(() => {
       setIsUploading(false);
     }, 1000);
+  };
+
+  // Mention system handlers
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    const newCursorPosition = e.target.selectionStart;
+
+    setInputValue(newValue);
+    setCursorPosition(newCursorPosition);
+
+    // Auto-resize logic
+    e.target.style.height = "auto";
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
+
+    // Only check for mentions if in group chat
+    if (!isGroupChat) {
+      setShowMentionList(false);
+      return;
+    }
+
+    // Check if we are currently typing a mention
+    // Look for the last @ before cursor
+    const textBeforeCursor = newValue.substring(0, newCursorPosition);
+    const lastAtSymbolIndex = textBeforeCursor.lastIndexOf("@");
+
+    if (lastAtSymbolIndex !== -1) {
+      // Check if the @ is at the start or preceded by a space/newline
+      const isValidStart =
+        lastAtSymbolIndex === 0 ||
+        /[\s\n]/.test(textBeforeCursor[lastAtSymbolIndex - 1]);
+
+      if (isValidStart) {
+        // Get the text after @ up to cursor
+        const query = textBeforeCursor.substring(lastAtSymbolIndex + 1);
+
+        // If query contains space, verify it's a valid multi-word name or stop mentioning
+        // For simplicity, let's allow spaces if they match friend names, 
+        // but typically a simple implementation stops at space unless we do smarter matching.
+        // Let's stop at newline.
+        if (!query.includes("\n")) {
+          // Filter friends
+          const queryLower = query.toLowerCase();
+          const matches = aiFriends.filter(friend =>
+            friend.name.toLowerCase().includes(queryLower)
+          );
+
+          setFilteredFriends(matches);
+          setShowMentionList(matches.length > 0);
+          setSelectedMentionIndex(0); // Reset selection when filtering
+          return;
+        }
+      }
+    }
+
+    // If we reach here, we are not in a valid mention state
+    setShowMentionList(false);
+  };
+
+  const handleMentionSelect = (friend: AIFriend) => {
+    // Find where the mention started
+    const textBeforeCursor = inputValue.substring(0, cursorPosition);
+    const lastAtSymbolIndex = textBeforeCursor.lastIndexOf("@");
+
+    if (lastAtSymbolIndex !== -1) {
+      const textAfterCursor = inputValue.substring(cursorPosition);
+      const prefix = inputValue.substring(0, lastAtSymbolIndex);
+
+      // Construct new value: existing prefix + @Name + space + existing suffix
+      const newValue = `${prefix}@${friend.name} ${textAfterCursor}`;
+
+      setInputValue(newValue);
+      setShowMentionList(false);
+
+      // Focus and set cursor after the inserted name
+      if (inputRef.current) {
+        inputRef.current.focus();
+        // We need to set cursor position after render, simplified here by assuming state update is fast enough
+        // or using setTimeout. React 18 automatic batching might make this tricky without setTimeout.
+        setTimeout(() => {
+          const newPosition = prefix.length + friend.name.length + 2; // @ + name + space
+          inputRef.current?.setSelectionRange(newPosition, newPosition);
+        }, 0);
+      }
+    }
   };
 
   // Friend management functions
@@ -1016,9 +1132,8 @@ export default function AIFriendPage() {
                     </div>
                     <FaChevronDown
                       size={14}
-                      className={`transition-transform ${
-                        showFriendSelector ? "rotate-180" : ""
-                      }`}
+                      className={`transition-transform ${showFriendSelector ? "rotate-180" : ""
+                        }`}
                     />
                   </button>
                   {showFriendSelector && !showFriendModal && (
@@ -1041,11 +1156,10 @@ export default function AIFriendPage() {
                         {aiFriends.map((friend) => (
                           <div
                             key={friend.id}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--input-bg)] transition-colors cursor-pointer mb-1 ${
-                              selectedFriendId === friend.id
-                                ? "bg-[rgba(199,168,105,0.15)]"
-                                : ""
-                            }`}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--input-bg)] transition-colors cursor-pointer mb-1 ${selectedFriendId === friend.id
+                              ? "bg-[rgba(199,168,105,0.15)]"
+                              : ""
+                              }`}
                             onClick={() => {
                               setSelectedFriendId(friend.id);
                               setIsGroupChat(false); // Switch to individual chat when friend is selected
@@ -1120,9 +1234,8 @@ export default function AIFriendPage() {
           <div className="row flex items-center gap-2.5">
             {isLoggedIn && aiFriends.length > 0 && (
               <button
-                className={`btn-ghost !p-2 flex gap-2 rounded-lg transition-colors ${
-                  isGroupChat ? "bg-[rgba(199,168,105,0.15)]" : ""
-                }`}
+                className={`btn-ghost !p-2 flex gap-2 rounded-lg transition-colors ${isGroupChat ? "bg-[rgba(199,168,105,0.15)]" : ""
+                  }`}
                 onClick={() => {
                   setIsGroupChat(!isGroupChat);
                   setSelectedFriendId(null); // Clear selection when switching modes
@@ -1172,25 +1285,22 @@ export default function AIFriendPage() {
           return (
             <div
               key={message.id}
-              className={`flex items-end gap-3 mb-4 ${
-                message.role === "user" ? "flex-row-reverse" : "flex-row"
-              }`}
+              className={`flex items-end gap-3 mb-4 ${message.role === "user" ? "flex-row-reverse" : "flex-row"
+                }`}
             >
               <img
                 src={messageAvatar}
                 alt={`${messageName} avatar`}
-                className={`w-9 h-9 rounded-full object-cover border-2 ${
-                  message.role === "user"
-                    ? "border-[var(--accent)]"
-                    : "border-[rgba(16,163,127,0.5)]"
-                }`}
+                className={`w-9 h-9 rounded-full object-cover border-2 ${message.role === "user"
+                  ? "border-[var(--accent)]"
+                  : "border-[rgba(16,163,127,0.5)]"
+                  }`}
               />
               <div
-                className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${
-                  message.role === "user"
-                    ? "bg-[var(--accent)] text-[#111]"
-                    : "bg-[var(--card)] text-[var(--text)] border border-[var(--border)]"
-                }`}
+                className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${message.role === "user"
+                  ? "bg-[var(--accent)] text-[#111]"
+                  : "bg-[var(--card)] text-[var(--text)] border border-[var(--border)]"
+                  }`}
               >
                 {/* Show friend name in group chat */}
                 {message.role === "ai" && message.friendName && isGroupChat && (
@@ -1202,9 +1312,8 @@ export default function AIFriendPage() {
                   {message.content}
                 </div>
                 <div
-                  className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${
-                    message.role === "user" ? "text-right" : "text-left"
-                  }`}
+                  className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${message.role === "user" ? "text-right" : "text-left"
+                    }`}
                 >
                   {message.timestamp.toLocaleTimeString([], {
                     hour: "2-digit",
@@ -1309,19 +1418,55 @@ export default function AIFriendPage() {
             onChange={handleFileSelected}
             aria-hidden
           />
-          <div className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-1 sm:border border-[var(--border)] min-h-[34px] max-h-[120px]">
+          <div className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-1 sm:border border-[var(--border)] min-h-[34px] max-h-[120px] relative">
+            {/* Mention List */}
+            {showMentionList && (
+              <div className="absolute bottom-full left-0 mb-2 w-full max-w-[250px] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className="p-1 max-h-[200px] overflow-y-auto">
+                  {filteredFriends.map((friend, index) => (
+                    <button
+                      key={friend.id}
+                      onClick={() => handleMentionSelect(friend)}
+                      onMouseEnter={() => setSelectedMentionIndex(index)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors rounded-md group ${index === selectedMentionIndex
+                        ? "bg-[var(--input-bg)]"
+                        : "hover:bg-[var(--input-bg)]"
+                        }`}
+                    >
+                      <img
+                        src={friend.logo_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(friend.name)}&background=C7A869&color=111&size=32&bold=true`}
+                        alt={friend.name}
+                        className={`w-6 h-6 rounded-full object-cover border transition-colors ${index === selectedMentionIndex
+                          ? "border-[var(--accent)]"
+                          : "border-[var(--border)] group-hover:border-[var(--accent)]"
+                          }`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-sm font-medium transition-colors truncate ${index === selectedMentionIndex
+                          ? "text-[var(--accent)]"
+                          : "text-[var(--text)] group-hover:text-[var(--accent)]"
+                          }`}>
+                          {friend.name}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <textarea
               ref={inputRef}
               value={inputValue}
-              onChange={(e) => {
-                setInputValue(e.target.value);
-                e.target.style.height = "auto";
-                e.target.style.height = `${Math.min(
-                  e.target.scrollHeight,
-                  100
-                )}px`;
-              }}
+              onChange={handleInputChange}
               onKeyDown={handleKeyPress}
+              onClick={(e) => {
+                // Update cursor position on click to ensure mentions work correctly if user moves cursor
+                setCursorPosition((e.target as HTMLTextAreaElement).selectionStart);
+              }}
+              onSelect={(e) => {
+                setCursorPosition((e.target as HTMLTextAreaElement).selectionStart);
+              }}
               placeholder="Type your message..."
               className="flex-1 border-none bg-transparent resize-none py-1 text-[length:var(--font-md)] text-[var(--text)] outline-none font-inherit leading-relaxed min-h-[24px] max-h-[100px] overflow-y-auto h-auto"
               rows={1}
@@ -1351,13 +1496,11 @@ export default function AIFriendPage() {
               )}
 
               <button
-                className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${
-                  isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
-                } ${
-                  attachedFileName
+                className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+                  } ${attachedFileName
                     ? " bg-[rgba(199,168,105,0.15)] text-[var(--accent)]"
                     : " bg-transparent text-inherit"
-                }`}
+                  }`}
                 onClick={handleAttachClick}
                 aria-label="Attach file"
                 disabled={isLoading}
@@ -1366,11 +1509,10 @@ export default function AIFriendPage() {
               </button>
 
               <button
-                className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${
-                  showSuggestions
-                    ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]"
-                    : "bg-transparent text-inherit"
-                }`}
+                className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${showSuggestions
+                  ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]"
+                  : "bg-transparent text-inherit"
+                  }`}
                 onClick={() => setShowSuggestions((prev) => !prev)}
                 aria-label="Toggle inspiration replies"
                 aria-expanded={showSuggestions}
@@ -1402,11 +1544,10 @@ export default function AIFriendPage() {
               </button>
 
               <button
-                className={`btn bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${
-                  inputValue.trim() && !isLoading && !isUploading
-                    ? "opacity-100 cursor-pointer"
-                    : "opacity-50 cursor-not-allowed"
-                }`}
+                className={`btn bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${inputValue.trim() && !isLoading && !isUploading
+                  ? "opacity-100 cursor-pointer"
+                  : "opacity-50 cursor-not-allowed"
+                  }`}
                 onClick={handleSendMessage}
                 disabled={!inputValue.trim() || isLoading || isUploading}
                 aria-label="Send message"
@@ -1530,9 +1671,8 @@ export default function AIFriendPage() {
                     maxLength={500}
                     rows={3}
                     className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--text)] resize-none"
-                    placeholder={`Leave empty to use default: "Hi! I'm ${
-                      friendName || "[Name]"
-                    }, your friend. How can I help you today? Feel free to ask me anything or just chat! 😊"`}
+                    placeholder={`Leave empty to use default: "Hi! I'm ${friendName || "[Name]"
+                      }, your friend. How can I help you today? Feel free to ask me anything or just chat! 😊"`}
                   />
                   <div className="text-xs opacity-70 mt-1">
                     {friendCustomGreeting.length}/500
@@ -1559,11 +1699,10 @@ export default function AIFriendPage() {
                           key={logo.id}
                           type="button"
                           onClick={() => handleSelectDefaultLogo(logo.id)}
-                          className={`p-2 rounded-lg border-2 transition-all ${
-                            selectedDefaultLogo === logo.id
-                              ? "border-[var(--accent)] bg-[rgba(199,168,105,0.15)]"
-                              : "border-[var(--border)] hover:border-[var(--accent)]"
-                          }`}
+                          className={`p-2 rounded-lg border-2 transition-all ${selectedDefaultLogo === logo.id
+                            ? "border-[var(--accent)] bg-[rgba(199,168,105,0.15)]"
+                            : "border-[var(--border)] hover:border-[var(--accent)]"
+                            }`}
                         >
                           <img
                             src={logo.url}
