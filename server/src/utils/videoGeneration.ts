@@ -10,7 +10,7 @@ export interface GeneratedVideo {
   height: number;
 }
 
-// Generate video using Gemini Veo API
+// Generate video using Gemini Veo API - tries fast model first, then falls back to standard
 export async function generateVideoWithGemini(
   prompt: string, 
   duration: number = 5,
@@ -24,107 +24,134 @@ export async function generateVideoWithGemini(
     return null;
   }
   
-  try {
-    console.log('═'.repeat(60));
-    console.log(`🎥 [GEMINI VEO 3.1] Generating video`);
-    console.log(`   Prompt: "${prompt}"`);
-    console.log(`   Duration: ${duration}s`);
-    console.log(`   Aspect Ratio: ${aspectRatio}`);
-    console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/veo-001`);
-    console.log('═'.repeat(60));
-    
-    // Calculate dimensions based on aspect ratio
-    let width = 1280;
-    let height = 720;
-    
-    if (aspectRatio === '9:16') {
-      width = 720;
-      height = 1280;
-    } else if (aspectRatio === '1:1') {
-      width = 720;
-      height = 720;
-    }
-    
-    // Use Gemini's Veo video generation endpoint
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/veo-001:generateVideo?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        prompt: prompt,
-        videoDuration: `${duration}s`,
-        aspectRatio: aspectRatio,
-        safetySettings: {
-          category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-        }
-      })
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gemini Veo error:', errorText);
-      return null;
-    }
-    
-    const data = await response.json();
-    
-    // Gemini Veo returns an operation ID for async processing
-    const operationId = data.name || data.operationId;
-    
-    if (!operationId) {
-      console.error('No operation ID returned from Gemini Veo');
-      return null;
-    }
-    
-    // Poll for video generation completion
-    let attempts = 0;
-    const maxAttempts = 60; // 60 seconds max wait (video takes longer)
-    
-    while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+  // Calculate dimensions based on aspect ratio
+  let width = 1280;
+  let height = 720;
+  
+  if (aspectRatio === '9:16') {
+    width = 720;
+    height = 1280;
+  } else if (aspectRatio === '1:1') {
+    width = 720;
+    height = 720;
+  }
+  
+  // Try models in order: fast -> standard (based on your quota)
+  const models = [
+    { name: 'veo-3.0-fast-generate', displayName: 'Veo 3.0 Fast' },
+    { name: 'veo-3.0-generate', displayName: 'Veo 3.0 Standard' },
+  ];
+  
+  for (const model of models) {
+    try {
+      console.log('═'.repeat(60));
+      console.log(`🎥 [${model.displayName.toUpperCase()}] Generating video`);
+      console.log(`   Prompt: "${prompt}"`);
+      console.log(`   Duration: ${duration}s`);
+      console.log(`   Aspect Ratio: ${aspectRatio}`);
+      console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/${model.name}`);
+      console.log('═'.repeat(60));
       
-      const statusResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`, {
+      // Use Gemini's Veo video generation endpoint
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:generateVideo?key=${apiKey}`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({
+          prompt: prompt,
+          videoDuration: `${duration}s`,
+          aspectRatio: aspectRatio,
+          safetySettings: {
+            category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+            threshold: 'BLOCK_MEDIUM_AND_ABOVE'
+          }
+        }),
+        signal: AbortSignal.timeout(120000) // 120 second timeout for initial request
       });
       
-      const statusData = await statusResponse.json();
-      
-      if (statusData.done) {
-        if (statusData.error) {
-          console.error('Video generation failed:', statusData.error);
-          return null;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`${model.displayName} error (${response.status}):`, errorText);
+        
+        // Check if it's a rate limit error - if so, try next model
+        if (response.status === 429 || errorText.includes('quota') || errorText.includes('rate limit')) {
+          console.log(`⚠️ ${model.displayName} rate limit hit, trying next model...`);
+          continue;
         }
         
-        // Extract video URL from response
-        const videoData = statusData.response?.videoData;
-        const videoUrl = videoData?.uri || videoData?.url;
-        
-        if (videoUrl) {
-          console.log('✅ Video generated successfully with Gemini Veo');
-          return {
-            url: videoUrl,
-            prompt: prompt,
-            duration: duration,
-            width: width,
-            height: height
-          };
-        }
+        // For other errors, also try next model
+        continue;
       }
       
-      attempts++;
+      const data = await response.json();
+      
+      // Gemini Veo returns an operation ID for async processing
+      const operationId = data.name || data.operationId;
+      
+      if (!operationId) {
+        console.error(`No operation ID returned from ${model.displayName}`);
+        continue;
+      }
+      
+      // Poll for video generation completion
+      let attempts = 0;
+      const maxAttempts = 120; // 2 minutes max wait (video takes longer)
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        
+        const statusResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`, {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const statusData = await statusResponse.json();
+        
+        if (statusData.done) {
+          if (statusData.error) {
+            console.error(`${model.displayName} generation failed:`, statusData.error);
+            // If rate limit error, try next model
+            if (statusData.error.message?.includes('quota') || statusData.error.message?.includes('rate limit')) {
+              console.log(`⚠️ ${model.displayName} quota error, trying next model...`);
+              break;
+            }
+            return null;
+          }
+          
+          // Extract video URL from response
+          const videoData = statusData.response?.videoData;
+          const videoUrl = videoData?.uri || videoData?.url;
+          
+          if (videoUrl) {
+            console.log(`✅ Video generated successfully with ${model.displayName}`);
+            return {
+              url: videoUrl,
+              prompt: prompt,
+              duration: duration,
+              width: width,
+              height: height
+            };
+          }
+        }
+        
+        attempts++;
+      }
+      
+      console.warn(`${model.displayName} generation timed out, trying next model...`);
+      continue;
+      
+    } catch (error: any) {
+      console.error(`Error generating video with ${model.displayName}:`, error?.message || error);
+      // Try next model
+      continue;
     }
-    
-    console.warn('Video generation timed out');
-    return null;
-    
-  } catch (error) {
-    console.error('Error generating video with Gemini Veo:', error);
-    return null;
   }
+  
+  // All Gemini models failed
+  console.error('❌ All Gemini Veo models failed or hit rate limits');
+  return null;
 }
 
 // Alternative: OpenAI Sora (NOT YET AVAILABLE via API)
@@ -185,38 +212,49 @@ export async function generateVideo(
   return null;
 }
 
-// Generate video from image using Gemini Veo first, then OpenAI Sora (when available)
+// Generate video from image using Gemini Veo - tries fast model first, then falls back to standard
 export async function generateVideoFromImage(
   imageDataUrl: string, // Base64 data URL or image URL
   prompt?: string, // Optional description/prompt
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9'
 ): Promise<GeneratedVideo | null> {
-  // Try Gemini Veo I2V first
   const apiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_FREE;
   
-  if (apiKey) {
+  if (!apiKey) {
+    console.warn('Google API key not configured. Skipping image-to-video generation.');
+    return null;
+  }
+  
+  // Calculate dimensions based on aspect ratio
+  let width = 1280;
+  let height = 720;
+  if (aspectRatio === '9:16') {
+    width = 720;
+    height = 1280;
+  } else if (aspectRatio === '1:1') {
+    width = 720;
+    height = 720;
+  }
+  
+  // Try models in order: fast -> standard (same as regular video generation)
+  const models = [
+    { name: 'veo-3.0-fast-generate', displayName: 'Veo 3.0 Fast I2V' },
+    { name: 'veo-3.0-generate', displayName: 'Veo 3.0 Standard I2V' },
+  ];
+  
+  for (const model of models) {
     try {
       console.log('═'.repeat(60));
-      console.log(`🎥 [GEMINI VEO I2V] Generating video from image`);
+      console.log(`🎥 [${model.displayName.toUpperCase()}] Generating video from image`);
       console.log(`   Prompt: "${prompt || 'Animate this image'}"`);
       console.log(`   Duration: ${duration}s`);
       console.log(`   Aspect Ratio: ${aspectRatio}`);
+      console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/${model.name}`);
       console.log('═'.repeat(60));
       
-      // Calculate dimensions
-      let width = 1280;
-      let height = 720;
-      if (aspectRatio === '9:16') {
-        width = 720;
-        height = 1280;
-      } else if (aspectRatio === '1:1') {
-        width = 720;
-        height = 720;
-      }
-      
       // Try Gemini Veo with image input
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/veo-001:generateVideo?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:generateVideo?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -230,82 +268,91 @@ export async function generateVideoFromImage(
             category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
             threshold: 'BLOCK_MEDIUM_AND_ABOVE'
           }
-        })
+        }),
+        signal: AbortSignal.timeout(120000) // 120 second timeout
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        const operationId = data.name || data.operationId;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`${model.displayName} error (${response.status}):`, errorText);
         
-        if (operationId) {
-          // Poll for completion
-          let attempts = 0;
-          const maxAttempts = 60;
-          
-          while (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            const statusResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`, {
-              headers: {
-                'Content-Type': 'application/json'
-              }
-            });
-            
-            const statusData = await statusResponse.json();
-            
-            if (statusData.done) {
-              if (statusData.error) {
-                console.error('Gemini Veo I2V failed:', statusData.error);
-                break;
-              }
-              
-              const videoData = statusData.response?.videoData;
-              const videoUrl = videoData?.uri || videoData?.url;
-              
-              if (videoUrl) {
-                console.log('✅ Video generated successfully with Gemini Veo I2V');
-                return {
-                  url: videoUrl,
-                  prompt: prompt || 'Video generated from image',
-                  duration: duration,
-                  width: width,
-                  height: height
-                };
-              }
+        // Check if it's a rate limit error - if so, try next model
+        if (response.status === 429 || errorText.includes('quota') || errorText.includes('rate limit')) {
+          console.log(`⚠️ ${model.displayName} rate limit hit, trying next model...`);
+          continue;
+        }
+        
+        // For other errors, also try next model
+        continue;
+      }
+      
+      const data = await response.json();
+      const operationId = data.name || data.operationId;
+      
+      if (!operationId) {
+        console.error(`No operation ID returned from ${model.displayName}`);
+        continue;
+      }
+      
+      // Poll for completion
+      let attempts = 0;
+      const maxAttempts = 120; // 2 minutes max wait
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        
+        const statusResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`, {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const statusData = await statusResponse.json();
+        
+        if (statusData.done) {
+          if (statusData.error) {
+            console.error(`${model.displayName} generation failed:`, statusData.error);
+            // If rate limit error, try next model
+            if (statusData.error.message?.includes('quota') || statusData.error.message?.includes('rate limit')) {
+              console.log(`⚠️ ${model.displayName} quota error, trying next model...`);
+              break;
             }
-            
-            attempts++;
+            return null;
+          }
+          
+          const videoData = statusData.response?.videoData;
+          const videoUrl = videoData?.uri || videoData?.url;
+          
+          if (videoUrl) {
+            console.log(`✅ Video generated successfully with ${model.displayName}`);
+            return {
+              url: videoUrl,
+              prompt: prompt || 'Video generated from image',
+              duration: duration,
+              width: width,
+              height: height
+            };
           }
         }
-      } else {
-        const errorText = await response.text();
-        console.warn('⚠️ Gemini Veo I2V not supported or failed:', errorText);
+        
+        attempts++;
       }
-    } catch (error) {
-      console.error('⚠️ Gemini Veo I2V generation failed:', error);
-    }
-  }
-
-  // Fallback: Try OpenAI Sora I2V (when available)
-  console.log('🔄 Trying OpenAI Sora I2V fallback...');
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-  
-  if (openaiApiKey) {
-    try {
-      // NOTE: OpenAI Sora I2V is not yet available via API
-      // When it becomes available, this will be implemented
-      console.warn('⚠️ OpenAI Sora I2V is not yet available via API');
-      console.warn('   Waiting for official Sora I2V API release from OpenAI');
-    } catch (error) {
-      console.error('⚠️ OpenAI Sora I2V generation failed:', error);
+      
+      console.warn(`${model.displayName} generation timed out, trying next model...`);
+      continue;
+      
+    } catch (error: any) {
+      console.error(`Error generating video with ${model.displayName}:`, error?.message || error);
+      // Try next model
+      continue;
     }
   }
   
-  // If all methods fail, return null
-  console.error('❌ All image-to-video generation methods failed');
-  console.error('   - Gemini Veo I2V: Failed (quota exceeded or not supported)');
-  console.error('   - OpenAI Sora I2V: Not yet available via API');
-  console.error('   Please check API quotas or wait for Sora I2V API release');
+  // All Gemini models failed
+  console.error('❌ All Gemini Veo I2V models failed or hit rate limits');
+  console.error('   - Veo 3.0 Fast I2V: Failed');
+  console.error('   - Veo 3.0 Standard I2V: Failed');
+  console.error('   Note: OpenAI Sora I2V is not yet available via API');
   
   return null;
 }

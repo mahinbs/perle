@@ -3,7 +3,6 @@ import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
 import {
   FaPen,
-  FaStar,
   FaStop,
   FaLightbulb,
   FaSyncAlt,
