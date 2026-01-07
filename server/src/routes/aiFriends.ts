@@ -37,6 +37,59 @@ const updateAIFriendSchema = z.object({
   customGreeting: z.string().max(500).optional()
 });
 
+// Generate unique username from name
+async function generateUsername(name: string, userId: string, excludeId?: string): Promise<string> {
+  // Step 1: Clean the name - lowercase, remove non-alphanumeric
+  let baseUsername = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+  
+  // Step 2: Ensure it's between 3-20 chars
+  if (baseUsername.length < 3) {
+    baseUsername = baseUsername + 'ai'; // pad short names
+  }
+  if (baseUsername.length > 20) {
+    baseUsername = baseUsername.substring(0, 20);
+  }
+  
+  // Step 3: Check if username exists for this user
+  let finalUsername = baseUsername;
+  let counter = 1;
+  
+  while (true) {
+    const query = supabase
+      .from('ai_friends')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('username', finalUsername);
+    
+    // If updating, exclude the current friend
+    if (excludeId) {
+      query.neq('id', excludeId);
+    }
+    
+    const { data: existing } = await query.single();
+    
+    if (!existing) {
+      // Username is available!
+      break;
+    }
+    
+    // Username taken, try with number
+    counter++;
+    finalUsername = baseUsername + counter;
+    
+    // Safety limit
+    if (counter > 100) {
+      // Append random string
+      finalUsername = baseUsername + Math.random().toString(36).substring(2, 6);
+      break;
+    }
+  }
+  
+  return finalUsername;
+}
+
 // Default logo options (5-6 avatar images)
 const DEFAULT_LOGOS = [
   {
@@ -244,11 +297,16 @@ router.post('/ai-friends', authenticateToken, async (req: AuthRequest, res) => {
       finalLogoUrl = logoUrl;
     }
 
+    // Generate unique username
+    const username = await generateUsername(name.trim(), req.userId);
+    console.log(`📝 Generated username: @${username} for friend: ${name.trim()}`);
+
     const { data: friend, error } = await supabase
       .from('ai_friends')
       .insert({
         user_id: req.userId,
         name: name.trim(),
+        username: username,
         description: description.trim(),
         logo_url: finalLogoUrl,
         custom_greeting: customGreeting?.trim() || null
@@ -309,7 +367,7 @@ router.put('/ai-friends/:id', authenticateToken, async (req: AuthRequest, res) =
       updates.logo_url = parse.data.logoUrl;
     }
 
-    // If updating name, check for duplicates
+    // If updating name, check for duplicates and regenerate username
     if (updates.name) {
       const { data: existing } = await supabase
         .from('ai_friends')
@@ -322,6 +380,10 @@ router.put('/ai-friends/:id', authenticateToken, async (req: AuthRequest, res) =
       if (existing) {
         return res.status(400).json({ error: 'An AI friend with this name already exists' });
       }
+      
+      // Regenerate username based on new name
+      updates.username = await generateUsername(updates.name, req.userId, id);
+      console.log(`📝 Updated username: @${updates.username} for friend: ${updates.name}`);
     }
 
     const { data: friend, error } = await supabase

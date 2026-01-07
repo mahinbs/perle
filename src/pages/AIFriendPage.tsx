@@ -38,6 +38,7 @@ interface Message {
 interface AIFriend {
   id: string;
   name: string;
+  username: string; // Unique username for @mentions
   description: string;
   logo_url: string | null;
   custom_greeting: string | null;
@@ -456,20 +457,19 @@ export default function AIFriendPage() {
     setIsListening(false);
   };
 
-  // Parse @ mentions from message text
+  // Parse @ mentions from message text (using usernames)
   const parseMentions = (text: string): string[] => {
     const mentionRegex = /@(\w+)/g;
     const matches = text.match(mentionRegex);
     if (!matches) return [];
 
-    // Extract friend names (remove @)
-    const mentionedNames = matches.map((m) => m.substring(1).toLowerCase());
+    // Extract usernames (remove @)
+    const mentionedUsernames = matches.map((m) => m.substring(1).toLowerCase());
 
-    // Find friend IDs by matching names
+    // Find friend IDs by matching usernames
     const mentionedIds: string[] = [];
     aiFriends.forEach((friend) => {
-      const friendNameLower = friend.name.toLowerCase().replace(/\s+/g, "");
-      if (mentionedNames.includes(friendNameLower)) {
+      if (mentionedUsernames.includes(friend.username.toLowerCase())) {
         mentionedIds.push(friend.id);
       }
     });
@@ -792,9 +792,10 @@ export default function AIFriendPage() {
         // but typically a simple implementation stops at space unless we do smarter matching.
         // Let's stop at newline.
         if (!query.includes("\n")) {
-          // Filter friends
+          // Filter friends by username or name
           const queryLower = query.toLowerCase();
           const matches = aiFriends.filter(friend =>
+            friend.username.toLowerCase().includes(queryLower) ||
             friend.name.toLowerCase().includes(queryLower)
           );
 
@@ -819,19 +820,19 @@ export default function AIFriendPage() {
       const textAfterCursor = inputValue.substring(cursorPosition);
       const prefix = inputValue.substring(0, lastAtSymbolIndex);
 
-      // Construct new value: existing prefix + @Name + space + existing suffix
-      const newValue = `${prefix}@${friend.name} ${textAfterCursor}`;
+      // Construct new value: existing prefix + @username + space + existing suffix
+      const newValue = `${prefix}@${friend.username} ${textAfterCursor}`;
 
       setInputValue(newValue);
       setShowMentionList(false);
 
-      // Focus and set cursor after the inserted name
+      // Focus and set cursor after the inserted username
       if (inputRef.current) {
         inputRef.current.focus();
         // We need to set cursor position after render, simplified here by assuming state update is fast enough
         // or using setTimeout. React 18 automatic batching might make this tricky without setTimeout.
         setTimeout(() => {
-          const newPosition = prefix.length + friend.name.length + 2; // @ + name + space
+          const newPosition = prefix.length + friend.username.length + 2; // @ + username + space
           inputRef.current?.setSelectionRange(newPosition, newPosition);
         }, 0);
       }
@@ -1176,8 +1177,13 @@ export default function AIFriendPage() {
                               className="w-10 h-10 rounded-full object-cover border border-[var(--border)]"
                             />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold truncate">
-                                {friend.name}
+                              <div className="flex items-center gap-1.5">
+                                <div className="text-sm font-semibold truncate">
+                                  {friend.name}
+                                </div>
+                                <div className="text-xs opacity-50 text-[var(--accent)]">
+                                  @{friend.username}
+                                </div>
                               </div>
                               <div className="text-xs opacity-70 truncate">
                                 {friend.description.substring(0, 40)}...
@@ -1445,6 +1451,9 @@ export default function AIFriendPage() {
                           ? "text-[var(--accent)]"
                           : "text-[var(--text)] group-hover:text-[var(--accent)]"
                           }`}>
+                          @{friend.username}
+                        </div>
+                        <div className="text-xs opacity-60 truncate">
                           {friend.name}
                         </div>
                       </div>
