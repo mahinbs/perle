@@ -51,7 +51,7 @@ export function extractImagePrompt(query: string, answer: string): string | null
   return null;
 }
 
-// Generate image using Gemini Imagen API
+// Generate image using Gemini Imagen API - tries fast model first, then falls back to detailed
 export async function generateImageWithGemini(
   prompt: string, 
   aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'
@@ -64,61 +64,84 @@ export async function generateImageWithGemini(
     return null;
   }
   
-  try {
-    console.log('═'.repeat(60));
-    console.log(`🎨 [GEMINI IMAGEN 3] Generating image`);
-    console.log(`   Prompt: "${prompt}"`);
-    console.log(`   Aspect Ratio: ${aspectRatio}`);
-    console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001`);
-    console.log('═'.repeat(60));
-    
-    // Use Gemini's image generation endpoint (Imagen 3)
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        instances: [{
-          prompt: prompt
-        }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: aspectRatio,
-          negativePrompt: 'nsfw, ugly, bad quality, blurry, distorted',
-          safetySetting: 'block_some'
+  // Try models in order: fast -> standard -> ultra (based on your quota)
+  const models = [
+    { name: 'imagen-4.0-fast-generate', displayName: 'Imagen 4.0 Fast' },
+    { name: 'imagen-4.0-generate', displayName: 'Imagen 4.0 Standard' },
+    { name: 'imagen-4.0-ultra-generate', displayName: 'Imagen 4.0 Ultra' },
+  ];
+  
+  for (const model of models) {
+    try {
+      console.log('═'.repeat(60));
+      console.log(`🎨 [${model.displayName.toUpperCase()}] Generating image`);
+      console.log(`   Prompt: "${prompt}"`);
+      console.log(`   Aspect Ratio: ${aspectRatio}`);
+      console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/${model.name}`);
+      console.log('═'.repeat(60));
+      
+      // Use Gemini's image generation endpoint
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predict?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          instances: [{
+            prompt: prompt
+          }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: aspectRatio,
+            negativePrompt: 'nsfw, ugly, bad quality, blurry, distorted',
+            safetySetting: 'block_some'
+          }
+        }),
+        signal: AbortSignal.timeout(30000) // 30 second timeout
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`${model.displayName} error (${response.status}):`, errorText);
+        
+        // Check if it's a rate limit error - if so, try next model
+        if (response.status === 429 || errorText.includes('quota') || errorText.includes('rate limit')) {
+          console.log(`⚠️ ${model.displayName} rate limit hit, trying next model...`);
+          continue;
         }
-      })
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gemini Imagen error:', errorText);
-      return null;
+        
+        // For other errors, also try next model
+        continue;
+      }
+      
+      const data = await response.json();
+      
+      // Extract base64 image from response
+      const imageData = data.predictions?.[0]?.bytesBase64Encoded;
+      
+      if (imageData) {
+        console.log(`✅ Image generated successfully with ${model.displayName}`);
+        return {
+          url: `data:image/png;base64,${imageData}`,
+          prompt: prompt,
+          width: 1024,
+          height: 1024
+        };
+      }
+      
+      console.warn(`No image data returned from ${model.displayName}`);
+      continue;
+      
+    } catch (error: any) {
+      console.error(`Error generating image with ${model.displayName}:`, error?.message || error);
+      // Try next model
+      continue;
     }
-    
-    const data = await response.json();
-    
-    // Extract base64 image from response
-    const imageData = data.predictions?.[0]?.bytesBase64Encoded;
-    
-    if (imageData) {
-      console.log('✅ Image generated successfully with Gemini');
-      return {
-        url: `data:image/png;base64,${imageData}`,
-        prompt: prompt,
-        width: 1024,
-        height: 1024
-      };
-    }
-    
-    console.warn('No image data returned from Gemini');
-    return null;
-    
-  } catch (error) {
-    console.error('Error generating image with Gemini:', error);
-    return null;
   }
+  
+  // All Gemini models failed
+  console.error('❌ All Gemini Imagen models failed or hit rate limits');
+  return null;
 }
 
 // Alternative: Use DALL-E 3 if Gemini image generation fails
