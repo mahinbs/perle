@@ -152,3 +152,26 @@ export function shareContent(data: { title?: string; text?: string; url?: string
     return copyToClipboard(shareText);
   }
 }
+
+// Format timestamp in IST (Indian Standard Time)
+export function formatTimestampIST(date: Date): string {
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  }).format(date);
+}
+
+// Format date and time in IST
+export function formatDateTimeIST(date: Date): string {
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  }).format(date);
+}

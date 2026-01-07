@@ -1,11 +1,27 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
 import { generateAIAnswer } from '../utils/aiProviders.js';
 import type { LLMModel, ConversationMessage, ChatMode } from '../types.js';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
+
+// Configure multer for image uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  },
+});
 
 const chatSchema = z.object({
   message: z.string().min(1, 'Message cannot be empty').max(2000, 'Message too long'),
@@ -46,10 +62,18 @@ const chatSchema = z.object({
   spaceId: z.string().uuid().optional() // Optional space ID for space-specific conversations
 });
 
-// Chat endpoint for AI Friend
-router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
+// Chat endpoint for AI Friend (supports both JSON and multipart/form-data with image)
+router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthRequest, res) => {
   try {
-    const parse = chatSchema.safeParse(req.body);
+    // Handle both JSON and form-data
+    let bodyData = req.body;
+    
+    // Convert form-data string values to proper types
+    if (bodyData.newConversation === 'true' || bodyData.newConversation === 'false') {
+      bodyData.newConversation = bodyData.newConversation === 'true';
+    }
+    
+    const parse = chatSchema.safeParse(bodyData);
     if (!parse.success) {
       return res.status(400).json({ 
         error: 'Invalid request', 
@@ -243,11 +267,36 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
 
+    // Process uploaded image if present
+    let imageDataUrl: string | undefined = undefined;
+    if (req.file) {
+      try {
+        const base64Image = req.file.buffer.toString('base64');
+        imageDataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
+        console.log(`📷 Image attached: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
+      } catch (imageError) {
+        console.error('Failed to process image:', imageError);
+        // Continue without image if processing fails
+      }
+    }
+
     // Generate answer using AI provider with chat mode
     let result;
     try {
-      // Pass chat mode, AI friend description, and space context to AI provider for appropriate system prompts
-      result = await generateAIAnswer(trimmedMessage, 'Ask', actualModel, isPremium, conversationHistory, chatMode, aiFriendDescription, aiFriendName, spaceTitle, spaceDescription);
+      // Pass chat mode, AI friend description, space context, and optional image to AI provider
+      result = await generateAIAnswer(
+        trimmedMessage, 
+        'Ask', 
+        actualModel, 
+        isPremium, 
+        conversationHistory, 
+        chatMode, 
+        aiFriendDescription, 
+        aiFriendName, 
+        spaceTitle, 
+        spaceDescription,
+        imageDataUrl // Pass image for vision models
+      );
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
       const errorMessage = apiError?.message || 'Failed to generate answer';
@@ -276,9 +325,17 @@ router.post('/chat', optionalAuth, async (req: AuthRequest, res) => {
           ai_friend_id: (chatMode === 'ai_friend' && aiFriendId) ? aiFriendId : null // Save with ai friend ID for isolation
         };
         
-        await supabase
+        console.log(`💾 Saving to history: mode=${chatMode}, aiFriendId=${aiFriendId || 'none'}, spaceId=${spaceId || 'none'}`);
+        
+        const { error: insertError } = await supabase
           .from('conversation_history')
           .insert(insertData);
+        
+        if (insertError) {
+          console.error('❌ Failed to save to history:', insertError);
+        } else {
+          console.log('✅ History saved successfully');
+        }
         
         // Keep only last N messages per user per chat mode per friend/space (cleanup old ones)
         // Free: 5 messages, Premium: 20 messages
@@ -344,6 +401,8 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
 
     // Get chatMode from query parameter (default to 'normal')
     const chatMode = (req.query.chatMode as ChatMode) || 'normal';
+    
+    console.log(`📚 Loading chat history for user ${req.userId}, mode: ${chatMode}`);
 
     // Check premium status to determine limit
     let isPremium = false;
@@ -401,7 +460,10 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
       .order('created_at', { ascending: true })
       .limit(messageLimit);
 
-    if (!history) {
+    console.log(`📚 Found ${history?.length || 0} history items for mode ${chatMode}, aiFriendId: ${aiFriendId || 'none'}`);
+
+    if (!history || history.length === 0) {
+      console.log(`📚 No history found, returning empty array`);
       return res.json({ messages: [] });
     }
 
@@ -411,6 +473,7 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
       { role: 'assistant' as const, content: item.answer, timestamp: item.created_at }
     ]);
 
+    console.log(`📚 Returning ${messages.length} messages`);
     res.json({ messages });
   } catch (error) {
     console.error('Chat history error:', error);

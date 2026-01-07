@@ -16,6 +16,7 @@ import { getUserData, getAuthHeaders, removeAuthToken } from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
+import { formatTimestampIST } from "../utils/helpers";
 
 interface Message {
   id: string;
@@ -113,10 +114,14 @@ export default function AIPsychologyPage() {
       if (!API_URL) return;
 
       try {
+        console.log('📚 [Psychology] Loading history from:', `${API_URL}/api/chat/history?chatMode=ai_psychologist`);
+        
         const response = await fetch(`${API_URL}/api/chat/history?chatMode=ai_psychologist`, {
           method: "GET",
           headers: getAuthHeaders(),
         });
+
+        console.log('📚 [Psychology] History response status:', response.status);
 
         // Handle 401 - user logged out
         if (response.status === 401) {
@@ -127,7 +132,10 @@ export default function AIPsychologyPage() {
 
         if (response.ok) {
           const data = await response.json();
+          console.log('📚 [Psychology] History data:', data);
+          
           if (data.messages && data.messages.length > 0) {
+            console.log(`📚 [Psychology] Loaded ${data.messages.length} messages from history`);
             // Convert to Message format
             const historyMessages: Message[] = data.messages.map(
               (msg: any, index: number) => ({
@@ -465,10 +473,7 @@ export default function AIPsychologyPage() {
                   message.role === "user" ? "text-right" : "text-left"
                 }`}
               >
-                {message.timestamp.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {formatTimestampIST(message.timestamp)}
               </div>
             </div>
           </div>

@@ -25,6 +25,7 @@ import {
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
+import { formatTimestampIST } from "../utils/helpers";
 
 interface Message {
   id: string;
@@ -33,6 +34,7 @@ interface Message {
   timestamp: Date;
   friendId?: string; // For group chat: which friend sent this
   friendName?: string; // For group chat: friend's name
+  imageUrl?: string; // Optional image attachment
 }
 
 interface AIFriend {
@@ -160,6 +162,7 @@ export default function AIFriendPage() {
   const friendSelectorRef = useRef<HTMLDivElement>(null);
   const friendSelectorContainerRef = useRef<HTMLDivElement>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -325,10 +328,14 @@ export default function AIFriendPage() {
           ? `${API_URL}/api/chat/history?chatMode=ai_friend&aiFriendId=${selectedFriendId}`
           : `${API_URL}/api/chat/history?chatMode=ai_friend`;
 
+        console.log('📚 Loading history from:', historyUrl);
+        
         const response = await fetch(historyUrl, {
           method: "GET",
           headers: getAuthHeaders(),
         });
+        
+        console.log('📚 History response status:', response.status);
 
         // Handle 401 - user logged out
         if (response.status === 401) {
@@ -338,7 +345,11 @@ export default function AIFriendPage() {
 
         if (response.ok) {
           const data = await response.json();
+          console.log('📚 History data:', data);
+          
           if (data.messages && data.messages.length > 0) {
+            console.log(`📚 Loaded ${data.messages.length} messages from history`);
+            
             // Convert to Message format
             const historyMessages: Message[] = data.messages.map(
               (msg: any, index: number) => ({
@@ -365,7 +376,11 @@ export default function AIFriendPage() {
                 ...historyMessages,
               ];
             });
+          } else {
+            console.log('📚 No history messages found');
           }
+        } else {
+          console.error('📚 History fetch failed:', response.status, response.statusText);
         }
       } catch (error) {
         console.error("Failed to load chat history:", error);
@@ -489,7 +504,9 @@ export default function AIFriendPage() {
 
     setMessages((prev) => [...prev, userMessage]);
     const messageText = inputValue.trim();
+    const fileToSend = attachedFile; // Save reference before clearing
     setInputValue("");
+    setAttachedFile(null);
     if (attachedFileName) {
       setAttachedFileName(null);
       if (fileInputRef.current) {
@@ -534,16 +551,37 @@ export default function AIFriendPage() {
         // Send message to each friend in parallel
         const responses = await Promise.allSettled(
           friendsToMessage.map(async (friend) => {
-            const response = await fetch(`${API_URL}/api/chat`, {
-              method: "POST",
-              headers: getAuthHeaders(),
-              body: JSON.stringify({
+            // Prepare request body (FormData if image, JSON otherwise)
+            let body: FormData | string;
+            const headers: Record<string, string> = getAuthHeaders() as Record<string, string>;
+            
+            if (fileToSend) {
+              // Send as FormData with image
+              const formData = new FormData();
+              formData.append('message', messageText);
+              formData.append('model', selectedModel);
+              formData.append('newConversation', 'false');
+              formData.append('chatMode', 'ai_friend');
+              formData.append('aiFriendId', friend.id);
+              formData.append('image', fileToSend);
+              body = formData;
+              // Remove Content-Type header to let browser set it with boundary
+              delete headers['Content-Type'];
+            } else {
+              // Send as JSON
+              body = JSON.stringify({
                 message: messageText,
                 model: selectedModel,
-                newConversation: false, // Group chat maintains history
+                newConversation: false,
                 chatMode: "ai_friend",
-                aiFriendId: friend.id, // Individual friend ID for context
-              }),
+                aiFriendId: friend.id,
+              });
+            }
+            
+            const response = await fetch(`${API_URL}/api/chat`, {
+              method: "POST",
+              headers: headers,
+              body: body,
             });
 
             // Handle 401 - user logged out, continue as free user
@@ -613,16 +651,39 @@ export default function AIFriendPage() {
         });
       } else {
         // Individual chat: send to selected friend or default
-        const response = await fetch(`${API_URL}/api/chat`, {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
+        // Prepare request body (FormData if image, JSON otherwise)
+        let body: FormData | string;
+        const headers: Record<string, string> = getAuthHeaders() as Record<string, string>;
+        
+        if (fileToSend) {
+          // Send as FormData with image
+          const formData = new FormData();
+          formData.append('message', messageText);
+          formData.append('model', selectedModel);
+          formData.append('newConversation', newConversation.toString());
+          formData.append('chatMode', 'ai_friend');
+          if (selectedFriendId) {
+            formData.append('aiFriendId', selectedFriendId);
+          }
+          formData.append('image', fileToSend);
+          body = formData;
+          // Remove Content-Type header to let browser set it with boundary
+          delete headers['Content-Type'];
+        } else {
+          // Send as JSON
+          body = JSON.stringify({
             message: messageText,
             model: selectedModel,
             newConversation: newConversation,
             chatMode: "ai_friend",
-            aiFriendId: selectedFriendId || undefined, // Include friend ID if selected
-          }),
+            aiFriendId: selectedFriendId || undefined,
+          });
+        }
+        
+        const response = await fetch(`${API_URL}/api/chat`, {
+          method: "POST",
+          headers: headers,
+          body: body,
         });
 
         // Handle 401 - user logged out, continue as free user
@@ -745,13 +806,28 @@ export default function AIFriendPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setIsUploading(true);
-    setAttachedFileName(file.name);
+    // Only allow images
+    if (!file.type.startsWith('image/')) {
+      showToast({
+        message: "Please select an image file",
+        type: "error",
+        duration: 3000,
+      });
+      return;
+    }
 
-    // simulate upload
-    setTimeout(() => {
-      setIsUploading(false);
-    }, 1000);
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      showToast({
+        message: "Image must be smaller than 10MB",
+        type: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
+    setAttachedFile(file);
+    setAttachedFileName(file.name);
   };
 
   // Mention system handlers
@@ -1316,14 +1392,18 @@ export default function AIFriendPage() {
                 <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
                   {message.content}
                 </div>
+                {message.imageUrl && (
+                  <img 
+                    src={message.imageUrl} 
+                    alt="Attached" 
+                    className="mt-2 rounded-lg max-w-full max-h-[300px] object-contain"
+                  />
+                )}
                 <div
                   className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${message.role === "user" ? "text-right" : "text-left"
                     }`}
                 >
-                  {message.timestamp.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {formatTimestampIST(message.timestamp)}
                 </div>
               </div>
             </div>
@@ -1404,6 +1484,7 @@ export default function AIFriendPage() {
               className="btn-ghost flex items-center gap-1.5 text-[length:var(--font-xs)]"
               onClick={() => {
                 setAttachedFileName(null);
+                setAttachedFile(null);
                 setIsUploading(false);
                 if (fileInputRef.current) fileInputRef.current.value = "";
               }}
@@ -1419,6 +1500,7 @@ export default function AIFriendPage() {
           <input
             ref={fileInputRef}
             type="file"
+            accept="image/*"
             className="hidden"
             onChange={handleFileSelected}
             aria-hidden

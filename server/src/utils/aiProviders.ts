@@ -188,7 +188,8 @@ export async function generateOpenAIAnswer(
   friendDescription?: string | null,
   friendName?: string | null,
   spaceTitle?: string | null,
-  spaceDescription?: string | null
+  spaceDescription?: string | null,
+  imageDataUrl?: string
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -245,7 +246,22 @@ export async function generateOpenAIAnswer(
     // For normal mode, include mode context for structured answers
     prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
   }
-  messages.push({ role: 'user', content: prompt });
+  
+  // Build user message content (text + optional image)
+  if (imageDataUrl) {
+    // OpenAI vision format: content is an array of objects
+    messages.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: imageDataUrl } }
+      ]
+    });
+    console.log(`📷 Added image to OpenAI request`);
+  } else {
+    // Regular text message
+    messages.push({ role: 'user', content: prompt });
+  }
 
   // Map model names to actual OpenAI models
   let openaiModel = 'gpt-4o-mini'; // Default
@@ -317,7 +333,8 @@ export async function generateGeminiAnswer(
   friendDescription?: string | null,
   friendName?: string | null,
   spaceTitle?: string | null,
-  spaceDescription?: string | null
+  spaceDescription?: string | null,
+  imageDataUrl?: string
 ): Promise<AnswerResult> {
   // Use separate API keys for free vs premium users
   // For premium: prefer GOOGLE_API_KEY, fallback to GOOGLE_API_KEY_FREE
@@ -397,8 +414,27 @@ export async function generateGeminiAnswer(
   // Enable grounding with Google Search for citations (only for premium users with gemini-2.0)
   const useGrounding = isPremium && model === 'gemini-2.0-latest';
   
+  // Build parts array (text + optional image)
+  const parts: any[] = [{ text: `${sys}\n\n${prompt}` }];
+  
+  // Add image if provided
+  if (imageDataUrl) {
+    // Extract base64 data and mime type from data URL
+    const matches = imageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+    if (matches) {
+      const [, mimeType, base64Data] = matches;
+      parts.push({
+        inlineData: {
+          mimeType: mimeType,
+          data: base64Data
+        }
+      });
+      console.log(`📷 Added image to Gemini request: ${mimeType}`);
+    }
+  }
+  
   const generateContentParams: any = {
-    contents: [{ role: 'user', parts: [{ text: `${sys}\n\n${prompt}` }] }],
+    contents: [{ role: 'user', parts: parts }],
     generationConfig: {
       maxOutputTokens: maxOutputTokens,
       temperature: 0.3
@@ -525,7 +561,8 @@ export async function generateClaudeAnswer(
   friendDescription?: string | null,
   friendName?: string | null,
   spaceTitle?: string | null,
-  spaceDescription?: string | null
+  spaceDescription?: string | null,
+  imageDataUrl?: string
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -658,7 +695,8 @@ export async function generateGrokAnswer(
   friendDescription?: string | null,
   friendName?: string | null,
   spaceTitle?: string | null,
-  spaceDescription?: string | null
+  spaceDescription?: string | null,
+  imageDataUrl?: string
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -819,23 +857,24 @@ export async function generateAIAnswer(
   friendDescription?: string | null,
   friendName?: string | null,
   spaceTitle?: string | null,
-  spaceDescription?: string | null
+  spaceDescription?: string | null,
+  imageDataUrl?: string
 ): Promise<AnswerResult> {
   // Route to appropriate provider based on model
   let result: AnswerResult;
   
   if (model === 'gpt-5' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
-    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
   } else if (model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
-    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
-    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
   } else {
     // Fallback to Gemini Lite for unknown models
-    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
   }
   
   // Add image generation for normal mode if query requires it
