@@ -8,17 +8,29 @@ import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
-// Configure multer for image uploads
+// Configure multer for file uploads (images and documents)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB max
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    // Allow images and common document types
+    const allowedTypes = [
+      'image/', // All image types
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'text/plain',
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' // .xlsx
+    ];
+    
+    if (allowedTypes.some(type => file.mimetype.startsWith(type) || file.mimetype === type)) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed'));
+      cb(new Error('File type not supported. Allowed: images, PDF, Word, Excel, text files'));
     }
   },
 });
@@ -267,16 +279,47 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
       }
     }
 
-    // Process uploaded image if present
+    // Process uploaded file (image/document) if present
     let imageDataUrl: string | undefined = undefined;
-    if (req.file) {
+    if (req.file && req.userId) {
       try {
-        const base64Image = req.file.buffer.toString('base64');
-        imageDataUrl = `data:${req.file.mimetype};base64,${base64Image}`;
-        console.log(`📷 Image attached: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
-      } catch (imageError) {
-        console.error('Failed to process image:', imageError);
-        // Continue without image if processing fails
+        const fileType = req.file.mimetype.startsWith('image/') ? 'image' : 'document';
+        console.log(`📎 ${fileType} attached: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
+        
+        // Step 1: Upload to Supabase 'files' bucket (supports all MIME types)
+        const fileExtension = req.file.originalname?.split('.').pop() || 'bin';
+        const fileName = `chat-attachments/${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('files')
+          .upload(fileName, req.file.buffer, {
+            contentType: req.file.mimetype,
+            upsert: false
+          });
+        
+        if (uploadError) {
+          console.error('Failed to upload file to Supabase:', uploadError);
+          // Fallback: use buffer directly
+          const base64File = req.file.buffer.toString('base64');
+          imageDataUrl = `data:${req.file.mimetype};base64,${base64File}`;
+          console.log(`⚠️  Using direct buffer fallback for ${fileType}`);
+        } else {
+          // Step 2: Get public URL
+          const { data: urlData } = supabase.storage
+            .from('files')
+            .getPublicUrl(fileName);
+          
+          console.log(`✅ ${fileType} uploaded to Supabase: ${fileName}`);
+          
+          // Step 3: Convert to base64 for AI (after successful upload)
+          const base64File = req.file.buffer.toString('base64');
+          imageDataUrl = `data:${req.file.mimetype};base64,${base64File}`;
+          
+          console.log(`✅ ${fileType} converted to base64 (${base64File.length} chars) for AI`);
+        }
+      } catch (fileError) {
+        console.error('Failed to process file:', fileError);
+        // Continue without file if processing fails
       }
     }
 
