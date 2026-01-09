@@ -367,13 +367,13 @@ export default function AIFriendPage() {
                 return [prev[0], ...historyMessages];
               }
               return [
-                {
-                  id: "1",
-                  role: "ai",
+              {
+                id: "1",
+                role: "ai",
                   content: greeting,
-                  timestamp: new Date(),
-                },
-                ...historyMessages,
+                timestamp: new Date(),
+              },
+              ...historyMessages,
               ];
             });
           } else {
@@ -578,8 +578,8 @@ export default function AIFriendPage() {
               });
             }
             
-            const response = await fetch(`${API_URL}/api/chat`, {
-              method: "POST",
+      const response = await fetch(`${API_URL}/api/chat`, {
+        method: "POST",
               headers: headers,
               body: body,
             });
@@ -672,9 +672,9 @@ export default function AIFriendPage() {
         } else {
           // Send as JSON
           body = JSON.stringify({
-            message: messageText,
-            model: selectedModel,
-            newConversation: newConversation,
+          message: messageText,
+          model: selectedModel,
+          newConversation: newConversation,
             chatMode: "ai_friend",
             aiFriendId: selectedFriendId || undefined,
           });
@@ -693,34 +693,34 @@ export default function AIFriendPage() {
           return;
         }
 
-        if (!response.ok) {
-          const errorData = await response
-            .json()
-            .catch(() => ({ error: "Unknown error" }));
-          throw new Error(
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(
             errorData.error ||
             `API request failed with status ${response.status}`
-          );
-        }
+        );
+      }
 
-        const data = await response.json();
+      const data = await response.json();
 
-        // Check if response is empty or invalid
-        if (!data.message || data.message.trim().length === 0) {
-          throw new Error("AI returned an empty response. Please try again.");
-        }
+      // Check if response is empty or invalid
+      if (!data.message || data.message.trim().length === 0) {
+        throw new Error("AI returned an empty response. Please try again.");
+      }
 
-        const aiResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "ai",
-          content: data.message,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, aiResponse]);
+      const aiResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "ai",
+        content: data.message,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, aiResponse]);
 
-        // Reset newConversation flag after first message
-        if (newConversation) {
-          setNewConversation(false);
+      // Reset newConversation flag after first message
+      if (newConversation) {
+        setNewConversation(false);
         }
       }
     } catch (error: any) {
@@ -734,7 +734,7 @@ export default function AIFriendPage() {
         id: (Date.now() + 1).toString(),
         role: "ai",
         content: `Sorry, I encountered an error: ${error.message || "Failed to connect to the server"
-          }. Please try again.`,
+        }. Please try again.`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorResponse]);
@@ -907,7 +907,7 @@ export default function AIFriendPage() {
         inputRef.current.focus();
         // We need to set cursor position after render, simplified here by assuming state update is fast enough
         // or using setTimeout. React 18 automatic batching might make this tricky without setTimeout.
-        setTimeout(() => {
+    setTimeout(() => {
           const newPosition = prefix.length + friend.username.length + 2; // @ + username + space
           inputRef.current?.setSelectionRange(newPosition, newPosition);
         }, 0);
@@ -1294,27 +1294,27 @@ export default function AIFriendPage() {
               )}
               {!isLoggedIn && (
                 <>
-                  <div className="relative">
-                    <img
-                      src={aiProfile.avatar}
-                      alt={`${aiProfile.name} avatar`}
-                      className="w-11 h-11 rounded-full object-cover border-2 border-[var(--accent)]"
-                    />
-                    <div className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
-                  </div>
-                  <div>
-                    <div className="h3 mb-0.5">{aiProfile.name}</div>
-                    <div className="sub text-sm text-[length:var(--font-sm)] opacity-80">
-                      {aiProfile.handle}
-                    </div>
-                  </div>
+              <div className="relative">
+                <img
+                  src={aiProfile.avatar}
+                  alt={`${aiProfile.name} avatar`}
+                  className="w-11 h-11 rounded-full object-cover border-2 border-[var(--accent)]"
+                />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
+              </div>
+              <div>
+                <div className="h3 mb-0.5">{aiProfile.name}</div>
+                <div className="sub text-sm text-[length:var(--font-sm)] opacity-80">
+                  {aiProfile.handle}
+                </div>
+              </div>
                 </>
               )}
             </div>
           </div>
           <div className="row flex items-center gap-2.5">
             {isLoggedIn && aiFriends.length > 0 && (
-              <button
+            <button
                 className={`btn-ghost !p-2 flex gap-2 rounded-lg transition-colors ${isGroupChat ? "bg-[rgba(199,168,105,0.15)]" : ""
                   }`}
                 onClick={() => {
@@ -1364,34 +1364,34 @@ export default function AIFriendPage() {
           }
 
           return (
-            <div
-              key={message.id}
+          <div
+            key={message.id}
               className={`flex items-end gap-3 mb-4 ${message.role === "user" ? "flex-row-reverse" : "flex-row"
-                }`}
-            >
-              <img
+            }`}
+          >
+            <img
                 src={messageAvatar}
                 alt={`${messageName} avatar`}
                 className={`w-9 h-9 rounded-full object-cover border-2 ${message.role === "user"
                   ? "border-[var(--accent)]"
                   : "border-[rgba(16,163,127,0.5)]"
-                  }`}
-              />
-              <div
+              }`}
+            />
+            <div
                 className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${message.role === "user"
                   ? "bg-[var(--accent)] text-[#111]"
                   : "bg-[var(--card)] text-[var(--text)] border border-[var(--border)]"
-                  }`}
-              >
+              }`}
+            >
                 {/* Show friend name in group chat */}
                 {message.role === "ai" && message.friendName && isGroupChat && (
                   <div className="text-[length:var(--font-xs)] font-semibold mb-1 opacity-80">
                     {message.friendName}
                   </div>
                 )}
-                <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
-                  {message.content}
-                </div>
+              <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
+                {message.content}
+              </div>
                 {message.imageUrl && (
                   <img 
                     src={message.imageUrl} 
@@ -1404,9 +1404,9 @@ export default function AIFriendPage() {
                     }`}
                 >
                   {formatTimestampIST(message.timestamp)}
-                </div>
               </div>
             </div>
+          </div>
           );
         })}
 
@@ -1590,7 +1590,7 @@ export default function AIFriendPage() {
                   } ${attachedFileName
                     ? " bg-[rgba(199,168,105,0.15)] text-[var(--accent)]"
                     : " bg-transparent text-inherit"
-                  }`}
+                }`}
                 onClick={handleAttachClick}
                 aria-label="Attach file"
                 disabled={isLoading}
@@ -1600,9 +1600,9 @@ export default function AIFriendPage() {
 
               <button
                 className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${showSuggestions
-                  ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]"
-                  : "bg-transparent text-inherit"
-                  }`}
+                    ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]"
+                    : "bg-transparent text-inherit"
+                }`}
                 onClick={() => setShowSuggestions((prev) => !prev)}
                 aria-label="Toggle inspiration replies"
                 aria-expanded={showSuggestions}
@@ -1635,9 +1635,9 @@ export default function AIFriendPage() {
 
               <button
                 className={`btn bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${inputValue.trim() && !isLoading && !isUploading
-                  ? "opacity-100 cursor-pointer"
-                  : "opacity-50 cursor-not-allowed"
-                  }`}
+                    ? "opacity-100 cursor-pointer"
+                    : "opacity-50 cursor-not-allowed"
+                }`}
                 onClick={handleSendMessage}
                 disabled={!inputValue.trim() || isLoading || isUploading}
                 aria-label="Send message"

@@ -225,3 +225,4 @@ This adds:
 - ✅ Friend/space IDs validated against ownership
 - ✅ No cross-user data leakage possible
 
+

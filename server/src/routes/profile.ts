@@ -90,7 +90,7 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
       }
 
       const premiumTier = (newProfile as any).premium_tier || 'free';
-      
+
       return res.json({
         id: user.id,
         name: name,

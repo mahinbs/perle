@@ -54,22 +54,24 @@ export function extractImagePrompt(query: string, answer: string): string | null
 // Generate image using Gemini Imagen API - tries fast model first, then falls back to detailed
 export async function generateImageWithGemini(
   prompt: string, 
-  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'
+  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1',
+  referenceImageDataUrl?: string // Optional reference image for style/content guidance
 ): Promise<GeneratedImage | null> {
   // Use the same API key as your Gemini chat
-  const apiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_FREE;
+  // Always use the free Gemini API key for image generation
+  const apiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
   
   if (!apiKey) {
     console.warn('Google API key not configured. Skipping image generation.');
     return null;
   }
   
-  // Try models in order: fast -> standard -> ultra (based on your quota)
-  // These are the actual available model names from Google AI
+  // Try models in order: Gemini 3 Pro Image (with ref support) -> Imagen 4.0 models (fallback)
   const models = [
-    { name: 'imagen-4.0-fast-generate-001', displayName: 'Imagen 4.0 Fast' },
-    { name: 'imagen-4.0-generate-001', displayName: 'Imagen 4.0 Standard' },
-    { name: 'imagen-4.0-ultra-generate-001', displayName: 'Imagen 4.0 Ultra' },
+    { name: 'gemini-3-pro-image-preview', displayName: 'Gemini 3 Pro Image', api: 'gemini', supportsRef: true },
+    { name: 'imagen-4.0-fast-generate-001', displayName: 'Imagen 4.0 Fast', api: 'vertex', supportsRef: false },
+    { name: 'imagen-4.0-generate-001', displayName: 'Imagen 4.0 Standard', api: 'vertex', supportsRef: false },
+    { name: 'imagen-4.0-ultra-generate-001', displayName: 'Imagen 4.0 Ultra', api: 'vertex', supportsRef: false },
   ];
   
   for (const model of models) {
@@ -78,16 +80,60 @@ export async function generateImageWithGemini(
       console.log(`🎨 [${model.displayName.toUpperCase()}] Generating image`);
       console.log(`   Prompt: "${prompt}"`);
       console.log(`   Aspect Ratio: ${aspectRatio}`);
-      console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/${model.name}`);
+      if (referenceImageDataUrl && model.supportsRef) {
+        console.log(`   📎 Using reference image for style guidance`);
+      } else if (referenceImageDataUrl && !model.supportsRef) {
+        console.log(`   ⚠️  Reference images not supported, using prompt only`);
+      }
+      console.log(`   API: ${model.api === 'gemini' ? 'Gemini API' : 'Vertex AI'}`);
       console.log('═'.repeat(60));
       
-      // Use Gemini's image generation endpoint
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predict?key=${apiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+      let response: Response;
+      
+      if (model.api === 'gemini') {
+        // NEW GEMINI API FORMAT (Gemini 3 Pro Image)
+        // Correct structure: contents + generationConfig (not just config)
+        const parts: any[] = [{ text: prompt }];
+        
+        // Add reference image in contents.parts
+        if (referenceImageDataUrl) {
+          let imageBase64 = referenceImageDataUrl;
+          let mimeType = 'image/png';
+          
+          if (referenceImageDataUrl.startsWith('data:')) {
+            const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+            if (matches) {
+              mimeType = matches[1];
+              imageBase64 = matches[2];
+            }
+          }
+          
+          parts.push({
+            inline_data: {
+              mime_type: mimeType,
+              data: imageBase64
+            }
+          });
+          
+          console.log(`   📷 Reference image added (${(imageBase64.length / 1024).toFixed(1)}KB)`);
+        }
+        
+        const requestBody = {
+          contents: [{ parts }],
+          generationConfig: { // User provided 'config' but REST API expects 'generationConfig'
+            response_modalities: ['IMAGE']
+          }
+        };
+        
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(30000)
+        });
+      } else {
+        // VERTEX AI FORMAT (Imagen 4.0)
+        const requestBody: any = {
           instances: [{
             prompt: prompt
           }],
@@ -96,9 +142,15 @@ export async function generateImageWithGemini(
             aspectRatio: aspectRatio,
             safetySetting: 'block_low_and_above'
           }
-        }),
-        signal: AbortSignal.timeout(30000) // 30 second timeout
-      });
+        };
+        
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predict?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(30000)
+        });
+      }
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -116,8 +168,18 @@ export async function generateImageWithGemini(
       
       const data = await response.json();
       
-      // Extract base64 image from response
-      const imageData = data.predictions?.[0]?.bytesBase64Encoded;
+      let imageData: string | undefined;
+      
+      // Parse response based on API type
+      if (model.api === 'gemini') {
+        // Gemini API returns inlineData (camelCase), NOT inline_data (snake_case)!
+        // Response: { candidates: [{ content: { parts: [{ inlineData: { mimeType: "...", data: "..." } }] } }] }
+        const part = data.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+        imageData = part?.inlineData?.data;
+      } else {
+        // Vertex AI returns: { predictions: [{ bytesBase64Encoded: "..." }] }
+        imageData = data.predictions?.[0]?.bytesBase64Encoded;
+      }
       
       if (imageData) {
         console.log(`✅ Image generated successfully with ${model.displayName}`);
@@ -130,6 +192,7 @@ export async function generateImageWithGemini(
       }
       
       console.warn(`No image data returned from ${model.displayName}`);
+      console.warn(`Response structure:`, JSON.stringify(data).substring(0, 200));
       continue;
       
     } catch (error: any) {
@@ -229,11 +292,12 @@ export async function generateImageWithDALLE(
 // Main function - uses Gemini Imagen API with DALL-E 3 fallback
 export async function generateImage(
   prompt: string, 
-  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'
+  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1',
+  referenceImageDataUrl?: string
 ): Promise<GeneratedImage | null> {
   // Try Gemini Imagen first (you already have the API key!)
   try {
-    const geminiImage = await generateImageWithGemini(prompt, aspectRatio);
+    const geminiImage = await generateImageWithGemini(prompt, aspectRatio, referenceImageDataUrl);
     if (geminiImage) {
       return geminiImage;
     }
@@ -242,6 +306,7 @@ export async function generateImage(
   }
   
   // Fallback to DALL-E 3 if Gemini fails (quota, errors, etc.)
+  // Note: DALL-E doesn't support reference images
   console.log('🔄 Using OpenAI DALL-E 3 as fallback for image generation');
   const dalleImage = await generateImageWithDALLE(prompt, aspectRatio);
   return dalleImage;

@@ -14,10 +14,11 @@ export interface GeneratedVideo {
 export async function generateVideoWithGemini(
   prompt: string, 
   duration: number = 5,
-  aspectRatio: '16:9' | '9:16' | '1:1' = '16:9'
+  aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
+  referenceImageDataUrl?: string // Optional reference image for style/content guidance
 ): Promise<GeneratedVideo | null> {
-  // Use the same API key as your Gemini chat
-  const apiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_FREE;
+  // Always use the free Gemini API key for video generation
+  const apiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
   
   if (!apiKey) {
     console.warn('Google API key not configured. Skipping video generation.');
@@ -36,11 +37,11 @@ export async function generateVideoWithGemini(
     height = 720;
   }
   
-  // Try models in order: fast -> standard (based on your quota)
-  // These are the actual available model names from Google AI
+  // Try models in order: Veo 3.1 (preview with reference image support)
   const models = [
-    { name: 'veo-3.0-fast-generate-001', displayName: 'Veo 3.0 Fast' },
-    { name: 'veo-3.0-generate-001', displayName: 'Veo 3.0 Standard' },
+    { name: 'veo-3.1-generate-preview', displayName: 'Veo 3.1 Preview', api: 'gemini' },
+    { name: 'veo-3.0-fast-generate-001', displayName: 'Veo 3.0 Fast', api: 'vertex' },
+    { name: 'veo-3.0-generate-001', displayName: 'Veo 3.0 Standard', api: 'vertex' },
   ];
   
   for (const model of models) {
@@ -50,23 +51,77 @@ export async function generateVideoWithGemini(
       console.log(`   Prompt: "${prompt}"`);
       console.log(`   Duration: ${duration}s`);
       console.log(`   Aspect Ratio: ${aspectRatio}`);
-      console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/${model.name}`);
+      if (referenceImageDataUrl && model.api === 'gemini') {
+        console.log(`   📎 Using reference image for style guidance (Veo 3.1)`);
+      }
+      console.log(`   API: ${model.api === 'gemini' ? 'Gemini API' : 'Vertex AI'}`);
       console.log('═'.repeat(60));
       
-      // Use Gemini's Veo video generation endpoint (predictLongRunning method)
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predictLongRunning?key=${apiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          instances: [{
-            prompt: prompt
-          }],
+      let response: Response;
+      let endpoint: string;
+
+      if (model.api === 'gemini') {
+         // Veo 3.1 Preview - Try multiple approaches for reference images
+         const instance: any = {
+           prompt: prompt
+         };
+         
+         if (referenceImageDataUrl) {
+           let imageBase64 = referenceImageDataUrl;
+           let mimeType = 'image/jpeg';
+           
+           if (referenceImageDataUrl.startsWith('data:')) {
+             const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+             if (matches) {
+               mimeType = matches[1];
+               imageBase64 = matches[2];
+             }
+           }
+           
+           // CORRECT STRUCTURE from official Vertex AI docs:
+           // https://docs.cloud.google.com/vertex-ai/generative-ai/docs/video/use-reference-images-to-guide-video-generation
+           instance.referenceImages = [{
+             image: {
+               bytesBase64Encoded: imageBase64,
+               mimeType: mimeType
+             },
+             referenceType: 'style'  // Can be 'style' or other types
+           }];
+           
+           console.log(`   📷 Reference image added (${(imageBase64.length / 1024).toFixed(1)}KB, type: ${mimeType})`);
+         }
+         
+         const requestBody = {
+           instances: [instance]
+         };
+         
+         endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predictLongRunning?key=${apiKey}`;
+         
+         console.log(`   🔍 Request payload: ${JSON.stringify(requestBody).substring(0, 300)}...`);
+         
+         response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+            signal: AbortSignal.timeout(120000)
+         });
+
+      } else {
+        // VERTEX AI FORMAT - Veo 3.0
+        const requestBody: any = {
+          instances: [{ prompt: prompt }],
           parameters: {}
-        }),
-        signal: AbortSignal.timeout(120000) // 120 second timeout for initial request
-      });
+        };
+        
+        endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predictLongRunning?key=${apiKey}`;
+
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(120000)
+        });
+      }
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -195,11 +250,12 @@ export async function generateVideoWithOpenAI(
 export async function generateVideo(
   prompt: string,
   duration: number = 5,
-  aspectRatio: '16:9' | '9:16' | '1:1' = '16:9'
+  aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
+  referenceImageDataUrl?: string
 ): Promise<GeneratedVideo | null> {
-  // Try Gemini Veo first
+  // Try Gemini Veo first (with optional reference image)
   try {
-    const geminiVideo = await generateVideoWithGemini(prompt, duration, aspectRatio);
+    const geminiVideo = await generateVideoWithGemini(prompt, duration, aspectRatio, referenceImageDataUrl);
     if (geminiVideo) {
       return geminiVideo;
     }
@@ -231,7 +287,7 @@ export async function generateVideoFromImage(
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9'
 ): Promise<GeneratedVideo | null> {
-  const apiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_FREE;
+  const apiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
   
   if (!apiKey) {
     console.warn('Google API key not configured. Skipping image-to-video generation.');
@@ -266,19 +322,37 @@ export async function generateVideoFromImage(
       console.log(`   API: https://generativelanguage.googleapis.com/v1beta/models/${model.name}`);
       console.log('═'.repeat(60));
       
+      // Extract base64 data from data URL
+      let imageBase64 = imageDataUrl;
+      let imageMimeType = 'image/jpeg';
+      
+      if (imageDataUrl.startsWith('data:')) {
+        const matches = imageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+        if (matches) {
+          imageMimeType = matches[1];
+          imageBase64 = matches[2];
+        }
+      }
+      
       // Try Gemini Veo with image input (predictLongRunning method)
+      const requestBody = {
+        instances: [{
+          prompt: prompt || 'Animate this image with smooth, natural motion',
+          image: {
+            bytesBase64Encoded: imageBase64
+          }
+        }],
+        parameters: {}
+      };
+      
+      console.log(`📤 Sending image-to-video request (image size: ${imageBase64.length} chars)`);
+      
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predictLongRunning?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          instances: [{
-            prompt: prompt || 'Animate this image',
-            image: imageDataUrl
-          }],
-          parameters: {}
-        }),
+        body: JSON.stringify(requestBody),
         signal: AbortSignal.timeout(120000) // 120 second timeout
       });
       
@@ -297,12 +371,17 @@ export async function generateVideoFromImage(
       }
       
       const data = await response.json();
+      console.log(`📋 Response from ${model.displayName}:`, JSON.stringify(data));
+      
       const operationId = data.name || data.operationId;
       
       if (!operationId) {
-        console.error(`No operation ID returned from ${model.displayName}`);
+        console.error(`❌ No operation ID returned from ${model.displayName}`);
+        console.error(`Response keys:`, Object.keys(data));
         continue;
       }
+      
+      console.log(`✅ Got operation ID: ${operationId}`);
       
       // Poll for completion
       let attempts = 0;
@@ -338,19 +417,23 @@ export async function generateVideoFromImage(
         if (statusData.done) {
           if (statusData.error) {
             console.error(`${model.displayName} generation failed:`, statusData.error);
-            // If rate limit error, try next model
-            if (statusData.error.message?.includes('quota') || statusData.error.message?.includes('rate limit')) {
-              console.log(`⚠️ ${model.displayName} quota error, trying next model...`);
+            // If rate limit error or internal error, try next model
+            if (statusData.error.message?.includes('quota') || 
+                statusData.error.message?.includes('rate limit') || 
+                statusData.error.code === 13) {
+              console.log(`⚠️ ${model.displayName} quota/internal error, trying next model...`);
               break;
             }
             return null;
           }
           
-          const videoData = statusData.response?.videoData;
-          const videoUrl = videoData?.uri || videoData?.url;
+          // Extract video URL - same structure as text-to-video
+          const videoData = statusData.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+          const videoUrl = videoData?.uri;
           
           if (videoUrl) {
-            console.log(`✅ Video generated successfully with ${model.displayName}`);
+            console.log(`✅ Video generated successfully with ${model.displayName} (from image)`);
+            console.log(`🎬 Video URL: ${videoUrl}`);
             return {
               url: videoUrl,
               prompt: prompt || 'Video generated from image',
@@ -358,10 +441,10 @@ export async function generateVideoFromImage(
               width: width,
               height: height
             };
+          } else {
+            console.error(`❌ No video URL in response. Response structure:`, JSON.stringify(statusData.response || {}).substring(0, 500));
           }
         }
-        
-        attempts++;
       }
       
       console.warn(`${model.displayName} generation timed out, trying next model...`);

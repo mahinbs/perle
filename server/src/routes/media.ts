@@ -29,10 +29,10 @@ const imageSchema = z.object({
   aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']).optional().default('1:1')
 });
 
-// Video generation schema
+// Video generation schema (handles both JSON and FormData)
 const videoSchema = z.object({
   prompt: z.string().min(1, 'Prompt cannot be empty').max(500, 'Prompt too long'),
-  duration: z.number().min(2).max(10).optional().default(5), // 2-10 seconds
+  duration: z.union([z.number(), z.string()]).optional().default(5), // Can be string (FormData) or number (JSON)
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).optional().default('16:9')
 });
 
@@ -43,8 +43,8 @@ const imageToVideoSchema = z.object({
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).optional().default('16:9')
 });
 
-// POST /api/media/generate-image
-router.post('/generate-image', optionalAuth, async (req: AuthRequest, res) => {
+// POST /api/media/generate-image - Now supports optional reference image
+router.post('/generate-image', optionalAuth, upload.single('referenceImage'), async (req: AuthRequest, res) => {
   try {
     const parse = imageSchema.safeParse(req.body);
     if (!parse.success) {
@@ -55,8 +55,61 @@ router.post('/generate-image', optionalAuth, async (req: AuthRequest, res) => {
     }
 
     const { prompt, aspectRatio } = parse.data;
-
-    console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio})`);
+    
+    // Handle reference image if uploaded
+    let referenceImageDataUrl: string | undefined;
+    if (req.file && req.userId) {
+      try {
+        console.log(`📸 Reference image uploaded: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
+        
+        // Step 1: Upload to Supabase 'files' bucket (supports all MIME types!)
+        const fileName = `reference-images/${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${req.file.mimetype.split('/')[1]}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('files')
+          .upload(fileName, req.file.buffer, {
+            contentType: req.file.mimetype,
+            upsert: false
+          });
+        
+        if (uploadError) {
+          console.error('Failed to upload reference image to Supabase:', uploadError);
+          // Fallback: use buffer directly
+          const imageBase64 = req.file.buffer.toString('base64');
+          referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
+        } else {
+          // Step 2: Get public URL
+          const { data: urlData } = supabase.storage
+            .from('files')
+            .getPublicUrl(fileName);
+          
+          console.log(`✅ Reference image uploaded to Supabase: ${fileName}`);
+          
+          // Step 3: Download from Supabase and convert to base64
+          const imageResponse = await fetch(urlData.publicUrl);
+          const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+          const imageBase64 = imageBuffer.toString('base64');
+          referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
+          
+          console.log(`✅ Reference image converted to base64 (${imageBase64.length} chars)`);
+        }
+        
+        console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio}) WITH reference image`);
+      } catch (error) {
+        console.error('Error processing reference image:', error);
+        // Fallback: use buffer directly
+        const imageBase64 = req.file.buffer.toString('base64');
+        referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
+        console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio}) WITH reference image (direct buffer)`);
+      }
+    } else if (req.file) {
+      // No userId but image uploaded - use buffer directly
+      const imageBase64 = req.file.buffer.toString('base64');
+      referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
+      console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio}) WITH reference image (no user)`);
+    } else {
+      console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio})`);
+    }
 
     // Check premium status (for free users, limit image generation)
     let isPremium = false;
@@ -99,7 +152,7 @@ router.post('/generate-image', optionalAuth, async (req: AuthRequest, res) => {
 
     // Generate image using Gemini Imagen (with DALL-E fallback)
     console.log(`🎨 Generating image with ${isPremium ? 'premium' : 'free'} tier`);
-    const image = await generateImage(prompt, aspectRatio);
+    const image = await generateImage(prompt, aspectRatio, referenceImageDataUrl);
 
     if (!image) {
       return res.status(500).json({ 
@@ -214,8 +267,8 @@ router.post('/generate-image', optionalAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// POST /api/media/generate-video
-router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
+// POST /api/media/generate-video - Now supports optional reference image
+router.post('/generate-video', optionalAuth, upload.single('referenceImage'), async (req: AuthRequest, res) => {
   try {
     const parse = videoSchema.safeParse(req.body);
     if (!parse.success) {
@@ -226,8 +279,61 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
     }
 
     const { prompt, duration, aspectRatio } = parse.data;
-
-    console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio})`);
+    
+    // Handle reference image if uploaded
+    let referenceImageDataUrl: string | undefined;
+    if (req.file && req.userId) {
+      try {
+        console.log(`📸 Reference image uploaded: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
+        
+        // Step 1: Upload to Supabase 'files' bucket (supports all MIME types!)
+        const fileName = `reference-images/${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${req.file.mimetype.split('/')[1]}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('files')
+          .upload(fileName, req.file.buffer, {
+            contentType: req.file.mimetype,
+            upsert: false
+          });
+        
+        if (uploadError) {
+          console.error('Failed to upload reference image to Supabase:', uploadError);
+          // Fallback: use buffer directly
+          const imageBase64 = req.file.buffer.toString('base64');
+          referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
+        } else {
+          // Step 2: Get public URL
+          const { data: urlData } = supabase.storage
+            .from('files')
+            .getPublicUrl(fileName);
+          
+          console.log(`✅ Reference image uploaded to Supabase: ${fileName}`);
+          
+          // Step 3: Download from Supabase and convert to base64
+          const imageResponse = await fetch(urlData.publicUrl);
+          const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+          const imageBase64 = imageBuffer.toString('base64');
+          referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
+          
+          console.log(`✅ Reference image converted to base64 (${imageBase64.length} chars)`);
+        }
+        
+        console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio}) WITH reference image`);
+      } catch (error) {
+        console.error('Error processing reference image:', error);
+        // Fallback: use buffer directly
+        const imageBase64 = req.file.buffer.toString('base64');
+        referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
+        console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio}) WITH reference image (direct buffer)`);
+      }
+    } else if (req.file) {
+      // No userId but image uploaded - use buffer directly
+      const imageBase64 = req.file.buffer.toString('base64');
+      referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
+      console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio}) WITH reference image (no user)`);
+    } else {
+      console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio})`);
+    }
 
     // Check premium status (video requires Pro or Max tier)
     let premiumTier = 'free';
@@ -282,9 +388,12 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    // Generate video using Gemini Veo
+    // Ensure duration is a number
+    const durationNum = typeof duration === 'string' ? parseInt(duration) || 5 : duration;
+    
+    // Generate video using Gemini Veo (with optional reference image)
     console.log(`🎥 Generating video with ${premiumTier} tier (${videoCount || 0}/${dailyLimit} used today)`);
-    const video = await generateVideo(prompt, duration, aspectRatio);
+    const video = await generateVideo(prompt, durationNum, aspectRatio, referenceImageDataUrl);
 
     if (!video) {
       return res.status(500).json({ 
@@ -302,8 +411,8 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
       try {
         console.log('📥 Downloading video from Gemini (temporary URL)...');
         
-        // Use the same API key logic as video generation
-        const geminiApiKey = (process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_FREE || process.env.GEMINI_API_KEY)?.trim();
+        // Always use the free Gemini API key
+        const geminiApiKey = (process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY)?.trim();
         
         if (!geminiApiKey) {
           throw new Error('Gemini/Google API key is missing');
@@ -372,7 +481,7 @@ router.post('/generate-video', optionalAuth, async (req: AuthRequest, res) => {
             width: video.width,
             height: video.height,
             aspect_ratio: aspectRatio,
-            duration: duration,
+            duration: durationNum,
             metadata: {
               model: provider === 'gemini' ? 'veo-3.1' : 'sora',
               timestamp: new Date().toISOString(),
@@ -759,8 +868,8 @@ router.get('/proxy-video/:fileId', async (req, res) => {
       return res.status(400).json({ error: 'File ID is required' });
     }
     
-    // Construct Gemini download URL with API key
-    const geminiApiKey = process.env.GEMINI_API_KEY;
+    // Construct Gemini download URL with API key (use free key first)
+    const geminiApiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
     const downloadUrl = `https://generativelanguage.googleapis.com/v1beta/files/${fileId}:download?alt=media&key=${geminiApiKey}`;
     
     console.log(`📥 Proxying video download for file: ${fileId}`);

@@ -345,7 +345,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   // API functions for media generation
   const generateImage = async (
     prompt: string,
-    aspectRatio: string = "1:1"
+    aspectRatio: string = "1:1",
+    referenceImage?: File
   ): Promise<{
     url: string;
     prompt: string;
@@ -361,6 +362,39 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       );
     }
 
+    // Use FormData if reference image is provided
+    if (referenceImage) {
+      const formData = new FormData();
+      formData.append("prompt", prompt);
+      formData.append("aspectRatio", aspectRatio);
+      formData.append("referenceImage", referenceImage);
+
+      const token = getAuthToken();
+      const res = await fetch(
+        `${baseUrl.replace(/\/+$/, "")}/api/media/generate-image`,
+        {
+          method: "POST",
+          headers: {
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: formData,
+        }
+      );
+
+      if (!res.ok) {
+        const errorData = await res
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(
+          errorData.error || `Image generation failed with status ${res.status}`
+        );
+      }
+
+      const data = await res.json();
+      return data.image;
+    }
+
+    // Regular JSON request without reference image
     const res = await fetch(
       `${baseUrl.replace(/\/+$/, "")}/api/media/generate-image`,
       {
@@ -386,7 +420,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const generateVideo = async (
     prompt: string,
     duration: number = 5,
-    aspectRatio: string = "16:9"
+    aspectRatio: string = "16:9",
+    referenceImage?: File
   ): Promise<{
     url: string;
     prompt: string;
@@ -403,6 +438,40 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       );
     }
 
+    // Use FormData if reference image is provided
+    if (referenceImage) {
+      const formData = new FormData();
+      formData.append("prompt", prompt);
+      formData.append("duration", duration.toString());
+      formData.append("aspectRatio", aspectRatio);
+      formData.append("referenceImage", referenceImage);
+
+      const token = getAuthToken();
+      const res = await fetch(
+        `${baseUrl.replace(/\/+$/, "")}/api/media/generate-video`,
+        {
+          method: "POST",
+          headers: {
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: formData,
+        }
+      );
+
+      if (!res.ok) {
+        const errorData = await res
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(
+          errorData.error || `Video generation failed with status ${res.status}`
+        );
+      }
+
+      const data = await res.json();
+      return data.video;
+    }
+
+    // Regular JSON request without reference image
     const res = await fetch(
       `${baseUrl.replace(/\/+$/, "")}/api/media/generate-video`,
       {
@@ -425,110 +494,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     return data.video;
   };
 
-  // Generate video from image
-  const generateVideoFromImage = async (
-    imageFile: File,
-    prompt?: string,
-    duration: number = 5,
-    aspectRatio: string = "16:9"
-  ): Promise<{
-    url: string;
-    prompt: string;
-    duration: number;
-    width: number;
-    height: number;
-    aspectRatio: string;
-    provider: string;
-  }> => {
-    const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
-    if (!baseUrl) {
-      throw new Error(
-        "API URL not configured. Please set VITE_API_URL in your .env file."
-      );
-    }
-
-    const formData = new FormData();
-    formData.append("image", imageFile);
-    if (prompt) {
-      formData.append("prompt", prompt);
-    }
-    formData.append("duration", duration.toString());
-    formData.append("aspectRatio", aspectRatio);
-
-      const token = getAuthToken();
-      const res = await fetch(
-        `${baseUrl.replace(/\/+$/, "")}/api/media/generate-video-from-image`,
-        {
-          method: "POST",
-          headers: {
-            ...(token && { Authorization: `Bearer ${token}` }),
-          },
-          body: formData,
-        }
-      );
-
-    if (!res.ok) {
-      const errorData = await res
-        .json()
-        .catch(() => ({ error: "Unknown error" }));
-      throw new Error(
-        errorData.error || `Video generation failed with status ${res.status}`
-      );
-    }
-
-    const data = await res.json();
-    return data.video;
-  };
-
   // Handle tool generation
   const handleGenerateMedia = async () => {
-    // For video mode with attached image, use image-to-video
-    if (toolMode === "video" && toolAttachedImages.length > 0) {
-      const imageFile = toolAttachedImages[0].file;
-      const promptToUse = toolDescription.trim() || undefined; // Optional prompt
-      
-      setIsGenerating(true);
-      setGeneratingPrompt(promptToUse || "Generating video from image...");
-      setGeneratedMedia(null);
-      setToolDescription(""); // Clear the input immediately
-
-      try {
-        const result = await generateVideoFromImage(imageFile, promptToUse, 5, "16:9");
-        setGeneratedMedia({
-          type: "video",
-          url: result.url,
-          prompt: result.prompt,
-        });
-        showToast({
-          message: "Video generated from image successfully!",
-          type: "success",
-          duration: 3000,
-        });
-        // Clear attached image after successful generation
-        setToolAttachedImages([]);
-      } catch (error: any) {
-        console.error("Image-to-video generation error:", error);
-        let errorMessage = "Failed to generate video from image. Please try again.";
-
-        if (error.message) {
-          errorMessage = error.message;
-        } else if (typeof error === "string") {
-          errorMessage = error;
-        }
-
-        showToast({
-          message: errorMessage,
-          type: "error",
-          duration: 5000,
-        });
-      } finally {
-        setIsGenerating(false);
-        setGeneratingPrompt("");
-      }
-      return;
-    }
-
-    // For regular text-to-image or text-to-video
+    // Check if we have a prompt
     if (!toolDescription.trim()) {
       showToast({
         message: "Please enter a description",
@@ -539,6 +507,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
 
     const promptToUse = toolDescription.trim();
+    const referenceImage = toolAttachedImages.length > 0 ? toolAttachedImages[0].file : undefined;
+    
     setIsGenerating(true);
     setGeneratingPrompt(promptToUse);
     setGeneratedMedia(null);
@@ -546,29 +516,43 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     try {
       if (toolMode === "image") {
-        const result = await generateImage(promptToUse, "1:1");
+        // Generate image with optional reference image
+        const result = await generateImage(promptToUse, "1:1", referenceImage);
         setGeneratedMedia({
           type: "image",
           url: result.url,
           prompt: result.prompt,
         });
         showToast({
-          message: "Image generated successfully!",
+          message: referenceImage 
+            ? "Image generated using reference image!" 
+            : "Image generated successfully!",
           type: "success",
           duration: 3000,
         });
+        // Clear attached image after successful generation
+        if (referenceImage) {
+          setToolAttachedImages([]);
+        }
       } else if (toolMode === "video") {
-        const result = await generateVideo(promptToUse, 5, "16:9");
+        // Generate video with optional reference image
+        const result = await generateVideo(promptToUse, 5, "16:9", referenceImage);
         setGeneratedMedia({
           type: "video",
           url: result.url,
           prompt: result.prompt,
         });
         showToast({
-          message: "Video generated successfully!",
+          message: referenceImage 
+            ? "Video generated using reference image!" 
+            : "Video generated successfully!",
           type: "success",
           duration: 3000,
         });
+        // Clear attached image after successful generation
+        if (referenceImage) {
+          setToolAttachedImages([]);
+        }
       }
     } catch (error: any) {
       console.error("Media generation error:", error);

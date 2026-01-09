@@ -336,17 +336,12 @@ export async function generateGeminiAnswer(
   spaceDescription?: string | null,
   imageDataUrl?: string
 ): Promise<AnswerResult> {
-  // Use separate API keys for free vs premium users
-  // For premium: prefer GOOGLE_API_KEY, fallback to GOOGLE_API_KEY_FREE
-  // For free: prefer GOOGLE_API_KEY_FREE, fallback to GOOGLE_API_KEY
-  const apiKey = isPremium 
-    ? (process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_FREE)
-    : (process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY);
+  // Always prioritize GEMINI_API_KEY_FREE to avoid quota issues
+  // Try GEMINI_API_KEY_FREE -> GOOGLE_API_KEY_FREE -> GOOGLE_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
   
   if (!apiKey) {
-    throw new Error(isPremium 
-      ? 'GOOGLE_API_KEY_MISSING: Please set GOOGLE_API_KEY or GOOGLE_API_KEY_FREE in .env' 
-      : 'GOOGLE_API_KEY_FREE_MISSING: Please set GOOGLE_API_KEY_FREE in .env');
+    throw new Error('GEMINI_API_KEY_MISSING: Please set GEMINI_API_KEY_FREE, GOOGLE_API_KEY_FREE, or GOOGLE_API_KEY in .env');
   }
   const genAI = new GoogleGenerativeAI(apiKey);
 

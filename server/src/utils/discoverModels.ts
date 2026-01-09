@@ -2,7 +2,8 @@
 // Run this to see what models are actually available in your Google AI account
 
 export async function listAvailableModels(): Promise<void> {
-  const apiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY_FREE;
+  // Always prioritize GEMINI_API_KEY_FREE
+  const apiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
   
   if (!apiKey) {
     console.error('❌ No Google API key found in environment variables');
