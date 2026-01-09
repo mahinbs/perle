@@ -23,12 +23,7 @@ import { LLMModelSelector } from "./LLMModelSelector";
 import { getAuthHeaders, getAuthToken, isAuthenticated } from "../utils/auth";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 
-interface UploadedFile {
-  id: string;
-  file: File;
-  type: "image" | "document" | "other";
-  preview?: string;
-}
+import { UploadedFile } from "../types";
 
 interface SearchBarProps {
   selectedModel: LLMModel;
@@ -74,6 +69,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingPrompt, setGeneratingPrompt] = useState<string>("");
+  const [generatingImages, setGeneratingImages] = useState<UploadedFile[]>([]);
   const [generatedMedia, setGeneratedMedia] = useState<{
     type: "image" | "video";
     url: string;
@@ -208,7 +204,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         window.speechSynthesis.cancel();
         setIsSpeaking(false);
       }
-    } catch {}
+    } catch { }
 
     if (isListening) {
       stopVoiceInput();
@@ -508,11 +504,13 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     const promptToUse = toolDescription.trim();
     const referenceImage = toolAttachedImages.length > 0 ? toolAttachedImages[0].file : undefined;
-    
+
     setIsGenerating(true);
     setGeneratingPrompt(promptToUse);
+    setGeneratingImages(toolAttachedImages); // Store for display
     setGeneratedMedia(null);
     setToolDescription(""); // Clear the input immediately
+    setToolAttachedImages([]); // Clear attachments immediately
 
     try {
       if (toolMode === "image") {
@@ -524,16 +522,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           prompt: result.prompt,
         });
         showToast({
-          message: referenceImage 
-            ? "Image generated using reference image!" 
+          message: referenceImage
+            ? "Image generated using reference image!"
             : "Image generated successfully!",
           type: "success",
           duration: 3000,
         });
-        // Clear attached image after successful generation
-        if (referenceImage) {
-          setToolAttachedImages([]);
-        }
       } else if (toolMode === "video") {
         // Generate video with optional reference image
         const result = await generateVideo(promptToUse, 5, "16:9", referenceImage);
@@ -543,16 +537,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           prompt: result.prompt,
         });
         showToast({
-          message: referenceImage 
-            ? "Video generated using reference image!" 
+          message: referenceImage
+            ? "Video generated using reference image!"
             : "Video generated successfully!",
           type: "success",
           duration: 3000,
         });
-        // Clear attached image after successful generation
-        if (referenceImage) {
-          setToolAttachedImages([]);
-        }
       }
     } catch (error: any) {
       console.error("Media generation error:", error);
@@ -594,6 +584,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     } finally {
       setIsGenerating(false);
       setGeneratingPrompt("");
+      setGeneratingImages([]);
     }
   };
 
@@ -607,18 +598,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `generated-${generatedMedia.type}-${Date.now()}.${
-        generatedMedia.type === "image" ? "png" : "mp4"
-      }`;
+      a.download = `generated-${generatedMedia.type}-${Date.now()}.${generatedMedia.type === "image" ? "png" : "mp4"
+        }`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
       showToast({
-        message: `${
-          generatedMedia.type === "image" ? "Image" : "Video"
-        } downloaded successfully!`,
+        message: `${generatedMedia.type === "image" ? "Image" : "Video"
+          } downloaded successfully!`,
         type: "success",
         duration: 2000,
       });
@@ -642,9 +631,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
       if (currentFileCount >= maxFiles) {
         showToast({
-          message: `Only ${maxFiles} image allowed for ${
-            toolMode === "image" ? "image" : "video"
-          } generation.`,
+          message: `Only ${maxFiles} image allowed for ${toolMode === "image" ? "image" : "video"
+            } generation.`,
           type: "error",
           duration: 3000,
         });
@@ -679,9 +667,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
       if (rejectedFiles.length > 0) {
         showToast({
-          message: `Only image files are supported for ${
-            toolMode === "image" ? "image" : "video"
-          } generation.`,
+          message: `Only image files are supported for ${toolMode === "image" ? "image" : "video"
+            } generation.`,
           type: "error",
           duration: 3000,
         });
@@ -702,9 +689,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     // Check total file limit
     if (currentFileCount >= maxFiles) {
       showToast({
-        message: `Maximum ${maxFiles} file${maxFiles > 1 ? "s" : ""} allowed. ${
-          isPremium ? "Premium" : "Free"
-        } users can upload up to ${maxFiles} files.`,
+        message: `Maximum ${maxFiles} file${maxFiles > 1 ? "s" : ""} allowed. ${isPremium ? "Premium" : "Free"
+          } users can upload up to ${maxFiles} files.`,
         type: "error",
         duration: 4000,
       });
@@ -726,9 +712,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       // Check if adding this file would exceed limit
       if (currentFileCount + newFiles.length >= maxFiles) {
         showToast({
-          message: `Maximum ${maxFiles} file${
-            maxFiles > 1 ? "s" : ""
-          } allowed. Some files were not added.`,
+          message: `Maximum ${maxFiles} file${maxFiles > 1 ? "s" : ""
+            } allowed. Some files were not added.`,
           type: "error",
           duration: 4000,
         });
@@ -748,9 +733,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     if (rejectedFiles.length > 0) {
       showToast({
-        message: `Video files are not supported. ${rejectedFiles.length} file${
-          rejectedFiles.length > 1 ? "s" : ""
-        } rejected.`,
+        message: `Video files are not supported. ${rejectedFiles.length} file${rejectedFiles.length > 1 ? "s" : ""
+          } rejected.`,
         type: "error",
         duration: 4000,
       });
@@ -912,6 +896,46 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             >
               {generatingPrompt}
             </div>
+            {generatingImages && generatingImages.length > 0 && (
+              <div style={{
+                display: "flex",
+                gap: 8,
+                marginBottom: 12,
+                flexWrap: "wrap",
+                padding: "0 4px"
+              }}>
+                {generatingImages.map((img) => (
+                  <div
+                    key={img.id}
+                    style={{
+                      width: 80,
+                      height: 80,
+                      borderRadius: 6,
+                      overflow: "hidden",
+                      border: "1px solid var(--border)",
+                      position: "relative"
+                    }}
+                  >
+                    {img.preview ? (
+                      <img
+                        src={img.preview}
+                        alt="Reference"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "20px"
+                      }}>Frame</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <div
               style={{
                 display: "flex",
@@ -1135,9 +1159,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </div>
           )}
           <button
-            className={`btn-ghost btn-shadow !border-[#dfb768] !font-normal ${
-              toolMode ? "!text-black" : ""
-            }`}
+            className={`btn-ghost btn-shadow !border-[#dfb768] !font-normal ${toolMode ? "!text-black" : ""
+              }`}
             onClick={() => {
               if (toolMode) {
                 // Exit tool mode
@@ -1315,8 +1338,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 toolMode === "image"
                   ? "Describe your image"
                   : toolAttachedImages.length > 0
-                  ? "Describe your video (optional)"
-                  : "Describe your video"
+                    ? "Describe your video (optional)"
+                    : "Describe your video"
               }
               value={toolDescription}
               onChange={(e) => {
@@ -1385,14 +1408,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     padding: 6,
                     opacity:
                       isListening ||
-                      isGenerating ||
-                      toolAttachedImages.length >= 1
+                        isGenerating ||
+                        toolAttachedImages.length >= 1
                         ? 0.5
                         : 1,
                     cursor:
                       isListening ||
-                      isGenerating ||
-                      toolAttachedImages.length >= 1
+                        isGenerating ||
+                        toolAttachedImages.length >= 1
                         ? "not-allowed"
                         : "pointer",
                     display: "flex",
@@ -1453,7 +1476,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         )}
 
         <div className="row" style={{ gap: 5, flexShrink: 0 }}>
-        
+
 
           {/* Attach File - Hide when tool mode is active */}
           {!toolMode && (
@@ -1617,8 +1640,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   toolMode === "image"
                     ? "Generate image"
                     : toolAttachedImages.length > 0
-                    ? "Generate video from image"
-                    : "Generate video"
+                      ? "Generate video from image"
+                      : "Generate video"
                 }
                 style={{
                   padding: "4px 12px",
@@ -1627,14 +1650,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   color: "white",
                   opacity:
                     isGenerating ||
-                    (!toolDescription.trim() &&
-                      !(toolMode === "video" && toolAttachedImages.length > 0))
+                      (!toolDescription.trim() &&
+                        !(toolMode === "video" && toolAttachedImages.length > 0))
                       ? 0.6
                       : 1,
                   cursor:
                     isGenerating ||
-                    (!toolDescription.trim() &&
-                      !(toolMode === "video" && toolAttachedImages.length > 0))
+                      (!toolDescription.trim() &&
+                        !(toolMode === "video" && toolAttachedImages.length > 0))
                       ? "not-allowed"
                       : "pointer",
                   display: "flex",

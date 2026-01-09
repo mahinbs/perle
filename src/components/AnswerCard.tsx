@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import type { AnswerChunk, Source, Mode } from "../types";
+import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
 import { SourceChip } from "./SourceChip";
 import { copyToClipboard, shareContent } from "../utils/helpers";
 import { useToast } from "../contexts/ToastContext";
@@ -24,6 +24,7 @@ interface AnswerCardProps {
   query?: string;
   onQueryEdit?: (editedQuery: string) => void;
   onSearch?: (query: string, mode?: Mode) => void;
+  attachments?: UploadedFile[];
 }
 
 export const AnswerCard: React.FC<AnswerCardProps> = ({
@@ -34,6 +35,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   query,
   onQueryEdit,
   onSearch: _onSearch,
+  attachments,
 }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
@@ -277,14 +279,14 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   // Auto-scroll to follow typewriter effect
   useEffect(() => {
     if (!answerContentRef.current || isLoading || chunks.length === 0) return;
-    
+
     // Find the last chunk that has displayed text
     const getLastChunkWithText = (): HTMLElement | null => {
       if (!answerContentRef.current) return null;
-      
+
       const chunkElements = answerContentRef.current.querySelectorAll('[data-chunk]');
       if (chunkElements.length === 0) return null;
-      
+
       // Find the last chunk that has text
       for (let i = chunkElements.length - 1; i >= 0; i--) {
         const chunk = chunkElements[i] as HTMLElement;
@@ -293,7 +295,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           return chunk;
         }
       }
-      
+
       // Fallback: return the last chunk element
       return chunkElements[chunkElements.length - 1] as HTMLElement;
     };
@@ -302,7 +304,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     const scrollToLastChunk = () => {
       const lastChunk = getLastChunkWithText();
       if (!lastChunk) return;
-      
+
       // Use scrollIntoView for reliable scrolling
       // During typing, use instant scroll (block: 'end' to show bottom of element)
       // After completion, use smooth scroll
@@ -330,7 +332,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           behavior: 'smooth'
         });
       };
-      
+
       // Use multiple attempts to ensure it works even if page is still rendering
       const timeoutId = setTimeout(() => {
         requestAnimationFrame(() => {
@@ -462,7 +464,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
     lines.forEach((line, _index) => {
       const trimmed = line.trim();
-      
+
       // Empty line - flush current context
       if (!trimmed) {
         if (inList) {
@@ -498,10 +500,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       if (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.match(/^\d+\./)) {
         flushParagraph(false);
         inList = true;
-        
+
         let bullet = '•';
         let content = trimmed;
-        
+
         if (trimmed.startsWith('•')) {
           content = trimmed.substring(1).trim();
         } else if (trimmed.startsWith('-')) {
@@ -829,6 +831,46 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             </span>
           </p>
         </div>
+        {attachments && attachments.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div className="sub text-sm" style={{ marginBottom: 8 }}>Attachments</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {attachments.map((file) => (
+                <div
+                  key={file.id}
+                  style={{
+                    position: "relative",
+                    width: 60,
+                    height: 60,
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    border: "1px solid var(--border)"
+                  }}
+                >
+                  {file.preview ? (
+                    <img
+                      src={file.preview}
+                      alt="Attachment"
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "var(--input-bg)",
+                      fontSize: "24px"
+                    }}>
+                      📄
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -905,6 +947,43 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           >
             {query}
           </div>
+          {attachments && attachments.length > 0 && (
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 12 }}>
+              {attachments.map((file) => (
+                <div
+                  key={file.id}
+                  style={{
+                    position: "relative",
+                    width: 60,
+                    height: 60,
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    border: "1px solid var(--border)"
+                  }}
+                >
+                  {file.preview ? (
+                    <img
+                      src={file.preview}
+                      alt="Attachment"
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "var(--input-bg)",
+                      fontSize: "24px"
+                    }}>
+                      📄
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1007,7 +1086,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         </div>
       </div>
 
-      <div 
+      <div
         ref={answerContentRef}
         style={{ display: "flex", flexDirection: "column", gap: 20 }}
       >

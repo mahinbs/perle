@@ -25,12 +25,20 @@ export interface AnswerChunk {
   confidence?: number;
 }
 
+export interface UploadedFile {
+  id: string;
+  file: File;
+  type: "image" | "document" | "other";
+  preview?: string;
+}
+
 export interface AnswerResult {
   sources: Source[];
   chunks: AnswerChunk[];
   query: string;
   mode: Mode;
   timestamp: number;
+  attachments?: UploadedFile[];
 }
 
 export interface SearchHistoryItem {

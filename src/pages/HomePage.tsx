@@ -6,14 +6,7 @@ import { searchAPI } from "../utils/answerEngine";
 import { formatQuery } from "../utils/helpers";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getUserData } from "../utils/auth";
-import type { Mode, AnswerResult, LLMModel } from "../types";
-
-interface UploadedFile {
-  id: string;
-  file: File;
-  type: "image" | "document" | "other";
-  preview?: string;
-}
+import type { Mode, AnswerResult, LLMModel, UploadedFile } from "../types";
 
 export default function HomePage() {
   const { state: currentData } = useRouterNavigation();
@@ -30,6 +23,7 @@ export default function HomePage() {
   const [isPremium, setIsPremium] = useState(false);
   const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite"); // Default to gemini-lite for free users
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [currentUploadedFiles, setCurrentUploadedFiles] = useState<UploadedFile[]>([]); // Track files for current answer
   const [newConversation, setNewConversation] = useState(false); // Flag to start new conversation
   const answerCardRef = useRef<HTMLDivElement>(null);
   const lastSearchedQueryRef = useRef<string>("");
@@ -220,6 +214,13 @@ export default function HomePage() {
       isSearchingRef.current = true;
       lastSearchedQueryRef.current = finalQuery;
 
+      // Capture current files to process for this search
+      const filesToProcess = [...uploadedFiles];
+      setCurrentUploadedFiles(filesToProcess);
+
+      // Clear input immediately so they move to "Loading" state visually
+      setUploadedFiles([]);
+
       setIsLoading(true);
       saveToHistory(q);
 
@@ -231,28 +232,57 @@ export default function HomePage() {
       try {
         const res = await searchAPI(q, mode, selectedModel, newConversation);
 
-        // Update conversation history
         if (newConversation) {
           // Start new conversation - clear history and add only this answer
-          setConversationHistory([res]);
-          setNewConversation(false);
+          // We'll handle this in the common block below
         } else {
           // Follow-up - add to conversation history (keep previous answers)
-          setConversationHistory((prev) => [...prev, res]);
+          // We'll handle this in the common block below
         }
 
         // Set as current answer (will be moved to history above)
-        setAnswer(res);
+        // Include attachments in the answer result
+        const answerWithAttachments = {
+          ...res,
+          attachments: filesToProcess.length > 0 ? filesToProcess : undefined
+        };
+
+        setAnswer(answerWithAttachments);
+
+        // Update history with the answer containing attachments
+        if (newConversation) {
+          setConversationHistory([answerWithAttachments]);
+        } else {
+          // We need to replace the last added item if we want to include attachments, 
+          // but doSearch adds raw 'res'. Let's fix history.
+          setConversationHistory((prev) => {
+            const newHistory = [...prev];
+            // The last item was just added via setConversationHistory above?
+            // No, React state updates are batched/async. 
+            // We should modify how we update history.
+            return newHistory;
+          });
+
+          // Actually, let's redo the history update logic cleanly
+          setConversationHistory(prev => {
+            const newHistory = newConversation ? [] : [...prev];
+            newHistory.push(answerWithAttachments);
+            return newHistory;
+          });
+        }
+
+        // Start clearing files after successful search initiation
+        // setUploadedFiles([]); // Handled at start
+        // setCurrentUploadedFiles(uploadedFiles); // Handled at start
       } catch (error: any) {
         console.error("Search API error:", error);
         // Show error to user - no mock fallback
         const errorAnswer = {
           chunks: [
             {
-              text: `Error: ${
-                error.message ||
+              text: `Error: ${error.message ||
                 "Failed to get answer from API. Please check your backend server is running."
-              }`,
+                }`,
               citationIds: [],
               confidence: 0,
             },
@@ -443,6 +473,7 @@ export default function HomePage() {
                 setQuery(searchQuery);
                 doSearch(searchQuery);
               }}
+              attachments={currentUploadedFiles}
             />
           )}
         </div>
