@@ -146,7 +146,14 @@ function getModelPrefix(model: LLMModel): string {
 /**
  * Mock API functions for future integration
  */
-export async function searchAPI(query: string, mode: Mode, model: LLMModel = 'gpt-4', newConversation: boolean = false): Promise<AnswerResult> {
+export async function searchAPI(
+  query: string, 
+  mode: Mode, 
+  model: LLMModel = 'gpt-4', 
+  newConversation: boolean = false,
+  uploadedFiles: UploadedFile[] = [],
+  conversationId: string | null = null
+): Promise<AnswerResult & { conversationId?: string }> {
   const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
     throw new Error('API URL not configured. Please set VITE_API_URL in your .env file.');
@@ -155,18 +162,52 @@ export async function searchAPI(query: string, mode: Mode, model: LLMModel = 'gp
   // Import auth utilities dynamically to avoid circular dependencies
   const { getAuthHeaders } = await import('./auth');
   
-  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ query, mode, model, newConversation })
-  });
-  
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(errorData.error || `API request failed with status ${res.status}`);
+  // If files are uploaded, use FormData; otherwise use JSON
+  if (uploadedFiles.length > 0) {
+    const formData = new FormData();
+    formData.append('query', query);
+    formData.append('mode', mode);
+    formData.append('model', model);
+    formData.append('newConversation', String(newConversation));
+    if (conversationId) {
+      formData.append('conversationId', conversationId);
+    }
+    
+    // Attach only the first file (for now, single file support)
+    if (uploadedFiles[0]?.file) {
+      formData.append('image', uploadedFiles[0].file);
+    }
+    
+    const headers = getAuthHeaders();
+    delete (headers as any)['Content-Type']; // Let browser set multipart boundary
+    
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `API request failed with status ${res.status}`);
+    }
+    
+    return await res.json();
+  } else {
+    // No files - use regular JSON
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ query, mode, model, newConversation, conversationId })
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `API request failed with status ${res.status}`);
+    }
+    
+    return await res.json();
   }
-  
-  return await res.json();
 }
 
 export async function getSearchSuggestions(query: string): Promise<string[]> {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
 import { generateAIAnswer } from '../utils/aiProviders.js';
 import type { AnswerResult, Mode, LLMModel } from '../types.js';
 import { supabase } from '../lib/supabase.js';
@@ -7,10 +8,38 @@ import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
+// Configure multer for file uploads (images and documents)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow images and common document types
+    const allowedTypes = [
+      'image/', // All image types
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'text/plain',
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' // .xlsx
+    ];
+    
+    if (allowedTypes.some(type => file.mimetype.startsWith(type) || file.mimetype === type)) {
+      cb(null, true);
+    } else {
+      cb(new Error('File type not supported. Allowed: images, PDF, Word, Excel, text files'));
+    }
+  },
+});
+
 const searchSchema = z.object({
   query: z.string().min(1, 'Query cannot be empty').max(500, 'Query too long'),
   mode: z.enum(['Ask', 'Research', 'Summarize', 'Compare']).default('Ask'),
   newConversation: z.boolean().optional().default(false), // Flag to start new conversation
+  conversationId: z.union([z.string().uuid(), z.null()]).optional(), // Optional conversation ID to continue existing conversation (can be null)
   model: z.enum([
     'auto',
     'gpt-5',
@@ -39,10 +68,18 @@ const searchSchema = z.object({
   ]).default('gemini-lite')
 });
 
-// Main search endpoint
-router.post('/search', optionalAuth, async (req: AuthRequest, res) => {
+// Main search endpoint (supports file uploads)
+router.post('/search', optionalAuth, upload.single('image'), async (req: AuthRequest, res) => {
   try {
-    const parse = searchSchema.safeParse(req.body);
+    // Handle both JSON and form-data
+    let bodyData = req.body;
+    
+    // Convert form-data string values to proper types
+    if (bodyData.newConversation === 'true' || bodyData.newConversation === 'false') {
+      bodyData.newConversation = bodyData.newConversation === 'true';
+    }
+    
+    const parse = searchSchema.safeParse(bodyData);
     if (!parse.success) {
       return res.status(400).json({ 
         error: 'Invalid request', 
@@ -50,11 +87,47 @@ router.post('/search', optionalAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const { query, mode, model, newConversation } = parse.data;
+    const { query, mode, model, newConversation, conversationId } = parse.data;
     const trimmedQuery = query.trim();
 
     if (!trimmedQuery) {
       return res.status(400).json({ error: 'Query cannot be empty' });
+    }
+
+    console.log(`📨 Received: conversationId=${conversationId}, newConversation=${newConversation}`);
+
+    // Handle conversation management
+    let currentConversationId = conversationId;
+    
+    // Create new conversation ONLY if:
+    // 1. User explicitly clicks "New Chat" (newConversation=true)
+    // 2. OR no conversationId provided (frontend will save it and send it next time)
+    // DO NOT auto-use recent conversation - let frontend manage it
+    if (req.userId && !currentConversationId) {
+      try {
+        const { data: newConv, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            user_id: req.userId,
+            title: trimmedQuery.substring(0, 50) + (trimmedQuery.length > 50 ? '...' : ''),
+            chat_mode: 'normal'
+          })
+          .select()
+          .single();
+        
+        if (!convError && newConv) {
+          currentConversationId = newConv.id;
+          console.log(`✨ Created new conversation: ${currentConversationId}`);
+        }
+      } catch (convError) {
+        console.warn('Failed to create conversation:', convError);
+        // Continue without conversation ID
+      }
+    }
+    
+    // If conversationId provided, continue that conversation (keep context)
+    if (currentConversationId) {
+      console.log(`💬 Continuing conversation: ${currentConversationId}`);
     }
 
     // Check if user is premium (check premium_tier or is_premium for backward compatibility)
@@ -110,17 +183,19 @@ router.post('/search', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
 
-    // Fetch conversation history (last 10 messages) for context
-    // ONLY for premium users and if not starting a new conversation
+    // Fetch conversation history for context
+    // Both free and premium users get history (different limits)
+    // Free: 5 messages, Premium: 20 messages
     let conversationHistory: any[] = [];
-    if (req.userId && isPremium && !newConversation) {
+    if (req.userId && currentConversationId && !newConversation) {
       try {
+        const messageLimit = isPremium ? 20 : 5;
         const { data: history } = await supabase
           .from('conversation_history')
           .select('query, answer')
-          .eq('user_id', req.userId)
+          .eq('conversation_id', currentConversationId)
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(messageLimit);
         
         if (history && history.length > 0) {
           // Convert to conversation format (reverse to get chronological order)
@@ -148,10 +223,54 @@ router.post('/search', optionalAuth, async (req: AuthRequest, res) => {
       }
     }
 
+    // Process uploaded file (image/document) if present
+    let imageDataUrl: string | undefined = undefined;
+    if (req.file && req.userId) {
+      try {
+        const fileType = req.file.mimetype.startsWith('image/') ? 'image' : 'document';
+        console.log(`📎 ${fileType} attached in search: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
+        
+        // Step 1: Upload to Supabase 'files' bucket (supports all MIME types)
+        const fileExtension = req.file.originalname?.split('.').pop() || 'bin';
+        const fileName = `search-attachments/${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('files')
+          .upload(fileName, req.file.buffer, {
+            contentType: req.file.mimetype,
+            upsert: false
+          });
+        
+        if (uploadError) {
+          console.error('Failed to upload file to Supabase:', uploadError);
+          // Fallback: use buffer directly
+          const base64File = req.file.buffer.toString('base64');
+          imageDataUrl = `data:${req.file.mimetype};base64,${base64File}`;
+          console.log(`⚠️  Using direct buffer fallback for ${fileType}`);
+        } else {
+          // Step 2: Get public URL
+          const { data: urlData } = supabase.storage
+            .from('files')
+            .getPublicUrl(fileName);
+          
+          console.log(`✅ ${fileType} uploaded to Supabase: ${fileName}`);
+          
+          // Step 3: Convert to base64 for AI (after successful upload)
+          const base64File = req.file.buffer.toString('base64');
+          imageDataUrl = `data:${req.file.mimetype};base64,${base64File}`;
+          
+          console.log(`✅ ${fileType} converted to base64 (${base64File.length} chars) for AI`);
+        }
+      } catch (fileError) {
+        console.error('Failed to process file:', fileError);
+        // Continue without file if processing fails
+      }
+    }
+
     // Generate answer using real AI provider only - no fallbacks
     let result: AnswerResult;
     try {
-      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory);
+      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory, 'normal', null, null, null, null, imageDataUrl);
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
       const errorMessage = apiError?.message || 'Failed to generate answer';
@@ -181,42 +300,59 @@ router.post('/search', optionalAuth, async (req: AuthRequest, res) => {
       }
       
       // Save to conversation history for context (store answer text)
-      // ONLY for premium users
-      if (isPremium) {
-        try {
-          const answerText = result.chunks.map(c => c.text).join('\n\n');
-          await supabase
-            .from('conversation_history')
-            .insert({
-              user_id: req.userId,
-              query: trimmedQuery,
-              answer: answerText,
-              mode: mode,
-              model: actualModel
-            });
+      // Both free and premium users save history (different limits applied)
+      try {
+        const answerText = result.chunks.map(c => c.text).join('\n\n');
+        await supabase
+          .from('conversation_history')
+          .insert({
+            user_id: req.userId,
+            query: trimmedQuery,
+            answer: answerText,
+            mode: mode,
+            model: actualModel,
+            chat_mode: 'normal',
+            conversation_id: currentConversationId || null
+          });
           
-          // Keep only last 20 messages per user (cleanup old ones)
-          const { data: allHistory } = await supabase
-            .from('conversation_history')
-            .select('id')
-            .eq('user_id', req.userId)
-            .order('created_at', { ascending: false });
-          
-          if (allHistory && allHistory.length > 20) {
-            const idsToDelete = allHistory.slice(20).map((h: any) => h.id);
+          // Update conversation updated_at timestamp
+          if (currentConversationId) {
             await supabase
-              .from('conversation_history')
-              .delete()
-              .in('id', idsToDelete);
+              .from('conversations')
+              .update({ updated_at: new Date().toISOString() })
+              .eq('id', currentConversationId);
           }
-        } catch (convError) {
-          // Log but don't fail the request if conversation history save fails
-          console.error('Failed to save conversation history:', convError);
-        }
+          
+          // Keep only last N messages per conversation (cleanup old ones)
+          // Free: 10 messages, Premium: 50 messages per conversation
+          const maxHistory = isPremium ? 50 : 10;
+          if (currentConversationId) {
+            const { data: convHistory } = await supabase
+              .from('conversation_history')
+              .select('id')
+              .eq('conversation_id', currentConversationId)
+              .order('created_at', { ascending: false });
+            
+            if (convHistory && convHistory.length > maxHistory) {
+              const idsToDelete = convHistory.slice(maxHistory).map((h: any) => h.id);
+              await supabase
+                .from('conversation_history')
+                .delete()
+                .in('id', idsToDelete);
+            }
+          }
+      } catch (convError) {
+        // Log but don't fail the request if conversation history save fails
+        console.error('Failed to save conversation history:', convError);
       }
     }
 
-    res.json(result);
+    console.log(`📤 Sending back: conversationId=${currentConversationId}`);
+    
+    res.json({
+      ...result,
+      conversationId: currentConversationId
+    });
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ error: 'Internal server error' });

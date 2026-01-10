@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect, useRef } from "react";
 import { Header } from "../components/Header";
 import { SearchBar } from "../components/SearchBar";
 import { AnswerCard } from "../components/AnswerCard";
+import { ConversationSidebar } from "../components/ConversationSidebar";
 import { searchAPI } from "../utils/answerEngine";
 import { formatQuery } from "../utils/helpers";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
@@ -25,6 +26,9 @@ export default function HomePage() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [currentUploadedFiles, setCurrentUploadedFiles] = useState<UploadedFile[]>([]); // Track files for current answer
   const [newConversation, setNewConversation] = useState(false); // Flag to start new conversation
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null); // Current conversation ID
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Sidebar toggle (auto-hide)
+  const [isLoadingOldConversation, setIsLoadingOldConversation] = useState(false); // Flag to disable animations
   const answerCardRef = useRef<HTMLDivElement>(null);
   const lastSearchedQueryRef = useRef<string>("");
   const isSearchingRef = useRef<boolean>(false);
@@ -228,17 +232,26 @@ export default function HomePage() {
       setQuery(finalQuery);
       setSearchedQuery(finalQuery);
 
-      // Call the real API
+      // Call the real API with uploaded files and conversation ID
       try {
-        const res = await searchAPI(q, mode, selectedModel, newConversation);
+        console.log(`🚀 FRONTEND SENDING: conversationId=${activeConversationId}, newConversation=${newConversation}`);
+        const res = await searchAPI(q, mode, selectedModel, newConversation, filesToProcess, activeConversationId);
 
-        if (newConversation) {
-          // Start new conversation - clear history and add only this answer
-          // We'll handle this in the common block below
-        } else {
-          // Follow-up - add to conversation history (keep previous answers)
-          // We'll handle this in the common block below
+        console.log(`✅ FRONTEND RECEIVED: conversationId=${res.conversationId}`);
+        
+        // Update active conversation ID from response
+        if (res.conversationId) {
+          setActiveConversationId(res.conversationId);
+          console.log(`💾 FRONTEND SAVED: activeConversationId=${res.conversationId}`);
         }
+
+        // Reset newConversation flag after using it (so next search continues the conversation)
+        if (newConversation) {
+          setNewConversation(false);
+          // Start new conversation - clear history and add only this answer
+          setConversationHistory([]);
+        }
+        // If not newConversation, keep existing history (will add to it below)
 
         // Set as current answer (will be moved to history above)
         // Include attachments in the answer result
@@ -309,7 +322,7 @@ export default function HomePage() {
       // Removed 'query' from dependencies to prevent re-creation on every query change
       // The function uses query from closure, which is fine since we pass it explicitly when needed
     },
-    [mode, selectedModel, saveToHistory, uploadedFiles]
+    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation]
   );
 
   // Handle keyboard shortcuts
@@ -411,26 +424,107 @@ export default function HomePage() {
   //   }
   // }, [answer, isLoading]);
 
+  // Load specific conversation (no animations)
+  const loadConversation = useCallback(async (conversationId: string) => {
+    try {
+      setIsLoadingOldConversation(true); // Disable animations
+      
+      const baseUrl = import.meta.env.VITE_API_URL as string;
+      const { getAuthHeaders } = await import('../utils/auth');
+      
+      const response = await fetch(`${baseUrl}/api/conversations/${conversationId}`, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setActiveConversationId(conversationId);
+        
+        // Convert messages to AnswerResult format with proper chunk structure
+        const history: AnswerResult[] = data.messages.map((msg: any) => ({
+          query: msg.query,
+          chunks: [{ 
+            text: msg.answer, 
+            sourceIds: [],
+            citationIds: []
+          }],
+          sources: [],
+          mode: 'Ask' as Mode,
+          timestamp: new Date(msg.created_at).getTime()
+        }));
+        
+        setConversationHistory(history);
+        setAnswer(null);
+        setQuery("");
+        setSearchedQuery("");
+        
+        // Close sidebar on mobile after selection
+        setIsSidebarOpen(false);
+      }
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    } finally {
+      // Re-enable animations after a brief moment
+      setTimeout(() => {
+        setIsLoadingOldConversation(false);
+      }, 100);
+    }
+  }, []);
+
+  // Handle new conversation
+  const handleNewConversation = useCallback(() => {
+    console.log(`🆕 NEW CHAT CLICKED - Clearing activeConversationId`);
+    setActiveConversationId(null);
+    setNewConversation(true);
+    setAnswer(null);
+    setConversationHistory([]);
+    setSearchedQuery("");
+    setQuery("");
+    setIsSidebarOpen(false); // Close sidebar on mobile
+  }, []);
+
+  // Handle conversation deletion
+  const handleDeleteConversation = useCallback((conversationId: string) => {
+    if (activeConversationId === conversationId) {
+      // If deleting active conversation, start new one
+      handleNewConversation();
+    }
+  }, [activeConversationId, handleNewConversation]);
+
   return (
-    <div className="container flex flex-col justify-between h-full">
-      <Header />
+    <>
+      {/* Conversation Sidebar */}
+      <ConversationSidebar
+        activeConversationId={activeConversationId}
+        onSelectConversation={loadConversation}
+        onNewConversation={handleNewConversation}
+        onDeleteConversation={handleDeleteConversation}
+        isOpen={isSidebarOpen}
+        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+      />
 
-      <>
-        {/* <div className="sub text-sm" style={{ marginTop: 6 }}>
-        An elegant answer engine with citations, comparisons, and summaries.
-      </div> */}
+      {/* Main Content - ORIGINAL LAYOUT */}
+      <div className="container flex flex-col justify-between h-full">
+        <Header />
 
-        <div className="spacer-8" />
-        {/* <ModeBar mode={mode} setMode={setMode} /> */}
+        <>
+          {/* <div className="sub text-sm" style={{ marginTop: 6 }}>
+          An elegant answer engine with citations, comparisons, and summaries.
+        </div> */}
 
-        <div className="spacer-12" />
+          <div className="spacer-8" />
+          {/* <ModeBar mode={mode} setMode={setMode} /> */}
+
+          <div className="spacer-12" />
         <div ref={answerCardRef}>
-          {/* Render all answers in conversation history */}
-          {conversationHistory.map((prevAnswer, index) => (
+            {/* Render all answers in conversation history */}
+            {conversationHistory.map((prevAnswer, index) => (
             <div
               key={`answer-${prevAnswer.timestamp}-${index}`}
               style={{
                 marginBottom: index < conversationHistory.length - 1 ? 24 : 0,
+                transition: isLoadingOldConversation ? 'none' : undefined,
+                animation: isLoadingOldConversation ? 'none' : undefined
               }}
             >
               <AnswerCard
@@ -476,45 +570,38 @@ export default function HomePage() {
               attachments={currentUploadedFiles}
             />
           )}
+          </div>
+          <div className="spacer-12" />
+        </>
+
+        <div className="sticky bottom-0 left-0 w-full mt-3">
+          <SearchBar
+            selectedModel={selectedModel}
+            setSelectedModel={setSelectedModel}
+            query={query}
+            setQuery={handleQueryChange}
+            onSearch={doSearch}
+            isLoading={isLoading}
+            showHistory={showHistory}
+            searchHistory={searchHistory}
+            onQuerySelect={handleQuerySelect}
+            onModelChange={setSelectedModel}
+            uploadedFiles={uploadedFiles}
+            onFilesChange={setUploadedFiles}
+            hasAnswer={!!answer && !isLoading}
+            searchedQuery={searchedQuery}
+            isPremium={isPremium}
+            onNewConversation={handleNewConversation}
+          />
         </div>
-        <div className="spacer-12" />
-      </>
+        {/* <div className="spacer-16" />
+        <DiscoverRail /> */}
 
-      <div className="sticky bottom-0 left-0 w-full mt-3">
-        <SearchBar
-          selectedModel={selectedModel}
-          setSelectedModel={setSelectedModel}
-          query={query}
-          setQuery={handleQueryChange}
-          onSearch={doSearch}
-          isLoading={isLoading}
-          showHistory={showHistory}
-          searchHistory={searchHistory}
-          onQuerySelect={handleQuerySelect}
-          onModelChange={setSelectedModel}
-          uploadedFiles={uploadedFiles}
-          onFilesChange={setUploadedFiles}
-          hasAnswer={!!answer && !isLoading}
-          searchedQuery={searchedQuery}
-          isPremium={isPremium}
-          onNewConversation={() => {
-            setNewConversation(true);
-            setAnswer(null);
-            setConversationHistory([]); // Clear conversation history
-            setSearchedQuery("");
-            setQuery("");
-            // Trigger search with empty query to clear conversation
-            // The actual search will happen when user types and searches
-          }}
-        />
+        {/* <div className="spacer-24" />
+        <UpgradeCard /> */}
+
+        {/* <div className="spacer-40" /> */}
       </div>
-      {/* <div className="spacer-16" />
-      <DiscoverRail /> */}
-
-      {/* <div className="spacer-24" />
-      <UpgradeCard /> */}
-
-      {/* <div className="spacer-40" /> */}
-    </div>
+    </>
   );
 }

@@ -412,19 +412,48 @@ export async function generateGeminiAnswer(
   // Build parts array (text + optional image)
   const parts: any[] = [{ text: `${sys}\n\n${prompt}` }];
   
-  // Add image if provided
+  // Add image or document if provided
   if (imageDataUrl) {
     // Extract base64 data and mime type from data URL
-    const matches = imageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+    const matches = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (matches) {
       const [, mimeType, base64Data] = matches;
-      parts.push({
-        inlineData: {
-          mimeType: mimeType,
-          data: base64Data
+      
+      // Check if it's an image or document
+      if (mimeType.startsWith('image/')) {
+        // Image: use inline_data
+        parts.push({
+          inlineData: {
+            mimeType: mimeType,
+            data: base64Data
+          }
+        });
+        console.log(`📷 Added image to Gemini request: ${mimeType}`);
+      } else {
+        // Document: For PDF, Word, etc., we need to extract text or use file_data
+        // For now, try to use inline_data with document MIME type (Gemini supports some)
+        // If that doesn't work, we'll need to extract text from the document
+        if (mimeType === 'application/pdf' || mimeType.includes('pdf')) {
+          // PDF: Try inline_data (Gemini 2.0+ supports PDF)
+          parts.push({
+            inlineData: {
+              mimeType: 'application/pdf',
+              data: base64Data
+            }
+          });
+          console.log(`📄 Added PDF document to Gemini request`);
+        } else {
+          // For other documents, we'd need to extract text first
+          // For now, add as inline_data and let Gemini try
+          parts.push({
+            inlineData: {
+              mimeType: mimeType,
+              data: base64Data
+            }
+          });
+          console.log(`📎 Added document to Gemini request: ${mimeType}`);
         }
-      });
-      console.log(`📷 Added image to Gemini request: ${mimeType}`);
+      }
     }
   }
   
