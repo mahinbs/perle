@@ -322,6 +322,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     );
   };
 
+  // Check if file is GIF (should be blocked)
+  const isGifFile = (file: File): boolean => {
+    return (
+      file.type === "image/gif" ||
+      file.name.match(/\.gif$/i) !== null
+    );
+  };
+
   const createFilePreview = (file: File): Promise<string | undefined> => {
     return new Promise((resolve) => {
       if (file.type.startsWith("image/")) {
@@ -647,6 +655,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           continue;
         }
 
+        // Block GIF files
+        if (isGifFile(file)) {
+          rejectedFiles.push(file.name);
+          continue;
+        }
+
         if (currentFileCount + newFiles.length >= maxFiles) {
           break;
         }
@@ -662,9 +676,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       }
 
       if (rejectedFiles.length > 0) {
+        const hasGifs = rejectedFiles.some(name => name.match(/\.gif$/i));
         showToast({
-          message: `Only image files are supported for ${toolMode === "image" ? "image" : "video"
-            } generation.`,
+          message: hasGifs
+            ? `GIF files are not supported. Only static images are allowed for ${toolMode === "image" ? "image" : "video"} generation.`
+            : `Only image files are supported for ${toolMode === "image" ? "image" : "video"} generation.`,
           type: "error",
           duration: 3000,
         });
@@ -705,6 +721,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         continue;
       }
 
+      // Block GIF files
+      if (isGifFile(file)) {
+        rejectedFiles.push(file.name);
+        continue;
+      }
+
       // Check if adding this file would exceed limit
       if (currentFileCount + newFiles.length >= maxFiles) {
         showToast({
@@ -728,9 +750,24 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
 
     if (rejectedFiles.length > 0) {
+      const hasVideos = rejectedFiles.some(name => 
+        name.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/i) !== null
+      );
+      const hasGifs = rejectedFiles.some(name => name.match(/\.gif$/i));
+      let message = "";
+      
+      if (hasVideos && hasGifs) {
+        message = `Video and GIF files are not supported. ${rejectedFiles.length} file${rejectedFiles.length > 1 ? "s" : ""} rejected.`;
+      } else if (hasVideos) {
+        message = `Video files are not supported. ${rejectedFiles.length} file${rejectedFiles.length > 1 ? "s" : ""} rejected.`;
+      } else if (hasGifs) {
+        message = `GIF files are not supported. ${rejectedFiles.length} file${rejectedFiles.length > 1 ? "s" : ""} rejected.`;
+      } else {
+        message = `${rejectedFiles.length} file${rejectedFiles.length > 1 ? "s" : ""} rejected.`;
+      }
+      
       showToast({
-        message: `Video files are not supported. ${rejectedFiles.length} file${rejectedFiles.length > 1 ? "s" : ""
-          } rejected.`,
+        message,
         type: "error",
         duration: 4000,
       });
@@ -1781,8 +1818,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         multiple={!toolMode}
         accept={
           toolMode
-            ? "image/*"
-            : "image/*,.pdf,.doc,.docx,.txt,.csv,.odt,.xls,.xlsx"
+            ? "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml"
+            : "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml,.pdf,.doc,.docx,.txt,.csv,.odt,.xls,.xlsx"
         }
         onChange={(e) => {
           handleFileUpload(e.target.files);
