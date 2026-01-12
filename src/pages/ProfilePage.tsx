@@ -35,6 +35,10 @@ export default function ProfilePage() {
   const [updatingSetting, setUpdatingSetting] = useState<string | null>(null);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editName, setEditName] = useState('');
+  const [editDp, setEditDp] = useState('');
+  const [editPersonality, setEditPersonality] = useState('');
+  const [editGender, setEditGender] = useState('');
+  const [editAge, setEditAge] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
@@ -237,6 +241,14 @@ export default function ProfilePage() {
       updates.voiceSearch = value;
     } else if (key === 'name') {
       updates.name = value;
+    } else if (key === 'dp') {
+      updates.dp = value;
+    } else if (key === 'personality') {
+      updates.personality = value;
+    } else if (key === 'gender') {
+      updates.gender = value;
+    } else if (key === 'age') {
+      updates.age = value;
     }
 
     try {
@@ -250,8 +262,23 @@ export default function ProfilePage() {
         const updatedProfile = await response.json();
         setUserSettings(updatedProfile);
         setUserData(updatedProfile);
+        const fieldNames: Record<string, string> = {
+          darkMode: 'Dark mode',
+          notifications: 'Notifications',
+          searchHistory: 'Search history',
+          voiceSearch: 'Voice search',
+          name: 'Name',
+          dp: 'Display picture',
+          personality: 'Personality',
+          gender: 'Gender',
+          age: 'Age'
+        };
+        const fieldName = fieldNames[key] || key;
+        const message = typeof value === 'boolean' 
+          ? `${fieldName} ${value ? 'enabled' : 'disabled'}`
+          : `${fieldName} updated`;
         showToast({
-          message: `${key === 'darkMode' ? 'Dark mode' : key === 'notifications' ? 'Notifications' : key === 'searchHistory' ? 'Search history' : 'Voice search'} ${value ? 'enabled' : 'disabled'}`,
+          message,
           type: 'success',
           duration: 2000
         });
@@ -672,7 +699,11 @@ export default function ProfilePage() {
             className="btn-ghost"
             style={{ width: "100%" }}
             onClick={() => {
-              setEditName(userSettings.name);
+              setEditName(userSettings.name || '');
+              setEditDp((userSettings as any).dp || '');
+              setEditPersonality((userSettings as any).personality || '');
+              setEditGender((userSettings as any).gender || '');
+              setEditAge((userSettings as any).age || '');
               setShowEditProfile(true);
             }}
           >
@@ -1131,12 +1162,160 @@ export default function ProfilePage() {
               />
             </div>
 
+            <div style={{ marginBottom: 16 }}>
+              <label
+                htmlFor="edit-dp"
+                style={{
+                  display: 'block',
+                  marginBottom: 6,
+                  fontWeight: 500,
+                  color: 'var(--text)'
+                }}
+              >
+                Display Picture (URL)
+              </label>
+              <input
+                id="edit-dp"
+                type="url"
+                value={editDp}
+                onChange={(e) => setEditDp(e.target.value)}
+                placeholder="Enter profile picture URL"
+                className="input"
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--card)',
+                  fontSize: 'var(--font-md)'
+                }}
+              />
+              {editDp && (
+                <img
+                  src={editDp}
+                  alt="Preview"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    marginTop: 8,
+                    border: '1px solid var(--border)'
+                  }}
+                />
+              )}
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label
+                htmlFor="edit-personality"
+                style={{
+                  display: 'block',
+                  marginBottom: 6,
+                  fontWeight: 500,
+                  color: 'var(--text)'
+                }}
+              >
+                Personality
+              </label>
+              <input
+                id="edit-personality"
+                type="text"
+                value={editPersonality}
+                onChange={(e) => setEditPersonality(e.target.value)}
+                placeholder="e.g., Friendly, Creative, Analytical"
+                className="input"
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--card)',
+                  fontSize: 'var(--font-md)'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label
+                htmlFor="edit-gender"
+                style={{
+                  display: 'block',
+                  marginBottom: 6,
+                  fontWeight: 500,
+                  color: 'var(--text)'
+                }}
+              >
+                Gender
+              </label>
+              <select
+                id="edit-gender"
+                value={editGender}
+                onChange={(e) => setEditGender(e.target.value)}
+                className="input"
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--card)',
+                  fontSize: 'var(--font-md)',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">Select gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+                <option value="prefer-not-to-say">Prefer not to say</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label
+                htmlFor="edit-age"
+                style={{
+                  display: 'block',
+                  marginBottom: 6,
+                  fontWeight: 500,
+                  color: 'var(--text)'
+                }}
+              >
+                Age
+              </label>
+              <input
+                id="edit-age"
+                type="number"
+                value={editAge}
+                onChange={(e) => setEditAge(e.target.value)}
+                placeholder="Enter your age"
+                min="1"
+                max="120"
+                className="input"
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--card)',
+                  fontSize: 'var(--font-md)'
+                }}
+              />
+            </div>
+
             <div className="row" style={{ gap: 12, marginTop: 24 }}>
               <button
                 className="btn-ghost"
                 onClick={() => {
                   setShowEditProfile(false);
                   setEditName('');
+                  setEditDp('');
+                  setEditPersonality('');
+                  setEditGender('');
+                  setEditAge('');
                 }}
                 style={{ flex: 1 }}
               >
@@ -1145,16 +1324,50 @@ export default function ProfilePage() {
               <button
                 className="btn"
                 onClick={async () => {
-                  if (editName.trim() && editName !== userSettings.name) {
-                    await handleSettingChange('name', editName.trim());
+                  const hasChanges = 
+                    (editName.trim() !== (userSettings.name || '')) ||
+                    (editDp !== ((userSettings as any).dp || '')) ||
+                    (editPersonality !== ((userSettings as any).personality || '')) ||
+                    (editGender !== ((userSettings as any).gender || '')) ||
+                    (editAge !== ((userSettings as any).age || ''));
+
+                  if (hasChanges) {
+                    // Update name if changed
+                    if (editName.trim() && editName.trim() !== userSettings.name) {
+                      await handleSettingChange('name', editName.trim());
+                    }
+                    // Update dp if changed
+                    if (editDp !== ((userSettings as any).dp || '')) {
+                      await handleSettingChange('dp', editDp);
+                    }
+                    // Update personality if changed
+                    if (editPersonality !== ((userSettings as any).personality || '')) {
+                      await handleSettingChange('personality', editPersonality);
+                    }
+                    // Update gender if changed
+                    if (editGender !== ((userSettings as any).gender || '')) {
+                      await handleSettingChange('gender', editGender);
+                    }
+                    // Update age if changed
+                    if (editAge !== ((userSettings as any).age || '')) {
+                      await handleSettingChange('age', editAge);
+                    }
                     setShowEditProfile(false);
                     setEditName('');
+                    setEditDp('');
+                    setEditPersonality('');
+                    setEditGender('');
+                    setEditAge('');
                   } else {
                     setShowEditProfile(false);
                     setEditName('');
+                    setEditDp('');
+                    setEditPersonality('');
+                    setEditGender('');
+                    setEditAge('');
                   }
                 }}
-                disabled={!editName.trim() || editName.trim() === userSettings.name}
+                disabled={!editName.trim()}
                 style={{ flex: 1 }}
               >
                 Save

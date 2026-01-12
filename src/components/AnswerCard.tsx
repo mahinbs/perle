@@ -4,6 +4,7 @@ import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
 import { SourceChip } from "./SourceChip";
 import { copyToClipboard, shareContent } from "../utils/helpers";
 import { useToast } from "../contexts/ToastContext";
+
 import {
   FaVolumeUp,
   FaStop,
@@ -62,6 +63,21 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const [showVideoFallback, setShowVideoFallback] = useState(true); // Start with gif, switch to video when ready
   const [videoReady, setVideoReady] = useState(false);
   const { showToast } = useToast();
+
+  // Try to import KaTeX dynamically, but make it optional
+  const [katex, setKatex] = useState<any>(null);
+  useEffect(() => {
+    // Dynamically import KaTeX
+    import("katex")
+      .then((katexModule) => {
+        setKatex(katexModule.default);
+        // Import CSS
+        import("katex/dist/katex.min.css");
+      })
+      .catch(() => {
+        console.warn("KaTeX not found. Mathematical formulas will be displayed as plain text. Install with: npm install katex");
+      });
+  }, []);
 
   // Check for speech synthesis support
   useEffect(() => {
@@ -376,6 +392,81 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     startVoiceOutput();
   }, [chunks, isLoading]);
 
+  // Helper function to render LaTeX formulas
+  const renderWithMath = (text: string): React.ReactNode[] => {
+    if (!katex) {
+      // KaTeX not available, return text as-is
+      return [text];
+    }
+
+    const parts: React.ReactNode[] = [];
+    // Match both inline \(...\) and block \[...\] LaTeX
+    // Use a more robust regex that handles nested content with backslashes
+    const mathRegex = /\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g;
+    let lastIndex = 0;
+    let match;
+    let key = 0;
+
+    while ((match = mathRegex.exec(text)) !== null) {
+      // Add text before the match
+      if (match.index > lastIndex) {
+        const beforeText = text.substring(lastIndex, match.index);
+        if (beforeText) {
+          parts.push(beforeText);
+        }
+      }
+
+      // match[1] is for inline \(...\), match[2] is for block \[...\]
+      const isBlock = !!match[2];
+      const formula = match[1] || match[2];
+      
+      if (formula) {
+        try {
+          const html = katex.renderToString(formula, {
+            throwOnError: false,
+            displayMode: isBlock,
+          });
+          if (isBlock) {
+            parts.push(
+              <div
+                key={`math-${key++}`}
+                dangerouslySetInnerHTML={{ __html: html }}
+                style={{ 
+                  margin: '12px 0',
+                  overflowX: 'auto',
+                  textAlign: 'center'
+                }}
+              />
+            );
+          } else {
+            parts.push(
+              <span
+                key={`math-${key++}`}
+                dangerouslySetInnerHTML={{ __html: html }}
+                style={{ display: 'inline-block' }}
+              />
+            );
+          }
+        } catch (error) {
+          // Fallback to plain text if rendering fails
+          parts.push(match[0]);
+        }
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      const remainingText = text.substring(lastIndex);
+      if (remainingText) {
+        parts.push(remainingText);
+      }
+    }
+
+    return parts.length > 0 ? parts : [text];
+  };
+
   // Format text with markdown-like formatting
   const formatText = (text: string, appendDot?: boolean): React.ReactNode => {
     if (!text) return null;
@@ -391,6 +482,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       if (currentParagraph.length > 0) {
         const paraText = currentParagraph.join(' ').trim();
         if (paraText) {
+          const mathRendered = renderWithMath(paraText);
           result.push(
             <p
               key={`para-${result.length}`}
@@ -400,7 +492,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 lineHeight: 1.7,
               }}
             >
-              {paraText}
+              {mathRendered}
               {isLast && appendDot && (
                 <span
                   style={{
@@ -450,7 +542,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     {item.bullet}
                   </span>
                   <span style={{ flex: 1 }}>
-                    {item.content}
+                    {renderWithMath(item.content)}
                     {isLastItem && (
                       <span
                         style={{
