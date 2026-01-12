@@ -159,10 +159,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       // Only search if there's input in the search box
       if (query.trim()) {
         onSearch();
-        // In follow-up mode, keep the query for editing; otherwise clear it
-        if (!hasAnswer) {
-          setQuery("");
-        }
+        // Always clear the query immediately after triggering search
+        setQuery("");
         // Scroll to bottom of page when search is triggered
         // Use multiple attempts to ensure it works even if page is still loading
         const scrollToBottom = () => {
@@ -243,12 +241,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         onSearch(finalTranscript);
         // tell AnswerCard to speak the next answer
         localStorage.setItem("perle-speak-next-answer", "1");
-        // In follow-up mode, keep the query for editing; otherwise clear it
-        if (!hasAnswer) {
-          setTimeout(() => {
-            setQuery("");
-          }, 100);
-        }
+        // Always clear the query immediately after triggering search
+        setTimeout(() => {
+          setQuery("");
+        }, 100);
       }
     };
 
@@ -1711,10 +1707,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               onClick={() => {
                 if (query.trim()) {
                   onSearch();
-                  // In follow-up mode, keep the query for editing; otherwise clear it
-                  if (!hasAnswer) {
-                    setQuery("");
-                  }
+                  // Always clear the query immediately after triggering search
+                  setQuery("");
                 }
               }}
               disabled={isLoading}

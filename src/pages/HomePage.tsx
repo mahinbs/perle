@@ -29,6 +29,7 @@ export default function HomePage() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null); // Current conversation ID
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Sidebar toggle (auto-hide)
   const [isLoadingOldConversation, setIsLoadingOldConversation] = useState(false); // Flag to disable animations
+  const lastLoadedConversationIdRef = useRef<string | null>(null); // Track which conversation was loaded from sidebar
   const answerCardRef = useRef<HTMLDivElement>(null);
   const lastSearchedQueryRef = useRef<string>("");
   const isSearchingRef = useRef<boolean>(false);
@@ -242,6 +243,9 @@ export default function HomePage() {
         // Update active conversation ID from response
         if (res.conversationId) {
           setActiveConversationId(res.conversationId);
+          // Clear the loaded conversation ref when making a new search
+          // This ensures new queries get typewriter effect even if continuing an old conversation
+          lastLoadedConversationIdRef.current = null;
           console.log(`💾 FRONTEND SAVED: activeConversationId=${res.conversationId}`);
         }
 
@@ -440,6 +444,9 @@ export default function HomePage() {
         const data = await response.json();
         setActiveConversationId(conversationId);
         
+        // Mark that we loaded this conversation from sidebar
+        lastLoadedConversationIdRef.current = conversationId;
+        
         // Convert messages to AnswerResult format with proper chunk structure
         const history: AnswerResult[] = data.messages.map((msg: any) => ({
           query: msg.query,
@@ -475,6 +482,7 @@ export default function HomePage() {
   const handleNewConversation = useCallback(() => {
     console.log(`🆕 NEW CHAT CLICKED - Clearing activeConversationId`);
     setActiveConversationId(null);
+    lastLoadedConversationIdRef.current = null; // Clear the loaded conversation ref
     setNewConversation(true);
     setAnswer(null);
     setConversationHistory([]);
@@ -518,35 +526,53 @@ export default function HomePage() {
           <div className="spacer-12" />
         <div ref={answerCardRef}>
             {/* Render all answers in conversation history */}
-            {conversationHistory.map((prevAnswer, index) => (
-            <div
-              key={`answer-${prevAnswer.timestamp}-${index}`}
-              style={{
-                marginBottom: index < conversationHistory.length - 1 ? 24 : 0,
-                transition: isLoadingOldConversation ? 'none' : undefined,
-                animation: isLoadingOldConversation ? 'none' : undefined
-              }}
-            >
-              <AnswerCard
-                chunks={prevAnswer.chunks}
-                sources={prevAnswer.sources}
-                isLoading={false}
-                mode={prevAnswer.mode || mode}
-                query={prevAnswer.query}
-                onQueryEdit={(editedQuery) => {
-                  setQuery(editedQuery);
-                  doSearch(editedQuery);
-                }}
-                onSearch={(searchQuery, searchMode) => {
-                  if (searchMode) {
-                    setMode(searchMode);
-                  }
-                  setQuery(searchQuery);
-                  doSearch(searchQuery);
-                }}
-              />
-            </div>
-          ))}
+            {conversationHistory.map((prevAnswer, index) => {
+              // Determine if this conversation was loaded from sidebar
+              // If activeConversationId matches lastLoadedConversationIdRef, all items are from old conversation
+              const isFromLoadedConversation = activeConversationId === lastLoadedConversationIdRef.current;
+              const isLastItem = index === conversationHistory.length - 1;
+              
+              // Skip typewriter if:
+              // 1. We're currently loading an old conversation
+              // 2. This conversation was loaded from sidebar (all items should skip)
+              // 3. It's not the last item (previous items in any conversation)
+              // Only show typewriter for the last item if it's a new query (not from loaded conversation)
+              const shouldSkipTypewriter = isLoadingOldConversation || 
+                                         isFromLoadedConversation || 
+                                         !isLastItem;
+              
+              return (
+                <div
+                  key={`answer-${prevAnswer.timestamp}-${index}`}
+                  style={{
+                    marginBottom: index < conversationHistory.length - 1 ? 24 : 0,
+                    transition: isLoadingOldConversation ? 'none' : undefined,
+                    animation: isLoadingOldConversation ? 'none' : undefined
+                  }}
+                >
+                  <AnswerCard
+                    chunks={prevAnswer.chunks}
+                    sources={prevAnswer.sources}
+                    isLoading={false}
+                    mode={prevAnswer.mode || mode}
+                    query={prevAnswer.query}
+                    skipTypewriter={shouldSkipTypewriter}
+                    attachments={prevAnswer.attachments}
+                    onQueryEdit={(editedQuery) => {
+                      setQuery(editedQuery);
+                      doSearch(editedQuery);
+                    }}
+                    onSearch={(searchQuery, searchMode) => {
+                      if (searchMode) {
+                        setMode(searchMode);
+                      }
+                      setQuery(searchQuery);
+                      doSearch(searchQuery);
+                    }}
+                  />
+                </div>
+              );
+            })}
 
           {/* Show current answer only if loading (it will be added to history when complete) */}
           {isLoading && (

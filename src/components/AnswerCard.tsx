@@ -12,6 +12,7 @@ import {
   FaClipboard,
   FaCheck,
   FaChevronDown,
+  FaDownload,
 } from "react-icons/fa";
 import loadingGif from "../assets/gif/loading-video.gif";
 import loadingVideo from "../assets/loading.mp4";
@@ -25,6 +26,7 @@ interface AnswerCardProps {
   onQueryEdit?: (editedQuery: string) => void;
   onSearch?: (query: string, mode?: Mode) => void;
   attachments?: UploadedFile[];
+  skipTypewriter?: boolean; // Skip typewriter effect for old conversations
 }
 
 export const AnswerCard: React.FC<AnswerCardProps> = ({
@@ -36,6 +38,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   onQueryEdit,
   onSearch: _onSearch,
   attachments,
+  skipTypewriter = false,
 }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
@@ -226,6 +229,17 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       return;
     }
 
+    // If skipTypewriter is true, display all text immediately
+    if (skipTypewriter) {
+      const allTexts: Record<number, string> = {};
+      chunks.forEach((chunk, index) => {
+        allTexts[index] = chunk.text;
+      });
+      setDisplayedTexts(allTexts);
+      setIsTypingComplete(true);
+      return;
+    }
+
     // Reset state when chunks change
     setDisplayedTexts({});
     setIsTypingComplete(false);
@@ -274,7 +288,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         typewriterTimeoutRef.current = null;
       }
     };
-  }, [chunks, isLoading]);
+  }, [chunks, isLoading, skipTypewriter]);
 
   // Auto-scroll to follow typewriter effect
   useEffect(() => {
@@ -1209,6 +1223,141 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           </div>
         )}
       </div>
+
+      <div className="spacer-16" />
+
+      {/* Uploaded Attachments Download Section */}
+      {attachments && attachments.length > 0 && !isLoading && (
+        <div>
+          <div
+            style={{
+              fontSize: "var(--font-md)",
+              fontWeight: 500,
+              marginBottom: 12,
+              color: "var(--text)",
+            }}
+          >
+            Uploaded Attachments
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {attachments.map((file) => {
+              const handleDownload = () => {
+                try {
+                  // Create a blob URL from the file
+                  const url = URL.createObjectURL(file.file);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = file.file.name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  // Clean up the blob URL after a delay
+                  setTimeout(() => URL.revokeObjectURL(url), 100);
+                  
+                  showToast({
+                    message: `Downloaded ${file.file.name}`,
+                    type: "success",
+                    duration: 2000,
+                  });
+                } catch (error) {
+                  console.error("Failed to download file:", error);
+                  showToast({
+                    message: "Failed to download file",
+                    type: "error",
+                    duration: 2000,
+                  });
+                }
+              };
+
+              return (
+                <div
+                  key={file.id}
+                  className="card"
+                  style={{
+                    padding: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+                    {file.preview && file.type === "image" ? (
+                      <img
+                        src={file.preview}
+                        alt={file.file.name}
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 8,
+                          objectFit: "cover",
+                          border: "1px solid var(--border)",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "var(--input-bg)",
+                          border: "1px solid var(--border)",
+                          fontSize: "20px",
+                        }}
+                      >
+                        📄
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 500,
+                          fontSize: "var(--font-sm)",
+                          color: "var(--text)",
+                          marginBottom: 4,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {file.file.name}
+                      </div>
+                      <div
+                        className="sub text-xs"
+                        style={{
+                          color: "var(--text-secondary)",
+                        }}
+                      >
+                        {(file.file.size / 1024).toFixed(1)} KB
+                        {file.type && ` • ${file.type}`}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    className="btn-ghost"
+                    onClick={handleDownload}
+                    aria-label={`Download ${file.file.name}`}
+                    style={{
+                      padding: "8px 12px",
+                      fontSize: "var(--font-sm)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <FaDownload size={14} />
+                    <span>Download</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="spacer-16" />
 

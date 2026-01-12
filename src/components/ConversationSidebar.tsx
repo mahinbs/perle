@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { FaPlus, FaTrash, FaComments } from 'react-icons/fa';
+import { useState, useEffect, useRef } from 'react';
+import { FaPlus, FaTrash, FaComments, FaTimes } from 'react-icons/fa';
 import { formatTimestampIST } from '../utils/helpers';
 
 interface Conversation {
@@ -29,6 +29,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const isClosingRef = useRef(false);
 
   const fetchConversations = async () => {
     try {
@@ -106,6 +107,21 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     }
   };
 
+
+  // click on new chat
+  const handleNewChat = () => {
+    onNewConversation();
+    // Only close sidebar on mobile devices
+    if (window.innerWidth < 1024 && isOpen) {
+      isClosingRef.current = true;
+      onToggle();
+      // Reset the flag after a short delay
+      setTimeout(() => {
+        isClosingRef.current = false;
+      }, 300);
+    }
+  };
+
   return (
     <>
       {/* Desktop Hover Button - Always Visible */}
@@ -114,37 +130,55 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         onMouseEnter={() => onToggle()}
       >
         <button
-          className="p-3 bg-[var(--card-bg)] border border-[var(--border)] rounded-r-lg shadow-lg hover:bg-[var(--bg-tertiary)]"
+          className="p-3 bg-[var(--card-bg)] border border-[var(--border)] rounded-r-lg shadow-lg hover:bg-[var(--bg-tertiary)] transition-colors duration-200 backdrop-blur-sm cursor-pointer"
           aria-label="Show conversations"
         >
-          <FaComments size={20} />
+          <FaComments size={20} className="text-[var(--text-primary)]" />
         </button>
       </div>
 
       {/* Mobile Toggle Button */}
       <button
         onClick={onToggle}
-        className="lg:hidden fixed top-4 left-4 z-50 p-3 bg-[var(--card-bg)] border border-[var(--border)] rounded-lg shadow-lg"
+        className="lg:hidden fixed top-20 left-4 z-50 p-3 bg-[var(--card-bg)] border border-[var(--border)] rounded-lg shadow-lg hover:bg-[var(--bg-tertiary)] transition-colors duration-200 backdrop-blur-sm"
         aria-label="Toggle conversations"
       >
-        <FaComments size={20} />
+        <FaComments size={20} className="text-[var(--text-primary)]" />
       </button>
 
       {/* Sidebar */}
       <div
         className={`
           fixed lg:absolute top-0 left-0 h-screen
-          w-80 bg-[var(--card-bg)] border-r border-[var(--border)]
+          w-80 bg-gradient-to-b from-[var(--card-bg)] to-[var(--bg-secondary)]
+          border-r border-[var(--border)] shadow-2xl
           flex flex-col transition-transform duration-300 ease-in-out z-40
+          backdrop-blur-sm
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
-        onMouseLeave={() => onToggle()}
+        onMouseLeave={() => {
+          // Don't toggle if we're on mobile or if we just clicked a button
+          if (window.innerWidth >= 1024 && !isClosingRef.current) {
+            onToggle();
+          }
+        }}
       >
         {/* Header */}
-        <div className="p-4 border-b border-[var(--border)]">
+        <div className="p-4 border-b border-[var(--border)] bg-[var(--card-bg)] bg-opacity-80 backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Conversations</h2>
+            {/* Mobile Close Button */}
+            <button
+              onClick={onToggle}
+              className="lg:hidden p-2 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors duration-200 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              aria-label="Close sidebar"
+            >
+              <FaTimes size={18} />
+            </button>
+          </div>
           <button
-            onClick={onNewConversation}
-            className="w-full btn-primary flex items-center justify-center gap-2 py-3"
+            onClick={handleNewChat}
+            className="w-full btn-primary flex items-center justify-center gap-2 py-3 rounded-lg font-medium shadow-md hover:shadow-lg transition-all duration-200"
           >
             <FaPlus size={16} />
             <span>New Chat</span>
@@ -152,16 +186,20 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         </div>
 
         {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto p-3 bg-[var(--bg-secondary)] bg-opacity-30">
           {isLoading ? (
-            <div className="flex items-center justify-center p-8 text-[var(--text-secondary)]">
-              Loading...
+            <div className="flex items-center justify-center p-8">
+              <div className="text-[var(--text-secondary)]">
+                <div className="animate-pulse">Loading...</div>
+              </div>
             </div>
           ) : conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 text-center text-[var(--text-secondary)]">
-              <FaComments size={48} className="mb-4 opacity-30" />
-              <p>No conversations yet</p>
-              <p className="text-sm mt-2">Click "New Chat" to start</p>
+            <div className="flex flex-col items-center justify-center p-8 text-center">
+              <div className="p-4 rounded-full bg-[var(--bg-tertiary)] mb-4">
+                <FaComments size={32} className="text-[var(--text-secondary)] opacity-50" />
+              </div>
+              <p className="text-[var(--text-primary)] font-medium">No conversations yet</p>
+              <p className="text-sm mt-2 text-[var(--text-secondary)]">Click "New Chat" to start</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -170,20 +208,20 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                   key={conv.id}
                   onClick={() => onSelectConversation(conv.id)}
                   className={`
-                    group relative p-3 rounded-lg cursor-pointer
-                    transition-all duration-200
+                    group relative p-4 rounded-xl cursor-pointer
+                    transition-all duration-200 shadow-sm
                     ${
                       activeConversationId === conv.id
-                        ? 'bg-[var(--primary)] bg-opacity-10 border border-[var(--primary)]'
-                        : 'hover:bg-[var(--bg-tertiary)] border border-transparent'
+                        ? 'bg-[var(--primary)] bg-opacity-15 border-2 border-[var(--primary)] shadow-md'
+                        : 'bg-[var(--card-bg)] hover:bg-[var(--bg-tertiary)] border border-[var(--border)] hover:border-[var(--border)] hover:shadow-md'
                     }
                   `}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <h4
                         className={`
-                          text-sm font-medium truncate
+                          text-sm font-semibold truncate mb-1
                           ${
                             activeConversationId === conv.id
                               ? 'text-[var(--primary)]'
@@ -193,7 +231,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                       >
                         {conv.title}
                       </h4>
-                      <p className="text-xs text-[var(--text-secondary)] mt-1">
+                      <p className="text-xs text-[var(--text-secondary)]">
                         {formatDate(conv.updated_at)}
                       </p>
                     </div>
@@ -203,13 +241,14 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                       onClick={(e) => handleDelete(e, conv.id)}
                       className="
                         opacity-0 group-hover:opacity-100
-                        p-2 rounded hover:bg-red-500 hover:bg-opacity-20
-                        transition-opacity duration-200
+                        p-2 rounded-lg hover:bg-red-500 hover:bg-opacity-20
+                        transition-all duration-200
                         text-[var(--text-secondary)] hover:text-red-500
+                        flex-shrink-0
                       "
                       aria-label="Delete conversation"
                     >
-                      <FaTrash size={12} />
+                      <FaTrash size={14} />
                     </button>
                   </div>
                 </div>
@@ -219,8 +258,10 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         </div>
 
         {/* Footer Info */}
-        <div className="p-4 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
-          <p>{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</p>
+        <div className="p-4 border-t border-[var(--border)] bg-[var(--card-bg)] bg-opacity-80 backdrop-blur-sm">
+          <p className="text-xs text-[var(--text-secondary)] font-medium">
+            {conversations.length} conversation{conversations.length !== 1 ? 's' : ''}
+          </p>
         </div>
       </div>
 
@@ -228,7 +269,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       {isOpen && (
         <div
           onClick={onToggle}
-          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
+          className="lg:hidden fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-30 transition-opacity duration-300"
         />
       )}
     </>
