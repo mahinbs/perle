@@ -117,6 +117,41 @@ function getCurrentDateContext(): string {
   return `Current date and time: ${dateStr} at ${timeStr} (${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}). Always provide current, up-to-date information. When discussing events, trends, or recent developments, use this date as your reference point. Do not provide information that is outdated or from years ago unless the user specifically asks about historical topics.`;
 }
 
+// Get current date in IST (Indian Standard Time) format
+function getCurrentDateContextIST(): string {
+  const now = new Date();
+  
+  // Format date and time in IST
+  const dateStr = now.toLocaleDateString('en-IN', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    timeZone: 'Asia/Kolkata'
+  });
+  const timeStr = now.toLocaleTimeString('en-IN', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    second: '2-digit',
+    timeZone: 'Asia/Kolkata',
+    timeZoneName: 'short'
+  });
+  
+  // Get IST date components for ISO format (YYYY-MM-DD)
+  const istFormatter = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const istDateParts = istFormatter.formatToParts(now);
+  const year = istDateParts.find(p => p.type === 'year')?.value || '';
+  const month = istDateParts.find(p => p.type === 'month')?.value || '';
+  const day = istDateParts.find(p => p.type === 'day')?.value || '';
+  
+  return `Current date and time (IST - Indian Standard Time): ${dateStr} at ${timeStr} (${year}-${month}-${day}). Always provide current, up-to-date information according to IST. When discussing time, dates, or current events, always reference IST (Indian Standard Time, UTC+5:30). Do not provide information that is outdated or from years ago unless the user specifically asks about historical topics.`;
+}
+
 // Get system prompt based on chat mode, optional AI friend description, and optional space context
 function getSystemPrompt(
   chatMode: ChatMode = 'normal', 
@@ -125,7 +160,11 @@ function getSystemPrompt(
   spaceTitle?: string | null,
   spaceDescription?: string | null
 ): string {
-  const currentDate = getCurrentDateContext();
+  // Use IST for AI Friend and AI Psychology modes, regular timezone for normal mode
+  const currentDate = (chatMode === 'ai_friend' || chatMode === 'ai_psychologist') 
+    ? getCurrentDateContextIST() 
+    : getCurrentDateContext();
+  
   const dateContext = `\n\n⏰ CURRENT DATE CONTEXT: ${currentDate}\n\nCRITICAL: You must always provide current, up-to-date information based on the date above. Do NOT reference outdated information, events from years ago, or historical data as if it were current unless the user specifically asks about historical topics. When discussing:\n- Current events: Use the current date as reference\n- Recent developments: Consider what would be current as of the date above\n- Trends or statistics: Provide the most recent information available as of the current date\n- Technology, products, or services: Reference current versions and availability\n\nIf you're unsure about current information, acknowledge that and suggest the user verify with recent sources. Never present information from 2023, 2024, or earlier years as if it's the current state unless explicitly discussing history.`;
   
   // Space context to add to all modes
@@ -139,12 +178,18 @@ function getSystemPrompt(
       if (friendDescription && friendName) {
         return `You are ${friendName}, a friend having a casual conversation. ${friendDescription}
 
-Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.${spaceContext}${dateContext}`;
+Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.
+
+IMPORTANT: When asked about time, date, or current events, always provide information according to IST (Indian Standard Time, UTC+5:30).${spaceContext}${dateContext}`;
       }
-      return `You are a warm, supportive friend having a casual conversation. Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.${spaceContext}${dateContext}`;
+      return `You are a warm, supportive friend having a casual conversation. Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.
+
+IMPORTANT: When asked about time, date, or current events, always provide information according to IST (Indian Standard Time, UTC+5:30).${spaceContext}${dateContext}`;
     
     case 'ai_psychologist':
-      return `You are a professional, empathetic psychologist providing supportive guidance. Use active listening techniques, validate feelings, and ask thoughtful questions to help users explore their thoughts and emotions. Provide evidence-based insights when appropriate, but always be non-judgmental and supportive. Help users develop coping strategies and self-awareness. Maintain professional boundaries while being warm and understanding. Speak in a natural, conversational therapeutic tone - NOT in bullet points unless specifically giving actionable steps. Remember to consider the full context of the conversation in your responses.${spaceContext}${dateContext}`;
+      return `You are a professional, empathetic psychologist providing supportive guidance. Use active listening techniques, validate feelings, and ask thoughtful questions to help users explore their thoughts and emotions. Provide evidence-based insights when appropriate, but always be non-judgmental and supportive. Help users develop coping strategies and self-awareness. Maintain professional boundaries while being warm and understanding. Speak in a natural, conversational therapeutic tone - NOT in bullet points unless specifically giving actionable steps. Remember to consider the full context of the conversation in your responses.
+
+IMPORTANT: When asked about time, date, or current events, always provide information according to IST (Indian Standard Time, UTC+5:30).${spaceContext}${dateContext}`;
     
     case 'normal':
     default:
