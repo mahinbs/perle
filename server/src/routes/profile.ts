@@ -2,15 +2,36 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
+import multer from 'multer';
 
 const router = Router();
+
+// Configure multer for profile picture uploads (2MB limit)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 const profileUpdateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   notifications: z.boolean().optional(),
   darkMode: z.boolean().optional(),
   searchHistory: z.boolean().optional(),
-  voiceSearch: z.boolean().optional()
+  voiceSearch: z.boolean().optional(),
+  displayPictureUrl: z.string().url().optional().nullable(),
+  dp: z.string().url().optional().nullable(), // Alias for displayPictureUrl (frontend uses 'dp')
+  personality: z.string().max(500).optional().nullable(),
+  gender: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']).optional().nullable(),
+  age: z.number().int().min(1).max(150).optional().nullable()
 });
 
 // Get user profile
@@ -76,6 +97,11 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
           darkMode: false,
           searchHistory: true,
           voiceSearch: true,
+          displayPictureUrl: null,
+          dp: null,
+          personality: null,
+          gender: null,
+          age: null,
           isPremium: false,
           premiumTier: 'free',
           subscription: {
@@ -99,6 +125,11 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
         darkMode: (newProfile as any).dark_mode,
         searchHistory: (newProfile as any).search_history,
         voiceSearch: (newProfile as any).voice_search,
+        displayPictureUrl: (newProfile as any).display_picture_url || null,
+        dp: (newProfile as any).display_picture_url || null,
+        personality: (newProfile as any).personality || null,
+        gender: (newProfile as any).gender || null,
+        age: (newProfile as any).age || null,
         isPremium: false,
         premiumTier: premiumTier,
         subscription: {
@@ -129,6 +160,11 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
       darkMode: (profile as any).dark_mode,
       searchHistory: (profile as any).search_history,
       voiceSearch: (profile as any).voice_search,
+      displayPictureUrl: (profile as any).display_picture_url || null,
+      dp: (profile as any).display_picture_url || null, // Alias for frontend compatibility
+      personality: (profile as any).personality || null,
+      gender: (profile as any).gender || null,
+      age: (profile as any).age || null,
       isPremium: isPremium,
       premiumTier: premiumTier, // 'free', 'pro', or 'max'
       subscription: {
@@ -197,6 +233,19 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
     if (updates.voiceSearch !== undefined) {
       profileUpdates.voice_search = updates.voiceSearch;
     }
+    // Handle display picture (support both 'displayPictureUrl' and 'dp' for frontend compatibility)
+    if (updates.displayPictureUrl !== undefined || updates.dp !== undefined) {
+      profileUpdates.display_picture_url = updates.displayPictureUrl ?? updates.dp ?? null;
+    }
+    if (updates.personality !== undefined) {
+      profileUpdates.personality = updates.personality;
+    }
+    if (updates.gender !== undefined) {
+      profileUpdates.gender = updates.gender;
+    }
+    if (updates.age !== undefined) {
+      profileUpdates.age = updates.age;
+    }
 
     // Check if profile exists
     const { data: existingProfile } = await supabase
@@ -228,7 +277,11 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
           notifications: updates.notifications ?? true,
           dark_mode: updates.darkMode ?? false,
           search_history: updates.searchHistory ?? true,
-          voice_search: updates.voiceSearch ?? true
+          voice_search: updates.voiceSearch ?? true,
+          display_picture_url: updates.displayPictureUrl ?? updates.dp ?? null,
+          personality: updates.personality ?? null,
+          gender: updates.gender ?? null,
+          age: updates.age ?? null
         } as any)
         .select()
         .single();
@@ -269,6 +322,11 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       darkMode: (profileResult as any).dark_mode,
       searchHistory: (profileResult as any).search_history,
       voiceSearch: (profileResult as any).voice_search,
+      displayPictureUrl: (profileResult as any).display_picture_url || null,
+      dp: (profileResult as any).display_picture_url || null, // Alias for frontend compatibility
+      personality: (profileResult as any).personality || null,
+      gender: (profileResult as any).gender || null,
+      age: (profileResult as any).age || null,
       isPremium: isPremium,
       premiumTier: premiumTier,
       subscription: {
@@ -282,6 +340,123 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
     });
   } catch (error) {
     console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Upload profile picture
+router.post('/profile/upload-picture', authenticateToken, upload.single('picture'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    // Check file size (2MB limit)
+    if (req.file.size > 2 * 1024 * 1024) {
+      return res.status(400).json({ error: 'File size exceeds 2MB limit' });
+    }
+
+    // Generate unique filename: {userId}/{timestamp}-{random}.{ext}
+    const fileExt = req.file.originalname.split('.').pop() || 'jpg';
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const filePath = `${req.userId}/${fileName}`;
+
+    console.log(`📤 Uploading profile picture to profile-pics bucket: ${filePath}`);
+
+    // Upload to Supabase Storage bucket 'profile-pics'
+    const { data, error } = await supabase.storage
+      .from('profile-pics')
+      .upload(filePath, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false
+      });
+
+    if (error) {
+      console.error('❌ Storage upload error:', error);
+      return res.status(500).json({ 
+        error: 'Failed to upload profile picture',
+        details: error.message 
+      });
+    }
+
+    console.log('✅ Profile picture uploaded successfully:', data?.path);
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('profile-pics')
+      .getPublicUrl(filePath);
+    
+    console.log('🔗 Public URL:', urlData.publicUrl);
+
+    // Update user profile with the new picture URL
+    const { data: existingProfile } = await supabase
+      .from('user_profiles')
+      .select('id, display_picture_url')
+      .eq('user_id', req.userId)
+      .single();
+
+    // Delete old profile picture if it exists and is from profile-pics bucket
+    if (existingProfile?.display_picture_url && existingProfile.display_picture_url.includes('profile-pics')) {
+      try {
+        const oldUrlParts = existingProfile.display_picture_url.split('/profile-pics/');
+        if (oldUrlParts.length > 1) {
+          const oldFilePath = oldUrlParts[1];
+          console.log(`🗑️ Deleting old profile picture: ${oldFilePath}`);
+          await supabase.storage
+            .from('profile-pics')
+            .remove([oldFilePath]);
+        }
+      } catch (deleteError) {
+        console.warn('Failed to delete old profile picture:', deleteError);
+        // Continue even if deletion fails
+      }
+    }
+
+    // Update or create profile with new picture URL
+    const profileUpdates: any = {
+      display_picture_url: urlData.publicUrl,
+      updated_at: new Date().toISOString()
+    };
+
+    if (existingProfile) {
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update(profileUpdates)
+        .eq('user_id', req.userId);
+
+      if (updateError) {
+        console.error('Failed to update profile:', updateError);
+        return res.status(500).json({ error: 'Failed to update profile' });
+      }
+    } else {
+      const { error: insertError } = await supabase
+        .from('user_profiles')
+        .insert({
+          user_id: req.userId,
+          display_picture_url: urlData.publicUrl,
+          notifications: true,
+          dark_mode: false,
+          search_history: true,
+          voice_search: true
+        } as any);
+
+      if (insertError) {
+        console.error('Failed to create profile:', insertError);
+        return res.status(500).json({ error: 'Failed to create profile' });
+      }
+    }
+
+    res.json({ 
+      url: urlData.publicUrl,
+      path: filePath,
+      bucket: 'profile-pics'
+    });
+  } catch (error) {
+    console.error('Upload profile picture error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

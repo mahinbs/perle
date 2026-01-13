@@ -41,28 +41,71 @@ export default function ProfilePage() {
   const [editAge, setEditAge] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [uploadingPicture, setUploadingPicture] = useState(false);
+  const [pictureFile, setPictureFile] = useState<File | null>(null);
+  const [picturePreview, setPicturePreview] = useState<string | null>(null);
 
-  // Check authentication on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      const user = getUserData();
-      if (user) {
+  // Fetch user profile from backend
+  const fetchProfile = async () => {
+    if (!API_URL) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/profile`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+
+      // Handle 401 - user logged out
+      if (response.status === 401) {
+        removeAuthToken();
+        setIsAuthenticated(false);
+        setUserSettings(null);
+        return;
+      }
+
+      if (response.ok) {
+        const profile = await response.json();
+        setUserSettings(profile);
+        setUserData(profile); // Update localStorage with full profile data
         setIsAuthenticated(true);
-        setUserSettings(user);
-        // Verify token is still valid
+      } else {
+        // If profile fetch fails, try token verification as fallback
         const verifiedUser = await verifyToken();
         if (verifiedUser) {
           setUserSettings(verifiedUser);
+          setIsAuthenticated(true);
         } else {
           setIsAuthenticated(false);
           setUserSettings(null);
         }
       }
+    } catch (error) {
+      console.error('Failed to fetch profile:', error);
+      // Fallback to token verification
+      const verifiedUser = await verifyToken();
+      if (verifiedUser) {
+        setUserSettings(verifiedUser);
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+        setUserSettings(null);
+      }
+    }
+  };
+
+  // Check authentication and fetch profile on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const user = getUserData();
+      if (user) {
+        setIsAuthenticated(true);
+        setUserSettings(user); // Show cached data immediately
+        // Then fetch fresh data from backend
+        await fetchProfile();
+      }
     };
     checkAuth();
   }, []);
-
-  // (Profile is loaded via token verification; explicit fetch not required)
 
   // Fetch search history from backend
   const fetchSearchHistory = async () => {
@@ -219,7 +262,7 @@ export default function ProfilePage() {
     navigateTo("/");
   };
 
-  const handleSettingChange = async (key: string, value: boolean | string) => {
+  const handleSettingChange = async (key: string, value: boolean | string | number | null) => {
     if (!API_URL || !isAuthenticated || updatingSetting) return;
 
     setUpdatingSetting(key);
@@ -261,7 +304,7 @@ export default function ProfilePage() {
       if (response.ok) {
         const updatedProfile = await response.json();
         setUserSettings(updatedProfile);
-        setUserData(updatedProfile);
+        setUserData(updatedProfile); // Save to localStorage
         const fieldNames: Record<string, string> = {
           darkMode: 'Dark mode',
           notifications: 'Notifications',
@@ -282,6 +325,8 @@ export default function ProfilePage() {
           type: 'success',
           duration: 2000
         });
+        // Refresh profile to ensure all data is synced
+        await fetchProfile();
       } else {
         // Revert on error
         if (userSettings) {
@@ -618,13 +663,34 @@ export default function ProfilePage() {
         /* User Info Card */
         <div className="card" style={{ padding: 20, marginBottom: 20 }}>
           <div className="row" style={{ alignItems: "center", marginBottom: 16 }}>
+            {(userSettings as any).dp || (userSettings as any).displayPictureUrl ? (
+              <img
+                src={(userSettings as any).dp || (userSettings as any).displayPictureUrl}
+                alt={userSettings.name}
+                onError={(e) => {
+                  // Fallback to initial if image fails to load
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                  const fallback = target.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = 'flex';
+                }}
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  marginRight: 16,
+                  border: "2px solid var(--border)"
+                }}
+              />
+            ) : null}
             <div
               style={{
                 width: 60,
                 height: 60,
                 borderRadius: "50%",
                 background: "var(--accent)",
-                display: "flex",
+                display: (userSettings as any).dp || (userSettings as any).displayPictureUrl ? "none" : "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: "var(--font-2xl)",
@@ -700,10 +766,12 @@ export default function ProfilePage() {
             style={{ width: "100%" }}
             onClick={() => {
               setEditName(userSettings.name || '');
-              setEditDp((userSettings as any).dp || '');
+              setEditDp((userSettings as any).dp || (userSettings as any).displayPictureUrl || '');
               setEditPersonality((userSettings as any).personality || '');
               setEditGender((userSettings as any).gender || '');
-              setEditAge((userSettings as any).age || '');
+              setEditAge((userSettings as any).age?.toString() || '');
+              setPictureFile(null);
+              setPicturePreview(null);
               setShowEditProfile(true);
             }}
           >
@@ -1172,27 +1240,85 @@ export default function ProfilePage() {
                   color: 'var(--text)'
                 }}
               >
-                Display Picture (URL)
+                Display Picture
               </label>
-              <input
-                id="edit-dp"
-                type="url"
-                value={editDp}
-                onChange={(e) => setEditDp(e.target.value)}
-                placeholder="Enter profile picture URL"
-                className="input"
-                style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--card)',
-                  fontSize: 'var(--font-md)'
-                }}
-              />
-              {editDp && (
+              <div style={{ marginBottom: 8 }}>
+                <input
+                  id="edit-dp-file"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      // Check file size (2MB limit)
+                      if (file.size > 2 * 1024 * 1024) {
+                        showToast({
+                          message: 'File size exceeds 2MB limit',
+                          type: 'error',
+                          duration: 3000
+                        });
+                        return;
+                      }
+                      setPictureFile(file);
+                      setEditDp(''); // Clear URL input
+                      // Create preview
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setPicturePreview(reader.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  style={{ display: 'none' }}
+                />
+                <label
+                  htmlFor="edit-dp-file"
+                  style={{
+                    display: 'inline-block',
+                    padding: '8px 16px',
+                    background: 'var(--accent)',
+                    color: '#111',
+                    borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--font-sm)',
+                    fontWeight: 600,
+                    marginRight: 8
+                  }}
+                >
+                  {uploadingPicture ? 'Uploading...' : 'Upload Image'}
+                </label>
+                <span className="sub" style={{ fontSize: 'var(--font-xs)' }}>
+                  Max 2MB (JPG, PNG, WebP, GIF)
+                </span>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <span className="sub" style={{ fontSize: 'var(--font-xs)', display: 'block', marginBottom: 4 }}>
+                  Or enter URL:
+                </span>
+                <input
+                  id="edit-dp"
+                  type="url"
+                  value={editDp}
+                  onChange={(e) => {
+                    setEditDp(e.target.value);
+                    setPictureFile(null);
+                    setPicturePreview(null);
+                  }}
+                  placeholder="Enter profile picture URL"
+                  className="input"
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--card)',
+                    fontSize: 'var(--font-md)'
+                  }}
+                />
+              </div>
+              {(picturePreview || editDp) && (
                 <img
-                  src={editDp}
+                  src={picturePreview || editDp}
                   alt="Preview"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none';
@@ -1267,10 +1393,10 @@ export default function ProfilePage() {
                 }}
               >
                 <option value="">Select gender</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-                <option value="prefer-not-to-say">Prefer not to say</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+                <option value="Prefer not to say">Prefer not to say</option>
               </select>
             </div>
 
@@ -1316,6 +1442,8 @@ export default function ProfilePage() {
                   setEditPersonality('');
                   setEditGender('');
                   setEditAge('');
+                  setPictureFile(null);
+                  setPicturePreview(null);
                 }}
                 style={{ flex: 1 }}
               >
@@ -1324,33 +1452,77 @@ export default function ProfilePage() {
               <button
                 className="btn"
                 onClick={async () => {
-                  const hasChanges = 
-                    (editName.trim() !== (userSettings.name || '')) ||
-                    (editDp !== ((userSettings as any).dp || '')) ||
-                    (editPersonality !== ((userSettings as any).personality || '')) ||
-                    (editGender !== ((userSettings as any).gender || '')) ||
-                    (editAge !== ((userSettings as any).age || ''));
+                  try {
+                    // First, upload picture if file is selected
+                    if (pictureFile && API_URL) {
+                      setUploadingPicture(true);
+                      const formData = new FormData();
+                      formData.append('picture', pictureFile);
 
-                  if (hasChanges) {
-                    // Update name if changed
-                    if (editName.trim() && editName.trim() !== userSettings.name) {
-                      await handleSettingChange('name', editName.trim());
+                      const headers: Record<string, string> = getAuthHeaders() as Record<string, string>;
+                      // Remove Content-Type header to let browser set it with boundary
+                      delete headers['Content-Type'];
+
+                      const uploadResponse = await fetch(`${API_URL}/api/profile/upload-picture`, {
+                        method: 'POST',
+                        headers: headers,
+                        body: formData
+                      });
+
+                      // Handle 401 - user logged out
+                      if (uploadResponse.status === 401) {
+                        removeAuthToken();
+                        setIsAuthenticated(false);
+                        setUserSettings(null);
+                        setShowEditProfile(false);
+                        return;
+                      }
+
+                      if (!uploadResponse.ok) {
+                        const errorData = await uploadResponse.json().catch(() => ({ error: 'Upload failed' }));
+                        throw new Error(errorData.error || 'Failed to upload picture');
+                      }
+
+                      const uploadData = await uploadResponse.json();
+                      setEditDp(uploadData.url); // Set the uploaded URL
+                      setPictureFile(null);
+                      setPicturePreview(null);
+                      setUploadingPicture(false);
                     }
-                    // Update dp if changed
-                    if (editDp !== ((userSettings as any).dp || '')) {
-                      await handleSettingChange('dp', editDp);
-                    }
-                    // Update personality if changed
-                    if (editPersonality !== ((userSettings as any).personality || '')) {
-                      await handleSettingChange('personality', editPersonality);
-                    }
-                    // Update gender if changed
-                    if (editGender !== ((userSettings as any).gender || '')) {
-                      await handleSettingChange('gender', editGender);
-                    }
-                    // Update age if changed
-                    if (editAge !== ((userSettings as any).age || '')) {
-                      await handleSettingChange('age', editAge);
+
+                    const hasChanges = 
+                      (editName.trim() !== (userSettings.name || '')) ||
+                      (editDp !== ((userSettings as any).dp || (userSettings as any).displayPictureUrl || '')) ||
+                      (editPersonality !== ((userSettings as any).personality || '')) ||
+                      (editGender !== ((userSettings as any).gender || '')) ||
+                      (editAge !== ((userSettings as any).age?.toString() || ''));
+
+                    if (hasChanges) {
+                      // Update name if changed
+                      if (editName.trim() && editName.trim() !== userSettings.name) {
+                        await handleSettingChange('name', editName.trim());
+                      }
+                      // Update dp if changed
+                      if (editDp !== ((userSettings as any).dp || (userSettings as any).displayPictureUrl || '')) {
+                        await handleSettingChange('dp', editDp || null);
+                      }
+                      // Update personality if changed
+                      if (editPersonality !== ((userSettings as any).personality || '')) {
+                        await handleSettingChange('personality', editPersonality);
+                      }
+                      // Update gender if changed
+                      if (editGender !== ((userSettings as any).gender || '')) {
+                        await handleSettingChange('gender', editGender);
+                      }
+                      // Update age if changed (convert to number)
+                      if (editAge !== ((userSettings as any).age?.toString() || '')) {
+                        const ageNum = editAge ? parseInt(editAge, 10) : null;
+                        if (ageNum && ageNum > 0 && ageNum < 150) {
+                          await handleSettingChange('age', ageNum);
+                        } else if (editAge === '') {
+                          await handleSettingChange('age', null);
+                        }
+                      }
                     }
                     setShowEditProfile(false);
                     setEditName('');
@@ -1358,19 +1530,25 @@ export default function ProfilePage() {
                     setEditPersonality('');
                     setEditGender('');
                     setEditAge('');
-                  } else {
-                    setShowEditProfile(false);
-                    setEditName('');
-                    setEditDp('');
-                    setEditPersonality('');
-                    setEditGender('');
-                    setEditAge('');
+                    setPictureFile(null);
+                    setPicturePreview(null);
+                    
+                    // Refresh profile after saving to ensure all data is synced
+                    await fetchProfile();
+                  } catch (error: any) {
+                    console.error('Save profile error:', error);
+                    showToast({
+                      message: error.message || 'Failed to save profile',
+                      type: 'error',
+                      duration: 3000
+                    });
+                    setUploadingPicture(false);
                   }
                 }}
-                disabled={!editName.trim()}
+                disabled={!editName.trim() || uploadingPicture}
                 style={{ flex: 1 }}
               >
-                Save
+                {uploadingPicture ? 'Uploading...' : 'Save'}
               </button>
             </div>
           </div>
