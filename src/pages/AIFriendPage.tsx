@@ -1058,6 +1058,9 @@ export default function AIFriendPage() {
     if (!API_URL) return;
 
     try {
+      // Determine if logo should be removed (both are empty/null)
+      const shouldRemoveLogo = !friendLogoUrl && !selectedDefaultLogo;
+      
       const response = await fetch(
         `${API_URL}/api/ai-friends/${editingFriend.id}`,
         {
@@ -1066,8 +1069,8 @@ export default function AIFriendPage() {
           body: JSON.stringify({
             name: friendName.trim(),
             description: friendDescription.trim(),
-            logoUrl: friendLogoUrl || undefined,
-            defaultLogo: selectedDefaultLogo || undefined,
+            logoUrl: shouldRemoveLogo ? null : (friendLogoUrl || undefined),
+            defaultLogo: shouldRemoveLogo ? null : (selectedDefaultLogo || undefined),
             customGreeting: friendCustomGreeting.trim() || undefined,
           }),
         }
@@ -1822,12 +1825,36 @@ export default function AIFriendPage() {
                       </div>
                     )}
                     {friendLogoUrl && !selectedDefaultLogo && (
-                      <div className="mt-2">
+                      <div className="mt-2 flex items-center gap-2">
                         <img
                           src={friendLogoUrl}
                           alt="Logo preview"
                           className="w-20 h-20 rounded-full object-cover border border-[var(--border)]"
                         />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFriendLogoUrl("");
+                            setSelectedDefaultLogo(null);
+                          }}
+                          className="px-3 py-1.5 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg border border-red-500/30 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                    {(selectedDefaultLogo || friendLogoUrl) && (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFriendLogoUrl("");
+                            setSelectedDefaultLogo(null);
+                          }}
+                          className="px-3 py-1.5 text-xs bg-[var(--input-bg)] hover:bg-[var(--border)] text-[var(--text)] rounded-lg border border-[var(--border)] transition-colors"
+                        >
+                          Remove Logo
+                        </button>
                       </div>
                     )}
                   </div>

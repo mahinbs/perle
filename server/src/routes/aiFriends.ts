@@ -32,8 +32,8 @@ const createAIFriendSchema = z.object({
 const updateAIFriendSchema = z.object({
   name: z.string().min(1).max(50).optional(),
   description: z.string().min(10).max(500).optional(),
-  logoUrl: z.string().optional(),
-  defaultLogo: z.string().optional(),
+  logoUrl: z.string().nullable().optional(), // Allow null to explicitly remove logo
+  defaultLogo: z.string().nullable().optional(), // Allow null to explicitly remove logo
   customGreeting: z.string().max(500).optional()
 });
 
@@ -360,11 +360,18 @@ router.put('/ai-friends/:id', authenticateToken, async (req: AuthRequest, res) =
     }
     
     // Handle logo update: defaultLogo takes precedence over logoUrl
+    // If both are explicitly null, remove the logo
     if (parse.data.defaultLogo !== undefined) {
-      const defaultLogoObj = DEFAULT_LOGOS.find(l => l.id === parse.data.defaultLogo);
-      updates.logo_url = defaultLogoObj?.url || null;
+      if (parse.data.defaultLogo === null) {
+        // Explicitly remove logo
+        updates.logo_url = null;
+      } else {
+        const defaultLogoObj = DEFAULT_LOGOS.find(l => l.id === parse.data.defaultLogo);
+        updates.logo_url = defaultLogoObj?.url || null;
+      }
     } else if (parse.data.logoUrl !== undefined) {
-      updates.logo_url = parse.data.logoUrl;
+      // logoUrl can be null (to remove), empty string (to remove), or a URL
+      updates.logo_url = parse.data.logoUrl || null;
     }
 
     // If updating name, check for duplicates and regenerate username
