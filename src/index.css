@@ -2,6 +2,100 @@
 
 @import "tailwindcss";
 
+/* KaTeX Math Rendering Styles - Enhanced for all mathematical symbols */
+.katex {
+  font-size: 1.05em;
+  color: var(--text);
+}
+
+.katex-display {
+  margin: 20px 0;
+  padding: 12px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+
+.katex-display > .katex {
+  display: inline-block;
+  text-align: initial;
+  max-width: 100%;
+}
+
+/* Ensure all math symbols render properly */
+.katex .sqrt > .root {
+  margin-left: 0.27777778em;
+  margin-right: -0.55555556em;
+}
+
+.katex .frac-line {
+  border-bottom-width: 0.04em;
+}
+
+.katex .mfrac .frac-line {
+  border-bottom-width: 0.04em;
+}
+
+/* Better spacing for subscripts and superscripts */
+.katex .msubsup {
+  margin-left: 0.16667em;
+}
+
+.katex .mspace {
+  display: inline-block;
+}
+
+/* Ensure integrals, sums, and other operators render correctly */
+.katex .op-symbol {
+  position: relative;
+}
+
+.katex .op-symbol.small-op {
+  font-size: 0.85em;
+}
+
+/* Better rendering for matrices and arrays */
+.katex .arraycolsep {
+  display: inline-block;
+  width: 0.5em;
+}
+
+.katex .arraystretch {
+  display: inline-block;
+  height: 1em;
+}
+
+/* Ensure proper rendering in dark mode */
+@media (prefers-color-scheme: dark) {
+  .katex {
+    color: var(--text);
+  }
+  
+  .katex .mord {
+    color: var(--text);
+  }
+  
+  .katex .mrel {
+    color: var(--text);
+  }
+  
+  .katex .mbin {
+    color: var(--text);
+  }
+  
+  .katex .mopen {
+    color: var(--text);
+  }
+  
+  .katex .mclose {
+    color: var(--text);
+  }
+  
+  .katex .mpunct {
+    color: var(--text);
+  }
+}
+
 .font-ubuntu {
   font-family: "Ubuntu", sans-serif;
 }

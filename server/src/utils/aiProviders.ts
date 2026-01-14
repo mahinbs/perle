@@ -205,15 +205,35 @@ CRITICAL FORMATTING RULES (YOU MUST FOLLOW):
 • Add line breaks between sections for readability
 • NO markdown (no ##, no **, no code blocks)
 
+MATHEMATICAL FORMULAS (CRITICAL):
+• When writing mathematical formulas, ALWAYS use LaTeX format
+• For inline formulas: use \\(formula\\) or $formula$
+• For block/display formulas: use \\[formula\\] or $$formula$$
+• Examples:
+  - Inline: The equation \\(E = mc^2\\) shows...
+  - Block: \\[\\int_0^\\infty e^{-x} dx = 1\\]
+  - Fractions: \\(\\frac{a}{b}\\) or \\(\\frac{m_1 u_1 + m_2 u_2}{m_1 + m_2}\\)
+  - Square roots: \\(\\sqrt{x}\\) or \\(\\sqrt[n]{x}\\)
+  - Subscripts: \\(m_1\\), \\(u_2\\), \\(v_{final}\\)
+  - Superscripts: \\(x^2\\), \\(e^{-x}\\)
+  - Sums: \\(\\sum_{i=1}^{n} x_i\\)
+  - Integrals: \\(\\int_0^\\infty f(x) dx\\)
+  - Greek letters: \\(\\alpha\\), \\(\\beta\\), \\(\\gamma\\), \\(\\pi\\), \\(\\theta\\), \\(\\sigma\\)
+  - Vectors: \\(\\mathbf{P}\\), \\(\\vec{v}\\)
+  - Operators: \\(\\nabla\\), \\(\\partial\\), \\(\\Delta\\)
+• Always use proper LaTeX syntax for ALL mathematical expressions
+• DO NOT write formulas in plain text like "m1u1" - use \\(m_1 u_1\\) instead
+
 Example format:
 "Brief overview sentence here.
 
 Main topic:
 • First key point here
-• Second key point here
-  - Sub-point with detail
-  - Another sub-point
+• Second key point with formula \\(E = \\frac{1}{2}mv^2\\)
 • Third key point here
+
+Important equation:
+\\[\\sum \\mathbf{P}_{initial} = \\sum \\mathbf{P}_{final}\\]
 
 Additional context:
 • Another point

@@ -124,18 +124,15 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
   return (
     <>
-      {/* Desktop Hover Button - Always Visible */}
+      {/* Desktop Hover Area - Invisible trigger */}
       <div
-        className="hidden lg:block fixed top-20 left-0 z-50 group"
-        onMouseEnter={() => onToggle()}
-      >
-        <button
-          className="p-3 bg-[var(--card-bg)] border border-[var(--border)] rounded-r-lg shadow-lg hover:bg-[var(--bg-tertiary)] transition-colors duration-200 backdrop-blur-sm cursor-pointer"
-          aria-label="Show conversations"
-        >
-          <FaComments size={20} className="text-[var(--text-primary)]" />
-        </button>
-      </div>
+        className="hidden lg:block fixed top-0 left-0 bottom-0 w-2 z-40"
+        onMouseEnter={() => !isOpen && onToggle()}
+        style={{ 
+          cursor: 'pointer',
+          backgroundColor: 'transparent'
+        }}
+      />
 
       {/* Mobile Toggle Button */}
       <button

@@ -392,7 +392,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     startVoiceOutput();
   }, [chunks, isLoading]);
 
-  // Helper function to render LaTeX formulas
+  // Helper function to render LaTeX formulas with full mathematical symbol support
   const renderWithMath = (text: string): React.ReactNode[] => {
     if (!katex) {
       // KaTeX not available, return text as-is
@@ -400,9 +400,11 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     }
 
     const parts: React.ReactNode[] = [];
-    // Match both inline \(...\) and block \[...\] LaTeX
-    // Use a more robust regex that handles nested content with backslashes
-    const mathRegex = /\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g;
+    // Match both inline and block LaTeX in multiple formats:
+    // \(...\) and $...$ for inline
+    // \[...\] and $$...$$ for block
+    // Also match formulas in code blocks that look like math
+    const mathRegex = /\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]|\$\$([\s\S]*?)\$\$|\$([^\$\n]+?)\$|```math\s*([\s\S]*?)```/g;
     let lastIndex = 0;
     let match;
     let key = 0;
@@ -416,25 +418,44 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         }
       }
 
-      // match[1] is for inline \(...\), match[2] is for block \[...\]
-      const isBlock = !!match[2];
-      const formula = match[1] || match[2];
+      // match[1] = \(...\) inline
+      // match[2] = \[...\] block
+      // match[3] = $$...$$ block
+      // match[4] = $...$ inline
+      // match[5] = ```math...``` block
+      const isBlock = !!(match[2] || match[3] || match[5]);
+      const formula = match[1] || match[2] || match[3] || match[4] || match[5];
       
       if (formula) {
         try {
-          const html = katex.renderToString(formula, {
+          const html = katex.renderToString(formula.trim(), {
             throwOnError: false,
             displayMode: isBlock,
+            strict: false, // Allow more flexible parsing
+            trust: true, // Allow certain commands
+            macros: {
+              // Add common macro definitions for better compatibility
+              "\\RR": "\\mathbb{R}",
+              "\\NN": "\\mathbb{N}",
+              "\\ZZ": "\\mathbb{Z}",
+              "\\QQ": "\\mathbb{Q}",
+              "\\CC": "\\mathbb{C}",
+            }
           });
           if (isBlock) {
             parts.push(
               <div
                 key={`math-${key++}`}
                 dangerouslySetInnerHTML={{ __html: html }}
+                className="katex-display"
                 style={{ 
-                  margin: '12px 0',
+                  margin: '20px 0',
                   overflowX: 'auto',
-                  textAlign: 'center'
+                  overflowY: 'hidden',
+                  textAlign: 'center',
+                  fontSize: '1.15em',
+                  padding: '12px 0',
+                  lineHeight: '1.6'
                 }}
               />
             );
@@ -443,12 +464,19 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               <span
                 key={`math-${key++}`}
                 dangerouslySetInnerHTML={{ __html: html }}
-                style={{ display: 'inline-block' }}
+                className="katex"
+                style={{ 
+                  display: 'inline-block',
+                  margin: '0 3px',
+                  verticalAlign: 'middle',
+                  fontSize: '1.05em'
+                }}
               />
             );
           }
         } catch (error) {
           // Fallback to plain text if rendering fails
+          console.warn('KaTeX rendering error:', error, 'Formula:', formula);
           parts.push(match[0]);
         }
       }
