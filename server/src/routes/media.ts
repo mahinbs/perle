@@ -5,6 +5,13 @@ import { generateImage } from '../utils/imageGeneration.js';
 import { generateVideo, generateVideoFromImage } from '../utils/videoGeneration.js';
 import { supabase } from '../lib/supabase.js';
 import multer from 'multer';
+import { 
+  isEditRequest, 
+  getLastGeneratedImage, 
+  getLastGeneratedVideo, 
+  saveMediaToConversationHistory,
+  downloadImageAsDataUrl 
+} from '../utils/mediaHelpers.js';
 
 const router = Router();
 
@@ -56,8 +63,24 @@ router.post('/generate-image', optionalAuth, upload.single('referenceImage'), as
 
     const { prompt, aspectRatio } = parse.data;
     
-    // Handle reference image if uploaded
+    // Check if this is an edit request and retrieve previous image as reference
     let referenceImageDataUrl: string | undefined;
+    if (req.userId && isEditRequest(prompt) && !req.file) {
+      console.log('🔍 Edit request detected - looking for previous image to use as reference...');
+      const lastImage = await getLastGeneratedImage(req.userId);
+      if (lastImage) {
+        console.log(`🎨 Found previous image to edit: ${lastImage.prompt}`);
+        // Download and convert to data URL for AI reference
+        referenceImageDataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
+        if (referenceImageDataUrl) {
+          console.log('✅ Using previous image as reference for editing');
+        }
+      } else {
+        console.log('⚠️ No previous image found for editing');
+      }
+    }
+    
+    // Handle reference image if uploaded (takes priority over auto-detected)
     if (req.file && req.userId) {
       try {
         console.log(`📸 Reference image uploaded: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
@@ -243,6 +266,15 @@ router.post('/generate-image', optionalAuth, upload.single('referenceImage'), as
             }
           });
         console.log('✅ Image saved to database');
+        
+        // Also save to conversation history for editing context
+        await saveMediaToConversationHistory(
+          req.userId,
+          finalImageUrl, // imageUrl
+          null, // videoUrl
+          prompt,
+          'normal'
+        );
       } catch (dbError) {
         console.error('Failed to save image to database:', dbError);
         // Don't fail the request if DB save fails
@@ -280,8 +312,31 @@ router.post('/generate-video', optionalAuth, upload.single('referenceImage'), as
 
     const { prompt, duration, aspectRatio } = parse.data;
     
-    // Handle reference image if uploaded
+    // Check if this is an edit request and retrieve previous video/image as reference
     let referenceImageDataUrl: string | undefined;
+    if (req.userId && isEditRequest(prompt) && !req.file) {
+      console.log('🔍 Edit request detected - looking for previous media to use as reference...');
+      // For video editing, first try to find a previous video to extract a frame
+      // Then fallback to previous image
+      const lastVideo = await getLastGeneratedVideo(req.userId);
+      const lastImage = await getLastGeneratedImage(req.userId);
+      
+      // Prefer using the most recent media (video or image)
+      if (lastVideo || lastImage) {
+        // For now, use last image as reference (video frame extraction would need additional logic)
+        if (lastImage) {
+          console.log(`🎨 Found previous image to use as video reference: ${lastImage.prompt}`);
+          referenceImageDataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
+          if (referenceImageDataUrl) {
+            console.log('✅ Using previous image as reference for video generation');
+          }
+        }
+      } else {
+        console.log('⚠️ No previous media found for editing');
+      }
+    }
+    
+    // Handle reference image if uploaded (takes priority over auto-detected)
     if (req.file && req.userId) {
       try {
         console.log(`📸 Reference image uploaded: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
@@ -489,6 +544,15 @@ router.post('/generate-video', optionalAuth, upload.single('referenceImage'), as
             }
           });
         console.log('✅ Video saved to database');
+        
+        // Also save to conversation history for editing context
+        await saveMediaToConversationHistory(
+          req.userId,
+          null, // imageUrl
+          finalVideoUrl, // videoUrl
+          prompt,
+          'normal'
+        );
       } catch (dbError) {
         console.error('Failed to save video to database:', dbError);
         // Don't fail the request if DB save fails
@@ -637,6 +701,15 @@ router.post('/generate-video-from-image', optionalAuth, upload.single('image'), 
             }
           });
         console.log('✅ Video saved to database');
+        
+        // Also save to conversation history for editing context
+        await saveMediaToConversationHistory(
+          req.userId,
+          null, // imageUrl
+          video.url, // videoUrl
+          prompt || 'Video generated from image',
+          'normal'
+        );
       } catch (dbError) {
         console.error('Failed to save video to database:', dbError);
         // Don't fail the request if DB save fails

@@ -80,19 +80,20 @@ What sets SyntraIQ apart is our commitment to citation and source transparency. 
 Whether you're researching academic topics, comparing different approaches, summarizing complex information, or simply seeking quick answers, SyntraIQ is designed to be your intelligent research companion. We're constantly evolving to provide better, more accurate, and more helpful responses to help you navigate the vast landscape of human knowledge.`;
 }
 
-// Get token limit based on mode
+// Get token limit based on mode (OPTIMIZED FOR SPEED + COMPLETENESS)
+// Generous limits ensure complete answers while still being faster than before
 function getTokenLimit(mode: Mode): number {
   switch (mode) {
     case 'Ask':
-      return 4000; // Significantly increased to prevent truncation
+      return 2500; // Plenty for complete answers (~1700 words)
     case 'Research':
-      return 6000; // Increased for comprehensive research
+      return 4000; // Comprehensive research with full details
     case 'Summarize':
-      return 4000; // Increased for detailed summaries
+      return 1500; // Sufficient for detailed summaries
     case 'Compare':
-      return 5000; // Increased for thorough comparisons
+      return 3000; // Thorough comparisons without cutting off
     default:
-      return 4000; // Increased default
+      return 2500; // Safe default ensures completeness
   }
 }
 
@@ -114,7 +115,27 @@ function getCurrentDateContext(): string {
   const month = now.getMonth() + 1; // 0-indexed
   const day = now.getDate();
   
-  return `Current date and time: ${dateStr} at ${timeStr} (${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}). Always provide current, up-to-date information. When discussing events, trends, or recent developments, use this date as your reference point. Do not provide information that is outdated or from years ago unless the user specifically asks about historical topics.`;
+  return `🔴 CRITICAL: TODAY'S DATE IS ${dateStr} at ${timeStr} (${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}). 
+
+⚠️ ABSOLUTE REQUIREMENT: You MUST provide ONLY the LATEST and MOST CURRENT information available as of ${dateStr}, ${year}. 
+
+FORBIDDEN ACTIONS:
+- DO NOT provide information from 2023, 2024, or any previous years as if it's current
+- DO NOT reference outdated products, processors, phones, or technology from past years
+- DO NOT discuss past events or trends as if they are happening now
+
+REQUIRED ACTIONS:
+- When asked about "latest" or "newest" products/technology, provide information for ${year}
+- When discussing current events, trends, or statistics, use ${dateStr}, ${year} as your reference point
+- When mentioning products, processors, phones, or technology, provide the MOST RECENT versions available in ${year}
+- If you're unsure about very recent information, acknowledge this and suggest verifying with current sources
+
+EXAMPLES:
+- "What's the latest mobile processor?" → Provide ${year}'s latest processors (Snapdragon 8 Gen 3, A17 Pro, etc. from ${year})
+- "Best smartphones now" → Provide ${year}'s current flagship phones
+- "Current AI trends" → Provide trends as of ${dateStr}, ${year}
+
+Only discuss historical information when explicitly asked about the past (e.g., "What was the best phone in 2023?").`;
 }
 
 // Get current date in IST (Indian Standard Time) format
@@ -149,7 +170,28 @@ function getCurrentDateContextIST(): string {
   const month = istDateParts.find(p => p.type === 'month')?.value || '';
   const day = istDateParts.find(p => p.type === 'day')?.value || '';
   
-  return `Current date and time (IST - Indian Standard Time): ${dateStr} at ${timeStr} (${year}-${month}-${day}). Always provide current, up-to-date information according to IST. When discussing time, dates, or current events, always reference IST (Indian Standard Time, UTC+5:30). Do not provide information that is outdated or from years ago unless the user specifically asks about historical topics.`;
+  return `🔴 CRITICAL: TODAY'S DATE IS ${dateStr} at ${timeStr} IST (${year}-${month}-${day}). 
+
+⚠️ ABSOLUTE REQUIREMENT: You MUST provide ONLY the LATEST and MOST CURRENT information available as of ${dateStr}, ${year} (IST - Indian Standard Time).
+
+FORBIDDEN ACTIONS:
+- DO NOT provide information from 2023, 2024, or any previous years as if it's current
+- DO NOT reference outdated products, processors, phones, or technology from past years
+- DO NOT discuss past events or trends as if they are happening now
+
+REQUIRED ACTIONS:
+- When asked about "latest" or "newest" products/technology, provide information for ${year}
+- When discussing current events, trends, or statistics, use ${dateStr}, ${year} (IST) as your reference point
+- When mentioning products, processors, phones, or technology, provide the MOST RECENT versions available in ${year}
+- All times and dates should reference IST (Indian Standard Time, UTC+5:30)
+- If you're unsure about very recent information, acknowledge this and suggest verifying with current sources
+
+EXAMPLES:
+- "What's the latest mobile processor?" → Provide ${year}'s latest processors (Snapdragon 8 Gen 3, A17 Pro, etc. from ${year})
+- "Best smartphones now" → Provide ${year}'s current flagship phones
+- "Current AI trends" → Provide trends as of ${dateStr}, ${year}
+
+Only discuss historical information when explicitly asked about the past (e.g., "What was the best phone in 2023?").`;
 }
 
 // Get system prompt based on chat mode, optional AI friend description, and optional space context
@@ -165,7 +207,7 @@ function getSystemPrompt(
     ? getCurrentDateContextIST() 
     : getCurrentDateContext();
   
-  const dateContext = `\n\n⏰ CURRENT DATE CONTEXT: ${currentDate}\n\nCRITICAL: You must always provide current, up-to-date information based on the date above. Do NOT reference outdated information, events from years ago, or historical data as if it were current unless the user specifically asks about historical topics. When discussing:\n- Current events: Use the current date as reference\n- Recent developments: Consider what would be current as of the date above\n- Trends or statistics: Provide the most recent information available as of the current date\n- Technology, products, or services: Reference current versions and availability\n\nIf you're unsure about current information, acknowledge that and suggest the user verify with recent sources. Never present information from 2023, 2024, or earlier years as if it's the current state unless explicitly discussing history.`;
+  const dateContext = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n⏰ CURRENT DATE & TIME CONTEXT:\n${currentDate}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🚨 THIS IS YOUR MOST IMPORTANT INSTRUCTION 🚨\n\nYou are operating in real-time with the date shown above. When users ask about:\n\n1. "Latest" or "newest" anything → Provide information from the CURRENT YEAR shown above\n2. "Current" or "now" → Reference the CURRENT DATE shown above\n3. Technology, products, processors, phones → Provide CURRENT YEAR versions\n4. Trends, statistics, news → Provide information current to the DATE shown above\n\n❌ NEVER NEVER NEVER:\n- Present 2023 or 2024 information as "current" or "latest"\n- Say "as of 2023" or "in 2024" when discussing current topics\n- Reference old product versions when asked about "latest"\n- Discuss past years' releases as if they're new\n\n✅ ALWAYS ALWAYS ALWAYS:\n- Check the current date at the top of this message\n- Provide information relevant to THAT EXACT DATE\n- If unsure about very recent info, acknowledge the uncertainty\n- When discussing history, clearly mark it as "in [past year]"\n\n💡 REMEMBER: The user expects information current to the date shown at the top. Old information presented as current is WRONG and HARMFUL.`;
   
   // Space context to add to all modes
   const spaceContext = spaceTitle && spaceDescription 
@@ -348,10 +390,14 @@ export async function generateOpenAIAnswer(
     client.chat.completions.create({
       model: openaiModel,
       messages: messages,
-      temperature: 0.3,
-      max_tokens: tokenLimit
+      temperature: 0.3, // Balanced for quality and speed
+      max_tokens: tokenLimit,
+      // SPEED OPTIMIZATIONS:
+      top_p: 0.9, // Slightly restrict token selection for faster generation
+      frequency_penalty: 0.5, // Reduce repetition = faster
+      presence_penalty: 0.3 // Encourage conciseness = faster
     }),
-    60_000 // 60s timeout - increased to allow complete responses
+    30_000 // 30s timeout - reduced for faster failure detection
   );
 
   const choice = response.choices?.[0];
@@ -411,12 +457,12 @@ export async function generateGeminiAnswer(
   const genAI = new GoogleGenerativeAI(apiKey);
 
   // Map model names to actual Gemini models
-  // Use gemini-flash-latest for auto and gemini-lite (cheapest available)
-  let geminiModel = 'gemini-flash-latest'; // Default for gemini-lite and auto (cheapest)
+  // OPTIMIZED: Use fastest Gemini models for speed
+  let geminiModel = 'gemini-2.0-flash-exp'; // Fastest experimental flash model
   if (model === 'gemini-2.0-latest') {
-    geminiModel = 'gemini-2.0-flash'; // Use 2.0 flash for premium
+    geminiModel = 'gemini-2.0-flash-exp'; // Use fastest 2.0 flash experimental
   } else if (model === 'gemini-lite' || model === 'auto') {
-    geminiModel = 'gemini-flash-latest'; // Use flash-latest for lite/auto (cheapest)
+    geminiModel = 'gemini-2.0-flash-exp'; // Use fastest flash experimental (free tier)
   }
 
   // Check if this is a self-referential query about the AI
@@ -526,7 +572,10 @@ export async function generateGeminiAnswer(
     contents: [{ role: 'user', parts: parts }],
     generationConfig: {
       maxOutputTokens: maxOutputTokens,
-      temperature: 0.3
+      temperature: 0.3,
+      // SPEED OPTIMIZATIONS:
+      topP: 0.9, // Slightly restrict for faster generation
+      topK: 40, // Limit candidate tokens for speed
     }
   };
 
@@ -539,7 +588,7 @@ export async function generateGeminiAnswer(
 
   const result = await withTimeout(
     modelInstance.generateContent(generateContentParams),
-    60_000 // 60s timeout - increased to allow complete responses
+    25_000 // 25s timeout - reduced for faster responses (Gemini Flash is fast!)
   ) as any;
 
   const response = result.response;
@@ -735,9 +784,11 @@ export async function generateClaudeAnswer(
       model: claudeModel,
       max_tokens: tokenLimit,
       system: sys,
-      messages: messages
+      messages: messages,
+      // SPEED OPTIMIZATION:
+      temperature: 0.5 // Slightly higher for faster, more confident generation
     }),
-    60_000 // 60s timeout - increased to allow complete responses
+    30_000 // 30s timeout - reduced for faster responses
   ) as any;
 
   const content = response?.content?.[0]?.type === 'text' 
@@ -878,10 +929,13 @@ export async function generateGrokAnswer(
       client.chat.completions.create({
         model: grokModel,
         messages: messages,
-        temperature: 0.3,
-        max_tokens: tokenLimit
+        temperature: 0.4, // Slightly higher for speed
+        max_tokens: tokenLimit,
+        // SPEED OPTIMIZATIONS:
+        top_p: 0.9,
+        frequency_penalty: 0.5
       }),
-      60_000 // 60s timeout - increased to allow complete responses
+      25_000 // 25s timeout - reduced for faster responses
     );
   } catch (error: any) {
     // If grok-4 fails (not available yet), fallback to grok-3

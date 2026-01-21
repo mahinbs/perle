@@ -6,8 +6,8 @@ import multer from 'multer';
 
 const router = Router();
 
-// Configure multer for memory storage (we'll upload directly to Supabase)
-const upload = multer({
+// Configure multer for logo uploads (images only)
+const uploadLogo = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 2 * 1024 * 1024, // 2MB limit
@@ -17,6 +17,36 @@ const upload = multer({
       cb(null, true);
     } else {
       cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// Configure multer for space file uploads (all file types)
+const uploadFile = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit for space files
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow most common file types
+    const allowedTypes = [
+      'image/', // All images
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'text/plain',
+      'text/csv',
+      'application/json',
+      'application/zip',
+      'application/x-zip-compressed'
+    ];
+    
+    if (allowedTypes.some(type => file.mimetype.startsWith(type) || file.mimetype === type)) {
+      cb(null, true);
+    } else {
+      cb(new Error('File type not supported'));
     }
   }
 });
@@ -82,7 +112,7 @@ router.get('/spaces/default-logos', authenticateToken, async (req: AuthRequest, 
 });
 
 // Upload logo to Supabase Storage (reuse ai-friend-logos bucket or create space-logos)
-router.post('/spaces/upload-logo', authenticateToken, upload.single('logo'), async (req: AuthRequest, res) => {
+router.post('/spaces/upload-logo', authenticateToken, uploadLogo.single('logo'), async (req: AuthRequest, res) => {
   try {
     if (!req.userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -423,6 +453,214 @@ router.delete('/spaces/:id', authenticateToken, async (req: AuthRequest, res) =>
     res.json({ message: 'Space deleted successfully' });
   } catch (error) {
     console.error('Delete space error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================
+// SPACE FILES ENDPOINTS
+// ============================================
+
+// Upload file to space
+router.post('/spaces/:id/upload-file', authenticateToken, uploadFile.single('file'), async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const { id: spaceId } = req.params;
+
+    // Verify user owns this space
+    const { data: space, error: spaceError } = await supabase
+      .from('spaces')
+      .select('id, user_id')
+      .eq('id', spaceId)
+      .eq('user_id', req.userId)
+      .single();
+
+    if (spaceError || !space) {
+      return res.status(404).json({ error: 'Space not found or access denied' });
+    }
+
+    // Generate unique filename
+    const fileExt = req.file.originalname.split('.').pop() || 'bin';
+    const safeFileName = req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}-${safeFileName}`;
+    const filePath = `space-files/${spaceId}/${fileName}`;
+
+    console.log(`📤 Uploading file to space ${spaceId}: ${filePath}`);
+
+    // Upload to Supabase Storage bucket 'files'
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('files')
+      .upload(filePath, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('❌ Storage upload error:', uploadError);
+      return res.status(500).json({ 
+        error: 'Failed to upload file',
+        details: uploadError.message 
+      });
+    }
+
+    console.log('✅ File uploaded successfully:', uploadData?.path);
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('files')
+      .getPublicUrl(filePath);
+    
+    console.log('🔗 Public URL:', urlData.publicUrl);
+
+    // Save file metadata to database
+    const { data: fileRecord, error: dbError } = await supabase
+      .from('space_files')
+      .insert({
+        space_id: spaceId,
+        user_id: req.userId,
+        file_name: req.file.originalname,
+        file_url: urlData.publicUrl,
+        file_type: req.file.mimetype,
+        file_size: req.file.size
+      })
+      .select()
+      .single();
+
+    if (dbError) {
+      console.error('❌ Database insert error:', dbError);
+      // Try to cleanup uploaded file
+      await supabase.storage.from('files').remove([filePath]);
+      return res.status(500).json({ 
+        error: 'Failed to save file metadata',
+        details: dbError.message 
+      });
+    }
+
+    console.log('✅ File metadata saved to database');
+
+    res.json({ 
+      file: fileRecord,
+      message: 'File uploaded successfully'
+    });
+  } catch (error) {
+    console.error('Upload file error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get files for a space
+router.get('/spaces/:id/files', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { id: spaceId } = req.params;
+
+    // Check if user has access to this space (owner or public)
+    const { data: space, error: spaceError } = await supabase
+      .from('spaces')
+      .select('id, user_id, is_public')
+      .eq('id', spaceId)
+      .single();
+
+    if (spaceError || !space) {
+      return res.status(404).json({ error: 'Space not found' });
+    }
+
+    // Check access: must be owner or space must be public
+    if (space.user_id !== req.userId && !space.is_public) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get files for this space
+    const { data: files, error: filesError } = await supabase
+      .from('space_files')
+      .select('*')
+      .eq('space_id', spaceId)
+      .order('created_at', { ascending: false });
+
+    if (filesError) {
+      console.error('Error fetching files:', filesError);
+      return res.status(500).json({ error: 'Failed to fetch files' });
+    }
+
+    res.json({ files: files || [] });
+  } catch (error) {
+    console.error('Get files error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete file from space
+router.delete('/spaces/:spaceId/files/:fileId', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { spaceId, fileId } = req.params;
+
+    // Get file and verify ownership
+    const { data: file, error: fileError } = await supabase
+      .from('space_files')
+      .select('*, spaces!inner(user_id)')
+      .eq('id', fileId)
+      .eq('space_id', spaceId)
+      .single();
+
+    if (fileError || !file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Check if user owns the space
+    if ((file.spaces as any).user_id !== req.userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Delete file from storage
+    if (file.file_url && file.file_url.includes('/files/')) {
+      try {
+        const urlParts = file.file_url.split('/files/');
+        if (urlParts.length > 1) {
+          const filePath = urlParts[1];
+          console.log(`🗑️ Deleting file from storage: ${filePath}`);
+          const { error: deleteError } = await supabase.storage
+            .from('files')
+            .remove([filePath]);
+          
+          if (deleteError) {
+            console.warn('Failed to delete file from storage:', deleteError);
+          } else {
+            console.log('✅ File deleted from storage successfully');
+          }
+        }
+      } catch (storageError) {
+        console.warn('Failed to delete file from storage:', storageError);
+      }
+    }
+
+    // Delete file record from database
+    const { error: deleteError } = await supabase
+      .from('space_files')
+      .delete()
+      .eq('id', fileId);
+
+    if (deleteError) {
+      console.error('Error deleting file record:', deleteError);
+      return res.status(500).json({ error: 'Failed to delete file' });
+    }
+
+    res.json({ message: 'File deleted successfully' });
+  } catch (error) {
+    console.error('Delete file error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

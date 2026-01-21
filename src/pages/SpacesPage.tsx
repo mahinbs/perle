@@ -7,6 +7,9 @@ import {
   FaLock,
   FaGlobe,
   FaTimes,
+  FaPaperclip,
+  FaDownload,
+  FaFile,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
 import { getUserData, getAuthHeaders, getAuthToken, isAuthenticated, removeAuthToken } from "../utils/auth";
@@ -30,6 +33,17 @@ interface Message {
   role: "user" | "ai";
   content: string;
   timestamp: Date;
+}
+
+interface SpaceFile {
+  id: string;
+  space_id: string;
+  user_id: string;
+  file_name: string;
+  file_url: string;
+  file_type: string;
+  file_size: number;
+  created_at: string;
 }
 
 export default function SpacesPage() {
@@ -63,6 +77,12 @@ export default function SpacesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const spaceFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Files state
+  const [spaceFiles, setSpaceFiles] = useState<SpaceFile[]>([]);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -414,6 +434,93 @@ export default function SpacesPage() {
     }
   };
 
+  // Load files for selected space
+  const loadSpaceFiles = async (spaceId: string) => {
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/spaces/${spaceId}/files`, {
+        headers: getAuthHeaders() as Record<string, string>,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSpaceFiles(data.files || []);
+      }
+    } catch (error) {
+      console.error("Failed to load files:", error);
+    }
+  };
+
+  // Upload file to space
+  const handleUploadSpaceFile = async (file: File) => {
+    if (!selectedSpace) return;
+
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return;
+
+    setIsUploadingFile(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`${API_URL}/api/spaces/${selectedSpace.id}/upload-file`, {
+        method: "POST",
+        headers: getAuthHeaders() as Record<string, string>,
+        body: formData,
+      });
+
+      if (response.ok) {
+        showToast({ message: "File uploaded successfully!", type: "success" });
+        loadSpaceFiles(selectedSpace.id);
+      } else {
+        const error = await response.json();
+        showToast({ message: error.error || "Failed to upload file", type: "error" });
+      }
+    } catch (error) {
+      console.error("Failed to upload file:", error);
+      showToast({ message: "Failed to upload file", type: "error" });
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  // Delete file from space
+  const handleDeleteSpaceFile = async (fileId: string) => {
+    if (!selectedSpace) return;
+    if (!confirm("Are you sure you want to delete this file?")) return;
+
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/spaces/${selectedSpace.id}/files/${fileId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders() as Record<string, string>,
+      });
+
+      if (response.ok) {
+        showToast({ message: "File deleted successfully!", type: "success" });
+        setSpaceFiles((prev) => prev.filter((f) => f.id !== fileId));
+      } else {
+        const error = await response.json();
+        showToast({ message: error.error || "Failed to delete file", type: "error" });
+      }
+    } catch (error) {
+      console.error("Failed to delete file:", error);
+      showToast({ message: "Failed to delete file", type: "error" });
+    }
+  };
+
+  // Load files when space is selected
+  useEffect(() => {
+    if (selectedSpace && isLoggedIn) {
+      loadSpaceFiles(selectedSpace.id);
+    }
+  }, [selectedSpace, isLoggedIn]);
+
   // If space is selected, show chat interface
   if (selectedSpace) {
   return (
@@ -483,6 +590,97 @@ export default function SpacesPage() {
               />
             )}
           </div>
+        </div>
+
+        {/* Files Section */}
+        <div style={{ borderBottom: "1px solid var(--border)", padding: "12px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <button
+              className="btn-ghost"
+              onClick={() => setShowFiles(!showFiles)}
+              style={{ display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <FaPaperclip size={16} />
+              <span>Files ({spaceFiles.length})</span>
+            </button>
+            {isLoggedIn && selectedSpace.user_id === userData?.id && (
+              <>
+                <input
+                  type="file"
+                  ref={spaceFileInputRef}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleUploadSpaceFile(file);
+                  }}
+                  style={{ display: "none" }}
+                />
+                <button
+                  className="btn-ghost"
+                  onClick={() => spaceFileInputRef.current?.click()}
+                  disabled={isUploadingFile}
+                  style={{ padding: "8px 12px", fontSize: "var(--font-sm)" }}
+                >
+                  <FaPlus size={14} /> {isUploadingFile ? "Uploading..." : "Upload"}
+                </button>
+              </>
+            )}
+          </div>
+          
+          {showFiles && spaceFiles.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {spaceFiles.map((file) => (
+                <div
+                  key={file.id}
+                  className="card"
+                  style={{
+                    padding: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    background: "var(--bg-secondary)",
+                  }}
+                >
+                  <FaFile size={20} style={{ color: "var(--accent)", flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, fontSize: "var(--font-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {file.file_name}
+                    </div>
+                    <div className="sub text-xs">
+                      {(file.file_size / 1024).toFixed(1)} KB • {new Date(file.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <a
+                      href={file.file_url}
+                      download={file.file_name}
+                      className="btn-ghost"
+                      style={{ padding: 8 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                    >
+                      <FaDownload size={14} />
+                    </a>
+                    {isLoggedIn && selectedSpace.user_id === userData?.id && (
+                      <button
+                        className="btn-ghost"
+                        onClick={() => handleDeleteSpaceFile(file.id)}
+                        style={{ padding: 8 }}
+                      >
+                        <FaTrash size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {showFiles && spaceFiles.length === 0 && (
+            <div className="sub text-sm" style={{ textAlign: "center", padding: "12px 0" }}>
+              No files uploaded yet
+            </div>
+          )}
         </div>
 
         {/* Messages */}
