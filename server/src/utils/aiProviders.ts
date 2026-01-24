@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AnswerResult, Mode, LLMModel, Source, ConversationMessage, ChatMode } from '../types.js';
 import { shouldGenerateImage, extractImagePrompt, generateImage } from './imageGeneration.js';
+import { requiresCurrentInfo, searchWeb, formatSearchResultsForContext } from './webSearch.js';
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -327,8 +328,21 @@ export async function generateOpenAIAnswer(
   }
   const client = new OpenAI({ apiKey });
 
+  // Check if query requires current information and perform web search
+  let searchContext = '';
+  if (requiresCurrentInfo(query)) {
+    console.log('🌐 Query requires current info - performing web search...');
+    const searchResults = await searchWeb(query, 5);
+    searchContext = formatSearchResultsForContext(searchResults);
+  }
+
   // Get system prompt based on chat mode, friend description, and space context
-  const sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  
+  // Append search context if available
+  if (searchContext) {
+    sys += searchContext;
+  }
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -490,8 +504,21 @@ export async function generateGeminiAnswer(
 
   const modelInstance = genAI.getGenerativeModel({ model: geminiModel });
 
+  // Check if query requires current information and perform web search
+  let searchContext = '';
+  if (requiresCurrentInfo(query)) {
+    console.log('🌐 Query requires current info - performing web search...');
+    const searchResults = await searchWeb(query, 5);
+    searchContext = formatSearchResultsForContext(searchResults);
+  }
+
   // Get system prompt based on chat mode, friend description, and space context
-  const sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  
+  // Append search context if available
+  if (searchContext) {
+    sys += searchContext;
+  }
   
   // Build conversation context from history
   let contextPrompt = '';
@@ -731,8 +758,21 @@ export async function generateClaudeAnswer(
   }
   const client = new Anthropic({ apiKey });
 
+  // Check if query requires current information and perform web search
+  let searchContext = '';
+  if (requiresCurrentInfo(query)) {
+    console.log('🌐 Query requires current info - performing web search...');
+    const searchResults = await searchWeb(query, 5);
+    searchContext = formatSearchResultsForContext(searchResults);
+  }
+
   // Get system prompt based on chat mode, friend description, and space context
-  const sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  
+  // Append search context if available
+  if (searchContext) {
+    sys += searchContext;
+  }
   
   // Build messages array with conversation history
   const messages: any[] = [];
@@ -872,8 +912,21 @@ export async function generateGrokAnswer(
     baseURL: 'https://api.x.ai/v1'
   });
 
+  // Check if query requires current information and perform web search
+  let searchContext = '';
+  if (requiresCurrentInfo(query)) {
+    console.log('🌐 Query requires current info - performing web search...');
+    const searchResults = await searchWeb(query, 5);
+    searchContext = formatSearchResultsForContext(searchResults);
+  }
+
   // Get system prompt based on chat mode, friend description, and space context
-  const sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  
+  // Append search context if available
+  if (searchContext) {
+    sys += searchContext;
+  }
   
   // Build messages array with conversation history
   const messages: any[] = [

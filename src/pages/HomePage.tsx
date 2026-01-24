@@ -499,6 +499,34 @@ export default function HomePage() {
     }
   }, [activeConversationId, handleNewConversation]);
 
+  // Handle media generation (image/video) - add to conversation
+  const handleMediaGenerated = useCallback((media: { type: 'image' | 'video'; url: string; prompt: string }) => {
+    console.log(`🎨 Media generated (${media.type}): ${media.prompt}`);
+    
+    // Create a fake answer result to display the generated media
+    const mediaAnswer: AnswerResult = {
+      chunks: [{
+        text: media.type === 'image' 
+          ? `Generated image: "${media.prompt}"` 
+          : `Generated video: "${media.prompt}"`,
+        citationIds: [],
+        confidence: 1
+      }],
+      sources: [],
+      query: media.prompt,
+      mode: 'Ask',
+      timestamp: Date.now(),
+      generatedMedia: media // Add media to the answer
+    };
+    
+    // Add to conversation history so it appears in chat
+    setConversationHistory(prev => [...prev, mediaAnswer]);
+    setAnswer(mediaAnswer);
+    
+    // Update searchedQuery so the UI shows the prompt
+    setSearchedQuery(media.prompt);
+  }, []);
+
   return (
     <>
       {/* Conversation Sidebar */}
@@ -558,6 +586,7 @@ export default function HomePage() {
                     query={prevAnswer.query}
                     skipTypewriter={shouldSkipTypewriter}
                     attachments={prevAnswer.attachments}
+                    generatedMedia={prevAnswer.generatedMedia}
                     onQueryEdit={(editedQuery) => {
                       setQuery(editedQuery);
                       doSearch(editedQuery);
@@ -618,6 +647,7 @@ export default function HomePage() {
             searchedQuery={searchedQuery}
             isPremium={isPremium}
             onNewConversation={handleNewConversation}
+            onMediaGenerated={handleMediaGenerated}
           />
         </div>
         {/* <div className="spacer-16" />

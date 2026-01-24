@@ -12,6 +12,7 @@ You need to set up API keys for the following providers:
    - `GOOGLE_API_KEY_FREE` - For free users (Gemini Lite) - **Required**
 3. **Anthropic** - For Claude 4.5
 4. **xAI** - For all Grok models (Grok 3, Grok 3 Mini, Grok 4, Grok 4 Heavy, Grok 4 Fast, Grok Code Fast 1, Grok Beta)
+5. **Tavily** - For web search to provide current information - **Highly Recommended**
 
 ## 📝 Setting Up Secrets in Supabase
 
@@ -27,6 +28,7 @@ GOOGLE_API_KEY=...          # For premium users (Gemini 2.0 Latest)
 GOOGLE_API_KEY_FREE=...     # For free users (Gemini Lite) - REQUIRED
 ANTHROPIC_API_KEY=sk-ant-...
 XAI_API_KEY=...
+TAVILY_API_KEY=tvly-...     # For web search (current information) - HIGHLY RECOMMENDED
 ```
 
 ### Option 2: Using Supabase CLI
@@ -47,6 +49,7 @@ supabase secrets set GOOGLE_API_KEY=...          # For premium users
 supabase secrets set GOOGLE_API_KEY_FREE=...    # For free users - REQUIRED
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 supabase secrets set XAI_API_KEY=...
+supabase secrets set TAVILY_API_KEY=tvly-...    # For web search - HIGHLY RECOMMENDED
 ```
 
 ## 🔑 Getting API Keys
@@ -73,6 +76,13 @@ supabase secrets set XAI_API_KEY=...
 3. Create a new API key
 4. Copy the key
 
+### Tavily API Key (Web Search)
+1. Go to https://tavily.com
+2. Sign up for a free account (no credit card required)
+3. Navigate to API Keys section
+4. Copy the key (starts with `tvly-`)
+5. **Free tier includes 1,000 searches per month**
+
 ## 🚀 Using in Local Development
 
 For local development, create a `.env` file in the `server/` directory:
@@ -89,6 +99,9 @@ GOOGLE_API_KEY=...          # For premium users (Gemini 2.0 Latest)
 GOOGLE_API_KEY_FREE=...     # For free users (Gemini Lite) - REQUIRED
 ANTHROPIC_API_KEY=sk-ant-...
 XAI_API_KEY=...
+
+# Web Search (Highly Recommended for Current Information)
+TAVILY_API_KEY=tvly-...     # Get from https://tavily.com (1000 free searches/month)
 
 # Server
 PORT=3333
@@ -125,8 +138,13 @@ CORS_ORIGIN=http://localhost:3000
 2. **Premium Users**: Can use any model, but the corresponding API key must be set
    - Premium users use `GOOGLE_API_KEY` for Gemini 2.0 Latest
    - Premium users in "auto" mode use `GOOGLE_API_KEY_FREE` (or `GOOGLE_API_KEY` as fallback)
-3. **Fallback**: If an API key is missing, the system falls back to a local answer generator
-4. **Security**: Never commit API keys to version control. Always use environment variables or Supabase secrets.
+3. **Web Search (Tavily)**: Highly recommended for accurate current information
+   - Without `TAVILY_API_KEY`, AI will rely only on training data (may be outdated)
+   - With `TAVILY_API_KEY`, AI can fetch real-time web results for queries about "latest", "current", "recent" topics
+   - Free tier: 1,000 searches/month (sufficient for most use cases)
+   - System automatically detects when web search is needed - no manual intervention required
+4. **Fallback**: If an API key is missing, the system falls back to a local answer generator
+5. **Security**: Never commit API keys to version control. Always use environment variables or Supabase secrets.
 
 ## 🔄 Updating Secrets
 

@@ -39,6 +39,7 @@ export interface AnswerResult {
   mode: Mode;
   timestamp: number;
   attachments?: UploadedFile[];
+  generatedMedia?: { type: 'image' | 'video'; url: string; prompt: string }; // For generated images/videos
 }
 
 export interface SearchHistoryItem {

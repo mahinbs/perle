@@ -7,25 +7,74 @@ export function isEditRequest(prompt: string): boolean {
   const lowerPrompt = prompt.toLowerCase().trim();
   
   const editKeywords = [
+    // Direct edit commands
     'edit', 'change', 'modify', 'update', 'alter', 'adjust',
-    'different', 'another', 'new version', 'remake', 'redo',
-    'improve', 'enhance', 'refine', 'tweak', 'revise',
-    'make it', 'turn it', 'convert', 'transform',
-    'add to', 'remove from', 'replace', 'swap',
-    'same but', 'similar but', 'like the last', 'like before',
-    'that image', 'that video', 'the image', 'the video',
-    'previous', 'last one', 'earlier'
+    'redo', 'remake', 'recreate', 'regenerate', 'rework',
+    
+    // Quality improvements
+    'improve', 'enhance', 'refine', 'tweak', 'revise', 'polish',
+    'better', 'make better', 'look better', 'more better',
+    'upgrade', 'optimize', 'fix', 'correct',
+    
+    // Variations
+    'different', 'another', 'new version', 'alternate', 'variation',
+    
+    // Transformations
+    'make it', 'make the', 'turn it', 'turn the', 'convert', 'transform',
+    
+    // Additions/Removals
+    'add to', 'add more', 'remove from', 'remove the', 'replace', 'swap',
+    'put in', 'take out', 'include', 'exclude',
+    
+    // References to previous media
+    'same but', 'similar but', 'like the last', 'like before', 'like that',
+    'that image', 'that video', 'the image', 'the video', 'this image', 'this video',
+    'previous', 'last one', 'earlier', 'above', 'last image', 'last video',
+    
+    // Adjustments
+    'more', 'less', 'bigger', 'smaller', 'brighter', 'darker',
+    'lighter', 'heavier', 'sharper', 'softer', 'clearer',
+    
+    // Style changes
+    'recolor', 'recolour', 'restyle', 'reformat',
+    
+    // Common phrases
+    'can you', 'could you', 'please', 'now', 'again', 'once more'
   ];
   
   return editKeywords.some(keyword => lowerPrompt.includes(keyword));
 }
 
 /**
- * Get the most recent generated image for a user
+ * Get the most recent generated image for a user (optionally within a conversation)
  */
-export async function getLastGeneratedImage(userId: string): Promise<{url: string; prompt: string} | null> {
+export async function getLastGeneratedImage(userId: string, conversationId?: string | null): Promise<{url: string; prompt: string} | null> {
   try {
-    // First try to get from conversation_history (most recent context)
+    // Build query for conversation_history
+    let query = supabase
+      .from('conversation_history')
+      .select('generated_image_url, media_prompt')
+      .eq('user_id', userId)
+      .not('generated_image_url', 'is', null);
+    
+    // If conversation_id provided, prioritize images from that conversation
+    if (conversationId) {
+      const { data: conversationData } = await query
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (conversationData && conversationData.generated_image_url) {
+        console.log(`📸 Found last generated image in current conversation (${conversationId.substring(0, 8)}...)`);
+        return {
+          url: conversationData.generated_image_url,
+          prompt: conversationData.media_prompt || ''
+        };
+      }
+    }
+    
+    // If not found in conversation or no conversation_id, get most recent across all conversations
     const { data: historyData } = await supabase
       .from('conversation_history')
       .select('generated_image_url, media_prompt')
@@ -36,7 +85,7 @@ export async function getLastGeneratedImage(userId: string): Promise<{url: strin
       .single();
     
     if (historyData && historyData.generated_image_url) {
-      console.log('📸 Found last generated image in conversation history');
+      console.log('📸 Found last generated image in conversation history (any conversation)');
       return {
         url: historyData.generated_image_url,
         prompt: historyData.media_prompt || ''
@@ -69,11 +118,35 @@ export async function getLastGeneratedImage(userId: string): Promise<{url: strin
 }
 
 /**
- * Get the most recent generated video for a user
+ * Get the most recent generated video for a user (optionally within a conversation)
  */
-export async function getLastGeneratedVideo(userId: string): Promise<{url: string; prompt: string} | null> {
+export async function getLastGeneratedVideo(userId: string, conversationId?: string | null): Promise<{url: string; prompt: string} | null> {
   try {
-    // First try to get from conversation_history (most recent context)
+    // Build query for conversation_history
+    let query = supabase
+      .from('conversation_history')
+      .select('generated_video_url, media_prompt')
+      .eq('user_id', userId)
+      .not('generated_video_url', 'is', null);
+    
+    // If conversation_id provided, prioritize videos from that conversation
+    if (conversationId) {
+      const { data: conversationData } = await query
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (conversationData && conversationData.generated_video_url) {
+        console.log(`🎥 Found last generated video in current conversation (${conversationId.substring(0, 8)}...)`);
+        return {
+          url: conversationData.generated_video_url,
+          prompt: conversationData.media_prompt || ''
+        };
+      }
+    }
+    
+    // If not found in conversation or no conversation_id, get most recent across all conversations
     const { data: historyData } = await supabase
       .from('conversation_history')
       .select('generated_video_url, media_prompt')
@@ -84,7 +157,7 @@ export async function getLastGeneratedVideo(userId: string): Promise<{url: strin
       .single();
     
     if (historyData && historyData.generated_video_url) {
-      console.log('🎥 Found last generated video in conversation history');
+      console.log('🎥 Found last generated video in conversation history (any conversation)');
       return {
         url: historyData.generated_video_url,
         prompt: historyData.media_prompt || ''
@@ -124,7 +197,8 @@ export async function saveMediaToConversationHistory(
   imageUrl: string | null,
   videoUrl: string | null,
   prompt: string,
-  chatMode: string = 'normal'
+  chatMode: string = 'normal',
+  conversationId?: string | null
 ): Promise<void> {
   try {
     const insertData: any = {
@@ -136,7 +210,8 @@ export async function saveMediaToConversationHistory(
       chat_mode: chatMode,
       generated_image_url: imageUrl,
       generated_video_url: videoUrl,
-      media_prompt: prompt
+      media_prompt: prompt,
+      conversation_id: conversationId || null
     };
     
     const { error } = await supabase
@@ -146,7 +221,7 @@ export async function saveMediaToConversationHistory(
     if (error) {
       console.error('Failed to save media to conversation history:', error);
     } else {
-      console.log('✅ Media saved to conversation history for future editing context');
+      console.log(`✅ Media saved to conversation history${conversationId ? ' (conversation: ' + conversationId.substring(0, 8) + '...)' : ''} for future editing context`);
     }
   } catch (error) {
     console.error('Error saving media to conversation history:', error);

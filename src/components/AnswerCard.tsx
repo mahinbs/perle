@@ -28,6 +28,7 @@ interface AnswerCardProps {
   onSearch?: (query: string, mode?: Mode) => void;
   attachments?: UploadedFile[];
   skipTypewriter?: boolean; // Skip typewriter effect for old conversations
+  generatedMedia?: { type: 'image' | 'video'; url: string; prompt: string }; // Generated media to display
 }
 
 export const AnswerCard: React.FC<AnswerCardProps> = ({
@@ -40,6 +41,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   onSearch: _onSearch,
   attachments,
   skipTypewriter = false,
+  generatedMedia,
 }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
@@ -1116,6 +1118,38 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                   )}
                 </div>
               ))}
+            </div>
+          )}
+          {generatedMedia && (
+            <div style={{ marginTop: 16, paddingLeft: 12 }}>
+              <div style={{
+                borderRadius: 12,
+                overflow: "hidden",
+                maxWidth: generatedMedia.type === "image" ? 400 : 600,
+                border: "1px solid var(--border)"
+              }}>
+                {generatedMedia.type === "image" ? (
+                  <img
+                    src={generatedMedia.url}
+                    alt={generatedMedia.prompt}
+                    style={{
+                      width: "100%",
+                      height: "auto",
+                      display: "block"
+                    }}
+                  />
+                ) : (
+                  <video
+                    src={generatedMedia.url}
+                    controls
+                    style={{
+                      width: "100%",
+                      height: "auto",
+                      display: "block"
+                    }}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>

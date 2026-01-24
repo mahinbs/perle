@@ -43,6 +43,7 @@ interface SearchBarProps {
   searchedQuery?: string;
   isPremium?: boolean;
   onNewConversation?: () => void; // Callback to start new conversation
+  onMediaGenerated?: (media: { type: 'image' | 'video'; url: string; prompt: string }) => void; // Callback when media is generated
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -56,6 +57,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   searchedQuery = "",
   isPremium = false,
   onNewConversation,
+  onMediaGenerated,
   selectedModel,
   setSelectedModel,
   onModelChange,
@@ -75,6 +77,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     url: string;
     prompt: string;
   } | null>(null);
+  const [lastToolsMedia, setLastToolsMedia] = useState<{
+    type: "image" | "video";
+    url: string;
+    prompt: string;
+  } | null>(null); // Track last media generated in Tools for editing
   const [isCapturing, setIsCapturing] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -494,6 +501,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     return data.video;
   };
 
+  // Check if prompt is an edit request
+  const isEditRequest = (prompt: string): boolean => {
+    const lowerPrompt = prompt.toLowerCase().trim();
+    const editKeywords = [
+      'edit', 'change', 'modify', 'update', 'alter', 'adjust',
+      'better', 'make better', 'improve', 'enhance',
+      'add to', 'add more', 'remove from', 'remove the', 'remove',
+      'make it', 'make the', 'turn it', 'turn the',
+      'that image', 'the image', 'this image',
+      'brighter', 'darker', 'lighter', 'clearer'
+    ];
+    return editKeywords.some(keyword => lowerPrompt.includes(keyword));
+  };
+
   // Handle tool generation
   const handleGenerateMedia = async () => {
     // Check if we have a prompt
@@ -507,11 +528,32 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
 
     const promptToUse = toolDescription.trim();
-    const referenceImage = toolAttachedImages.length > 0 ? toolAttachedImages[0].file : undefined;
+    
+    // Check if this is an edit request and use last generated media as reference
+    let referenceImage: File | undefined = toolAttachedImages.length > 0 ? toolAttachedImages[0].file : undefined;
+    
+    // If no reference image attached but prompt is an edit request and we have last media
+    if (!referenceImage && isEditRequest(promptToUse) && lastToolsMedia) {
+      console.log('🔍 Edit request detected in Tools - using previous media as reference');
+      console.log(`📸 Previous media: ${lastToolsMedia.type} - "${lastToolsMedia.prompt}"`);
+      
+      // Download the last media and convert to File for reference
+      try {
+        const response = await fetch(lastToolsMedia.url);
+        const blob = await response.blob();
+        const file = new File([blob], `reference.${lastToolsMedia.type === 'image' ? 'png' : 'mp4'}`, { 
+          type: lastToolsMedia.type === 'image' ? 'image/png' : 'video/mp4' 
+        });
+        referenceImage = file;
+        console.log('✅ Using last generated media as reference for editing');
+      } catch (error) {
+        console.error('Failed to load previous media as reference:', error);
+      }
+    }
 
     setIsGenerating(true);
     setGeneratingPrompt(promptToUse);
-    setGeneratingImages(toolAttachedImages); // Store for display
+    setGeneratingImages(referenceImage ? [{ id: 'ref', file: referenceImage, preview: URL.createObjectURL(referenceImage) }] : []); // Store for display
     setGeneratedMedia(null);
     setToolDescription(""); // Clear the input immediately
     setToolAttachedImages([]); // Clear attachments immediately
@@ -520,11 +562,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       if (toolMode === "image") {
         // Generate image with optional reference image
         const result = await generateImage(promptToUse, "1:1", referenceImage);
-        setGeneratedMedia({
-          type: "image",
+        const mediaData = {
+          type: "image" as const,
           url: result.url,
           prompt: result.prompt,
-        });
+        };
+        setGeneratedMedia(mediaData);
+        setLastToolsMedia(mediaData); // Save for future edits
+        
+        // Notify parent to add to conversation history
+        if (onMediaGenerated) {
+          onMediaGenerated(mediaData);
+        }
+        
         showToast({
           message: referenceImage
             ? "Image generated using reference image!"
@@ -535,11 +585,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       } else if (toolMode === "video") {
         // Generate video with optional reference image
         const result = await generateVideo(promptToUse, 5, "16:9", referenceImage);
-        setGeneratedMedia({
-          type: "video",
+        const mediaData = {
+          type: "video" as const,
           url: result.url,
           prompt: result.prompt,
-        });
+        };
+        setGeneratedMedia(mediaData);
+        setLastToolsMedia(mediaData); // Save for future edits
+        
+        // Notify parent to add to conversation history
+        if (onMediaGenerated) {
+          onMediaGenerated(mediaData);
+        }
+        
         showToast({
           message: referenceImage
             ? "Video generated using reference image!"
@@ -1201,6 +1259,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 setToolDescription("");
                 setToolAttachedImages([]);
                 setGeneratedMedia(null);
+                setLastToolsMedia(null); // Clear for next session
               } else {
                 // Toggle tools menu
                 setShowToolsMenu(!showToolsMenu);
@@ -1253,6 +1312,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   setToolDescription("");
                   setToolAttachedImages([]);
                   setGeneratedMedia(null);
+                  setLastToolsMedia(null); // Reset for new session
+                  // Start a new conversation for image generation
+                  if (onNewConversation) {
+                    onNewConversation();
+                  }
                 }}
                 disabled={isListening || isGenerating}
                 style={{
@@ -1283,6 +1347,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   setToolDescription("");
                   setToolAttachedImages([]);
                   setGeneratedMedia(null);
+                  setLastToolsMedia(null); // Reset for new session
+                  // Start a new conversation for video generation
+                  if (onNewConversation) {
+                    onNewConversation();
+                  }
                 }}
                 disabled={isListening || isGenerating}
                 style={{
