@@ -328,21 +328,14 @@ export async function generateOpenAIAnswer(
   }
   const client = new OpenAI({ apiKey });
 
-  // Check if query requires current information and perform web search
-  let searchContext = '';
-  if (requiresCurrentInfo(query)) {
-    console.log('🌐 Query requires current info - performing web search...');
-    const searchResults = await searchWeb(query, 5);
-    searchContext = formatSearchResultsForContext(searchResults);
-  }
-
+  // OpenAI GPT-4o+ has native web search - NO need for Tavily!
+  const needsWebSearch = requiresCurrentInfo(query);
+  const supportsNativeSearch = model === 'gpt-4o' || model === 'gpt-5' || model === 'gpt-4-turbo';
+  
   // Get system prompt based on chat mode, friend description, and space context
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
-  // Append search context if available
-  if (searchContext) {
-    sys += searchContext;
-  }
+  // No Tavily needed for modern GPT models - they have native search!
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -400,17 +393,26 @@ export async function generateOpenAIAnswer(
 
   const tokenLimit = getTokenLimit(mode);
 
+  // Build API params with native web search for GPT-4o+
+  const apiParams: any = {
+    model: openaiModel,
+    messages: messages,
+    temperature: 0.3, // Balanced for quality and speed
+    max_tokens: tokenLimit,
+    // SPEED OPTIMIZATIONS:
+    top_p: 0.9, // Slightly restrict token selection for faster generation
+    frequency_penalty: 0.5, // Reduce repetition = faster
+    presence_penalty: 0.3 // Encourage conciseness = faster
+  };
+  
+  // Add native OpenAI web search for GPT-4o+ (FREE unlimited!)
+  if (needsWebSearch && supportsNativeSearch) {
+    apiParams.tools = [{ type: "web_search" }];
+    console.log('🔍 Enabled OpenAI native web search for ' + openaiModel);
+  }
+
   const response = await withTimeout(
-    client.chat.completions.create({
-      model: openaiModel,
-      messages: messages,
-      temperature: 0.3, // Balanced for quality and speed
-      max_tokens: tokenLimit,
-      // SPEED OPTIMIZATIONS:
-      top_p: 0.9, // Slightly restrict token selection for faster generation
-      frequency_penalty: 0.5, // Reduce repetition = faster
-      presence_penalty: 0.3 // Encourage conciseness = faster
-    }),
+    client.chat.completions.create(apiParams),
     30_000 // 30s timeout - reduced for faster failure detection
   );
 
@@ -435,8 +437,42 @@ export async function generateOpenAIAnswer(
     throw new Error('AI model returned an empty response. Please try again.');
   }
   
-  // No sources - AI models don't provide citation sources by default
+  // Extract sources from OpenAI's native web search
   const sources: Source[] = [];
+  
+  if (needsWebSearch && supportsNativeSearch && choice?.message) {
+    const toolCalls = (choice.message as any).tool_calls;
+    
+    if (toolCalls && Array.isArray(toolCalls)) {
+      console.log(`📚 Extracting sources from OpenAI tool calls (${toolCalls.length} calls)`);
+      
+      for (const call of toolCalls) {
+        if (call.function?.name === 'web_search') {
+          const results = call.function?.arguments ? JSON.parse(call.function.arguments) : null;
+          
+          if (results && results.results) {
+            for (const result of results.results) {
+              if (result.url) {
+                const url = new URL(result.url);
+                sources.push({
+                  id: `openai-${sources.length + 1}`,
+                  title: result.title || url.hostname,
+                  url: result.url,
+                  domain: url.hostname.replace('www.', ''),
+                  year: new Date().getFullYear(),
+                  snippet: result.snippet || result.description || undefined
+                });
+              }
+            }
+          }
+        }
+      }
+      
+      if (sources.length > 0) {
+        console.log(`✅ Found ${sources.length} sources from OpenAI native search`);
+      }
+    }
+  }
 
   return {
     sources,
@@ -504,20 +540,24 @@ export async function generateGeminiAnswer(
 
   const modelInstance = genAI.getGenerativeModel({ model: geminiModel });
 
-  // Check if query requires current information and perform web search
+  // IMPORTANT: Google Search/grounding only works with Vertex AI, NOT standard Gemini API!
+  // Since we're using standard Gemini API, we MUST use Tavily for web search
   let searchContext = '';
+  let webSearchResults: Awaited<ReturnType<typeof searchWeb>> = [];
   if (requiresCurrentInfo(query)) {
-    console.log('🌐 Query requires current info - performing web search...');
-    const searchResults = await searchWeb(query, 5);
-    searchContext = formatSearchResultsForContext(searchResults);
+    console.log('🌐 Query requires current info - performing web search with Tavily...');
+    webSearchResults = await searchWeb(query, 5);
+    searchContext = formatSearchResultsForContext(webSearchResults);
+    console.log(`✅ Tavily returned ${webSearchResults.length} search results`);
   }
 
   // Get system prompt based on chat mode, friend description, and space context
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
-  // Append search context if available
+  // Append Tavily search context
   if (searchContext) {
     sys += searchContext;
+    console.log('📝 Added Tavily search context to system prompt');
   }
   
   // Build conversation context from history
@@ -544,8 +584,9 @@ export async function generateGeminiAnswer(
   const tokenLimit = getTokenLimit(mode);
   const maxOutputTokens = Math.min(tokenLimit, 8192); // Gemini supports up to 8192 tokens, use full limit to prevent truncation
 
-  // Enable grounding with Google Search for citations (only for premium users with gemini-2.0)
-  const useGrounding = isPremium && model === 'gemini-2.0-latest';
+  // Note: Google Search/grounding only available in Vertex AI API, not standard Gemini API
+  // We're using Tavily for web search instead
+  const useGoogleSearch = false; // Disabled - only works with Vertex AI
   
   // Build parts array (text + optional image)
   const parts: any[] = [{ text: `${sys}\n\n${prompt}` }];
@@ -606,12 +647,8 @@ export async function generateGeminiAnswer(
     }
   };
 
-  // Add grounding config for premium users with Gemini 2.0
-  if (useGrounding) {
-    generateContentParams.tools = [{
-      googleSearchRetrieval: {}
-    }];
-  }
+  // Google Search/grounding only available in Vertex AI, not standard Gemini API
+  // We use Tavily instead for web search (configured above)
 
   const result = await withTimeout(
     modelInstance.generateContent(generateContentParams),
@@ -682,29 +719,24 @@ export async function generateGeminiAnswer(
   
   content = content.trim();
   
-  // Extract sources from grounding metadata if available
+  // Extract sources from Tavily web search results
   const sources: Source[] = [];
-  if (useGrounding && response.groundingMetadata) {
-    const groundingChunks = response.groundingMetadata.groundingChunks || [];
-    const seenUrls = new Set<string>();
-    
-    for (const chunk of groundingChunks) {
-      if (chunk.web && chunk.web.uri && !seenUrls.has(chunk.web.uri)) {
-        seenUrls.add(chunk.web.uri);
-        const url = chunk.web.uri;
-        const domain = url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-        const title = chunk.web.title || domain;
-        
-        sources.push({
-          id: `source-${sources.length + 1}`,
-          title: title,
-          url: url,
-          domain: domain,
-          year: new Date().getFullYear(),
-          snippet: chunk.web.snippet || undefined
-        });
-      }
+  
+  // Use Tavily search results as sources (standard Gemini API doesn't support grounding)
+  if (webSearchResults.length > 0) {
+    console.log('📚 Converting Tavily search results to sources');
+    for (const result of webSearchResults) {
+      const url = new URL(result.url);
+      sources.push({
+        id: `tavily-${sources.length + 1}`,
+        title: result.title,
+        url: result.url,
+        domain: url.hostname.replace('www.', ''),
+        year: new Date().getFullYear(),
+        snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
+      });
     }
+    console.log(`✅ Found ${sources.length} sources from Tavily for Gemini`);
   }
 
   return {
@@ -912,21 +944,14 @@ export async function generateGrokAnswer(
     baseURL: 'https://api.x.ai/v1'
   });
 
-  // Check if query requires current information and perform web search
-  let searchContext = '';
-  if (requiresCurrentInfo(query)) {
-    console.log('🌐 Query requires current info - performing web search...');
-    const searchResults = await searchWeb(query, 5);
-    searchContext = formatSearchResultsForContext(searchResults);
-  }
-
+  // Grok has native web search - NO need for Tavily!
+  // We'll use Grok's built-in web_search and x_search tools (FREE unlimited!)
+  const needsWebSearch = requiresCurrentInfo(query);
+  
   // Get system prompt based on chat mode, friend description, and space context
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
-  // Append search context if available
-  if (searchContext) {
-    sys += searchContext;
-  }
+  // No Tavily needed - Grok has native search!
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -976,18 +1001,30 @@ export async function generateGrokAnswer(
 
   const tokenLimit = getTokenLimit(mode);
   
+  // Build API params with native web search tools
+  const apiParams: any = {
+    model: grokModel,
+    messages: messages,
+    temperature: 0.4, // Slightly higher for speed
+    max_tokens: tokenLimit,
+    // SPEED OPTIMIZATIONS:
+    top_p: 0.9,
+    frequency_penalty: 0.5
+  };
+  
+  // Add native Grok web search tools (FREE unlimited!)
+  if (needsWebSearch) {
+    apiParams.tools = [
+      { type: "web_search" },  // General web search
+      { type: "x_search" }     // X/Twitter search
+    ];
+    console.log('🔍 Enabled Grok native web search (web_search + x_search)');
+  }
+  
   let response;
   try {
     response = await withTimeout(
-      client.chat.completions.create({
-        model: grokModel,
-        messages: messages,
-        temperature: 0.4, // Slightly higher for speed
-        max_tokens: tokenLimit,
-        // SPEED OPTIMIZATIONS:
-        top_p: 0.9,
-        frequency_penalty: 0.5
-      }),
+      client.chat.completions.create(apiParams),
       25_000 // 25s timeout - reduced for faster responses
     );
   } catch (error: any) {
@@ -1030,8 +1067,44 @@ export async function generateGrokAnswer(
     throw new Error('AI model returned an empty response. Please try again.');
   }
   
-  // No sources - AI models don't provide citation sources by default
+  // Extract sources from Grok's native web search
   const sources: Source[] = [];
+  
+  // Check if response includes tool calls or citations from web search
+  if (needsWebSearch && choice?.message) {
+    // Grok may include sources in message metadata or tool_calls
+    const toolCalls = (choice.message as any).tool_calls;
+    
+    if (toolCalls && Array.isArray(toolCalls)) {
+      console.log(`📚 Extracting sources from Grok tool calls (${toolCalls.length} calls)`);
+      
+      for (const call of toolCalls) {
+        if (call.function?.name === 'web_search' || call.function?.name === 'x_search') {
+          const results = call.function?.arguments ? JSON.parse(call.function.arguments) : null;
+          
+          if (results && results.results) {
+            for (const result of results.results) {
+              if (result.url) {
+                const url = new URL(result.url);
+                sources.push({
+                  id: `grok-${sources.length + 1}`,
+                  title: result.title || result.name || url.hostname,
+                  url: result.url,
+                  domain: url.hostname.replace('www.', ''),
+                  year: new Date().getFullYear(),
+                  snippet: result.snippet || result.description || undefined
+                });
+              }
+            }
+          }
+        }
+      }
+      
+      if (sources.length > 0) {
+        console.log(`✅ Found ${sources.length} sources from Grok native search`);
+      }
+    }
+  }
 
   return {
     sources,
