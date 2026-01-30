@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.3",
+    "@azure/ai-agents": "^1.1.0",
+    "@azure/identity": "^4.13.0",
     "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.39.3",
-    "@tavily/core": "^0.7.1",
+    "axios": "^1.7.9",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

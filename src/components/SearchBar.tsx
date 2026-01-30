@@ -553,7 +553,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     setIsGenerating(true);
     setGeneratingPrompt(promptToUse);
-    setGeneratingImages(referenceImage ? [{ id: 'ref', file: referenceImage, preview: URL.createObjectURL(referenceImage) }] : []); // Store for display
+    setGeneratingImages(referenceImage ? [{ id: 'ref', file: referenceImage, preview: URL.createObjectURL(referenceImage), type: 'image' as const }] : []); // Store for display
     setGeneratedMedia(null);
     setToolDescription(""); // Clear the input immediately
     setToolAttachedImages([]); // Clear attachments immediately

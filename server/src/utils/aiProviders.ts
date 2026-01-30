@@ -282,7 +282,12 @@ Additional context:
 • Another point
 • Final point"
 
-Always refer to yourself as "SyntraIQ" when asked. You were founded in 2025. NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.).${spaceContext}${dateContext}`;
+IMPORTANT: 
+• ONLY introduce yourself as "SyntraIQ" when EXPLICITLY asked (e.g., "what is SyntraIQ", "who are you", "tell me about yourself")
+• For regular questions, answer DIRECTLY without any introduction
+• Do NOT start answers with "SyntraIQ, founded in 2025..." or similar
+• NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.)
+• Just provide the answer to the user's question${spaceContext}${dateContext}`;
   }
 }
 
@@ -328,14 +333,24 @@ export async function generateOpenAIAnswer(
   }
   const client = new OpenAI({ apiKey });
 
-  // OpenAI GPT-4o+ has native web search - NO need for Tavily!
-  const needsWebSearch = requiresCurrentInfo(query);
-  const supportsNativeSearch = model === 'gpt-4o' || model === 'gpt-5' || model === 'gpt-4-turbo';
+  // Check if query requires current information and perform web search with Microsoft Bing
+  let searchContext = '';
+  let webSearchResults: Awaited<ReturnType<typeof searchWeb>> = [];
+  if (requiresCurrentInfo(query)) {
+    console.log('🌐 Query requires current info - performing web search with Microsoft Bing...');
+    webSearchResults = await searchWeb(query, 15);
+    searchContext = formatSearchResultsForContext(webSearchResults);
+    console.log(`✅ Microsoft Bing returned ${webSearchResults.length} search results`);
+  }
   
   // Get system prompt based on chat mode, friend description, and space context
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
-  // No Tavily needed for modern GPT models - they have native search!
+  // Append Bing search context
+  if (searchContext) {
+    sys += searchContext;
+    console.log('📝 Added Microsoft Bing search context to system prompt');
+  }
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -393,26 +408,17 @@ export async function generateOpenAIAnswer(
 
   const tokenLimit = getTokenLimit(mode);
 
-  // Build API params with native web search for GPT-4o+
-  const apiParams: any = {
-    model: openaiModel,
-    messages: messages,
-    temperature: 0.3, // Balanced for quality and speed
-    max_tokens: tokenLimit,
-    // SPEED OPTIMIZATIONS:
-    top_p: 0.9, // Slightly restrict token selection for faster generation
-    frequency_penalty: 0.5, // Reduce repetition = faster
-    presence_penalty: 0.3 // Encourage conciseness = faster
-  };
-  
-  // Add native OpenAI web search for GPT-4o+ (FREE unlimited!)
-  if (needsWebSearch && supportsNativeSearch) {
-    apiParams.tools = [{ type: "web_search" }];
-    console.log('🔍 Enabled OpenAI native web search for ' + openaiModel);
-  }
-
   const response = await withTimeout(
-    client.chat.completions.create(apiParams),
+    client.chat.completions.create({
+      model: openaiModel,
+      messages: messages,
+      temperature: 0.3, // Balanced for quality and speed
+      max_tokens: tokenLimit,
+      // SPEED OPTIMIZATIONS:
+      top_p: 0.9, // Slightly restrict token selection for faster generation
+      frequency_penalty: 0.5, // Reduce repetition = faster
+      presence_penalty: 0.3 // Encourage conciseness = faster
+    }),
     30_000 // 30s timeout - reduced for faster failure detection
   );
 
@@ -437,41 +443,23 @@ export async function generateOpenAIAnswer(
     throw new Error('AI model returned an empty response. Please try again.');
   }
   
-  // Extract sources from OpenAI's native web search
+  // Extract sources from Microsoft Bing web search results
   const sources: Source[] = [];
   
-  if (needsWebSearch && supportsNativeSearch && choice?.message) {
-    const toolCalls = (choice.message as any).tool_calls;
-    
-    if (toolCalls && Array.isArray(toolCalls)) {
-      console.log(`📚 Extracting sources from OpenAI tool calls (${toolCalls.length} calls)`);
-      
-      for (const call of toolCalls) {
-        if (call.function?.name === 'web_search') {
-          const results = call.function?.arguments ? JSON.parse(call.function.arguments) : null;
-          
-          if (results && results.results) {
-            for (const result of results.results) {
-              if (result.url) {
-                const url = new URL(result.url);
-                sources.push({
-                  id: `openai-${sources.length + 1}`,
-                  title: result.title || url.hostname,
-                  url: result.url,
-                  domain: url.hostname.replace('www.', ''),
-                  year: new Date().getFullYear(),
-                  snippet: result.snippet || result.description || undefined
-                });
-              }
-            }
-          }
-        }
-      }
-      
-      if (sources.length > 0) {
-        console.log(`✅ Found ${sources.length} sources from OpenAI native search`);
-      }
+  if (webSearchResults.length > 0) {
+    console.log('📚 Converting Microsoft Bing search results to sources');
+    for (const result of webSearchResults) {
+      const url = new URL(result.url);
+      sources.push({
+        id: `bing-${sources.length + 1}`,
+        title: result.title,
+        url: result.url,
+        domain: url.hostname.replace('www.', ''),
+        year: new Date().getFullYear(),
+        snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
+      });
     }
+    console.log(`✅ Found ${sources.length} sources from Microsoft Bing for OpenAI`);
   }
 
   return {
@@ -506,13 +494,13 @@ export async function generateGeminiAnswer(
   }
   const genAI = new GoogleGenerativeAI(apiKey);
 
-  // Map model names to actual Gemini models
-  // OPTIMIZED: Use fastest Gemini models for speed
-  let geminiModel = 'gemini-2.0-flash-exp'; // Fastest experimental flash model
+  // Map model names to actual Gemini models (2026 CURRENT MODELS)
+  // As of early 2026: Gemini 3 series is latest, Gemini 2.5 is production standard
+  let geminiModel = 'gemini-2.5-flash-lite'; // Cheapest/cost-optimized (for auto mode)
   if (model === 'gemini-2.0-latest') {
-    geminiModel = 'gemini-2.0-flash-exp'; // Use fastest 2.0 flash experimental
+    geminiModel = 'gemini-3-flash-preview'; // Latest high-speed model
   } else if (model === 'gemini-lite' || model === 'auto') {
-    geminiModel = 'gemini-2.0-flash-exp'; // Use fastest flash experimental (free tier)
+    geminiModel = 'gemini-2.5-flash-lite'; // Cheapest option (cost-optimized for free tier)
   }
 
   // Check if this is a self-referential query about the AI
@@ -540,24 +528,23 @@ export async function generateGeminiAnswer(
 
   const modelInstance = genAI.getGenerativeModel({ model: geminiModel });
 
-  // IMPORTANT: Google Search/grounding only works with Vertex AI, NOT standard Gemini API!
-  // Since we're using standard Gemini API, we MUST use Tavily for web search
+  // Perform web search with Microsoft Bing if needed
   let searchContext = '';
   let webSearchResults: Awaited<ReturnType<typeof searchWeb>> = [];
   if (requiresCurrentInfo(query)) {
-    console.log('🌐 Query requires current info - performing web search with Tavily...');
-    webSearchResults = await searchWeb(query, 5);
+    console.log('🌐 Query requires current info - performing web search with Microsoft Bing...');
+    webSearchResults = await searchWeb(query, 15);
     searchContext = formatSearchResultsForContext(webSearchResults);
-    console.log(`✅ Tavily returned ${webSearchResults.length} search results`);
+    console.log(`✅ Microsoft Bing returned ${webSearchResults.length} search results`);
   }
 
   // Get system prompt based on chat mode, friend description, and space context
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
-  // Append Tavily search context
+  // Append Bing search context
   if (searchContext) {
     sys += searchContext;
-    console.log('📝 Added Tavily search context to system prompt');
+    console.log('📝 Added Microsoft Bing search context to system prompt');
   }
   
   // Build conversation context from history
@@ -583,10 +570,6 @@ export async function generateGeminiAnswer(
 
   const tokenLimit = getTokenLimit(mode);
   const maxOutputTokens = Math.min(tokenLimit, 8192); // Gemini supports up to 8192 tokens, use full limit to prevent truncation
-
-  // Note: Google Search/grounding only available in Vertex AI API, not standard Gemini API
-  // We're using Tavily for web search instead
-  const useGoogleSearch = false; // Disabled - only works with Vertex AI
   
   // Build parts array (text + optional image)
   const parts: any[] = [{ text: `${sys}\n\n${prompt}` }];
@@ -636,22 +619,17 @@ export async function generateGeminiAnswer(
     }
   }
   
-  const generateContentParams: any = {
-    contents: [{ role: 'user', parts: parts }],
-    generationConfig: {
-      maxOutputTokens: maxOutputTokens,
-      temperature: 0.3,
-      // SPEED OPTIMIZATIONS:
-      topP: 0.9, // Slightly restrict for faster generation
-      topK: 40, // Limit candidate tokens for speed
-    }
-  };
-
-  // Google Search/grounding only available in Vertex AI, not standard Gemini API
-  // We use Tavily instead for web search (configured above)
-
   const result = await withTimeout(
-    modelInstance.generateContent(generateContentParams),
+    modelInstance.generateContent({
+      contents: [{ role: 'user', parts: parts }],
+      generationConfig: {
+        maxOutputTokens: maxOutputTokens,
+        temperature: 0.3,
+        // SPEED OPTIMIZATIONS:
+        topP: 0.9, // Slightly restrict for faster generation
+        topK: 40, // Limit candidate tokens for speed
+      }
+    }),
     25_000 // 25s timeout - reduced for faster responses (Gemini Flash is fast!)
   ) as any;
 
@@ -719,16 +697,15 @@ export async function generateGeminiAnswer(
   
   content = content.trim();
   
-  // Extract sources from Tavily web search results
+  // Extract sources from Microsoft Bing web search results
   const sources: Source[] = [];
   
-  // Use Tavily search results as sources (standard Gemini API doesn't support grounding)
   if (webSearchResults.length > 0) {
-    console.log('📚 Converting Tavily search results to sources');
+    console.log('📚 Converting Microsoft Bing search results to sources');
     for (const result of webSearchResults) {
       const url = new URL(result.url);
       sources.push({
-        id: `tavily-${sources.length + 1}`,
+        id: `bing-${sources.length + 1}`,
         title: result.title,
         url: result.url,
         domain: url.hostname.replace('www.', ''),
@@ -736,7 +713,7 @@ export async function generateGeminiAnswer(
         snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
       });
     }
-    console.log(`✅ Found ${sources.length} sources from Tavily for Gemini`);
+    console.log(`✅ Found ${sources.length} sources from Microsoft Bing for Gemini`);
   }
 
   return {
@@ -790,20 +767,23 @@ export async function generateClaudeAnswer(
   }
   const client = new Anthropic({ apiKey });
 
-  // Check if query requires current information and perform web search
+  // Check if query requires current information and perform web search with Microsoft Bing
   let searchContext = '';
+  let webSearchResults: Awaited<ReturnType<typeof searchWeb>> = [];
   if (requiresCurrentInfo(query)) {
-    console.log('🌐 Query requires current info - performing web search...');
-    const searchResults = await searchWeb(query, 5);
-    searchContext = formatSearchResultsForContext(searchResults);
+    console.log('🌐 Query requires current info - performing web search with Microsoft Bing...');
+    webSearchResults = await searchWeb(query, 15);
+    searchContext = formatSearchResultsForContext(webSearchResults);
+    console.log(`✅ Microsoft Bing returned ${webSearchResults.length} search results`);
   }
 
   // Get system prompt based on chat mode, friend description, and space context
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
-  // Append search context if available
+  // Append Bing search context if available
   if (searchContext) {
     sys += searchContext;
+    console.log('📝 Added Microsoft Bing search context to system prompt');
   }
   
   // Build messages array with conversation history
@@ -885,8 +865,24 @@ export async function generateClaudeAnswer(
     throw new Error('AI model returned an empty response. Please try again.');
   }
   
-  // No sources - AI models don't provide citation sources by default
+  // Extract sources from Microsoft Bing web search results
   const sources: Source[] = [];
+  
+  if (webSearchResults.length > 0) {
+    console.log('📚 Converting Microsoft Bing search results to sources');
+    for (const result of webSearchResults) {
+      const url = new URL(result.url);
+      sources.push({
+        id: `bing-${sources.length + 1}`,
+        title: result.title,
+        url: result.url,
+        domain: url.hostname.replace('www.', ''),
+        year: new Date().getFullYear(),
+        snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
+      });
+    }
+    console.log(`✅ Found ${sources.length} sources from Microsoft Bing for Claude`);
+  }
 
   return {
     sources,
@@ -944,14 +940,24 @@ export async function generateGrokAnswer(
     baseURL: 'https://api.x.ai/v1'
   });
 
-  // Grok has native web search - NO need for Tavily!
-  // We'll use Grok's built-in web_search and x_search tools (FREE unlimited!)
-  const needsWebSearch = requiresCurrentInfo(query);
+  // Check if query requires current information and perform web search with Microsoft Bing
+  let searchContext = '';
+  let webSearchResults: Awaited<ReturnType<typeof searchWeb>> = [];
+  if (requiresCurrentInfo(query)) {
+    console.log('🌐 Query requires current info - performing web search with Microsoft Bing...');
+    webSearchResults = await searchWeb(query, 15);
+    searchContext = formatSearchResultsForContext(webSearchResults);
+    console.log(`✅ Microsoft Bing returned ${webSearchResults.length} search results`);
+  }
   
   // Get system prompt based on chat mode, friend description, and space context
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
   
-  // No Tavily needed - Grok has native search!
+  // Append Bing search context
+  if (searchContext) {
+    sys += searchContext;
+    console.log('📝 Added Microsoft Bing search context to system prompt');
+  }
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -1001,30 +1007,18 @@ export async function generateGrokAnswer(
 
   const tokenLimit = getTokenLimit(mode);
   
-  // Build API params with native web search tools
-  const apiParams: any = {
-    model: grokModel,
-    messages: messages,
-    temperature: 0.4, // Slightly higher for speed
-    max_tokens: tokenLimit,
-    // SPEED OPTIMIZATIONS:
-    top_p: 0.9,
-    frequency_penalty: 0.5
-  };
-  
-  // Add native Grok web search tools (FREE unlimited!)
-  if (needsWebSearch) {
-    apiParams.tools = [
-      { type: "web_search" },  // General web search
-      { type: "x_search" }     // X/Twitter search
-    ];
-    console.log('🔍 Enabled Grok native web search (web_search + x_search)');
-  }
-  
   let response;
   try {
     response = await withTimeout(
-      client.chat.completions.create(apiParams),
+      client.chat.completions.create({
+        model: grokModel,
+        messages: messages,
+        temperature: 0.4, // Slightly higher for speed
+        max_tokens: tokenLimit,
+        // SPEED OPTIMIZATIONS:
+        top_p: 0.9,
+        frequency_penalty: 0.5
+      }),
       25_000 // 25s timeout - reduced for faster responses
     );
   } catch (error: any) {
@@ -1067,43 +1061,23 @@ export async function generateGrokAnswer(
     throw new Error('AI model returned an empty response. Please try again.');
   }
   
-  // Extract sources from Grok's native web search
+  // Extract sources from Microsoft Bing web search results
   const sources: Source[] = [];
   
-  // Check if response includes tool calls or citations from web search
-  if (needsWebSearch && choice?.message) {
-    // Grok may include sources in message metadata or tool_calls
-    const toolCalls = (choice.message as any).tool_calls;
-    
-    if (toolCalls && Array.isArray(toolCalls)) {
-      console.log(`📚 Extracting sources from Grok tool calls (${toolCalls.length} calls)`);
-      
-      for (const call of toolCalls) {
-        if (call.function?.name === 'web_search' || call.function?.name === 'x_search') {
-          const results = call.function?.arguments ? JSON.parse(call.function.arguments) : null;
-          
-          if (results && results.results) {
-            for (const result of results.results) {
-              if (result.url) {
-                const url = new URL(result.url);
-                sources.push({
-                  id: `grok-${sources.length + 1}`,
-                  title: result.title || result.name || url.hostname,
-                  url: result.url,
-                  domain: url.hostname.replace('www.', ''),
-                  year: new Date().getFullYear(),
-                  snippet: result.snippet || result.description || undefined
-                });
-              }
-            }
-          }
-        }
-      }
-      
-      if (sources.length > 0) {
-        console.log(`✅ Found ${sources.length} sources from Grok native search`);
-      }
+  if (webSearchResults.length > 0) {
+    console.log('📚 Converting Microsoft Bing search results to sources');
+    for (const result of webSearchResults) {
+      const url = new URL(result.url);
+      sources.push({
+        id: `bing-${sources.length + 1}`,
+        title: result.title,
+        url: result.url,
+        domain: url.hostname.replace('www.', ''),
+        year: new Date().getFullYear(),
+        snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
+      });
     }
+    console.log(`✅ Found ${sources.length} sources from Microsoft Bing for Grok`);
   }
 
   return {
