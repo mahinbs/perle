@@ -346,35 +346,22 @@ ${formattedResults}
 CRITICAL INSTRUCTIONS:
 1. Use ONLY the above web search results to provide current, accurate information for ${currentYear}
 2. These results are from live sources powered by Microsoft Grounding with Bing as of ${currentDate}
-3. IGNORE any outdated information from previous years (2023, 2024, 2025) when answering about "current", "latest", or "${currentYear}" topics
-4. For technology queries about processors, phones, etc., focus on ${currentYear} releases and specifications
-5. Always cite sources with [source number] notation in your response
+3. Always cite sources using [1], [2], [3], etc. notation from the numbered search results above
+4. ⚠️ NEVER EVER use the phrase "[Context provided]" or similar - ONLY cite numbered sources like [1], [2], etc.
+5. If you need to state a fact, it MUST come from the search results above with a [source number]
 
-⚠️ PROCESSOR VALIDATION FOR ${currentYear}:
+⚠️ INTERPRETATION GUIDELINES FOR iPHONE QUERIES (NOT to be cited - use search results for facts):
 
-OUTDATED Apple iPhone Processors (DO NOT present as current/latest for ${currentYear}):
-- A17 Pro (iPhone 15 Pro, September 2023) - OUTDATED
-- A17, A16 Bionic, A15, A14, A13 - OUTDATED
+When interpreting search results about iPhone processors:
+- If search results mention "iPhone 17" or "A19 Pro" → that's the current chip (released Sep 2025)
+- If search results mention "iPhone 18" or "A20" → that's upcoming (not released yet, expected Sep ${currentYear})
+- If search results ONLY mention "A17 Pro" for "latest" queries → those results may be outdated (A17 Pro is from 2023)
+- When user asks "current/latest" iPhone → look for iPhone 17 or A19 Pro in search results
+- When user asks "upcoming/next" iPhone → look for iPhone 18/ iphone 18pro or A20 Pro in search results
 
-CURRENT Apple iPhone Processor (as of January ${currentYear}):
-- A19 Pro / A19 (iPhone 17, released September 2025) - THIS IS THE LATEST/CURRENT CHIP
-- A18 Pro / A18 (iPhone 16, released September 2024) - Previous generation
-
-IN DEVELOPMENT (not yet released in ${currentYear}):
-- A20 Pro / A20 (expected for iPhone 18, likely September ${currentYear}) - Future/upcoming chip
-
-OUTDATED Qualcomm Snapdragon (for ${currentYear}):
-- Snapdragon 8 Gen 3 (late 2023) - OUTDATED for ${currentYear}
-- Snapdragon 8 Gen 2 and older - OUTDATED
-
-EXPECTED Current Snapdragon for ${currentYear}:
-- Snapdragon 8 Gen 4, 8 Gen 5, or 8 Elite (2024-2025) - Current generation
-- Snapdragon 8 Gen 6 or newer - In development for late ${currentYear}
-
-CRITICAL INSTRUCTIONS:
-1. For "current" or "latest" iPhone processor queries in ${currentYear} → Answer: **A19 Pro** (released Sep 2025, currently in iPhone 17)
-2. If user asks about "upcoming" or "next" iPhone chip → Answer: **A20 Pro** (in development for late ${currentYear})
-3. DO NOT be vague - be SPECIFIC based on what the search results say
-4. If search results mention A17 Pro as "current/latest" for ${currentYear} → REJECT this as outdated and state: "⚠️ Search results show A17 Pro (2023), which is outdated. The current iPhone processor as of ${currentYear} is the A19 Pro (iPhone 17, Sep 2025)."
-5. Be DEFINITIVE and CONFIDENT when search results have current information - don't use wishy-washy language like "likely" or "would probably"`;
+REMEMBER: 
+- ALL facts must come from search results [1], [2], [3], etc.
+- Do NOT cite these guidelines
+- Do NOT use "[Context provided]"
+- ONLY cite the numbered search results above`;
 }

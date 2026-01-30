@@ -34,6 +34,8 @@ export async function searchWithAzureGrounding(
   const clientId = process.env.AZURE_CLIENT_ID;
   const clientSecret = process.env.AZURE_CLIENT_SECRET;
   const modelDeploymentName = process.env.AZURE_MODEL_DEPLOYMENT_NAME || 'gpt-4o';
+  
+  console.log(`🔧 Azure config: model="${modelDeploymentName}", endpoint="${projectEndpoint?.substring(0, 50)}..."`);
 
   if (!projectEndpoint) {
     console.warn('⚠️ AZURE_AI_FOUNDRY_PROJECT_ENDPOINT not configured - skipping Azure Grounding search');
@@ -64,24 +66,11 @@ export async function searchWithAzureGrounding(
       query.toLowerCase().includes(keyword)
     );
     
-    // Special handling for Apple/iPhone queries - they need extra context
-    const lowerQuery = query.toLowerCase();
-    const isAppleQuery = lowerQuery.includes('iphone') || 
-                         lowerQuery.includes('apple') || 
-                         lowerQuery.includes('ios') ||
-                         (lowerQuery.includes('a17') || lowerQuery.includes('a18') || lowerQuery.includes('a19'));
-    
     let enhancedQuery = query;
     
     if (needsTemporalContext) {
-      if (isAppleQuery) {
-        // For Apple queries in 2026, search for A19 Pro (current as of Jan 2026) and exclude old A17
-        // A19 Pro = latest/current chip (iPhone 17, Sep 2025)
-        // A20 Pro = upcoming/in development (iPhone 18, expected Sep 2026)
-        enhancedQuery = `${query} ${currentYear} A19 Pro iPhone 17 2025 -A17 -2023`;
-      } else {
-        enhancedQuery = `${query} ${currentMonth} ${currentYear}`;
-      }
+      // Just add the year/month context - keep it simple
+      enhancedQuery = `${query} ${currentMonth} ${currentYear}`;
     }
     
     console.log(`🔍 Searching with Azure Grounding with Bing for: "${enhancedQuery}"`);
@@ -104,23 +93,18 @@ export async function searchWithAzureGrounding(
     const agent = await client.createAgent(modelDeploymentName, {
       name: 'SyntraIQ-Search-Agent',
       instructions:
-        `You are a helpful search assistant. Use Bing grounding to find CURRENT information from ${currentYear}. 
-        CRITICAL: Only provide information that is current and up-to-date as of ${currentMonth} ${currentYear}. 
-        Always cite your sources with URLs.
+        `You MUST use the Bing grounding tool to search the web and find current information.
         
-        APPLE/IPHONE PROCESSOR TIMELINE (as of ${currentMonth} ${currentYear}):
-        - A17 Pro (iPhone 15 Pro, Sep 2023) - OUTDATED
-        - A18 Pro (iPhone 16 Pro, Sep 2024) - Previous generation
-        - A19 Pro (iPhone 17 Pro, Sep 2025) - CURRENT/LATEST (this is what's in stores now)
-        - A20 Pro (iPhone 18, expected Sep ${currentYear}) - IN DEVELOPMENT (not released yet)
+        CRITICAL: You MUST call the Bing search tool for EVERY query. Do NOT answer from your own knowledge.
         
-        When searching for "current" or "latest" iPhone processor:
-        - Answer: A19 Pro (released Sep 2025, currently in iPhone 17)
-        - Reject A17 Pro as outdated (that's from 2023)
-        - Find sources about A19 Pro, iPhone 17, or 2025/2026 releases
+        When searching for technology information (processors, phones, etc.) in ${currentYear}:
+        1. FIRST: Call the Bing tool to search the web
+        2. Use the search results to provide accurate, current information
+        3. ALWAYS include source URLs in your response
+        4. If results mention outdated products (like A17 Pro from 2023 for "latest" queries), note they are outdated
         
-        When searching for "upcoming" or "next" iPhone processor:
-        - Answer: A20 Pro (expected late ${currentYear} with iPhone 18)`,
+        Today's date: ${currentMonth} ${currentYear}
+        Focus on information from ${currentYear} and late 2025 for "current" or "latest" queries.`,
       tools: [bingTool.definition],
     });
 
@@ -151,8 +135,11 @@ export async function searchWithAzureGrounding(
       if ((run as any).lastError) {
         console.error('❌ Last error:', JSON.stringify((run as any).lastError, null, 2));
       }
+      console.error('❌ Run details:', JSON.stringify(run, null, 2));
       return [];
     }
+    
+    console.log(`✅ Azure Agent run completed after ${attempts} attempts`);
 
     // Get messages
     let messagesIterator;
@@ -187,17 +174,19 @@ export async function searchWithAzureGrounding(
       return [];
     }
 
-    // Assistant message retrieved successfully (debug logging disabled for production)
+    console.log(`✅ Assistant message found, content items: ${assistantMessage?.content?.length || 0}`);
 
     // Extract citations from the response
     const citations: GroundingCitation[] = [];
 
     // Parse citations from message content - use optional chaining
     const contentArray = assistantMessage?.content || [];
+    console.log(`📊 Processing ${contentArray.length} content items for citations`);
     
     for (const contentItem of contentArray) {
       // Annotations are nested inside text object
       const annotations = contentItem?.text?.annotations || contentItem?.annotations || [];
+      console.log(`📊 Content item has ${annotations.length} annotations`);
       
       for (const annotation of annotations) {
         // Check for urlCitation (camelCase - Azure uses this format)
@@ -231,6 +220,12 @@ export async function searchWithAzureGrounding(
     }
 
     console.log(`✅ Azure Grounding with Bing found ${citations.length} sources`);
+    
+    // If no citations found, log the message content for debugging
+    if (citations.length === 0) {
+      console.warn('⚠️ No citations extracted from assistant message');
+      console.log('📋 Assistant message content sample:', JSON.stringify(contentArray[0], null, 2).substring(0, 500));
+    }
 
     // Clean up (delete agent and thread to avoid clutter)
     try {
