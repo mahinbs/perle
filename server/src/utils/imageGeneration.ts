@@ -67,13 +67,24 @@ export async function generateImageWithGemini(
   }
   
   // Try models in order: Gemini 3 Pro Image (with ref support) -> Imagen 4.0 models (fallback)
-  const models = [
+  const allModels = [
     { name: 'gemini-3-pro-image-preview', displayName: 'Gemini 3 Pro Image', api: 'gemini', supportsRef: true },
     { name: 'imagen-4.0-fast-generate-001', displayName: 'Imagen 4.0 Fast', api: 'vertex', supportsRef: false },
     { name: 'imagen-4.0-generate-001', displayName: 'Imagen 4.0 Standard', api: 'vertex', supportsRef: false },
     { name: 'imagen-4.0-ultra-generate-001', displayName: 'Imagen 4.0 Ultra', api: 'vertex', supportsRef: false },
   ];
-  
+
+  // When we have a reference image (edit request), only use models that support it.
+  // Otherwise we'd fall back to Imagen 4.0 which ignores the reference and generates a new image.
+  const models = referenceImageDataUrl
+    ? allModels.filter((m) => m.supportsRef)
+    : allModels;
+
+  if (referenceImageDataUrl && models.length === 0) {
+    console.warn('⚠️ No Gemini model with reference support available');
+    return null;
+  }
+
   for (const model of models) {
     try {
       console.log('═'.repeat(60));
@@ -203,11 +214,83 @@ export async function generateImageWithGemini(
   }
   
   // All Gemini models failed
-  console.error('❌ All Gemini Imagen models failed or hit rate limits');
+  if (referenceImageDataUrl) {
+    console.log('❌ Gemini ref-capable model(s) failed — caller can try OpenAI GPT Image edit');
+  } else {
+    console.error('❌ All Gemini Imagen models failed or hit rate limits');
+  }
   return null;
 }
 
-// Alternative: Use DALL-E 3 if Gemini image generation fails
+// OpenAI GPT Image edit (for when we have a reference image and Gemini failed)
+// Uses /v1/images/edits with gpt-image-1.5 - supports editing from reference image
+export async function generateImageWithOpenAIGPTImageEdit(
+  prompt: string,
+  aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1',
+  referenceImageDataUrl: string
+): Promise<GeneratedImage | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.warn('⚠️ OpenAI API key not configured. Cannot use GPT Image edit.');
+    return null;
+  }
+
+  try {
+    console.log('═'.repeat(60));
+    console.log('🎨 [OPENAI GPT IMAGE EDIT] Editing image with reference');
+    console.log(`   Prompt: "${prompt}"`);
+    console.log('   API: https://api.openai.com/v1/images/edits (gpt-image-1.5)');
+    console.log('═'.repeat(60));
+
+    let imageBase64 = referenceImageDataUrl;
+    let mimeType = 'image/png';
+    if (referenceImageDataUrl.startsWith('data:')) {
+      const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (matches) {
+        mimeType = matches[1];
+        imageBase64 = matches[2];
+      }
+    }
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    const ext = mimeType === 'image/jpeg' || mimeType === 'image/jpg' ? 'jpg' : 'png';
+
+    const formData = new FormData();
+    formData.append('model', 'gpt-image-1.5');
+    formData.append('prompt', prompt);
+    formData.append('image', new Blob([imageBuffer], { type: mimeType }), `reference.${ext}`);
+
+    const response = await fetch('https://api.openai.com/v1/images/edits', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      body: formData,
+      signal: AbortSignal.timeout(120000)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('OpenAI GPT Image edit error:', errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    const resultB64 = data.data?.[0]?.b64_json;
+    if (resultB64) {
+      console.log('✅ Image edited successfully with OpenAI GPT Image');
+      return {
+        url: `data:image/png;base64,${resultB64}`,
+        prompt: prompt,
+        width: 1024,
+        height: 1024
+      };
+    }
+    return null;
+  } catch (error: any) {
+    console.error('Error in OpenAI GPT Image edit:', error?.message || error);
+    return null;
+  }
+}
+
+// Alternative: Use DALL-E 3 if Gemini image generation fails (text-to-image only)
 export async function generateImageWithDALLE(
   prompt: string,
   aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1'
@@ -289,25 +372,31 @@ export async function generateImageWithDALLE(
   }
 }
 
-// Main function - uses Gemini Imagen API with DALL-E 3 fallback
+// Main function - uses Gemini (multimodal edit) first, then OpenAI GPT Image edit or DALL-E 3
 export async function generateImage(
   prompt: string, 
   aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1',
   referenceImageDataUrl?: string
 ): Promise<GeneratedImage | null> {
-  // Try Gemini Imagen first (you already have the API key!)
+  // 1) Try Gemini first (native multimodal: image in contents array, no separate edit endpoint)
   try {
     const geminiImage = await generateImageWithGemini(prompt, aspectRatio, referenceImageDataUrl);
     if (geminiImage) {
       return geminiImage;
     }
   } catch (error) {
-    console.warn('⚠️ Gemini image generation failed, trying DALL-E 3 fallback...');
+    console.warn('⚠️ Gemini image generation failed, trying OpenAI fallback...');
   }
-  
-  // Fallback to DALL-E 3 if Gemini fails (quota, errors, etc.)
-  // Note: DALL-E doesn't support reference images
-  console.log('🔄 Using OpenAI DALL-E 3 as fallback for image generation');
+
+  // 2) If we have a reference image (edit request), use GPT Image edit API — not DALL-E 3
+  if (referenceImageDataUrl) {
+    console.log('🔄 Using OpenAI GPT Image edit (reference image present)');
+    const editImage = await generateImageWithOpenAIGPTImageEdit(prompt, aspectRatio, referenceImageDataUrl);
+    if (editImage) return editImage;
+  }
+
+  // 3) Text-to-image only: DALL-E 3 (cannot edit / use reference)
+  console.log('🔄 Using OpenAI DALL-E 3 for text-to-image');
   const dalleImage = await generateImageWithDALLE(prompt, aspectRatio);
   return dalleImage;
 }
