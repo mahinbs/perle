@@ -239,7 +239,7 @@ export default function HomePage() {
         const res = await searchAPI(q, mode, selectedModel, newConversation, filesToProcess, activeConversationId);
 
         console.log(`✅ FRONTEND RECEIVED: conversationId=${res.conversationId}`);
-        
+
         // Update active conversation ID from response
         if (res.conversationId) {
           setActiveConversationId(res.conversationId);
@@ -432,10 +432,10 @@ export default function HomePage() {
   const loadConversation = useCallback(async (conversationId: string) => {
     try {
       setIsLoadingOldConversation(true); // Disable animations
-      
+
       const baseUrl = import.meta.env.VITE_API_URL as string;
       const { getAuthHeaders } = await import('../utils/auth');
-      
+
       const response = await fetch(`${baseUrl}/api/conversations/${conversationId}`, {
         headers: getAuthHeaders()
       });
@@ -443,15 +443,15 @@ export default function HomePage() {
       if (response.ok) {
         const data = await response.json();
         setActiveConversationId(conversationId);
-        
+
         // Mark that we loaded this conversation from sidebar
         lastLoadedConversationIdRef.current = conversationId;
-        
+
         // Convert messages to AnswerResult format with proper chunk structure
         const history: AnswerResult[] = data.messages.map((msg: any) => ({
           query: msg.query,
-          chunks: [{ 
-            text: msg.answer, 
+          chunks: [{
+            text: msg.answer,
             sourceIds: [],
             citationIds: []
           }],
@@ -459,12 +459,12 @@ export default function HomePage() {
           mode: 'Ask' as Mode,
           timestamp: new Date(msg.created_at).getTime()
         }));
-        
+
         setConversationHistory(history);
         setAnswer(null);
         setQuery("");
         setSearchedQuery("");
-        
+
         // Close sidebar on mobile after selection
         setIsSidebarOpen(false);
       }
@@ -502,12 +502,12 @@ export default function HomePage() {
   // Handle media generation (image/video) - add to conversation
   const handleMediaGenerated = useCallback((media: { type: 'image' | 'video'; url: string; prompt: string }) => {
     console.log(`🎨 Media generated (${media.type}): ${media.prompt}`);
-    
+
     // Create a fake answer result to display the generated media
     const mediaAnswer: AnswerResult = {
       chunks: [{
-        text: media.type === 'image' 
-          ? `Generated image: "${media.prompt}"` 
+        text: media.type === 'image'
+          ? `Generated image: "${media.prompt}"`
           : `Generated video: "${media.prompt}"`,
         citationIds: [],
         confidence: 1
@@ -518,11 +518,11 @@ export default function HomePage() {
       timestamp: Date.now(),
       generatedMedia: media // Add media to the answer
     };
-    
+
     // Add to conversation history so it appears in chat
     setConversationHistory(prev => [...prev, mediaAnswer]);
     setAnswer(mediaAnswer);
-    
+
     // Update searchedQuery so the UI shows the prompt
     setSearchedQuery(media.prompt);
   }, []);
@@ -552,23 +552,23 @@ export default function HomePage() {
           {/* <ModeBar mode={mode} setMode={setMode} /> */}
 
           <div className="spacer-12" />
-        <div ref={answerCardRef}>
+          <div ref={answerCardRef}>
             {/* Render all answers in conversation history */}
             {conversationHistory.map((prevAnswer, index) => {
               // Determine if this conversation was loaded from sidebar
               // If activeConversationId matches lastLoadedConversationIdRef, all items are from old conversation
               const isFromLoadedConversation = activeConversationId === lastLoadedConversationIdRef.current;
               const isLastItem = index === conversationHistory.length - 1;
-              
+
               // Skip typewriter if:
               // 1. We're currently loading an old conversation
               // 2. This conversation was loaded from sidebar (all items should skip)
               // 3. It's not the last item (previous items in any conversation)
               // Only show typewriter for the last item if it's a new query (not from loaded conversation)
-              const shouldSkipTypewriter = isLoadingOldConversation || 
-                                         isFromLoadedConversation || 
-                                         !isLastItem;
-              
+              const shouldSkipTypewriter = isLoadingOldConversation ||
+                isFromLoadedConversation ||
+                !isLastItem;
+
               return (
                 <div
                   key={`answer-${prevAnswer.timestamp}-${index}`}
@@ -603,28 +603,28 @@ export default function HomePage() {
               );
             })}
 
-          {/* Show current answer only if loading (it will be added to history when complete) */}
-          {isLoading && (
-            <AnswerCard
-              chunks={[]}
-              sources={[]}
-              isLoading={true}
-              mode={mode}
-              query={searchedQuery}
-              onQueryEdit={(editedQuery) => {
-                setQuery(editedQuery);
-                doSearch(editedQuery);
-              }}
-              onSearch={(searchQuery, searchMode) => {
-                if (searchMode) {
-                  setMode(searchMode);
-                }
-                setQuery(searchQuery);
-                doSearch(searchQuery);
-              }}
-              attachments={currentUploadedFiles}
-            />
-          )}
+            {/* Show current answer only if loading (it will be added to history when complete) */}
+            {isLoading && (
+              <AnswerCard
+                chunks={[]}
+                sources={[]}
+                isLoading={true}
+                mode={mode}
+                query={searchedQuery}
+                onQueryEdit={(editedQuery) => {
+                  setQuery(editedQuery);
+                  doSearch(editedQuery);
+                }}
+                onSearch={(searchQuery, searchMode) => {
+                  if (searchMode) {
+                    setMode(searchMode);
+                  }
+                  setQuery(searchQuery);
+                  doSearch(searchQuery);
+                }}
+                attachments={currentUploadedFiles}
+              />
+            )}
           </div>
           <div className="spacer-12" />
         </>
@@ -644,6 +644,7 @@ export default function HomePage() {
             uploadedFiles={uploadedFiles}
             onFilesChange={setUploadedFiles}
             hasAnswer={!!answer && !isLoading}
+            answer={answer}
             searchedQuery={searchedQuery}
             isPremium={isPremium}
             onNewConversation={handleNewConversation}

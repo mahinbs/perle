@@ -9,108 +9,60 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
   text: providedText,
   speaking,
 }) => {
-  const [localText, setLocalText] = useState<string>("");
-  const storageTextRef = useRef<string | null>(null);
-  const timeoutRef = useRef<number>();
+  const [displayedText, setDisplayedText] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Clear any pending timers on unmount
+  // Typewriter effect
   useEffect(() => {
-    return () => {
-      if (timeoutRef.current !== undefined) {
-        window.clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    // Cancel any previous polling loop when dependency changes
-    if (timeoutRef.current !== undefined) {
-      window.clearTimeout(timeoutRef.current);
-      timeoutRef.current = undefined;
+    if (!providedText) {
+      setDisplayedText("");
+      return;
     }
 
-    const syncFromStorage = () => {
-      const stored = localStorage.getItem("perle-current-answer-text");
+    let currentIndex = 0;
+    setDisplayedText(""); // Reset on new text
 
-      if (stored !== storageTextRef.current) {
-        storageTextRef.current = stored;
-        setLocalText(stored ?? "");
+    const intervalId = setInterval(() => {
+      if (currentIndex < providedText.length) {
+        setDisplayedText((prev) => prev + providedText[currentIndex]);
+        currentIndex++;
+      } else {
+        clearInterval(intervalId);
       }
+    }, 25); // Typing speed
 
-      // When storage entry is cleared while speech still finishing, delay clearing text slightly
-      if (!stored) {
-        window.setTimeout(() => {
-          if (!window.speechSynthesis.speaking) {
-            setLocalText("");
-            storageTextRef.current = null;
-          }
-        }, 1200);
-      }
-    };
-
-    if (typeof providedText === "string") {
-      storageTextRef.current = providedText;
-      setLocalText(providedText);
-      return () => {
-        // Nothing to clean up in this branch
-      };
-    }
-
-    syncFromStorage();
-
-    const schedule = () => {
-      syncFromStorage();
-      timeoutRef.current = window.setTimeout(schedule, 150);
-    };
-
-    schedule();
-    window.addEventListener("storage", syncFromStorage);
-
-    return () => {
-      if (timeoutRef.current !== undefined) {
-        window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = undefined;
-      }
-      window.removeEventListener("storage", syncFromStorage);
-    };
+    return () => clearInterval(intervalId);
   }, [providedText]);
 
-  const displayText =
-    typeof providedText === "string" ? providedText : localText;
-  const hasText = displayText.trim().length > 0;
-
+  // Auto-scroll to bottom
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [displayText]);
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [displayedText]);
+
+  const hasText = displayedText.length > 0;
 
   return (
     <div
       ref={containerRef}
       className={`
-        w-full text-center text-[var(--text)] text-[length:var(--font-lg)] leading-[1.6]
-        max-w-[600px] min-h-[80px] max-h-[80px] p-[12px_16px]
+        w-full text-center text-(--text)
+        text-[clamp(1rem,3vh,1.5rem)] leading-[1.6]
+        max-w-[800px]
+        min-h-[60px] max-h-[25vh]
+        p-[2vh_2vw]
         
-        max-md:max-w-full 
-        max-md:min-h-[100px] max-md:max-h-[100px]
-
-        max-[480px]:min-h-[40px] 
-        max-[480px]:max-h-[calc(100vh-540px)]
-        max-[480px]:p-[10px_12px]
-        max-[480px]:leading-normal
-
         flex items-center justify-center overflow-x-hidden overflow-y-auto
         [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
         [-webkit-overflow-scrolling:touch]
-        transition-[min-height,max-height,opacity,padding] duration-300 ease-in-out
+        transition-[max-height,opacity,padding] duration-300 ease-in-out
         ${hasText ? (speaking ? 'opacity-95' : 'opacity-70') : 'opacity-0'}
       `}
     >
       {hasText && (
-        <div className="w-full break-after-auto">
-          {displayText}
+        <div className="w-full break-after-auto whitespace-pre-wrap">
+          {displayedText}
         </div>
       )}
     </div>

@@ -19,7 +19,7 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
       if ("speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
-    } catch {}
+    } catch { }
     onClose();
   };
 
@@ -28,7 +28,7 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
       if ("speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
-    } catch {}
+    } catch { }
     onToggleListening();
   };
 
@@ -38,7 +38,12 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        paddingBottom: isMac ? "6rem" : undefined,
+        width: "100%",
+        maxWidth: "100%", // Reasonable max width for controls
+        paddingBottom: isMac ? "6rem" : "2rem",
+        paddingLeft: "2rem",
+        paddingRight: "2rem",
+        boxSizing: "border-box",
       }}
     >
       <button
@@ -46,12 +51,15 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
         onClick={handleClose}
         aria-label="Cancel"
         style={{
-          width: 72,
-          height: 72,
+          width: "clamp(48px, 15vmin, 72px)",
+          height: "clamp(48px, 15vmin, 72px)",
           borderRadius: 9999,
           color: "var(--text)",
           borderColor: "var(--border)",
           fontSize: "var(--font-md)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         ✕
@@ -61,11 +69,14 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
         onClick={handleToggleListening}
         aria-label={isListening ? "Stop listening" : "Start voice"}
         style={{
-          width: 84,
-          height: 84,
+          width: "clamp(60px, 18vmin, 84px)",
+          height: "clamp(60px, 18vmin, 84px)",
           borderRadius: 9999,
           color: isListening ? "#111" : "var(--text)",
           borderColor: isListening ? undefined : "var(--border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         <MicWaveIcon size={26} active={isListening} />

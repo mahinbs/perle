@@ -68,13 +68,13 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         oscillator.onended = () => {
           try {
             audioCtx.close();
-          } catch {}
+          } catch { }
           resolve();
         };
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.3);
       });
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => {
@@ -111,7 +111,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
           window.speechSynthesis.cancel();
         }
-      } catch {}
+      } catch { }
 
       // Clear any existing answer text from localStorage
       localStorage.removeItem("perle-current-answer-text");
@@ -127,7 +127,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
-    } catch {}
+    } catch { }
 
     // Clear any stored answer text on mount
     localStorage.removeItem("perle-current-answer-text");
@@ -139,7 +139,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
           window.speechSynthesis.cancel();
         }
-      } catch {}
+      } catch { }
     };
   }, []);
 
@@ -177,7 +177,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           onClick={() => {
             try {
               if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-            } catch {}
+            } catch { }
             onClose();
           }}
           aria-label="Close"
@@ -226,14 +226,16 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
   return createPortal(overlay, document.body);
 };
 
-// Internal helper component that displays a 3D globe during voice output
 const SpeakingGradientCircle: React.FC<{
   isListening: boolean;
   responseText?: string;
 }> = ({ responseText: propResponseText }) => {
   const [speaking, setSpeaking] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const baseGlobeSize = "min(clamp(220px, 48vw, 420px), calc(100vh - 300px))";
+
+  // Use vmin for fluid sizing that respects both viewport dimensions
+  // This replaces the complex clamp calculations
+  const baseGlobeSize = "45vmin";
 
   // Detect theme (light or dark)
   useEffect(() => {
@@ -251,38 +253,54 @@ const SpeakingGradientCircle: React.FC<{
     return () => mediaQuery.removeEventListener("change", checkTheme);
   }, []);
 
-  // Reset state when component mounts (overlay opens)
+  // Trigger speech when text changes
   useEffect(() => {
-    setSpeaking(false);
+    if (!propResponseText) return;
 
-    // Ensure speech is cancelled
-    try {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-    } catch {}
-  }, []); // Empty deps - only run on mount
+    const speak = () => {
+      if (!window.speechSynthesis) return;
 
+      // Cancel previous
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(propResponseText);
+      // Optional: Select a specific voice if desired, or let browser default
+      // const voices = window.speechSynthesis.getVoices();
+      // utterance.voice = voices.find(...) || null;
+
+      utterance.onstart = () => setSpeaking(true);
+      utterance.onend = () => setSpeaking(false);
+      utterance.onerror = () => setSpeaking(false);
+
+      window.speechSynthesis.speak(utterance);
+    };
+
+    speak();
+
+    return () => {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+    };
+  }, [propResponseText]);
+
+  // Keep the RAF check as a backup for external interruptions (optional, but good for robustness)
   useEffect(() => {
     let raf = 0;
-
     const tick = () => {
-      try {
-        const isSpeaking =
-          typeof window !== "undefined" && "speechSynthesis" in window
-            ? window.speechSynthesis.speaking
-            : false;
-
-        setSpeaking(isSpeaking);
-      } catch {}
+      // Only update if we think we shouldn't be speaking but browser says we are, 
+      // or vice versa, but trust our event listeners primarily to avoid flickering.
+      // Actually, relying purely on events is safer for React state sync unless dealing with external events.
+      // Let's rely on the events from the utterance we created.
+      // But if user cancels via browser controls, we might miss it. 
+      // So slight polling is okay, but let's be careful.
+      if (window.speechSynthesis?.speaking !== speaking) {
+        setSpeaking(window.speechSynthesis?.speaking ?? false);
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-
-    return () => {
-      cancelAnimationFrame(raf);
-    };
-  }, []);
+    return () => cancelAnimationFrame(raf);
+  }, [speaking]);
 
   // Sample globe data for arcs - Multiple points across the globe
   const globeData: Position[] = useMemo(
@@ -598,10 +616,10 @@ const SpeakingGradientCircle: React.FC<{
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 24,
+        gap: "4vh", // Relative gap
         width: "100%",
-        maxWidth: "100%",
-        flexShrink: 0, // Prevent container from shrinking
+        height: "100%",
+        maxHeight: "100%",
       }}
     >
       {/* Globe Container - Responsive sizing with 1:1 aspect ratio */}
@@ -611,114 +629,22 @@ const SpeakingGradientCircle: React.FC<{
           position: "relative",
           width: baseGlobeSize,
           height: baseGlobeSize,
-          aspectRatio: "1 / 1", // Force 1:1 aspect ratio
           maxWidth: "480px",
           maxHeight: "480px",
-          minWidth: "200px",
-          minHeight: "200px",
+          aspectRatio: "1 / 1",
+          flexShrink: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          opacity: 1, // Always fully visible
+          opacity: 1,
           transition: "opacity 0.3s ease-in-out",
-          flexShrink: 0, // Prevent shrinking
         }}
       >
         <World globeConfig={globeConfig} data={globeData} />
       </div>
 
-      {/* Commented out SVG animation - replaced with globe */}
-      {/* 
-      <svg
-        viewBox="0 0 100 100"
-        width={260}
-        height={260}
-        className="speaking-circle-svg"
-        aria-hidden="true"
-        style={{
-          opacity: shouldAnimate ? 1 : 0.3,
-          transition: "opacity 0.3s ease-in-out",
-        }}
-      >
-        ... (entire SVG animation code commented out) ...
-      </svg>
-      */}
-
       {/* AI Response Text Display - Responsive height for mobile and desktop */}
       <VoiceResponseText text={propResponseText} speaking={speaking} />
-
-      <style>
-        {`
-          /* Desktop - Larger globe size */
-          @media (min-width: 1024px) {
-            .globe-wrapper {
-              width: min(clamp(320px, 30vw, 480px), calc(100vh - 300px)) !important;
-              height: min(clamp(320px, 30vw, 480px), calc(100vh - 300px)) !important;
-              max-width: 480px !important;
-              max-height: 480px !important;
-            }
-          }
-          
-          /* Tablet responsive adjustments */
-          @media (max-width: 1023px) and (min-width: 769px) {
-            .globe-wrapper {
-              width: min(clamp(260px, 44vw, 420px), calc(100vh - 300px)) !important;
-              height: min(clamp(260px, 44vw, 420px), calc(100vh - 300px)) !important;
-              max-width: 420px !important;
-              max-height: 420px !important;
-            }
-          }
-          
-          /* Mobile responsive adjustments */
-          @media (max-width: 768px) {
-            .speaking-gradient-circle-container {
-              gap: 16px !important;
-            }
-            
-            .globe-wrapper {
-              width: min(clamp(220px, 65vw, 320px), calc(100vh - 260px)) !important;
-              height: min(clamp(220px, 65vw, 320px), calc(100vh - 260px)) !important;
-              aspect-ratio: 1 / 1 !important; /* Force 1:1 aspect ratio */
-              max-width: 320px !important;
-              max-height: 320px !important;
-              min-width: 200px !important;
-              min-height: 200px !important;
-              flex-shrink: 0 !important; /* Prevent shrinking */
-            }
-            
-            .voice-overlay-text-container {
-              max-width: 100% !important;
-              padding: 12px 16px !important;
-              max-height: calc(100vh - 450px) !important;
-              min-height: 50px !important;
-            }
-          }
-          
-          @media (max-width: 480px) {
-            .speaking-gradient-circle-container {
-              gap: 12px !important;
-            }
-            
-            .globe-wrapper {
-              width: min(clamp(200px, 78vw, 280px), calc(100vh - 240px)) !important;
-              height: min(clamp(200px, 78vw, 280px), calc(100vh - 240px)) !important;
-              aspect-ratio: 1 / 1 !important; /* Force 1:1 aspect ratio */
-              max-width: 280px !important;
-              max-height: 280px !important;
-              min-width: 200px !important;
-              min-height: 200px !important;
-              flex-shrink: 0 !important; /* Prevent shrinking */
-            }
-            
-            .voice-overlay-text-container {
-              padding: 10px 12px !important;
-              max-height: calc(100vh - 380px) !important;
-              min-height: 40px !important;
-              line-height: 1.5 !important;
-            }
-          }
-        `}
-      </style>
     </div>
   );
 };

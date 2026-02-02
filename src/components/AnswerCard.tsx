@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
 import { SourceChip } from "./SourceChip";
@@ -83,7 +83,13 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
   // Check for speech synthesis support
   useEffect(() => {
-    setSpeechSupported("speechSynthesis" in window);
+    const hasSupport = "speechSynthesis" in window && typeof window.speechSynthesis !== "undefined";
+    console.log('🔊 Speech synthesis support check:', {
+      inWindow: "speechSynthesis" in window,
+      typeofCheck: typeof window.speechSynthesis,
+      hasSupport
+    });
+    setSpeechSupported(hasSupport);
   }, []);
 
   // Cleanup speech on unmount
@@ -389,9 +395,14 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     const shouldSpeak = localStorage.getItem("perle-speak-next-answer");
     if (!shouldSpeak) return;
     if (chunks.length === 0 || isLoading) return;
+    
+    console.log('🎤 Auto-speak triggered, chunks:', chunks.length, 'isLoading:', isLoading);
+    
     // consume the flag
     localStorage.removeItem("perle-speak-next-answer");
-    startVoiceOutput();
+    
+    // Set a flag for startVoiceOutput to pick up
+    localStorage.setItem("perle-trigger-voice-output", "1");
   }, [chunks, isLoading]);
 
   // Helper function to render LaTeX formulas with full mathematical symbol support
@@ -737,11 +748,31 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     });
   };
 
-  const startVoiceOutput = () => {
+  const startVoiceOutput = useCallback(() => {
+    console.log('🎤 startVoiceOutput called, speechSupported:', speechSupported, 'isSpeaking:', isSpeaking, 'chunks:', chunks.length);
+    
+    // Clear the trigger flag if it exists
+    localStorage.removeItem("perle-trigger-voice-output");
+    
+    const answerText = chunks.map((c) => c.text).join(" ");
+    console.log('🎤 Answer text length:', answerText.length);
+    
+    // Even if speech is not supported, show the text
     if (!speechSupported) {
-      // Silently fail if text-to-speech is not supported
-      // This allows voice input to work even without voice output support
-      console.log("Text-to-speech is not supported in this browser");
+      console.log("⚠️ Text-to-speech is not supported, but showing text anyway");
+      
+      // Display full text immediately
+      localStorage.setItem("perle-current-answer-text", answerText);
+      
+      // Clear after a delay
+      setTimeout(() => {
+        localStorage.removeItem("perle-current-answer-text");
+        localStorage.setItem("perle-voice-output-complete", "1");
+        setTimeout(() => {
+          localStorage.removeItem("perle-voice-output-complete");
+        }, 100);
+      }, 5000); // Show for 5 seconds
+      
       return;
     }
 
@@ -752,8 +783,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
     // Stop any existing speech
     window.speechSynthesis.cancel();
-
-    const answerText = chunks.map((c) => c.text).join(" ");
 
     // Split text into words for progressive display (preserve spaces)
     const words = answerText.split(/(\s+)/).filter((w) => w.length > 0);
@@ -874,6 +903,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       setTimeout(() => {
         localStorage.removeItem("perle-current-answer-text");
         localStorage.removeItem("perle-current-word-index");
+        // Signal that voice output has completed
+        localStorage.setItem("perle-voice-output-complete", "1");
+        // Clean up this flag after a moment
+        setTimeout(() => {
+          localStorage.removeItem("perle-voice-output-complete");
+        }, 100);
       }, 2000);
     };
 
@@ -891,7 +926,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
     synthesisRef.current = utterance;
     window.speechSynthesis.speak(utterance);
-  };
+    
+    console.log('🎤 Speech synthesis started');
+  }, [chunks, speechSupported, isSpeaking, showToast]);
 
   const stopVoiceOutput = () => {
     window.speechSynthesis.cancel();
@@ -901,6 +938,25 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     localStorage.removeItem("perle-current-word-index");
     // Note: fallbackInterval will be cleared in onend/onerror handlers
   };
+
+  // Monitor for trigger flag and start voice output when ready
+  useEffect(() => {
+    const checkTrigger = () => {
+      const shouldTrigger = localStorage.getItem("perle-trigger-voice-output");
+      if (shouldTrigger && chunks.length > 0 && !isLoading) {
+        console.log('🎤 Trigger detected, starting voice output...');
+        startVoiceOutput();
+      }
+    };
+
+    // Check immediately
+    checkTrigger();
+
+    // Also check periodically in case we missed it
+    const interval = setInterval(checkTrigger, 200);
+    
+    return () => clearInterval(interval);
+  }, [chunks, isLoading, startVoiceOutput]);
 
   // Reset video state when loading starts
   useEffect(() => {

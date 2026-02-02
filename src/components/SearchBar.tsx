@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useToast } from "../contexts/ToastContext";
-import type { LLMModel } from "../types";
+import type { LLMModel, AnswerResult } from "../types";
 import {
   FaPaperclip,
   FaFolderOpen,
@@ -44,6 +44,7 @@ interface SearchBarProps {
   isPremium?: boolean;
   onNewConversation?: () => void; // Callback to start new conversation
   onMediaGenerated?: (media: { type: 'image' | 'video'; url: string; prompt: string }) => void; // Callback when media is generated
+  answer?: AnswerResult | null;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -61,6 +62,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   selectedModel,
   setSelectedModel,
   onModelChange,
+  answer = null,
 }) => {
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
@@ -88,6 +90,45 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const [speechSupported, setSpeechSupported] = useState(false);
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
   const { showToast } = useToast();
+
+  // Monitor for voice output starting and reopen overlay if needed
+  useEffect(() => {
+    const checkVoiceOverlay = () => {
+      const shouldKeepOpen = localStorage.getItem("perle-keep-voice-overlay-open");
+      const currentAnswerText = localStorage.getItem("perle-current-answer-text");
+      const voiceComplete = localStorage.getItem("perle-voice-output-complete");
+
+      if (shouldKeepOpen || currentAnswerText || voiceComplete) {
+        console.log('🔍 Voice overlay check:', {
+          shouldKeepOpen: !!shouldKeepOpen,
+          currentAnswerText: !!currentAnswerText,
+          voiceComplete: !!voiceComplete,
+          showVoiceOverlay
+        });
+      }
+
+      // If flag is set and voice output has started (answer text exists), reopen overlay
+      if (shouldKeepOpen && currentAnswerText) {
+        console.log('✅ Reopening voice overlay for response');
+        setShowVoiceOverlay(true);
+        // Clear the flag once overlay is opened
+        localStorage.removeItem("perle-keep-voice-overlay-open");
+      }
+
+      // Auto-close overlay when voice output completes
+      if (voiceComplete && showVoiceOverlay) {
+        console.log('✅ Auto-closing voice overlay after completion');
+        setTimeout(() => {
+          setShowVoiceOverlay(false);
+        }, 1000); // Give user a moment to see the final text
+      }
+    };
+
+    // Check periodically for voice output starting/completing
+    const interval = setInterval(checkVoiceOverlay, 200);
+
+    return () => clearInterval(interval);
+  }, [showVoiceOverlay]);
   const { navigateTo } = useRouterNavigation();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -242,12 +283,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       setIsListening(false);
       // Auto-trigger search when voice recording stops using the final transcript
       if (finalTranscript.trim()) {
+        console.log('🎤 Voice input complete, transcript:', finalTranscript);
         // Show the transcript briefly before clearing
         setQuery(finalTranscript);
         // Pass the transcript directly to onSearch to avoid state timing issues
         onSearch(finalTranscript);
         // tell AnswerCard to speak the next answer
         localStorage.setItem("perle-speak-next-answer", "1");
+        console.log('✅ Set perle-speak-next-answer flag');
+        // Keep voice overlay open so the response can be shown
+        localStorage.setItem("perle-keep-voice-overlay-open", "1");
+        console.log('✅ Set perle-keep-voice-overlay-open flag');
         // Always clear the query immediately after triggering search
         setTimeout(() => {
           setQuery("");
@@ -528,15 +574,15 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
 
     const promptToUse = toolDescription.trim();
-    
+
     // Check if this is an edit request and use last generated media as reference
     let referenceImage: File | undefined = toolAttachedImages.length > 0 ? toolAttachedImages[0].file : undefined;
-    
+
     // If no reference image attached but prompt is an edit request and we have last media
     if (!referenceImage && isEditRequest(promptToUse) && lastToolsMedia) {
       console.log('🔍 Edit request detected in Tools - using previous media as reference');
       console.log(`📸 Previous media: ${lastToolsMedia.type} - "${lastToolsMedia.prompt}"`);
-      
+
       if (lastToolsMedia.type === 'image') {
         try {
           const response = await fetch(lastToolsMedia.url);
@@ -572,12 +618,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         };
         setGeneratedMedia(mediaData);
         setLastToolsMedia(mediaData); // Save for future edits
-        
+
         // Notify parent to add to conversation history
         if (onMediaGenerated) {
           onMediaGenerated(mediaData);
         }
-        
+
         showToast({
           message: referenceImage
             ? "Image generated using reference image!"
@@ -595,12 +641,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         };
         setGeneratedMedia(mediaData);
         setLastToolsMedia(mediaData); // Save for future edits
-        
+
         // Notify parent to add to conversation history
         if (onMediaGenerated) {
           onMediaGenerated(mediaData);
         }
-        
+
         showToast({
           message: referenceImage
             ? "Video generated using reference image!"
@@ -811,12 +857,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
 
     if (rejectedFiles.length > 0) {
-      const hasVideos = rejectedFiles.some(name => 
+      const hasVideos = rejectedFiles.some(name =>
         name.match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/i) !== null
       );
       const hasGifs = rejectedFiles.some(name => name.match(/\.gif$/i));
       let message = "";
-      
+
       if (hasVideos && hasGifs) {
         message = `Video and GIF files are not supported. ${rejectedFiles.length} file${rejectedFiles.length > 1 ? "s" : ""} rejected.`;
       } else if (hasVideos) {
@@ -826,7 +872,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       } else {
         message = `${rejectedFiles.length} file${rejectedFiles.length > 1 ? "s" : ""} rejected.`;
       }
-      
+
       showToast({
         message,
         type: "error",
@@ -1155,6 +1201,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       <VoiceOverlay
         isOpen={showVoiceOverlay}
         isListening={isListening}
+        responseText={answer?.chunks.map(c => c.text).join(" ") || ""}
         onToggleListening={() => {
           if (isListening) {
             stopVoiceInput();
@@ -1162,7 +1209,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             startVoiceInput();
           }
         }}
-        onClose={() => setShowVoiceOverlay(false)}
+        onClose={() => {
+          setShowVoiceOverlay(false);
+          // Clear the flag when manually closing
+          localStorage.removeItem("perle-keep-voice-overlay-open");
+        }}
       />
       <div className="row search-container">
         {/* Tools Dropdown */}
