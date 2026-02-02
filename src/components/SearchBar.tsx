@@ -537,17 +537,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       console.log('🔍 Edit request detected in Tools - using previous media as reference');
       console.log(`📸 Previous media: ${lastToolsMedia.type} - "${lastToolsMedia.prompt}"`);
       
-      // Download the last media and convert to File for reference
-      try {
-        const response = await fetch(lastToolsMedia.url);
-        const blob = await response.blob();
-        const file = new File([blob], `reference.${lastToolsMedia.type === 'image' ? 'png' : 'mp4'}`, { 
-          type: lastToolsMedia.type === 'image' ? 'image/png' : 'video/mp4' 
-        });
-        referenceImage = file;
-        console.log('✅ Using last generated media as reference for editing');
-      } catch (error) {
-        console.error('Failed to load previous media as reference:', error);
+      if (lastToolsMedia.type === 'image') {
+        try {
+          const response = await fetch(lastToolsMedia.url);
+          const blob = await response.blob();
+          const file = new File([blob], 'reference.png', { type: 'image/png' });
+          referenceImage = file;
+          console.log('✅ Using last generated image as reference for editing');
+        } catch (error) {
+          console.error('Failed to load previous image as reference:', error);
+        }
+      } else if (lastToolsMedia.type === 'video') {
+        // Video edit: backend will use the whole video as reference via File API (file_uri)
+        // Don't send a frame - backend looks up last video and passes it as reference video
+        console.log('📹 Last media was video - backend will use whole video as reference (video-to-video)');
       }
     }
 

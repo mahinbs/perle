@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { optionalAuth, authenticateToken, type AuthRequest } from '../middleware/auth.js';
 import { generateImage } from '../utils/imageGeneration.js';
-import { generateVideo, generateVideoFromImage } from '../utils/videoGeneration.js';
+import { generateVideo, generateVideoFromImage, uploadVideoToGeminiFileAPI } from '../utils/videoGeneration.js';
 import { supabase } from '../lib/supabase.js';
 import multer from 'multer';
 import { 
@@ -300,7 +300,17 @@ router.post('/generate-image', optionalAuth, upload.single('referenceImage'), as
 });
 
 // POST /api/media/generate-video - Now supports optional reference image
-router.post('/generate-video', optionalAuth, upload.single('referenceImage'), async (req: AuthRequest, res) => {
+router.post('/generate-video', optionalAuth, (req, res, next) => {
+  upload.single('referenceImage')(req, res, (err: any) => {
+    if (err) {
+      console.error('Generate-video upload error:', err.message);
+      return res.status(400).json({
+        error: err.message?.includes('image') ? 'Reference must be an image file (video not supported as reference yet)' : (err.message || 'Invalid file')
+      });
+    }
+    next();
+  });
+}, async (req: AuthRequest, res) => {
   try {
     const parse = videoSchema.safeParse(req.body);
     if (!parse.success) {
@@ -312,26 +322,37 @@ router.post('/generate-video', optionalAuth, upload.single('referenceImage'), as
 
     const { prompt, duration, aspectRatio } = parse.data;
     
-    // Check if this is an edit request and retrieve previous video/image as reference
+    // Check if this is an edit request: use WHOLE VIDEO as reference (File API file_uri) when available
     let referenceImageDataUrl: string | undefined;
+    let referenceVideoFileUri: string | undefined;
     if (req.userId && isEditRequest(prompt) && !req.file) {
-      console.log('🔍 Edit request detected - looking for previous media to use as reference...');
-      // For video editing, first try to find a previous video to extract a frame
-      // Then fallback to previous image
+      console.log('🔍 Edit request detected - looking for previous video to use as reference...');
       const lastVideo = await getLastGeneratedVideo(req.userId);
       const lastImage = await getLastGeneratedImage(req.userId);
-      
-      // Prefer using the most recent media (video or image)
-      if (lastVideo || lastImage) {
-        // For now, use last image as reference (video frame extraction would need additional logic)
-        if (lastImage) {
-          console.log(`🎨 Found previous image to use as video reference: ${lastImage.prompt}`);
-          referenceImageDataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
-          if (referenceImageDataUrl) {
-            console.log('✅ Using previous image as reference for video generation');
+      // Best practice: pass the whole video as reference (video-to-video) via File API file_uri
+      if (lastVideo) {
+        const storedUri = (lastVideo.metadata as any)?.gemini_file_uri;
+        if (storedUri) {
+          referenceVideoFileUri = storedUri;
+          console.log('✅ Using stored Gemini file_uri as reference video (video-to-video)');
+        } else {
+          try {
+            const videoRes = await fetch(lastVideo.url);
+            const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
+            referenceVideoFileUri = (await uploadVideoToGeminiFileAPI(videoBuffer)) ?? undefined;
+            if (referenceVideoFileUri) {
+              console.log('✅ Uploaded last video to File API, using as reference (video-to-video)');
+            }
+          } catch (e) {
+            console.error('Failed to get reference video file_uri:', e);
           }
         }
-      } else {
+      }
+      if (!referenceVideoFileUri && lastImage) {
+        console.log(`🎨 No video reference - using previous image as reference: ${lastImage.prompt}`);
+        referenceImageDataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
+      }
+      if (!referenceVideoFileUri && !referenceImageDataUrl) {
         console.log('⚠️ No previous media found for editing');
       }
     }
@@ -446,9 +467,9 @@ router.post('/generate-video', optionalAuth, upload.single('referenceImage'), as
     // Ensure duration is a number
     const durationNum = typeof duration === 'string' ? parseInt(duration) || 5 : duration;
     
-    // Generate video using Gemini Veo (with optional reference image)
+    // Generate video using Gemini Veo (with optional reference image or reference video file_uri)
     console.log(`🎥 Generating video with ${premiumTier} tier (${videoCount || 0}/${dailyLimit} used today)`);
-    const video = await generateVideo(prompt, durationNum, aspectRatio, referenceImageDataUrl);
+    const video = await generateVideo(prompt, durationNum, aspectRatio, referenceImageDataUrl, referenceVideoFileUri ?? undefined);
 
     if (!video) {
       return res.status(500).json({ 
@@ -492,6 +513,18 @@ router.post('/generate-video', optionalAuth, upload.single('referenceImage'), as
         const videoSizeMB = (videoBuffer.length / 1024 / 1024).toFixed(2);
         console.log(`📦 Video size: ${videoSizeMB}MB`);
         
+        // Upload to Gemini File API so we can use file_uri as reference for "make it better" (video-to-video)
+        try {
+          const geminiFileUri = await uploadVideoToGeminiFileAPI(videoBuffer) || undefined;
+          if (geminiFileUri) {
+            (res as any).locals = (res as any).locals || {};
+            (res as any).locals.geminiFileUri = geminiFileUri;
+            console.log('✅ Video uploaded to File API for future reference (video-to-video)');
+          }
+        } catch (e) {
+          console.warn('File API upload for reference failed (non-blocking):', (e as Error)?.message);
+        }
+        
         // Upload to Supabase Storage
         const fileName = `${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.mp4`;
         
@@ -522,9 +555,17 @@ router.post('/generate-video', optionalAuth, upload.single('referenceImage'), as
       }
     }
 
-    // Save to database
+    // Save to database (include gemini_file_uri when we have it for video-to-video reference)
     if (req.userId) {
       try {
+        const insertMetadata: Record<string, unknown> = {
+          model: provider === 'gemini' ? 'veo-3.1' : 'sora',
+          timestamp: new Date().toISOString(),
+          originalUrl: video.url
+        };
+        if ((res as any).locals?.geminiFileUri) {
+          insertMetadata.gemini_file_uri = (res as any).locals.geminiFileUri;
+        }
         await supabase
           .from('generated_media')
           .insert({
@@ -537,11 +578,7 @@ router.post('/generate-video', optionalAuth, upload.single('referenceImage'), as
             height: video.height,
             aspect_ratio: aspectRatio,
             duration: durationNum,
-            metadata: {
-              model: provider === 'gemini' ? 'veo-3.1' : 'sora',
-              timestamp: new Date().toISOString(),
-              originalUrl: video.url
-            }
+            metadata: insertMetadata
           });
         console.log('✅ Video saved to database');
         
@@ -572,9 +609,13 @@ router.post('/generate-video', optionalAuth, upload.single('referenceImage'), as
       }
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Video generation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const message = error?.message || 'Internal server error';
+    const isClientError = message.includes('Only image') || message.includes('file type') || message.includes('Invalid request');
+    res.status(isClientError ? 400 : 500).json({
+      error: process.env.NODE_ENV === 'development' ? message : (isClientError ? message : 'Internal server error')
+    });
   }
 });
 

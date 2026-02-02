@@ -8,6 +8,93 @@ export interface GeneratedVideo {
   duration: number;
   width: number;
   height: number;
+  /** Gemini File API URI for this video (use as reference for video-to-video / "make it better") */
+  fileUri?: string;
+}
+
+const BASE_URL = 'https://generativelanguage.googleapis.com';
+
+/**
+ * Upload video to Gemini File API and return file_uri for use as reference in video-to-video.
+ * Best practice: upload once, pass file_uri in subsequent "make it better" requests.
+ */
+export async function uploadVideoToGeminiFileAPI(videoBuffer: Buffer): Promise<string | null> {
+  const apiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
+  if (!apiKey) return null;
+
+  const numBytes = videoBuffer.length;
+  const mimeType = 'video/mp4';
+  const displayName = 'reference-video.mp4';
+
+  try {
+    // Step 1: Start resumable upload, get upload URL
+    const startRes = await fetch(`${BASE_URL}/upload/v1beta/files?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': String(numBytes),
+        'X-Goog-Upload-Header-Content-Type': mimeType,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ file: { display_name: displayName } }),
+    });
+    if (!startRes.ok) {
+      console.error('File API start upload failed:', startRes.status, await startRes.text());
+      return null;
+    }
+    const uploadUrl = startRes.headers.get('x-goog-upload-url');
+    if (!uploadUrl) {
+      console.error('File API: no x-goog-upload-url in response');
+      return null;
+    }
+
+    // Step 2: Upload bytes
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Length': String(numBytes),
+        'X-Goog-Upload-Offset': '0',
+        'X-Goog-Upload-Command': 'upload, finalize',
+      },
+      body: new Uint8Array(videoBuffer),
+    });
+    if (!uploadRes.ok) {
+      console.error('File API upload bytes failed:', uploadRes.status, await uploadRes.text());
+      return null;
+    }
+    const fileInfo = await uploadRes.json();
+    const fileUri = fileInfo?.file?.uri ?? fileInfo?.uri;
+    const fileName = fileInfo?.file?.name ?? fileInfo?.name;
+    if (!fileUri) {
+      console.error('File API: no file.uri in response', JSON.stringify(fileInfo).substring(0, 200));
+      return null;
+    }
+
+    // Step 3: For video, poll until state is ACTIVE
+    if (fileName) {
+      for (let i = 0; i < 24; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const getRes = await fetch(`${BASE_URL}/v1beta/${fileName}?key=${apiKey}`);
+        if (!getRes.ok) break;
+        const getData = await getRes.json();
+        const state = getData?.state ?? getData?.file?.state;
+        if (state === 'ACTIVE') {
+          console.log('✅ Video file ACTIVE on File API, file_uri ready for reference');
+          return fileUri;
+        }
+        if (state === 'FAILED') {
+          console.error('File API video processing FAILED');
+          return null;
+        }
+        console.log(`   File API video processing... state=${state}`);
+      }
+    }
+    return fileUri;
+  } catch (e: any) {
+    console.error('uploadVideoToGeminiFileAPI error:', e?.message || e);
+    return null;
+  }
 }
 
 // Generate video using Gemini Veo API - tries fast model first, then falls back to standard
@@ -15,7 +102,8 @@ export async function generateVideoWithGemini(
   prompt: string, 
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  referenceImageDataUrl?: string // Optional reference image for style/content guidance
+  referenceImageDataUrl?: string, // Optional reference image for style/content guidance
+  referenceVideoFileUri?: string  // Optional: file_uri from File API for video-to-video / "make it better"
 ): Promise<GeneratedVideo | null> {
   // Always use the free Gemini API key for video generation
   const apiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
@@ -54,6 +142,9 @@ export async function generateVideoWithGemini(
       if (referenceImageDataUrl && model.api === 'gemini') {
         console.log(`   📎 Using reference image for style guidance (Veo 3.1)`);
       }
+      if (referenceVideoFileUri && model.api === 'gemini') {
+        console.log(`   🎬 Using reference VIDEO (file_uri) for video-to-video / extension (Veo 3.1)`);
+      }
       console.log(`   API: ${model.api === 'gemini' ? 'Gemini API' : 'Vertex AI'}`);
       console.log('═'.repeat(60));
       
@@ -61,10 +152,15 @@ export async function generateVideoWithGemini(
       let endpoint: string;
 
       if (model.api === 'gemini') {
-         // Veo 3.1 Preview - Try multiple approaches for reference images
+         // Veo 3.1 Preview - reference image and/or reference video (file_uri)
          const instance: any = {
            prompt: prompt
          };
+         
+         // Reference VIDEO: pass whole video as reference (video-to-video / extension)
+         if (referenceVideoFileUri) {
+           instance.video = { uri: referenceVideoFileUri };
+         }
          
          if (referenceImageDataUrl) {
            let imageBase64 = referenceImageDataUrl;
@@ -251,11 +347,12 @@ export async function generateVideo(
   prompt: string,
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  referenceImageDataUrl?: string
+  referenceImageDataUrl?: string,
+  referenceVideoFileUri?: string // file_uri from File API for video-to-video / "make it better"
 ): Promise<GeneratedVideo | null> {
-  // Try Gemini Veo first (with optional reference image)
+  // Try Gemini Veo first (with optional reference image or reference video)
   try {
-    const geminiVideo = await generateVideoWithGemini(prompt, duration, aspectRatio, referenceImageDataUrl);
+    const geminiVideo = await generateVideoWithGemini(prompt, duration, aspectRatio, referenceImageDataUrl, referenceVideoFileUri);
     if (geminiVideo) {
       return geminiVideo;
     }

@@ -120,9 +120,22 @@ export async function getLastGeneratedImage(userId: string, conversationId?: str
 /**
  * Get the most recent generated video for a user (optionally within a conversation)
  */
-export async function getLastGeneratedVideo(userId: string, conversationId?: string | null): Promise<{url: string; prompt: string} | null> {
+export async function getLastGeneratedVideo(userId: string, conversationId?: string | null): Promise<{url: string; prompt: string; metadata?: Record<string, unknown> | null} | null> {
   try {
-    // Build query for conversation_history
+    // Prefer generated_media (has metadata.gemini_file_uri for video-to-video reference)
+    const { data: mediaData } = await supabase
+      .from('generated_media')
+      .select('url, prompt, metadata')
+      .eq('user_id', userId)
+      .eq('media_type', 'video')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    if (mediaData) {
+      console.log('🎥 Found last generated video in generated_media table');
+      return { url: mediaData.url, prompt: mediaData.prompt || '', metadata: mediaData.metadata as Record<string, unknown> | null };
+    }
+    // Fallback: conversation_history
     let query = supabase
       .from('conversation_history')
       .select('generated_video_url, media_prompt')
@@ -161,24 +174,6 @@ export async function getLastGeneratedVideo(userId: string, conversationId?: str
       return {
         url: historyData.generated_video_url,
         prompt: historyData.media_prompt || ''
-      };
-    }
-    
-    // Fallback to generated_media table
-    const { data: mediaData } = await supabase
-      .from('generated_media')
-      .select('url, prompt')
-      .eq('user_id', userId)
-      .eq('media_type', 'video')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-    
-    if (mediaData) {
-      console.log('🎥 Found last generated video in generated_media table');
-      return {
-        url: mediaData.url,
-        prompt: mediaData.prompt || ''
       };
     }
     
