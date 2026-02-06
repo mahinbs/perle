@@ -56,21 +56,69 @@ export async function searchWithAzureGrounding(
   }
 
   try {
-    // Enhance query with temporal context for current queries
+    // Enhance query with temporal context and specificity
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().toLocaleString('default', { month: 'long' });
+    const lowerQuery = query.toLowerCase().trim();
     
-    // Add temporal context if query contains "current", "latest", "recent", etc.
-    const temporalKeywords = ['current', 'latest', 'newest', 'recent', 'now', 'today'];
-    const needsTemporalContext = temporalKeywords.some(keyword => 
-      query.toLowerCase().includes(keyword)
-    );
+    // Add temporal context if query contains time-based keywords
+    const temporalKeywords = [
+      'current', 'latest', 'newest', 'recent', 'now', 'today', 'best', 'top',
+      'this year', 'new', 'upcoming', 'modern', 'contemporary',
+      // Misspellings
+      'currnt', 'curent', 'latst', 'lates', 'newst', 'recnt', 'todya', 'bst', 'bes'
+    ];
+    const needsTemporalContext = temporalKeywords.some(keyword => lowerQuery.includes(keyword));
+    
+    // Detect if asking about processors/chipsets specifically
+    const processorKeywords = [
+      'processor', 'cpu', 'chipset', 'chip', 'soc', 'silicon',
+      'snapdragon', 'dimensity', 'exynos', 'tensor', 'bionic',
+      'a19', 'a20', 'a18', 'a17', // Apple chips
+      'gen 4', 'gen 5', 'gen 3', // Snapdragon generations
+      // Misspellings
+      'procesor', 'processer', 'procesoor', 'prcessor', 'chipst', 'chpset',
+      'snapdragn', 'snapdrgn', 'dimensty', 'dimesity', 'exinos', 'tensr'
+    ];
+    const isProcessorQuery = processorKeywords.some(keyword => lowerQuery.includes(keyword));
+    
+    // Detect if asking about phones/devices (to add device context, not replace)
+    const phoneKeywords = [
+      'phone', 'mobile', 'smartphone', 'iphone', 'android', 'galaxy', 'pixel',
+      'oneplus', 'xiaomi', 'oppo', 'vivo', 'samsung',
+      // Misspellings
+      'phne', 'fone', 'mobil', 'mobiel', 'smartphne', 'iphne', 'andriod', 'samsng'
+    ];
+    const isPhoneQuery = phoneKeywords.some(keyword => lowerQuery.includes(keyword));
+    
+    // Detect if asking about comparisons
+    const comparisonKeywords = ['vs', 'versus', 'compare', 'comparison', 'better', 'difference', 'between'];
+    const isComparison = comparisonKeywords.some(keyword => lowerQuery.includes(keyword));
     
     let enhancedQuery = query;
     
+    // Make processor queries more specific to get chipset specs, not just phone models
+    if (isProcessorQuery) {
+      if (isPhoneQuery) {
+        // User asking about both phones and processors - focus on chipset info
+        enhancedQuery = `${query} chipset processor specifications performance`;
+      } else {
+        // Pure processor query - get detailed chipset info
+        enhancedQuery = `${query} mobile chipset specifications performance benchmarks`;
+      }
+    } else if (isPhoneQuery && needsTemporalContext) {
+      // Phone query with time context - might want specs
+      enhancedQuery = `${query} specifications features`;
+    }
+    
+    // Add comparison context
+    if (isComparison) {
+      enhancedQuery = `${enhancedQuery} detailed comparison specifications`;
+    }
+    
+    // Add temporal context for current/latest queries
     if (needsTemporalContext) {
-      // Just add the year/month context - keep it simple
-      enhancedQuery = `${query} ${currentMonth} ${currentYear}`;
+      enhancedQuery = `${enhancedQuery} ${currentMonth} ${currentYear}`;
     }
     
     console.log(`🔍 Searching with Azure Grounding with Bing for: "${enhancedQuery}"`);
@@ -93,18 +141,55 @@ export async function searchWithAzureGrounding(
     const agent = await client.createAgent(modelDeploymentName, {
       name: 'SyntraIQ-Search-Agent',
       instructions:
-        `You MUST use the Bing grounding tool to search the web and find current information.
+        `🔴🔴🔴 CRITICAL BACKGROUND - READ THIS FIRST 🔴🔴🔴
         
-        CRITICAL: You MUST call the Bing search tool for EVERY query. Do NOT answer from your own knowledge.
+        📅 TODAY'S DATE: ${currentMonth} ${currentYear}
+        📅 CURRENT MONTH: ${currentMonth}
+        📅 CURRENT YEAR: ${currentYear}
         
-        When searching for technology information (processors, phones, etc.) in ${currentYear}:
-        1. FIRST: Call the Bing tool to search the web
-        2. Use the search results to provide accurate, current information
-        3. ALWAYS include source URLs in your response
-        4. If results mention outdated products (like A17 Pro from 2023 for "latest" queries), note they are outdated
+        You are answering questions in ${currentMonth} ${currentYear}.
+        ALL "latest", "current", "newest", "recent", "best", "top" = as of ${currentMonth} ${currentYear}.
+        Prioritize ${currentYear} and late 2025 information. Data from 2024, 2023, 2022 is likely outdated.
         
-        Today's date: ${currentMonth} ${currentYear}
-        Focus on information from ${currentYear} and late 2025 for "current" or "latest" queries.`,
+        🔴🔴🔴 END BACKGROUND CONTEXT 🔴🔴🔴
+        
+        MANDATORY: You MUST call the Bing grounding tool for EVERY query. Do NOT answer from your own knowledge
+        
+        YOUR INSTRUCTIONS FOR ALL QUERIES:
+        1. ALWAYS call the Bing grounding tool FIRST - NEVER use your own knowledge
+        2. Extract information from Bing search results only
+        3. ALWAYS cite sources with URLs from search results
+        4. When multiple brands/options are in results, include ALL of them (not just one or two)
+        5. Prioritize ${currentYear} and late 2025 information over older data
+        6. If conflicting info appears, note which source is most recent
+        
+        🔴 CRITICAL: PROCESSOR vs PHONE DISTINCTION
+        
+        When user asks "what is latest mobile processors" or "best phone processors":
+        
+        THE USER WANTS CHIPSET NAMES, NOT PHONE NAMES!
+        
+        ✅ CORRECT (what user wants):
+        "Latest mobile processors (${currentMonth} ${currentYear}):
+        1. Snapdragon 8 Elite Gen 5 (Qualcomm) - Galaxy S26, OnePlus 13
+        2. Apple A19 Pro - iPhone 17 Pro/Max
+        3. MediaTek Dimensity 9500 - flagship Android
+        4. Samsung Exynos 2600 - Galaxy flagship
+        5. Google Tensor G5 - Pixel 10"
+        
+        ❌ WRONG (user does NOT want this):
+        "Latest phones (${currentMonth} ${currentYear}):
+        • Galaxy S26 series, iPhone 17e, Pixel 10a"
+        
+        EXTRACT from search results:
+        - Chipset/processor names (Snapdragon, A19 Pro, Dimensity, Exynos, Tensor)
+        - CPU/GPU specs, benchmarks, AnTuTu scores, performance
+        - Manufacturing process (3nm, 2nm)
+        - Then mention which phones use each processor
+        
+        DO NOT focus on phone model names, cameras, or phone features.
+        
+        Include ALL processor brands found in search: Apple, Qualcomm, MediaTek, Samsung, Google.`,
       tools: [bingTool.definition],
     });
 

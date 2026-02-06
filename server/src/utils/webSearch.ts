@@ -13,15 +13,26 @@ export interface SearchResult {
 export function requiresCurrentInfo(query: string): boolean {
   const lowerQuery = query.toLowerCase().trim();
   
+  // Quick check: if query is very generic (< 3 words and no tech terms), might not need search
+  const wordCount = lowerQuery.split(/\s+/).length;
+  if (wordCount <= 2) {
+    // Very short queries like "hello", "thanks" don't need search
+    const genericPhrases = ['hi', 'hello', 'hey', 'thanks', 'thank you', 'ok', 'okay', 'yes', 'no'];
+    if (genericPhrases.some(phrase => lowerQuery === phrase)) {
+      return false;
+    }
+  }
+  
   // Keywords that indicate need for current information (COMPREHENSIVE LIST + MISSPELLINGS)
   const currentInfoIndicators = [
     // Time-based indicators
     'latest', 'newest', 'current', 'recent', 'today', 'now', 'this year', 'this month', 'this week',
     'last year', 'last month', 'last week', 'yesterday', 'right now', 'at the moment',
     '2026', '2025', '2024', '2023', 'in 2026', 'in 2025', 'in 2024',
+    'up to date', 'most recent', 'as of now', 'currently', 'present', 'modern',
     // Misspellings of time-based
     'latst', 'lates', 'laest', 'newst', 'neest', 'curent', 'currnt', 'curren', 'recnt', 'resent',
-    'todya', 'toady', 'ysterday', 'yestrday',
+    'todya', 'toady', 'ysterday', 'yestrday', 'curenttly', 'presentt', 'modrn', 'modren',
     
     // Status/Release indicators
     'what is new', 'what\'s new', 'whats new', 'new release', 'just released', 'newly released',
@@ -53,10 +64,12 @@ export function requiresCurrentInfo(query: string): boolean {
     'versn', 'vrsion', 'verion',
     
     // Comparison indicators (often need current info)
-    'vs', 'versus', 'compare', 'comparison', 'better than', 'faster than',
-    'which is better', 'should i buy', 'worth it', 'worth buying',
+    'vs', 'versus', 'compare', 'comparison', 'better than', 'faster than', 'difference between',
+    'which is better', 'which is best', 'should i buy', 'should i get', 'worth it', 'worth buying',
+    'or', 'between', 'which one', 'what is better', 'what is best',
     // Misspellings
-    'compar', 'compre', 'comparisn', 'beter than', 'betr', 'fastr', 'fastre',
+    'compar', 'compre', 'comparisn', 'comparision', 'beter than', 'betr', 'fastr', 'fastre',
+    'diferrence', 'diferense', 'btween', 'betwn', 'wich', 'whch',
     
     // Availability/Market indicators
     'available', 'in stock', 'buy', 'purchase', 'order', 'pre order', 'preorder',
@@ -76,8 +89,9 @@ export function requiresCurrentInfo(query: string): boolean {
   // Topics that typically need current information (COMPREHENSIVE LIST + MISSPELLINGS)
   const currentTopics = [
     // Electronics & Technology
-    'phone', 'mobile', 'smartphone', 'iphone', 'android', 'samsung', 'google pixel',
+    'phone', 'mobile', 'smartphone', 'iphone', 'android', 'samsung', 'google pixel', 'oneplus', 'xiaomi', 'oppo', 'vivo',
     'processor', 'cpu', 'gpu', 'chipset', 'snapdragon', 'apple silicon', 'intel', 'amd', 'nvidia',
+    'dimensity', 'mediatek', 'exynos', 'tensor', 'qualcomm', 'kirin', 'bionic',
     'laptop', 'computer', 'pc', 'mac', 'macbook', 'tablet', 'ipad',
     'gadget', 'device', 'tech', 'technology', 'electronics',
     'smartwatch', 'watch', 'wearable', 'fitness tracker', 'airpods', 'earbuds', 'headphones',
@@ -90,8 +104,11 @@ export function requiresCurrentInfo(query: string): boolean {
     'phne', 'phn', 'fone', 'fon', 'phon', 'pohne', 'ophne', 'mobil', 'moblie', 'moble', 'mobiel',
     'smartphne', 'smartfone', 'smarthone', 'smrtphone', 'iphne', 'ipone', 'iphone', 'ifone', 'iphon',
     'andriod', 'androd', 'androyd', 'androi', 'samsng', 'samsun', 'samung', 'gogle', 'googl', 'gooogle',
+    'onepls', 'oneplus', 'onepluss', 'xiomi', 'xiaomi', 'xiami', 'opo', 'oppo', 'viv', 'vivo',
     'procesor', 'processer', 'procesoor', 'prcessor', 'proccessor', 'processr', 'procesro', 'proccesor',
     'chipst', 'chpset', 'chiset', 'snapdragn', 'snapdragon', 'snapdrgn', 'snapdrgon',
+    'dimensty', 'dimesity', 'dimentity', 'mediatk', 'mediatek', 'mediatec', 'exynos', 'exynoss', 'exinos',
+    'tensr', 'tensor', 'tensro', 'qualcom', 'qualcomm', 'qualcm', 'kirin', 'kirn', 'bionic', 'bionc',
     'lapto', 'laptpo', 'laptp', 'compter', 'computr', 'comuter', 'compuer',
     'macbok', 'macboo', 'macbk', 'tabl', 'tblet', 'tablte', 'ipa', 'ipad', 'ipd',
     'gadgt', 'gadet', 'devic', 'devis', 'devce', 'tecnology', 'technolgy', 'technlogy', 'tecnlogy',
@@ -294,18 +311,32 @@ export function requiresCurrentInfo(query: string): boolean {
   
   // Question patterns that often need current info
   const currentQuestionPatterns = [
-    /what.*(?:best|top|leading|fastest)/,
-    /which.*(?:better|best|recommended)/,
+    /what.*(?:best|top|leading|fastest|latest|newest|current)/,
+    /which.*(?:better|best|recommended|latest)/,
     /how much.*(?:cost|price)/,
     /when.*(?:release|launch|available)/,
     /is.*(?:out|available|released)/,
-    /has.*(?:released|launched|announced)/
+    /has.*(?:released|launched|announced)/,
+    /what is.*(?:latest|newest|best|current)/,
+    /what are.*(?:latest|newest|best|current|top)/,
+    /tell me about.*(?:latest|newest|current)/,
+    /list.*(?:latest|best|top|all)/,
+    /show me.*(?:latest|best|top)/
   ];
   if (currentQuestionPatterns.some(pattern => pattern.test(lowerQuery))) {
     // Additional check: must contain at least one current topic for these patterns
     if (hasCurrentTopic) {
       return true;
     }
+  }
+  
+  // "What is" questions about tech topics almost always need search
+  const whatIsPatterns = [
+    /^what (is|are) (the )?(latest|newest|best|current|top)/i,
+    /^what (is|are) .*(processor|phone|chipset|mobile|cpu|gpu|chip)/i,
+  ];
+  if (whatIsPatterns.some(pattern => pattern.test(lowerQuery))) {
+    return true;
   }
   
   return false;
@@ -336,32 +367,90 @@ export function formatSearchResultsForContext(results: SearchResult[]): string {
   
   const currentDate = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
   const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().toLocaleString('en-IN', { month: 'long', timeZone: 'Asia/Kolkata' });
   
   return `
 
-🌐 CURRENT WEB SEARCH RESULTS (${currentDate}):
+🔴🔴🔴 CRITICAL BACKGROUND CONTEXT 🔴🔴🔴
+
+📅 TODAY'S DATE: ${currentDate}
+📅 CURRENT MONTH: ${currentMonth}
+📅 CURRENT YEAR: ${currentYear}
+
+You are operating in ${currentMonth} ${currentYear}.
+ALL references to "latest", "current", "newest", "recent", "now" mean "as of ${currentMonth} ${currentYear}".
+Prioritize ${currentYear} and late 2025 information. Older data (2024, 2023) may be outdated.
+
+🔴🔴🔴 END BACKGROUND CONTEXT 🔴🔴🔴
+
+🌐 WEB SEARCH RESULTS (Live Bing search from ${currentDate}):
 
 ${formattedResults}
 
 CRITICAL INSTRUCTIONS:
-1. Use ONLY the above web search results to provide current, accurate information for ${currentYear}
-2. These results are from live sources powered by Microsoft Grounding with Bing as of ${currentDate}
+1. Use ONLY the above web search results to provide current, accurate information
+2. These results are from live Bing search as of ${currentDate}
 3. Always cite sources using [1], [2], [3], etc. notation from the numbered search results above
-4. ⚠️ NEVER EVER use the phrase "[Context provided]" or similar - ONLY cite numbered sources like [1], [2], etc.
-5. If you need to state a fact, it MUST come from the search results above with a [source number]
+4. ⚠️ NEVER use the phrase "[Context provided]" - ONLY cite numbered sources like [1], [2], etc.
+5. ALL facts MUST come from search results with [source number] citations
 
-⚠️ INTERPRETATION GUIDELINES FOR iPHONE QUERIES (NOT to be cited - use search results for facts):
+⚠️ CRITICAL INTERPRETATION GUIDELINES (NOT to be cited - only for interpreting search results):
 
-When interpreting search results about iPhone processors:
-- If search results mention "iPhone 17" or "A19 Pro" → that's the current chip (released Sep 2025)
-- If search results mention "iPhone 18" or "A20" → that's upcoming (not released yet, expected Sep ${currentYear})
-- If search results ONLY mention "A17 Pro" for "latest" queries → those results may be outdated (A17 Pro is from 2023)
-- When user asks "current/latest" iPhone → look for iPhone 17 or A19 Pro in search results
-- When user asks "upcoming/next" iPhone → look for iPhone 18/ iphone 18pro or A20 Pro in search results
+🔴 WHEN USER ASKS ABOUT "PROCESSORS" OR "CHIPSETS" - READ THIS CAREFULLY:
 
-REMEMBER: 
-- ALL facts must come from search results [1], [2], [3], etc.
-- Do NOT cite these guidelines
-- Do NOT use "[Context provided]"
-- ONLY cite the numbered search results above`;
+THE USER WANTS PROCESSOR/CHIPSET NAMES, NOT PHONE MODEL NAMES!
+
+✅ ANSWER WITH THESE (from search results):
+• Processor/Chipset names: "Snapdragon 8 Elite Gen 5", "Apple A19 Pro", "Dimensity 9500", "Exynos 2600", "Tensor G5"
+• Performance specs: CPU cores, GPU, benchmarks, AnTuTu scores
+• Manufacturing process: 3nm, 2nm, etc.
+• Release timeline: when each processor was announced/released
+
+❌ DO NOT ANSWER WITH THESE:
+• Phone model names: "Galaxy S26", "iPhone 17 Pro", "Pixel 10a" (these are PHONES, not PROCESSORS!)
+• Phone features: camera specs, screen size, battery
+• Only mention phone models when explaining "which phones use this processor"
+
+🔴 MANDATORY FORMAT when answering processor questions:
+
+"The latest mobile processors in ${currentMonth} ${currentYear} include:
+
+1. **[Processor Name]** by [Manufacturer] [source]
+   - Used in: [phone models that use it]
+   - Performance: [CPU/GPU specs, benchmarks]
+   - Release: [when it was announced/released]
+
+2. **[Next Processor Name]** by [Manufacturer] [source]
+   ..."
+
+🔴 BRAND BALANCE:
+- Search results contain info about Apple, Qualcomm, MediaTek, Samsung, Google processors
+- You MUST mention ALL brands found in search results
+- DO NOT present only Apple/iPhone processors
+- DO NOT skip Android chipsets (Snapdragon, Dimensity, Exynos, Tensor)
+
+🔴 GENERAL GUIDELINES FOR ALL QUERIES:
+
+1. TEMPORAL AWARENESS:
+   - Today's date: ${currentDate} (${currentMonth} ${currentYear})
+   - Interpret "latest", "current", "recent", "now" as of ${currentMonth} ${currentYear}
+   - Prioritize ${currentYear} and late 2025 information from search results
+   - If search results show conflicting years/dates, note which is most recent
+
+2. CITATION REQUIREMENTS:
+   - ALL facts MUST cite search results: [1], [2], [3], etc.
+   - NEVER use "[Context provided]" or similar phrases
+   - Only cite the numbered search results above
+   - Do NOT cite these interpretation guidelines
+
+3. COMPREHENSIVENESS:
+   - Present ALL relevant information found in search results
+   - Do NOT cherry-pick only certain brands/options
+   - If multiple brands/options are mentioned, include them ALL
+   - Present in order of prominence in search results
+
+4. ACCURACY:
+   - Use ONLY information from search results
+   - Do NOT add facts not present in search results
+   - If information is unclear/conflicting, cite multiple sources and note the discrepancy`;
 }
