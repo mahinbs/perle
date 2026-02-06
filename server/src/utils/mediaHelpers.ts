@@ -2,47 +2,238 @@ import { supabase } from '../lib/supabase.js';
 
 /**
  * Check if a prompt is asking to edit/modify existing media
+ * Uses both keyword matching AND contextual analysis
+ * 
+ * @param prompt - The current prompt from the user
+ * @param lastGeneratedPrompt - Optional: the prompt used to generate the previous image (for context)
  */
-export function isEditRequest(prompt: string): boolean {
+export function isEditRequest(prompt: string, lastGeneratedPrompt?: string): boolean {
   const lowerPrompt = prompt.toLowerCase().trim();
   
-  const editKeywords = [
-    // Direct edit commands
-    'edit', 'change', 'modify', 'update', 'alter', 'adjust',
-    'redo', 'remake', 'recreate', 'regenerate', 'rework',
+  // 1. Strong edit indicators - if ANY of these match, it's definitely an edit
+  const strongEditKeywords = [
+    // Direct references to existing media
+    'this image', 'that image', 'the image', 'this video', 'that video', 'the video',
+    'previous', 'last one', 'last image', 'last video', 'above image', 'above video',
     
+    // Explicit edit commands
+    'edit this', 'edit it', 'change this', 'change it', 'modify this', 'modify it',
+    'update this', 'update it', 'alter this', 'alter it', 'fix this', 'fix it',
+    
+    // Continuation phrases
+    'same but', 'similar but', 'like the last', 'like before', 'keep it but',
+    'keep the', 'keep this', 'instead of', 'insted of', // common typo
+  ];
+  
+  if (strongEditKeywords.some(keyword => lowerPrompt.includes(keyword))) {
+    return true;
+  }
+  
+  // 2. Moderate edit indicators - combined with context
+  const moderateEditKeywords = [
     // Quality improvements
-    'improve', 'enhance', 'refine', 'tweak', 'revise', 'polish',
-    'better', 'make better', 'look better', 'more better',
-    'upgrade', 'optimize', 'fix', 'correct',
+    'improve', 'enhance', 'better', 'make better', 'look better',
+    'upgrade', 'optimize', 'refine', 'polish',
     
-    // Variations
-    'different', 'another', 'new version', 'alternate', 'variation',
+    // Transformations (when used without "create" or "generate")
+    'make it', 'make the', 'turn it', 'turn the', 'convert it', 'convert the',
     
-    // Transformations
-    'make it', 'make the', 'turn it', 'turn the', 'convert', 'transform',
-    
-    // Additions/Removals
-    'add to', 'add more', 'remove from', 'remove the', 'replace', 'swap',
-    'put in', 'take out', 'include', 'exclude',
-    
-    // References to previous media
-    'same but', 'similar but', 'like the last', 'like before', 'like that',
-    'that image', 'that video', 'the image', 'the video', 'this image', 'this video',
-    'previous', 'last one', 'earlier', 'above', 'last image', 'last video',
+    // Additions/Removals to existing thing
+    'add to', 'add more', 'remove from', 'remove the', 'replace the',
+    'put in', 'take out',
     
     // Adjustments
     'more', 'less', 'bigger', 'smaller', 'brighter', 'darker',
     'lighter', 'heavier', 'sharper', 'softer', 'clearer',
     
-    // Style changes
-    'recolor', 'recolour', 'restyle', 'reformat',
+    // Redo commands
+    'redo', 'remake', 'recreate', 'regenerate', 'rework', 'again',
     
-    // Common phrases
-    'can you', 'could you', 'please', 'now', 'again', 'once more'
+    // Common continuation words
+    'now', 'also', 'and', 'but', 'however'
   ];
   
-  return editKeywords.some(keyword => lowerPrompt.includes(keyword));
+  const hasModerateKeyword = moderateEditKeywords.some(keyword => lowerPrompt.includes(keyword));
+  
+  // 3. Strong "new creation" indicators - these override edit detection
+  const newCreationKeywords = [
+    'generate a', 'generate an', 'generate image',
+    'create a', 'create an', 'create new',
+    'make a', 'make an', 'make new',
+    'show me a', 'show me an',
+    'draw a', 'draw an',
+    'design a', 'design an',
+  ];
+  
+  const isNewCreation = newCreationKeywords.some(keyword => lowerPrompt.includes(keyword));
+  
+  // If explicitly asking for new creation, not an edit
+  if (isNewCreation) {
+    return false;
+  }
+  
+  // 4. CONVERSATION CONTEXT: Ultra-wide detection for implicit continuations
+  // Handles cases like:
+  //   "create lion on mountain" → "remove the mountain" ✅
+  //   "logo with ABC text" → "ABC in black" ✅
+  //   "robot holding sword" → "make sword golden" ✅
+  if (lastGeneratedPrompt) {
+    const stopWords = new Set([
+      // Articles, prepositions, conjunctions
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'from', 'by',
+      // Common verbs (but NOT edit verbs)
+      'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did',
+      // Creation keywords (already filtered)
+      'create', 'generate', 'make', 'show', 'draw', 'design',
+      // Generic words
+      'image', 'picture', 'photo', 'video', 'where', 'that', 'this', 'there', 'here', 'what', 'when',
+      'very', 'much', 'more', 'some', 'any', 'all', 'can', 'will', 'would', 'should', 'could'
+    ]);
+    
+    // Extract meaningful words from BOTH prompts (nouns, adjectives, proper nouns)
+    const extractKeywords = (text: string) => 
+      text.toLowerCase()
+        .replace(/[^\w\s]/g, ' ') // Remove punctuation
+        .split(/\s+/)
+        .filter(w => w.length > 2 && !stopWords.has(w)); // Meaningful words only
+    
+    const lastKeywords = extractKeywords(lastGeneratedPrompt);
+    const currentKeywords = extractKeywords(prompt);
+    
+    // Find overlapping terms (subjects, objects, concepts)
+    const sharedTerms = lastKeywords.filter(word => 
+      currentKeywords.includes(word)
+    );
+    
+    // RULE 1: Multiple shared terms = conversation continuation
+    if (sharedTerms.length >= 2) {
+      console.log(`🔗 Conversation continuation: "${prompt}" shares [${sharedTerms.join(', ')}] with previous`);
+      return true;
+    }
+    
+    // RULE 2: Very short prompt (≤ 10 words) + 1 shared term = likely an edit instruction
+    const wordCount = prompt.trim().split(/\s+/).length;
+    if (wordCount <= 10 && sharedTerms.length >= 1) {
+      console.log(`🔗 Short instruction: "${prompt}" references "${sharedTerms[0]}" from previous (${wordCount} words)`);
+      return true;
+    }
+    
+    // RULE 3: Starts with action verb + any shared term = edit command
+    // "remove the mountain", "change lion color", "add more trees"
+    const actionStartsEdit = /^(remove|delete|add|change|replace|swap|move|shift|rotate|flip|resize|scale)/i;
+    if (actionStartsEdit.test(prompt) && sharedTerms.length >= 1) {
+      console.log(`🔗 Action on previous element: "${prompt}" (acting on: ${sharedTerms[0]})`);
+      return true;
+    }
+    
+    // RULE 4: Modifying descriptions of previous subjects
+    // "make it darker", "change color to blue", "in black and gold"
+    const modificationPatterns = [
+      /^(make|turn|set|put|get)/i,
+      /^(color|colour|size|position|background|foreground|style|font|text)/i,
+      /(darker|lighter|bigger|smaller|brighter|taller|wider|thicker)/i,
+    ];
+    const hasModificationIntent = modificationPatterns.some(pattern => pattern.test(prompt));
+    
+    if (hasModificationIntent && (sharedTerms.length >= 1 || wordCount <= 12)) {
+      console.log(`🔗 Modification instruction: "${prompt}" (likely editing previous)`);
+      return true;
+    }
+    
+    // RULE 5: Single-word or two-word commands are almost always edits
+    // "darker", "remove mountain", "blue background"
+    if (wordCount <= 3 && currentKeywords.length >= 1) {
+      console.log(`🔗 Ultra-short command: "${prompt}" (${wordCount} words - assuming edit)`);
+      return true;
+    }
+    
+    // RULE 6: Pronoun references without explicit "create new" = edit
+    // "it should be blue", "make them golden", "change its position"
+    const pronounPattern = /(^|\s)(it|its|them|their|that|those)(\s|$)/i;
+    if (pronounPattern.test(prompt)) {
+      console.log(`🔗 Pronoun reference: "${prompt}" refers to previous context`);
+      return true;
+    }
+    
+    // RULE 7: Color/style changes without "create" = editing previous
+    // "in black color", "with gold background", "blue and red"
+    const colorWords = ['red', 'blue', 'green', 'yellow', 'black', 'white', 'gold', 'silver', 
+                        'orange', 'purple', 'pink', 'brown', 'gray', 'grey', 'cyan', 'magenta',
+                        'dark', 'light', 'bright', 'transparent', 'opaque'];
+    const styleWords = ['color', 'colour', 'background', 'foreground', 'style', 'font', 
+                        'texture', 'gradient', 'shadow', 'glow', 'effect'];
+    
+    const hasColorOrStyle = [...colorWords, ...styleWords].some(word => lowerPrompt.includes(word));
+    
+    if (hasColorOrStyle && !isNewCreation && wordCount <= 15) {
+      console.log(`🔗 Color/style change: "${prompt}" (likely styling previous image)`);
+      return true;
+    }
+    
+    // RULE 8: Comparative/incremental changes = editing
+    // "more detailed", "less bright", "slightly darker", "a bit bigger"
+    const comparativePattern = /(more|less|slightly|bit|little|much|very|too|enough|better|worse)/i;
+    if (comparativePattern.test(prompt) && wordCount <= 12) {
+      console.log(`🔗 Incremental change: "${prompt}" (comparative adjustment)`);
+      return true;
+    }
+    
+    // RULE 9: Negations/corrections = editing
+    // "not dark", "without mountain", "no background", "don't show text"
+    const negationPattern = /(not|no|without|dont|don't|remove|delete|hide|exclude)/i;
+    if (negationPattern.test(prompt) && (sharedTerms.length >= 1 || wordCount <= 10)) {
+      console.log(`🔗 Negation/removal: "${prompt}" (removing/changing previous element)`);
+      return true;
+    }
+    
+    // RULE 10: "Just [description]" or prepositional phrases = style edit
+    // "just the lion", "in portrait mode", "with better lighting", "without text"
+    const justOrPrepPattern = /^(just|only|with|without|in|on|at|using|via)/i;
+    if (justOrPrepPattern.test(prompt) && wordCount <= 8) {
+      console.log(`🔗 Prepositional/filter phrase: "${prompt}" (modifying previous)`);
+      return true;
+    }
+    
+    // RULE 11: Partial word matching for typos (e.g., "mountian" ≈ "mountain")
+    // If current prompt has words that are 80%+ similar to previous words
+    const similarityThreshold = 0.75;
+    const levenshteinDistance = (a: string, b: string): number => {
+      if (a.length === 0) return b.length;
+      if (b.length === 0) return a.length;
+      const matrix = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(null));
+      for (let i = 0; i <= a.length; i++) matrix[0][i] = i;
+      for (let j = 0; j <= b.length; j++) matrix[j][0] = j;
+      for (let j = 1; j <= b.length; j++) {
+        for (let i = 1; i <= a.length; i++) {
+          const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
+          matrix[j][i] = Math.min(
+            matrix[j][i - 1] + 1,
+            matrix[j - 1][i] + 1,
+            matrix[j - 1][i - 1] + indicator
+          );
+        }
+      }
+      return matrix[b.length][a.length];
+    };
+    
+    for (const currentWord of currentKeywords) {
+      for (const lastWord of lastKeywords) {
+        if (currentWord.length >= 4 && lastWord.length >= 4) {
+          const maxLen = Math.max(currentWord.length, lastWord.length);
+          const distance = levenshteinDistance(currentWord, lastWord);
+          const similarity = 1 - (distance / maxLen);
+          
+          if (similarity >= similarityThreshold && similarity < 1.0) {
+            console.log(`🔗 Fuzzy match: "${currentWord}" ≈ "${lastWord}" (${(similarity * 100).toFixed(0)}% similar)`);
+            return true;
+          }
+        }
+      }
+    }
+  }
+  
+  // Otherwise, moderate keywords indicate edit
+  return hasModerateKeyword;
 }
 
 /**
