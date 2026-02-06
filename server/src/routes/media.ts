@@ -65,18 +65,23 @@ router.post('/generate-image', optionalAuth, upload.single('referenceImage'), as
     
     // Check if this is an edit request and retrieve previous image as reference
     let referenceImageDataUrl: string | undefined;
-    if (req.userId && isEditRequest(prompt) && !req.file) {
-      console.log('🔍 Edit request detected - looking for previous image to use as reference...');
+    if (req.userId && !req.file) {
+      // Get last image first to check context
       const lastImage = await getLastGeneratedImage(req.userId);
-      if (lastImage) {
+      
+      // Check if this is an edit (with conversation context)
+      const isEdit = isEditRequest(prompt, lastImage?.prompt);
+      
+      if (isEdit && lastImage) {
+        console.log('🔍 Edit request detected - looking for previous image to use as reference...');
         console.log(`🎨 Found previous image to edit: ${lastImage.prompt}`);
         // Download and convert to data URL for AI reference
         referenceImageDataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
         if (referenceImageDataUrl) {
           console.log('✅ Using previous image as reference for editing');
         }
-      } else {
-        console.log('⚠️ No previous image found for editing');
+      } else if (isEdit && !lastImage) {
+        console.log('⚠️ Edit request detected but no previous image found');
       }
     }
     
@@ -325,35 +330,45 @@ router.post('/generate-video', optionalAuth, (req, res, next) => {
     // Check if this is an edit request: use WHOLE VIDEO as reference (File API file_uri) when available
     let referenceImageDataUrl: string | undefined;
     let referenceVideoFileUri: string | undefined;
-    if (req.userId && isEditRequest(prompt) && !req.file) {
-      console.log('🔍 Edit request detected - looking for previous video to use as reference...');
+    if (req.userId && !req.file) {
+      // Get last media first to check context
       const lastVideo = await getLastGeneratedVideo(req.userId);
       const lastImage = await getLastGeneratedImage(req.userId);
-      // Best practice: pass the whole video as reference (video-to-video) via File API file_uri
-      if (lastVideo) {
-        const storedUri = (lastVideo.metadata as any)?.gemini_file_uri;
-        if (storedUri) {
-          referenceVideoFileUri = storedUri;
-          console.log('✅ Using stored Gemini file_uri as reference video (video-to-video)');
-        } else {
-          try {
-            const videoRes = await fetch(lastVideo.url);
-            const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
-            referenceVideoFileUri = (await uploadVideoToGeminiFileAPI(videoBuffer)) ?? undefined;
-            if (referenceVideoFileUri) {
-              console.log('✅ Uploaded last video to File API, using as reference (video-to-video)');
+      
+      // Check if this is an edit (with conversation context from last media)
+      const lastMediaPrompt = lastVideo?.prompt || lastImage?.prompt;
+      const isEdit = isEditRequest(prompt, lastMediaPrompt);
+      
+      if (isEdit) {
+        console.log('🔍 Edit request detected - looking for previous video to use as reference...');
+        // Best practice: pass the whole video as reference (video-to-video) via File API file_uri
+        if (lastVideo) {
+          const storedUri = (lastVideo.metadata as any)?.gemini_file_uri;
+          if (storedUri) {
+            referenceVideoFileUri = storedUri;
+            console.log('✅ Using stored Gemini file_uri as reference video (video-to-video)');
+          } else {
+            try {
+              const videoRes = await fetch(lastVideo.url);
+              const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
+              referenceVideoFileUri = (await uploadVideoToGeminiFileAPI(videoBuffer)) ?? undefined;
+              if (referenceVideoFileUri) {
+                console.log('✅ Uploaded last video to File API, using as reference (video-to-video)');
+              }
+            } catch (e) {
+              console.error('Failed to get reference video file_uri:', e);
             }
-          } catch (e) {
-            console.error('Failed to get reference video file_uri:', e);
           }
         }
-      }
-      if (!referenceVideoFileUri && lastImage) {
-        console.log(`🎨 No video reference - using previous image as reference: ${lastImage.prompt}`);
-        referenceImageDataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
-      }
-      if (!referenceVideoFileUri && !referenceImageDataUrl) {
-        console.log('⚠️ No previous media found for editing');
+        if (!referenceVideoFileUri && lastImage) {
+          console.log(`🎨 No video reference - using previous image as reference: ${lastImage.prompt}`);
+          referenceImageDataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
+        }
+        if (!referenceVideoFileUri && !referenceImageDataUrl) {
+          console.log('⚠️ No previous media found for editing');
+        }
+      } else if (isEdit && !lastVideo && !lastImage) {
+        console.log('⚠️ Edit request detected but no previous media found');
       }
     }
     
