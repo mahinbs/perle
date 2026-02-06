@@ -50,8 +50,8 @@ const imageToVideoSchema = z.object({
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).optional().default('16:9')
 });
 
-// POST /api/media/generate-image - Now supports optional reference image
-router.post('/generate-image', optionalAuth, upload.single('referenceImage'), async (req: AuthRequest, res) => {
+// POST /api/media/generate-image - REQUIRES AUTHENTICATION (plan-based limits enforced)
+router.post('/generate-image', authenticateToken, upload.single('referenceImage'), async (req: AuthRequest, res) => {
   try {
     const parse = imageSchema.safeParse(req.body);
     if (!parse.success) {
@@ -304,8 +304,8 @@ router.post('/generate-image', optionalAuth, upload.single('referenceImage'), as
   }
 });
 
-// POST /api/media/generate-video - Now supports optional reference image
-router.post('/generate-video', optionalAuth, (req, res, next) => {
+// POST /api/media/generate-video - REQUIRES AUTHENTICATION (plan-based limits enforced)
+router.post('/generate-video', authenticateToken, (req, res, next) => {
   upload.single('referenceImage')(req, res, (err: any) => {
     if (err) {
       console.error('Generate-video upload error:', err.message);
@@ -635,7 +635,7 @@ router.post('/generate-video', optionalAuth, (req, res, next) => {
 });
 
 // POST /api/media/generate-video-from-image - Generate video from uploaded image
-router.post('/generate-video-from-image', optionalAuth, upload.single('image'), async (req: AuthRequest, res) => {
+router.post('/generate-video-from-image', authenticateToken, upload.single('image'), async (req: AuthRequest, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Image file is required' });
