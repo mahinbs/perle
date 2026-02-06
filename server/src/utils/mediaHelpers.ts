@@ -119,19 +119,21 @@ export function isEditRequest(prompt: string, lastGeneratedPrompt?: string): boo
     }
     
     // RULE 3: Starts with action verb + any shared term = edit command
-    // "remove the mountain", "change lion color", "add more trees"
-    const actionStartsEdit = /^(remove|delete|add|change|replace|swap|move|shift|rotate|flip|resize|scale)/i;
+    // Images: "remove the mountain", "change lion color", "add more trees"
+    // Videos: "speed up the video", "trim the end", "add music", "loop it"
+    const actionStartsEdit = /^(remove|delete|add|change|replace|swap|move|shift|rotate|flip|resize|scale|speed|slow|trim|cut|crop|extend|loop|reverse|mute|unmute|zoom|pan|fade|transition)/i;
     if (actionStartsEdit.test(prompt) && sharedTerms.length >= 1) {
       console.log(`🔗 Action on previous element: "${prompt}" (acting on: ${sharedTerms[0]})`);
       return true;
     }
     
     // RULE 4: Modifying descriptions of previous subjects
-    // "make it darker", "change color to blue", "in black and gold"
+    // Images: "make it darker", "change color to blue", "in black and gold"
+    // Videos: "make it faster", "extend to 10 seconds", "add background music"
     const modificationPatterns = [
-      /^(make|turn|set|put|get)/i,
-      /^(color|colour|size|position|background|foreground|style|font|text)/i,
-      /(darker|lighter|bigger|smaller|brighter|taller|wider|thicker)/i,
+      /^(make|turn|set|put|get|extend|shorten)/i,
+      /^(color|colour|size|position|background|foreground|style|font|text|duration|length|speed|tempo|volume|audio|sound|music)/i,
+      /(darker|lighter|bigger|smaller|brighter|taller|wider|thicker|faster|slower|longer|shorter|louder|quieter)/i,
     ];
     const hasModificationIntent = modificationPatterns.some(pattern => pattern.test(prompt));
     
@@ -155,42 +157,57 @@ export function isEditRequest(prompt: string, lastGeneratedPrompt?: string): boo
       return true;
     }
     
-    // RULE 7: Color/style changes without "create" = editing previous
-    // "in black color", "with gold background", "blue and red"
+    // RULE 7: Color/style/timing changes without "create" = editing previous
+    // Images: "in black color", "with gold background", "blue and red"
+    // Videos: "5 seconds", "with music", "in slow motion", "loop 3 times"
     const colorWords = ['red', 'blue', 'green', 'yellow', 'black', 'white', 'gold', 'silver', 
                         'orange', 'purple', 'pink', 'brown', 'gray', 'grey', 'cyan', 'magenta',
                         'dark', 'light', 'bright', 'transparent', 'opaque'];
     const styleWords = ['color', 'colour', 'background', 'foreground', 'style', 'font', 
                         'texture', 'gradient', 'shadow', 'glow', 'effect'];
+    const videoWords = ['seconds', 'second', 'duration', 'speed', 'slow', 'fast', 'motion',
+                        'loop', 'repeat', 'music', 'audio', 'sound', 'volume', 'mute',
+                        'fps', 'framerate', 'smooth', 'cinematic', 'zoom', 'pan'];
     
-    const hasColorOrStyle = [...colorWords, ...styleWords].some(word => lowerPrompt.includes(word));
+    const hasColorOrStyle = [...colorWords, ...styleWords, ...videoWords].some(word => lowerPrompt.includes(word));
     
     if (hasColorOrStyle && !isNewCreation && wordCount <= 15) {
-      console.log(`🔗 Color/style change: "${prompt}" (likely styling previous image)`);
+      console.log(`🔗 Color/style/timing change: "${prompt}" (likely modifying previous media)`);
       return true;
     }
     
     // RULE 8: Comparative/incremental changes = editing
-    // "more detailed", "less bright", "slightly darker", "a bit bigger"
-    const comparativePattern = /(more|less|slightly|bit|little|much|very|too|enough|better|worse)/i;
+    // Images: "more detailed", "less bright", "slightly darker", "a bit bigger"
+    // Videos: "faster", "longer", "smoother", "twice as long"
+    const comparativePattern = /(more|less|slightly|bit|little|much|very|too|enough|better|worse|faster|slower|longer|shorter|smoother|twice|half|double)/i;
     if (comparativePattern.test(prompt) && wordCount <= 12) {
       console.log(`🔗 Incremental change: "${prompt}" (comparative adjustment)`);
       return true;
     }
     
     // RULE 9: Negations/corrections = editing
-    // "not dark", "without mountain", "no background", "don't show text"
-    const negationPattern = /(not|no|without|dont|don't|remove|delete|hide|exclude)/i;
+    // Images: "not dark", "without mountain", "no background", "don't show text"
+    // Videos: "no sound", "mute audio", "remove watermark", "cut the ending"
+    const negationPattern = /(not|no|without|dont|don't|remove|delete|hide|exclude|mute|silence|cut|trim)/i;
     if (negationPattern.test(prompt) && (sharedTerms.length >= 1 || wordCount <= 10)) {
       console.log(`🔗 Negation/removal: "${prompt}" (removing/changing previous element)`);
       return true;
     }
     
     // RULE 10: "Just [description]" or prepositional phrases = style edit
-    // "just the lion", "in portrait mode", "with better lighting", "without text"
+    // Images: "just the lion", "in portrait mode", "with better lighting", "without text"
+    // Videos: "in slow motion", "with background music", "at 2x speed"
     const justOrPrepPattern = /^(just|only|with|without|in|on|at|using|via)/i;
     if (justOrPrepPattern.test(prompt) && wordCount <= 8) {
       console.log(`🔗 Prepositional/filter phrase: "${prompt}" (modifying previous)`);
+      return true;
+    }
+    
+    // RULE 10.5: Numeric timing changes (VIDEO-SPECIFIC)
+    // "5 seconds", "10s", "2x speed", "extend to 8 seconds", "make it 15 seconds long"
+    const numericTimingPattern = /(\d+\s*(second|seconds|sec|s|minute|minutes|min|m))|(\d+x\s*speed)|(extend|make|set|change).*(to|into)\s*\d+/i;
+    if (numericTimingPattern.test(prompt) && wordCount <= 10) {
+      console.log(`🔗 Numeric timing change: "${prompt}" (adjusting video duration/speed)`);
       return true;
     }
     
