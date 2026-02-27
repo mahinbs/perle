@@ -371,11 +371,11 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       height: "28px", // Match w-7 h-7 buttons
     },
     medium: {
-      padding: "6px 12px",
+      padding: "4px 8px",
       fontSize: "var(--font-sm)",
       iconSize: 8,
       gap: 6,
-      minWidth: 120,
+      minWidth: 80,
       indicatorSize: 12,
       height: "auto",
     },
@@ -572,7 +572,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               }}
             />
             <span className="font-medium">
-              {selectedModelInfo?.name || "Select Model"}
+              {selectedModelInfo?.name.slice(0, 4).concat('...') || "Select Model"}
             </span>
           </div>
           <span style={{ fontSize: currentSize.fontSize, opacity: 0.7 }}>

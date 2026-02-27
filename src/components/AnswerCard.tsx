@@ -395,12 +395,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     const shouldSpeak = localStorage.getItem("perle-speak-next-answer");
     if (!shouldSpeak) return;
     if (chunks.length === 0 || isLoading) return;
-    
+
     console.log('🎤 Auto-speak triggered, chunks:', chunks.length, 'isLoading:', isLoading);
-    
+
     // consume the flag
     localStorage.removeItem("perle-speak-next-answer");
-    
+
     // Set a flag for startVoiceOutput to pick up
     localStorage.setItem("perle-trigger-voice-output", "1");
   }, [chunks, isLoading]);
@@ -438,7 +438,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       // match[5] = ```math...``` block
       const isBlock = !!(match[2] || match[3] || match[5]);
       const formula = match[1] || match[2] || match[3] || match[4] || match[5];
-      
+
       if (formula) {
         try {
           const html = katex.renderToString(formula.trim(), {
@@ -461,7 +461,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 key={`math-${key++}`}
                 dangerouslySetInnerHTML={{ __html: html }}
                 className="katex-display"
-                style={{ 
+                style={{
                   margin: '20px 0',
                   overflowX: 'auto',
                   overflowY: 'hidden',
@@ -478,7 +478,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 key={`math-${key++}`}
                 dangerouslySetInnerHTML={{ __html: html }}
                 className="katex"
-                style={{ 
+                style={{
                   display: 'inline-block',
                   margin: '0 3px',
                   verticalAlign: 'middle',
@@ -750,20 +750,20 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
   const startVoiceOutput = useCallback(() => {
     console.log('🎤 startVoiceOutput called, speechSupported:', speechSupported, 'isSpeaking:', isSpeaking, 'chunks:', chunks.length);
-    
+
     // Clear the trigger flag if it exists
     localStorage.removeItem("perle-trigger-voice-output");
-    
+
     const answerText = chunks.map((c) => c.text).join(" ");
     console.log('🎤 Answer text length:', answerText.length);
-    
+
     // Even if speech is not supported, show the text
     if (!speechSupported) {
       console.log("⚠️ Text-to-speech is not supported, but showing text anyway");
-      
+
       // Display full text immediately
       localStorage.setItem("perle-current-answer-text", answerText);
-      
+
       // Clear after a delay
       setTimeout(() => {
         localStorage.removeItem("perle-current-answer-text");
@@ -772,7 +772,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           localStorage.removeItem("perle-voice-output-complete");
         }, 100);
       }, 5000); // Show for 5 seconds
-      
+
       return;
     }
 
@@ -926,7 +926,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
     synthesisRef.current = utterance;
     window.speechSynthesis.speak(utterance);
-    
+
     console.log('🎤 Speech synthesis started');
   }, [chunks, speechSupported, isSpeaking, showToast]);
 
@@ -954,7 +954,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
     // Also check periodically in case we missed it
     const interval = setInterval(checkTrigger, 200);
-    
+
     return () => clearInterval(interval);
   }, [chunks, isLoading, startVoiceOutput]);
 
@@ -968,10 +968,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
   if (isLoading) {
     return (
-      <div className="card" style={{ padding: 18 }}>
+      <div className="" style={{ padding: 18 }}>
         <div className="sub text-sm" style={{ marginBottom: 10 }}>
           Syntra<span className="text-[var(--accent)]">IQ</span>
         </div>
+        {query && (
+          <div className="my-7 text-2xl font-bold">
+            {query}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <div className="w-10 h-10" style={{ position: 'relative' }}>
             {showVideoFallback ? (
@@ -1110,35 +1115,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             borderBottom: "1px solid var(--border)",
           }}
         >
-          <div
-            onClick={() => {
-              if (onQueryEdit) {
-                setShowEditModal(true);
-              }
-            }}
-            style={{
-              fontSize: "var(--font-xl)",
-              fontWeight: 600,
-              lineHeight: "32px",
-              color: "var(--text)",
-              wordBreak: "break-word",
-              cursor: onQueryEdit ? "pointer" : "default",
-              padding: "8px 12px",
-              borderRadius: "8px",
-              transition: "background-color 0.2s ease",
-            }}
-            onMouseEnter={(e) => {
-              if (onQueryEdit) {
-                e.currentTarget.style.backgroundColor = "var(--border)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-            title={onQueryEdit ? "Click to edit query" : undefined}
-          >
-            {query}
-          </div>
+
           {attachments && attachments.length > 0 && (
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 12 }}>
               {attachments.map((file) => (
@@ -1146,8 +1123,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                   key={file.id}
                   style={{
                     position: "relative",
-                    width: 60,
-                    height: 60,
+                    width: "clamp(60px, 20vw, 100px)",
+                    height: "clamp(60px, 20vw, 100px)",
                     borderRadius: 8,
                     overflow: "hidden",
                     border: "1px solid var(--border)"
@@ -1208,6 +1185,35 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               </div>
             </div>
           )}
+          <div
+            onClick={() => {
+              if (onQueryEdit) {
+                setShowEditModal(true);
+              }
+            }}
+            style={{
+              fontSize: "var(--font-xl)",
+              fontWeight: 600,
+              lineHeight: "32px",
+              color: "var(--text)",
+              wordBreak: "break-word",
+              cursor: onQueryEdit ? "pointer" : "default",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              transition: "background-color 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (onQueryEdit) {
+                e.currentTarget.style.backgroundColor = "var(--border)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
+            title={onQueryEdit ? "Click to edit query" : undefined}
+          >
+            {query}
+          </div>
         </div>
       )}
 
@@ -1463,7 +1469,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                   document.body.removeChild(link);
                   // Clean up the blob URL after a delay
                   setTimeout(() => URL.revokeObjectURL(url), 100);
-                  
+
                   showToast({
                     message: `Downloaded ${file.file.name}`,
                     type: "success",

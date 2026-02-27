@@ -48,11 +48,10 @@ export const Header: React.FC = () => {
           </div> */}
           <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
             <button
-              className={`btn-ghost btn-shadow active !font-bold font-ubuntu`}
+              className="active !font-bold font-ubuntu backdrop-blur-md bg-white/10 hover:bg-white/20 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-white !py-2 !px-4 cursor-pointer"
               onClick={() => navigateTo("/ai-friend")}
               aria-label="AI Friend"
               style={{
-                padding: "6px 10px",
                 fontSize: "var(--font-sm)",
                 minHeight: 36,
               }}
@@ -61,11 +60,10 @@ export const Header: React.FC = () => {
             </button>
 
             <button
-              className={`btn-ghost btn-shadow active !font-bold font-ubuntu`}
+              className="active !font-bold font-ubuntu backdrop-blur-md bg-white/10 hover:bg-white/20 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-white !py-2 !px-4 cursor-pointer"
               onClick={() => navigateTo("/ai-psychology")}
               aria-label="AI Psychology"
               style={{
-                padding: "6px 10px",
                 fontSize: "var(--font-sm)",
                 minHeight: 36,
               }}
