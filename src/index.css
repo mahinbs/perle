@@ -153,6 +153,28 @@ body,
   overflow-x: hidden;
 }
 
+:root {
+  /* Shared semantic tokens used by components (light theme) */
+  --card-bg: var(--card);
+  --bg-secondary: #f0ece5;
+  --bg-tertiary: #e4ddcf;
+  --text-primary: var(--text);
+  --text-secondary: var(--sub);
+  --primary: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Shared semantic tokens used by components (dark theme) */
+    --card-bg: var(--card);
+    --bg-secondary: #151515;
+    --bg-tertiary: #1b1b1b;
+    --text-primary: var(--text);
+    --text-secondary: #9a9a9a;
+    --primary: var(--accent);
+  }
+}
+
 body {
   background: var(--bg);
   color: var(--text);

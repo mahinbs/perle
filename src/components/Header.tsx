@@ -48,7 +48,7 @@ export const Header: React.FC = () => {
           </div> */}
           <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
             <button
-              className="active !font-bold font-ubuntu backdrop-blur-md bg-black/10 dark:bg-white/10 hover:bg-white/20 border border-yellow-500/30 dark:border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-[2px] rounded-lg dark:text-white !py-2 !px-4 cursor-pointer"
+              className="active !font-bold font-ubuntu backdrop-blur-md bg-yellow-500/10 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border border-yellow-500/35 dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 !py-2 !px-2 cursor-pointer"
               onClick={() => navigateTo("/ai-friend")}
               aria-label="AI Friend"
               style={{
@@ -60,7 +60,7 @@ export const Header: React.FC = () => {
             </button>
 
             <button
-              className="active !font-bold font-ubuntu backdrop-blur-md bg-black/10 dark:bg-white/10 hover:bg-white/20 border border-yellow-500/30 dark:border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-[2px] rounded-lg dark:text-white !py-2 !px-4 cursor-pointer"
+              className="active !font-bold font-ubuntu backdrop-blur-md bg-yellow-500/10 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border border-yellow-500/35 dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 !py-2 !px-2 cursor-pointer"
               onClick={() => navigateTo("/ai-psychology")}
               aria-label="AI Psychology"
               style={{

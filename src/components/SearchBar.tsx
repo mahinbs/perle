@@ -1388,7 +1388,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <style>{`.search-tools-scroll::-webkit-scrollbar { display: none; }`}</style>
                 {!isPremium && (
                   <button
-                    className="btn-ghost btn-shadow"
+                    className="btn-ghost btn-shadow !border-yellow-600 !text-yellow-600"
                     onClick={() => navigateTo("/pricing")}
                     style={{
                       padding: "6px 10px",
@@ -1398,8 +1398,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       flexShrink: 0,
                       borderRadius: "20px",
                       background: "var(--card)",
-                      border: "1px solid #cce3ff",
-                      color: "#007AFF",
                       fontWeight: 500,
                     }}
                   >

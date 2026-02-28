@@ -138,7 +138,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       <div
         className={`
           fixed lg:absolute top-0 left-0 h-screen
-          w-80 bg-gradient-to-b from-[var(--card-bg)] to-[var(--bg-secondary)]
+          w-80 bg-gradient-to-b from-[var(--card)] to-[var(--bg)]
           border-r border-[var(--border)] shadow-2xl
           flex flex-col transition-transform duration-300 ease-in-out z-40
           backdrop-blur-sm
@@ -152,13 +152,13 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         }}
       >
         {/* Header */}
-        <div className="p-4 border-b border-[var(--border)] bg-[var(--card-bg)] bg-opacity-80 backdrop-blur-sm">
+        <div className="p-4 border-b border-[var(--border)] bg-[var(--card)] bg-opacity-80 backdrop-blur-sm">
           <div className="flex items-center justify-between gap-3 mb-3">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Conversations</h2>
+            <h2 className="text-lg font-semibold text-[var(--text)]">Conversations</h2>
             {/* Mobile Close Button */}
             <button
               onClick={onToggle}
-              className="lg:hidden p-2 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors duration-200 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="lg:hidden p-2 rounded-lg hover:bg-[var(--card)] transition-colors duration-200 text-[var(--sub)] hover:text-[var(--text)]"
               aria-label="Close sidebar"
             >
               <FaTimes size={18} />
@@ -174,20 +174,20 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         </div>
 
         {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto p-3 bg-[var(--bg-secondary)] bg-opacity-30">
+        <div className="flex-1 overflow-y-auto p-3 bg-[var(--bg)] bg-opacity-30">
           {isLoading ? (
             <div className="flex items-center justify-center p-8">
-              <div className="text-[var(--text-secondary)]">
+              <div className="text-[var(--sub)]">
                 <div className="animate-pulse">Loading...</div>
               </div>
             </div>
           ) : conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-center">
-              <div className="p-4 rounded-full bg-[var(--bg-tertiary)] mb-4">
-                <FaComments size={32} className="text-[var(--text-secondary)] opacity-50" />
+              <div className="p-4 rounded-full bg-[var(--card)] mb-4">
+                <FaComments size={32} className="text-[var(--sub)] opacity-50" />
               </div>
-              <p className="text-[var(--text-primary)] font-medium">No conversations yet</p>
-              <p className="text-sm mt-2 text-[var(--text-secondary)]">Click "New Chat" to start</p>
+              <p className="text-[var(--text)] font-medium">No conversations yet</p>
+              <p className="text-sm mt-2 text-[var(--sub)]">Click "New Chat" to start</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -195,13 +195,13 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                 <div
                   key={conv.id}
                   onClick={() => onSelectConversation(conv.id)}
-                  className={`
+                    className={`
                     group relative p-4 rounded-xl cursor-pointer
                     transition-all duration-200 shadow-sm
                     ${
                       activeConversationId === conv.id
-                        ? 'bg-[var(--primary)] bg-opacity-15 border-2 border-[var(--primary)] shadow-md'
-                        : 'bg-[var(--card-bg)] hover:bg-[var(--bg-tertiary)] border border-[var(--border)] hover:border-[var(--border)] hover:shadow-md'
+                        ? 'bg-[var(--accent)] bg-opacity-15 border-2 border-[var(--accent)] shadow-md'
+                        : 'bg-[var(--card)] hover:bg-[var(--bg)] border border-[var(--border)] hover:border-[var(--border)] hover:shadow-md'
                     }
                   `}
                 >
@@ -212,14 +212,14 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                           text-sm font-semibold truncate mb-1
                           ${
                             activeConversationId === conv.id
-                              ? 'text-[var(--primary)]'
-                              : 'text-[var(--text-primary)]'
+                              ? 'text-[var(--accent)]'
+                              : 'text-[var(--text)]'
                           }
                         `}
                       >
                         {conv.title}
                       </h4>
-                      <p className="text-xs text-[var(--text-secondary)]">
+                      <p className="text-xs text-[var(--sub)]">
                         {formatDate(conv.updated_at)}
                       </p>
                     </div>
@@ -231,7 +231,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                         opacity-0 group-hover:opacity-100
                         p-2 rounded-lg hover:bg-red-500 hover:bg-opacity-20
                         transition-all duration-200
-                        text-[var(--text-secondary)] hover:text-red-500
+                        text-[var(--sub)] hover:text-red-500
                         flex-shrink-0
                       "
                       aria-label="Delete conversation"
@@ -246,8 +246,8 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         </div>
 
         {/* Footer Info */}
-        <div className="p-4 border-t border-[var(--border)] bg-[var(--card-bg)] bg-opacity-80 backdrop-blur-sm">
-          <p className="text-xs text-[var(--text-secondary)] font-medium">
+        <div className="p-4 border-t border-[var(--border)] bg-[var(--card)] bg-opacity-80 backdrop-blur-sm">
+          <p className="text-xs text-[var(--sub)] font-medium">
             {conversations.length} conversation{conversations.length !== 1 ? 's' : ''}
           </p>
         </div>
