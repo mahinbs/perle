@@ -399,18 +399,18 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
         isMobileView
           ? undefined
           : (e) => {
-              e.preventDefault();
-              handleModelSelect(model.id);
-            }
+            e.preventDefault();
+            handleModelSelect(model.id);
+          }
       }
       onTouchStart={isMobileView ? handleScrollStart : undefined}
       onTouchMove={isMobileView ? handleScrollMove : undefined}
       onTouchEnd={
         isMobileView
           ? (e) => {
-              handleScrollEnd();
-              handleModelButtonClick(model.id, e);
-            }
+            handleScrollEnd();
+            handleModelButtonClick(model.id, e);
+          }
           : undefined
       }
       onClick={isMobileView ? undefined : () => handleModelSelect(model.id)}
@@ -541,7 +541,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       )}
       <div ref={dropdownRef} style={{ position: "relative" }}>
         <button
-          className="btn-ghost btn-shadow !border-[#dfb768]"
+          className="btn-ghost btn-shadow !border-[#dfb768] max-md:!h-[34px] max-md:!min-h-[34px] max-md:!py-0 max-md:!px-[8px]"
           onClick={() => setIsOpen(!isOpen)}
           disabled={disabled}
           style={{

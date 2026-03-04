@@ -12,80 +12,46 @@ export const Header: React.FC = () => {
   return (
     <>
       <header
-        className="row header-container"
+        className="row header-container !gap-3"
         style={{
           justifyContent: "space-between",
           alignItems: "center",
           paddingBlock: "8px",
-          flexWrap: "wrap",
-          gap: "8px",
+          flexWrap: "nowrap",
         }}
       >
         <div
-          className="row header-left"
+          className="row header-left items-center justify-between w-full"
           style={{
-            gap: 6,
-            alignItems: "center",
+            gap: "clamp(2px, 1vw, 12px)",
             flexShrink: 0,
-            justifyContent: "space-between",
-            width: "100%",
+            padding: 0,
           }}
         >
-          {/* <div
-            className="row"
-            style={{
-              gap: 6,
-              alignItems: "center",
-            }}
-          >
-            <div
-              className="h1 header-title"
-              style={{ cursor: "pointer", fontSize: "var(--font-2xl)" }}
-              onClick={() => navigateTo("/")}
-            >
-              Syntra<span className="text-gold -ml-2">IQ</span> <Dot />
-            </div>
-          </div> */}
-          <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
+          <div className="flex items-center" style={{ gap: "clamp(2px, 1vw, 12px)", flexShrink: 0 }}>
             <button
-              className="active !font-bold font-ubuntu backdrop-blur-md bg-yellow-500/10 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border border-yellow-500/35 dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 !py-2 !px-2 cursor-pointer"
+              className="active !font-bold font-ubuntu backdrop-blur-md bg-black/5 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border !border-[#dfb768] dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 px-2 md:px-3 text-[14px] md:text-[14px] h-[32px] md:h-[40px] flex items-center justify-center cursor-pointer whitespace-nowrap"
               onClick={() => navigateTo("/ai-friend")}
               aria-label="AI Friend"
-              style={{
-                fontSize: "var(--font-sm)",
-                minHeight: 36,
-              }}
             >
               AI Friend
             </button>
 
             <button
-              className="active !font-bold font-ubuntu backdrop-blur-md bg-yellow-500/10 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border border-yellow-500/35 dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 !py-2 !px-2 cursor-pointer"
+              className="active !font-bold font-ubuntu backdrop-blur-md bg-black/5 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border !border-[#dfb768] dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 px-2 md:px-3 text-[14px] md:text-[14px] h-[32px] md:h-[40px] flex items-center justify-center cursor-pointer whitespace-nowrap"
               onClick={() => navigateTo("/ai-psychology")}
               aria-label="AI Psychology"
-              style={{
-                fontSize: "var(--font-sm)",
-                minHeight: 36,
-              }}
             >
               AI Psychology
             </button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center" style={{ gap: "clamp(2px, 1vw, 8px)" }}>
             <button
-              className={`btn-ghost btn-shadow !border-[#dfb768] ${isActive("/discover") ? "active" : ""}`}
+              className={`btn-ghost btn-shadow !border-[#dfb768] p-1 flex items-center justify-center h-[32px] w-[32px] md:h-[40px] md:w-[48px] ${isActive("/discover") ? "active" : ""}`}
               onClick={() => navigateTo("/discover")}
               aria-label="Discover"
-              style={{
-                padding: 4,
-                minHeight: 42,
-                minWidth: 48,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
             >
-              <span className="discover-icon" aria-hidden="true">
+              <span className="discover-icon scale-[0.8] md:scale-100" aria-hidden="true">
                 <img
                   src="https://res.cloudinary.com/dknafpppp/image/upload/v1759865727/home-based-medical-care-bringing-healthcare-to-your-doorstep_tgkhkw.png"
                   alt=""
@@ -97,50 +63,14 @@ export const Header: React.FC = () => {
               </span>
             </button>
             <button
-              className={`btn-ghost btn-shadow !border-[#dfb768] ${isActive("/profile") ? "active" : ""}`}
+              className={`btn-ghost btn-shadow !border-[#dfb768] p-1 flex items-center justify-center h-[32px] w-[32px] md:h-[40px] md:w-[48px] ${isActive("/profile") ? "active" : ""}`}
               onClick={() => navigateTo("/profile")}
               aria-label="Profile"
-              style={{
-                padding: 6,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: 40,
-                minWidth: 48,
-              }}
             >
-              <FaUserCircle className="min-w-6 min-h-6" size={33} />
+              <FaUserCircle className="w-[18px] h-[18px] md:w-[24px] md:h-[24px]" />
             </button>
           </div>
         </div>
-
-        {/* <div className="row header-right" style={{ gap: 5, flexShrink: 0 }}>
-          <button
-            className={`btn-ghost btn-shadow active`}
-            onClick={() => navigateTo("/ai-friend")}
-            aria-label="AI Friend"
-            style={{
-              padding: "6px 10px",
-              fontSize: "var(--font-md)",
-              minHeight: 36,
-            }}
-          >
-            AI Friend
-          </button>
-
-          <button
-            className={`btn-ghost btn-shadow active`}
-            onClick={() => navigateTo("/")}
-            aria-label="Home"
-            style={{
-              padding: "6px 10px",
-              fontSize: "var(--font-md)",
-              minHeight: 36,
-            }}
-          >
-            AI Psychology
-          </button>
-        </div> */}
       </header>
       <style>
         {`

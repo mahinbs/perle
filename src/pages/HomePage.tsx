@@ -540,7 +540,7 @@ export default function HomePage() {
       />
 
       {/* Main Content - ORIGINAL LAYOUT */}
-      <div className="container flex flex-col justify-between h-full">
+      <div className="container !px-2 flex flex-col justify-between h-full">
         <Header />
 
         <>
@@ -556,8 +556,8 @@ export default function HomePage() {
             {/* Render all answers in conversation history */}
             {conversationHistory.map((prevAnswer, index) => {
               // Determine if this conversation was loaded from sidebar
-              // If activeConversationId matches lastLoadedConversationIdRef, all items are from old conversation
-              const isFromLoadedConversation = activeConversationId === lastLoadedConversationIdRef.current;
+              // If activeConversationId matches lastLoadedConversationIdRef (and isn't null), all items are from old conversation
+              const isFromLoadedConversation = Boolean(lastLoadedConversationIdRef.current) && activeConversationId === lastLoadedConversationIdRef.current;
               const isLastItem = index === conversationHistory.length - 1;
 
               // Skip typewriter if:

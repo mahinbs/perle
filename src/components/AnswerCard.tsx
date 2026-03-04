@@ -969,11 +969,11 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   if (isLoading) {
     return (
       <div className="" style={{ padding: 18 }}>
-        <div className="sub text-sm" style={{ marginBottom: 10 }}>
+        {/* <div className="sub text-sm" style={{ marginBottom: 10 }}>
           Syntra<span className="text-[var(--accent)]">IQ</span>
-        </div>
+        </div> */}
         {query && (
-          <div className="my-7 text-2xl font-bold">
+          <div className="my-7 text-2xl font-bold text-end">
             {query}
           </div>
         )}
@@ -984,7 +984,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 src={loadingGif}
                 loading="eager"
                 alt="loading"
-                className="rounded-full w-full h-full object-cover"
+                className="rounded-full w-full h-full object-cover dark:invert"
                 style={{ display: 'block' }}
               />
             ) : (
@@ -1105,10 +1105,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   }
 
   return (
-    <div className="card" style={{ padding: 18 }}>
+    <div className="card !bg-transparent !border-none !shadow-none" style={{ padding: 18 }}>
       {/* Display the searched query prominently */}
       {query && (
-        <div
+        <div className=""
           style={{
             marginBottom: 20,
             paddingBottom: 16,
@@ -1202,6 +1202,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               borderRadius: "8px",
               transition: "background-color 0.2s ease",
             }}
+            className="text-end"
             onMouseEnter={(e) => {
               if (onQueryEdit) {
                 e.currentTarget.style.backgroundColor = "var(--border)";
@@ -1232,16 +1233,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             gap: 8,
           }}
         >
-          <div
+          {/* <div
             style={{
               fontSize: "var(--font-sm)",
               fontWeight: 500,
               color: "var(--sub)",
             }}
           >
-            {/* Answer */}
             Syntra<span className="text-[var(--accent)]">IQ</span>
-          </div>
+          </div> */}
           {/* {mode && (
             <span className="chip" style={{
               fontSize: 'var(--font-sm)',
