@@ -1,34 +1,65 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { IoClose, IoSparklesOutline } from "react-icons/io5";
+import { IoClose } from "react-icons/io5";
+import { FaCheck, FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 
 const plans = [
+  // {
+  //   id: "free",
+  //   name: "Free",
+  //   shortName: "Free",
+  //   price: "₹0/mo",
+  //   description: "Get started with SyntraIQ at no cost.",
+  //   perks: [
+  //     { text: "Gemini Lite model only", included: true },
+  //     { text: "5 messages of conversation memory", included: true },
+  //     { text: "3 image generations/day", included: true },
+  //     { text: "Video generation", included: false },
+  //     { text: "Spaces & prompts", included: true },
+  //     { text: "10 MB file uploads (images, PDFs, docs)", included: true },
+  //     { text: "Search conversation history (10 messages)", included: true },
+  //     { text: "All AI models (GPT-4o, Claude, Grok, etc.)", included: false },
+  //   ],
+  //   cta: "Current Plan",
+  //   disabled: true,
+  // },
   {
     id: "pro",
     name: "Upgrade to IQ Pro",
     shortName: "IQ Pro",
-    price: "₹399.00/mo",
+    price: "₹399/mo",
     description:
-      "Perfect for creators and strategists who need faster answers, longer conversations, and richer exports.",
+      "For creators and power users who need faster answers, more memory, and richer content creation.",
     perks: [
-      "Priority access to SyntraIQ models",
-      "Unlimited saved Spaces and prompts",
-      "Advanced file analysis up to 200 MB",
+      { text: "All AI models — GPT-4o, Claude, Gemini, Grok & more", included: true },
+      { text: "20 messages of deep conversation memory", included: true },
+      { text: "Unlimited image generation", included: true },
+      { text: "Video generation — up to 6 videos/day", included: true },
+      { text: "Unlimited saved Spaces & prompts", included: true },
+      { text: "10 MB file uploads (images, PDFs, docs)", included: true },
+      { text: "50 messages retained per search conversation", included: true },
+      { text: "Toggle auto-renewal anytime", included: true },
     ],
     cta: "Get IQ Pro",
+    highlighted: false,
   },
   {
     id: "max",
     name: "Upgrade to IQ Max",
     shortName: "IQ Max",
-    price: "₹899.00/mo",
+    price: "₹899/mo",
     description:
-      "Built for teams running mission-critical workflows with the highest limits and premium support.",
+      "Built for teams and power users who demand the absolute highest limits and premium support.",
     perks: [
-      "Highest message and upload limits",
-      "Real-time collaboration in shared Spaces",
-      "White-glove onboarding & priority support",
+      { text: "Everything in IQ Pro", included: true },
+      { text: "All AI models — including latest releases", included: true },
+      { text: "Unlimited image generation", included: true },
+      { text: "Video generation — up to 12 videos/day (2× Pro)", included: true },
+      { text: "Unlimited saved Spaces & prompts", included: true },
+      { text: "10 MB file uploads (images, PDFs, docs)", included: true },
+      { text: "50 messages retained per search conversation", included: true },
+      { text: "Priority access & support", included: true },
     ],
     cta: "Get IQ Max",
     highlighted: true,
@@ -41,7 +72,7 @@ export default function SubscriptionPage() {
   const initialPlanId = searchParams.get("plan") || plans[0].id;
   const [selectedPlanId, setSelectedPlanId] = useState(initialPlanId);
 
-  const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
+  const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[1];
 
   return (
     <div className="fixed inset-0 bg-[var(--bg)] text-[var(--text)] z-50 flex flex-col p-4 pt-[calc(16px+var(--safe-area-top))] pb-[calc(16px+var(--safe-area-bottom))]">
@@ -56,40 +87,50 @@ export default function SubscriptionPage() {
       </div>
 
       {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="h1 justify-center mb-4 text-[40px] tracking-[-1px]">
+      <div className="text-center mb-6">
+        <h1 className="h1 justify-center mb-3 text-[40px] tracking-[-1px]">
           Syntra<span className="text-gold">IQ</span>
         </h1>
-        <div className="sub text-[var(--font-lg)] max-w-[85%] mx-auto text-[var(--text)] font-medium leading-[1.4]">
-          Introducing SyntraIQ
-          <br />
-          The most powerful AI model.
-        </div>
+        <p className="sub text-[var(--font-md)] font-medium leading-[1.4]">
+          {selectedPlan.description}
+        </p>
       </div>
 
-      {/* Features - Scrollable Fixed Height */}
+      {/* Features List — Scrollable */}
       <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-5 px-4 pb-[260px]">
-          {selectedPlan.perks
-            .map((perk, index) => (
-              <div
-                key={index}
-                className="flex items-start gap-4 text-[var(--font-lg)]"
-              >
-                <IoSparklesOutline
-                  size={24}
-                  className="min-w-[24px] mt-[2px] text-[var(--text)]"
+        <div className="flex flex-col gap-4 px-2 pb-[280px]">
+          {selectedPlan.perks.map((perk, index) => (
+            <div key={index} className="flex items-start gap-4 text-[var(--font-md)]">
+              {perk.included ? (
+                <FaCheck
+                  size={16}
+                  className="min-w-[16px] mt-[3px]"
+                  style={{ color: "var(--accent)", flexShrink: 0 }}
                 />
-                <span>{perk}</span>
-              </div>
-            ))}
+              ) : (
+                <FaTimes
+                  size={16}
+                  className="min-w-[16px] mt-[3px]"
+                  style={{ color: "var(--border)", flexShrink: 0 }}
+                />
+              )}
+              <span
+                style={{
+                  lineHeight: 1.5,
+                  color: perk.included ? "var(--text)" : "var(--sub)",
+                }}
+              >
+                {perk.text}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Bottom Actions Sheet */}
-      <div className="absolute bottom-0 left-0 right-0 px-4 py-6 pb-[calc(16px+var(--safe-area-bottom))] bg-gradient-to-t from-[var(--bg)] via-[var(--bg)] to-transparent z-10 flex flex-col gap-4 pointer-events-none">
+      <div className="absolute bottom-0 left-0 right-0 px-4 py-6 pb-[calc(16px+var(--safe-area-bottom))] bg-gradient-to-t from-[var(--bg)] via-[var(--bg)] to-transparent z-10 flex flex-col gap-4">
         {/* Plan Selector */}
-        <div className="grid grid-cols-2 gap-3 overflow-x-auto pb-1 scrollbar-none pointer-events-auto">
+        <div className="grid grid-cols-2 gap-2">
           {plans.map((plan) => {
             const isSelected = selectedPlanId === plan.id;
             return (
@@ -98,7 +139,7 @@ export default function SubscriptionPage() {
                 onClick={() => setSelectedPlanId(plan.id)}
                 className={`flex-none w-full border rounded-[18px] p-4 cursor-pointer flex flex-col justify-between h-[130px] transition-all duration-200 shadow-[0_4px_12px_rgba(0,0,0,0.05)] ${isSelected
                   ? "border-2 border-[var(--text)] bg-[var(--card)]"
-                  : "border border-[var(--border)]"
+                  : "border border-[var(--border)] backdrop-blur-[1.5px]"
                   }`}
               >
                 <div className="font-bold text-[var(--font-lg)] leading-[1.2]">
@@ -113,8 +154,23 @@ export default function SubscriptionPage() {
         </div>
 
         {/* CTA Button */}
-        <button className="btn w-full rounded-full bg-[var(--text)] text-[var(--bg)] h-14 text-[var(--font-lg)] shadow-[0_4px_12px_rgba(0,0,0,0.1)] pointer-events-auto">
+        <button
+          className="btn w-full rounded-full h-14 text-[var(--font-lg)] shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
+          style={{
+            background: "var(--text)",
+            color: "var(--bg)",
+            cursor: "pointer",
+          }}
+        >
           {selectedPlan.cta}
+        </button>
+
+        {/* Restore link */}
+        <button
+          className="text-center text-[var(--sub)] underline text-[var(--font-sm)] bg-transparent border-none cursor-pointer"
+          onClick={() => console.log("Restore subscription clicked")}
+        >
+          Restore subscription
         </button>
       </div>
     </div>

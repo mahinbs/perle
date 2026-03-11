@@ -563,7 +563,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             style={{
               marginTop: result.length > 0 ? 12 : 0,
               marginBottom: 12,
-              paddingLeft: 20,
+              paddingLeft: 5,
               listStyle: 'none',
             }}
           >
@@ -576,7 +576,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     marginBottom: 8,
                     lineHeight: 1.7,
                     display: 'flex',
-                    gap: 10,
+                    gap: 5,
                   }}
                 >
                   <span style={{ flexShrink: 0, color: 'var(--accent)', fontWeight: 600 }}>
@@ -1105,7 +1105,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   }
 
   return (
-    <div className="card !bg-transparent !border-none !shadow-none" style={{ padding: 18 }}>
+    <div className="card !bg-transparent !border-none !shadow-none" style={{ padding: 5 }}>
       {/* Display the searched query prominently */}
       {query && (
         <div className=""

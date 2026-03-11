@@ -5,7 +5,6 @@ import { LoginForm } from "../components/LoginForm";
 import { SignupForm } from "../components/SignupForm";
 import { GoogleIcon } from "../assets/icons/GoogleIcon";
 import { UpgradeCard } from "../components/UpgradeCard";
-import earth from "../assets/images/earth.png";
 import {
   login,
   signup,
@@ -15,9 +14,24 @@ import {
   setUserData,
   getAuthHeaders,
   removeAuthToken,
-  type User
+  type User,
 } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
+import {
+  FaBug,
+  FaInfoCircle,
+  FaLock,
+  FaFileAlt,
+  FaQuestionCircle,
+  FaStar,
+  FaSync,
+  FaTrashAlt,
+  FaPuzzlePiece,
+  FaFileExport,
+  FaBook,
+  FaSignOutAlt,
+  } from "react-icons/fa";
+import earthVideo from "../assets/earth.mp4";
 
 const API_URL = import.meta.env.VITE_API_URL as string | undefined;
 
@@ -28,17 +42,25 @@ export default function ProfilePage() {
   const [showLogin, setShowLogin] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [authError, setAuthError] = useState('');
+  const [authError, setAuthError] = useState("");
   const [userSettings, setUserSettings] = useState<User | null>(null);
-  const [searchHistory, setSearchHistory] = useState<Array<{ id: string; query: string; mode: string; timestamp: number; created_at: string }>>([]);
+  const [searchHistory, setSearchHistory] = useState<
+    Array<{
+      id: string;
+      query: string;
+      mode: string;
+      timestamp: number;
+      created_at: string;
+    }>
+  >([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [updatingSetting, setUpdatingSetting] = useState<string | null>(null);
   const [showEditProfile, setShowEditProfile] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editDp, setEditDp] = useState('');
-  const [editPersonality, setEditPersonality] = useState('');
-  const [editGender, setEditGender] = useState('');
-  const [editAge, setEditAge] = useState('');
+  const [editName, setEditName] = useState("");
+  const [editDp, setEditDp] = useState("");
+  const [editPersonality, setEditPersonality] = useState("");
+  const [editGender, setEditGender] = useState("");
+  const [editAge, setEditAge] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [uploadingPicture, setUploadingPicture] = useState(false);
@@ -51,7 +73,7 @@ export default function ProfilePage() {
 
     try {
       const response = await fetch(`${API_URL}/api/profile`, {
-        method: 'GET',
+        method: "GET",
         headers: getAuthHeaders(),
       });
 
@@ -80,7 +102,7 @@ export default function ProfilePage() {
         }
       }
     } catch (error) {
-      console.error('Failed to fetch profile:', error);
+      console.error("Failed to fetch profile:", error);
       // Fallback to token verification
       const verifiedUser = await verifyToken();
       if (verifiedUser) {
@@ -114,7 +136,7 @@ export default function ProfilePage() {
     setIsLoadingHistory(true);
     try {
       const response = await fetch(`${API_URL}/api/search/history?limit=50`, {
-        method: 'GET',
+        method: "GET",
         headers: getAuthHeaders(),
       });
 
@@ -132,7 +154,7 @@ export default function ProfilePage() {
         setSearchHistory(history || []);
       }
     } catch (error) {
-      console.error('Failed to fetch search history:', error);
+      console.error("Failed to fetch search history:", error);
     } finally {
       setIsLoadingHistory(false);
     }
@@ -147,55 +169,59 @@ export default function ProfilePage() {
 
   const handleLogin = async (email: string, password: string) => {
     setIsLoading(true);
-    setAuthError('');
+    setAuthError("");
 
     try {
       const response = await login(email, password);
       setIsAuthenticated(true);
       if (response.user) {
         setUserSettings(response.user as any);
-        
+
         // Show plan information on login
         const user = response.user as any;
-        if (user.premiumTier && user.premiumTier !== 'free' && user.isPremium) {
-          const planName = user.premiumTier === 'pro' ? 'Pro' : 'Max';
-          const endDate = user.subscription?.endDate 
+        if (user.premiumTier && user.premiumTier !== "free" && user.isPremium) {
+          const planName = user.premiumTier === "pro" ? "Pro" : "Max";
+          const endDate = user.subscription?.endDate
             ? new Date(user.subscription.endDate).toLocaleDateString()
             : null;
-          
+
           showToast({
-            message: endDate 
+            message: endDate
               ? `Welcome back! You're on ${planName} Plan (expires ${endDate})`
               : `Welcome back! You're on ${planName} Plan`,
-            type: 'success',
-            duration: 4000
+            type: "success",
+            duration: 4000,
           });
         } else {
           showToast({
             message: "Welcome back! You're on Free Plan",
-            type: 'success',
-            duration: 3000
+            type: "success",
+            duration: 3000,
           });
         }
       }
       setShowLogin(false);
       setShowSignup(false);
     } catch (error: any) {
-      const errorMessage = error.message || 'Invalid email or password';
+      const errorMessage = error.message || "Invalid email or password";
       setAuthError(errorMessage);
       showToast({
         message: errorMessage,
-        type: 'error',
-        duration: 5000
+        type: "error",
+        duration: 5000,
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSignup = async (name: string, email: string, password: string) => {
+  const handleSignup = async (
+    name: string,
+    email: string,
+    password: string,
+  ) => {
     setIsLoading(true);
-    setAuthError('');
+    setAuthError("");
 
     try {
       const response = await signup(name, email, password);
@@ -203,15 +229,17 @@ export default function ProfilePage() {
       // Check if verification is required
       if (response.requiresVerification) {
         // Save email for verification page
-        localStorage.setItem('perle-verification-email', response.email || '');
+        localStorage.setItem("perle-verification-email", response.email || "");
         // Show success toast
         showToast({
-          message: response.message || 'Please check your email for the verification code',
-          type: 'success',
-          duration: 5000
+          message:
+            response.message ||
+            "Please check your email for the verification code",
+          type: "success",
+          duration: 5000,
         });
         // Navigate to verification page
-        navigateTo('/verify', { email: response.email || '' });
+        navigateTo("/verify", { email: response.email || "" });
         return;
       }
 
@@ -223,27 +251,28 @@ export default function ProfilePage() {
       setShowLogin(false);
       setShowSignup(false);
       showToast({
-        message: 'Account created successfully!',
-        type: 'success'
+        message: "Account created successfully!",
+        type: "success",
       });
     } catch (error: any) {
       // Show validation errors in toast if present (don't show form error)
       if (error.validationErrors && Array.isArray(error.validationErrors)) {
-        const validationMessage = error.validationErrors.join('. ');
+        const validationMessage = error.validationErrors.join(". ");
         // Don't set authError - only show toast
         showToast({
           message: validationMessage,
-          type: 'error',
-          duration: 6000
+          type: "error",
+          duration: 6000,
         });
       } else {
         // For non-validation errors, show both toast and form error
-        const errorMessage = error.message || 'Signup failed. Please try again.';
+        const errorMessage =
+          error.message || "Signup failed. Please try again.";
         setAuthError(errorMessage);
         showToast({
           message: errorMessage,
-          type: 'error',
-          duration: 5000
+          type: "error",
+          duration: 5000,
         });
       }
     } finally {
@@ -255,14 +284,17 @@ export default function ProfilePage() {
     try {
       await logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
     }
     setIsAuthenticated(false);
     setUserSettings(null);
     navigateTo("/");
   };
 
-  const handleSettingChange = async (key: string, value: boolean | string | number | null) => {
+  const handleSettingChange = async (
+    key: string,
+    value: boolean | string | number | null,
+  ) => {
     if (!API_URL || !isAuthenticated || updatingSetting) return;
 
     setUpdatingSetting(key);
@@ -274,29 +306,29 @@ export default function ProfilePage() {
     }
 
     const updates: any = {};
-    if (key === 'darkMode') {
+    if (key === "darkMode") {
       updates.darkMode = value;
-    } else if (key === 'notifications') {
+    } else if (key === "notifications") {
       updates.notifications = value;
-    } else if (key === 'searchHistory') {
+    } else if (key === "searchHistory") {
       updates.searchHistory = value;
-    } else if (key === 'voiceSearch') {
+    } else if (key === "voiceSearch") {
       updates.voiceSearch = value;
-    } else if (key === 'name') {
+    } else if (key === "name") {
       updates.name = value;
-    } else if (key === 'dp') {
+    } else if (key === "dp") {
       updates.dp = value;
-    } else if (key === 'personality') {
+    } else if (key === "personality") {
       updates.personality = value;
-    } else if (key === 'gender') {
+    } else if (key === "gender") {
       updates.gender = value;
-    } else if (key === 'age') {
+    } else if (key === "age") {
       updates.age = value;
     }
 
     try {
       const response = await fetch(`${API_URL}/api/profile`, {
-        method: 'PUT',
+        method: "PUT",
         headers: getAuthHeaders(),
         body: JSON.stringify(updates),
       });
@@ -306,24 +338,25 @@ export default function ProfilePage() {
         setUserSettings(updatedProfile);
         setUserData(updatedProfile); // Save to localStorage
         const fieldNames: Record<string, string> = {
-          darkMode: 'Dark mode',
-          notifications: 'Notifications',
-          searchHistory: 'Search history',
-          voiceSearch: 'Voice search',
-          name: 'Name',
-          dp: 'Display picture',
-          personality: 'Personality',
-          gender: 'Gender',
-          age: 'Age'
+          darkMode: "Dark mode",
+          notifications: "Notifications",
+          searchHistory: "Search history",
+          voiceSearch: "Voice search",
+          name: "Name",
+          dp: "Display picture",
+          personality: "Personality",
+          gender: "Gender",
+          age: "Age",
         };
         const fieldName = fieldNames[key] || key;
-        const message = typeof value === 'boolean' 
-          ? `${fieldName} ${value ? 'enabled' : 'disabled'}`
-          : `${fieldName} updated`;
+        const message =
+          typeof value === "boolean"
+            ? `${fieldName} ${value ? "enabled" : "disabled"}`
+            : `${fieldName} updated`;
         showToast({
           message,
-          type: 'success',
-          duration: 2000
+          type: "success",
+          duration: 2000,
         });
         // Refresh profile to ensure all data is synced
         await fetchProfile();
@@ -333,19 +366,19 @@ export default function ProfilePage() {
           setUserSettings({ ...userSettings, [key]: previousValue });
         }
         showToast({
-          message: 'Failed to update setting. Please try again.',
-          type: 'error'
+          message: "Failed to update setting. Please try again.",
+          type: "error",
         });
       }
     } catch (error) {
-      console.error('Failed to update setting:', error);
+      console.error("Failed to update setting:", error);
       // Revert on error
       if (userSettings) {
         setUserSettings({ ...userSettings, [key]: previousValue });
       }
       showToast({
-        message: 'Failed to update setting. Please try again.',
-        type: 'error'
+        message: "Failed to update setting. Please try again.",
+        type: "error",
       });
     } finally {
       setUpdatingSetting(null);
@@ -358,7 +391,7 @@ export default function ProfilePage() {
     setIsExporting(true);
     try {
       const response = await fetch(`${API_URL}/api/profile/export`, {
-        method: 'GET',
+        method: "GET",
         headers: getAuthHeaders(),
       });
 
@@ -375,31 +408,33 @@ export default function ProfilePage() {
         const data = await response.json();
 
         // Create downloadable JSON file
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(data, null, 2)], {
+          type: "application/json",
+        });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        const a = document.createElement("a");
         a.href = url;
-        a.download = `perle-data-export-${new Date().toISOString().split('T')[0]}.json`;
+        a.download = `perle-data-export-${new Date().toISOString().split("T")[0]}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
         showToast({
-          message: 'Data exported successfully!',
-          type: 'success'
+          message: "Data exported successfully!",
+          type: "success",
         });
       } else {
         showToast({
-          message: 'Failed to export data. Please try again.',
-          type: 'error'
+          message: "Failed to export data. Please try again.",
+          type: "error",
         });
       }
     } catch (error) {
-      console.error('Export error:', error);
+      console.error("Export error:", error);
       showToast({
-        message: 'Failed to export data. Please try again.',
-        type: 'error'
+        message: "Failed to export data. Please try again.",
+        type: "error",
       });
     } finally {
       setIsExporting(false);
@@ -411,21 +446,21 @@ export default function ProfilePage() {
 
     if (
       !confirm(
-        "Are you sure you want to delete your account? This action cannot be undone.\n\nYou'll be asked to confirm with your password."
+        "Are you sure you want to delete your account? This action cannot be undone.\n\nYou'll be asked to confirm with your password.",
       )
     ) {
       return;
     }
 
     // Ask for password confirmation
-    const password = prompt('Please enter your password to confirm deletion:');
+    const password = prompt("Please enter your password to confirm deletion:");
     if (!password) {
       return;
     }
 
     try {
       const response = await fetch(`${API_URL}/api/profile`, {
-        method: 'DELETE',
+        method: "DELETE",
         headers: getAuthHeaders(),
         body: JSON.stringify({ password }),
       });
@@ -445,11 +480,11 @@ export default function ProfilePage() {
         setUserSettings(null);
         navigateTo("/");
       } else {
-        alert('Failed to delete account. Please try again.');
+        alert("Failed to delete account. Please try again.");
       }
     } catch (error) {
-      console.error('Delete account error:', error);
-      alert('Failed to delete account. Please try again.');
+      console.error("Delete account error:", error);
+      alert("Failed to delete account. Please try again.");
     }
   };
 
@@ -480,7 +515,7 @@ export default function ProfilePage() {
             className="btn-ghost"
             onClick={() => {
               setShowLogin(false);
-              setAuthError('');
+              setAuthError("");
             }}
             style={{ fontSize: "var(--font-md)" }}
           >
@@ -492,7 +527,7 @@ export default function ProfilePage() {
           onSwitchToSignup={() => {
             setShowLogin(false);
             setShowSignup(true);
-            setAuthError('');
+            setAuthError("");
           }}
           onGoogleSignIn={() => handleGoogleAuth("login")}
           isLoading={isLoading}
@@ -519,7 +554,7 @@ export default function ProfilePage() {
             className="btn-ghost"
             onClick={() => {
               setShowSignup(false);
-              setAuthError('');
+              setAuthError("");
             }}
             style={{ fontSize: "var(--font-md)" }}
           >
@@ -531,7 +566,7 @@ export default function ProfilePage() {
           onSwitchToLogin={() => {
             setShowSignup(false);
             setShowLogin(true);
-            setAuthError('');
+            setAuthError("");
           }}
           onGoogleSignup={() => handleGoogleAuth("signup")}
           isLoading={isLoading}
@@ -565,7 +600,10 @@ export default function ProfilePage() {
 
       {/* Authentication Section */}
       {!isAuthenticated ? (
-        <div className="" style={{ padding: 10, marginBottom: 20, textAlign: 'center' }}>
+        <div
+          className=""
+          style={{ padding: 10, marginBottom: 20, textAlign: "center" }}
+        >
           {/* <div className="h3" style={{ marginBottom: 8 }}>
             Welcome to SyntraIQ
           </div>
@@ -592,15 +630,27 @@ export default function ProfilePage() {
           </div> */}
           <div className="splash-logo relative w-full">
             {/* <img src={logo} alt="SyntraIQ logo" /> */}
-            <h1 className="font-ubuntu text-4xl font-bold translate-y-1">
+            {/* <h1 className="font-ubuntu text-4xl font-bold translate-y-1">
               Syntra <span className="text-gold font-bold!">IQ</span>
             </h1>
             <div className="relative mb-5">
               <div className="bg-linear-to-b from-transparent to-[#F8F7F4] dark:to-[#0E0E0E] absolute top-0 left-0 w-full h-full" />
               <img src={earth} alt="Earth" className="w-full object-cover" />
-            </div>
+            </div> */}
+            <div className="splash-logo relative w-full">
+          <video
+            src={earthVideo}
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="w-full max-w-md mx-auto object-cover rounded-lg"
+            aria-hidden
+          />
+        </div>
             <p className="splash-tagline font-ubuntu text-lg! font-medium">
-              Preparing your Syntra<span className="text-gold">IQ</span> experience…
+              Preparing your Syntra<span className="text-gold">IQ</span>{" "}
+              experience…
             </p>
           </div>
           <button
@@ -608,15 +658,15 @@ export default function ProfilePage() {
             onClick={() => handleGoogleAuth("signup")}
             disabled={isLoading}
             style={{
-              width: '100%',
+              width: "100%",
               marginTop: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               gap: 10,
               fontWeight: 600,
               opacity: isLoading ? 0.6 : 1,
-              cursor: isLoading ? 'not-allowed' : 'pointer',
+              cursor: isLoading ? "not-allowed" : "pointer",
             }}
           >
             <GoogleIcon width={22} height={22} />
@@ -662,17 +712,24 @@ export default function ProfilePage() {
       ) : userSettings ? (
         /* User Info Card */
         <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-          <div className="row" style={{ alignItems: "center", marginBottom: 16 }}>
-            {(userSettings as any).dp || (userSettings as any).displayPictureUrl ? (
+          <div
+            className="row"
+            style={{ alignItems: "center", marginBottom: 16 }}
+          >
+            {(userSettings as any).dp ||
+            (userSettings as any).displayPictureUrl ? (
               <img
-                src={(userSettings as any).dp || (userSettings as any).displayPictureUrl}
+                src={
+                  (userSettings as any).dp ||
+                  (userSettings as any).displayPictureUrl
+                }
                 alt={userSettings.name}
                 onError={(e) => {
                   // Fallback to initial if image fails to load
                   const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
+                  target.style.display = "none";
                   const fallback = target.nextElementSibling as HTMLElement;
-                  if (fallback) fallback.style.display = 'flex';
+                  if (fallback) fallback.style.display = "flex";
                 }}
                 style={{
                   width: 60,
@@ -680,7 +737,7 @@ export default function ProfilePage() {
                   borderRadius: "50%",
                   objectFit: "cover",
                   marginRight: 16,
-                  border: "2px solid var(--border)"
+                  border: "2px solid var(--border)",
                 }}
               />
             ) : null}
@@ -690,7 +747,11 @@ export default function ProfilePage() {
                 height: 60,
                 borderRadius: "50%",
                 background: "var(--accent)",
-                display: (userSettings as any).dp || (userSettings as any).displayPictureUrl ? "none" : "flex",
+                display:
+                  (userSettings as any).dp ||
+                  (userSettings as any).displayPictureUrl
+                    ? "none"
+                    : "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: "var(--font-2xl)",
@@ -705,10 +766,21 @@ export default function ProfilePage() {
               <div className="h3" style={{ marginBottom: 4 }}>
                 {userSettings.name}
               </div>
-              <div className="sub" style={{ marginBottom: 4 }}>{userSettings.email}</div>
+              <div className="sub" style={{ marginBottom: 4 }}>
+                {userSettings.email}
+              </div>
               {/* Plan Badge */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                {userSettings.premiumTier && userSettings.premiumTier !== 'free' && userSettings.isPremium ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 8,
+                }}
+              >
+                {userSettings.premiumTier &&
+                userSettings.premiumTier !== "free" &&
+                userSettings.isPremium ? (
                   <span
                     style={{
                       display: "inline-flex",
@@ -723,8 +795,10 @@ export default function ProfilePage() {
                       textTransform: "uppercase",
                     }}
                   >
-                    <span>★</span>
-                    {userSettings.premiumTier === 'pro' ? 'Pro Plan' : 'Max Plan'}
+                    <FaStar size={10} style={{ marginRight: 4 }} />
+                    {userSettings.premiumTier === "pro"
+                      ? "Pro Plan"
+                      : "Max Plan"}
                   </span>
                 ) : (
                   <span
@@ -742,15 +816,16 @@ export default function ProfilePage() {
                     Free Plan
                   </span>
                 )}
-                {userSettings.subscription?.endDate && userSettings.isPremium && (
-                  <span
-                    className="sub text-xs"
-                    style={{ opacity: 0.7 }}
-                  >
-                    Expires: {new Date(userSettings.subscription.endDate).toLocaleDateString()}
-                  </span>
-                )}
-                {userSettings.subscription?.status === 'expired' && (
+                {userSettings.subscription?.endDate &&
+                  userSettings.isPremium && (
+                    <span className="sub text-xs" style={{ opacity: 0.7 }}>
+                      Expires:{" "}
+                      {new Date(
+                        userSettings.subscription.endDate,
+                      ).toLocaleDateString()}
+                    </span>
+                  )}
+                {userSettings.subscription?.status === "expired" && (
                   <span
                     className="sub text-xs"
                     style={{ color: "var(--accent)", opacity: 0.9 }}
@@ -765,11 +840,15 @@ export default function ProfilePage() {
             className="btn-ghost"
             style={{ width: "100%" }}
             onClick={() => {
-              setEditName(userSettings.name || '');
-              setEditDp((userSettings as any).dp || (userSettings as any).displayPictureUrl || '');
-              setEditPersonality((userSettings as any).personality || '');
-              setEditGender((userSettings as any).gender || '');
-              setEditAge((userSettings as any).age?.toString() || '');
+              setEditName(userSettings.name || "");
+              setEditDp(
+                (userSettings as any).dp ||
+                  (userSettings as any).displayPictureUrl ||
+                  "",
+              );
+              setEditPersonality((userSettings as any).personality || "");
+              setEditGender((userSettings as any).gender || "");
+              setEditAge((userSettings as any).age?.toString() || "");
               setPictureFile(null);
               setPicturePreview(null);
               setShowEditProfile(true);
@@ -795,32 +874,50 @@ export default function ProfilePage() {
               alignItems: "center",
               marginBottom: 16,
               padding: 16,
-              background: userSettings?.isPremium ? "rgba(199,168,105,0.1)" : "var(--input-bg)",
+              background: userSettings?.isPremium
+                ? "rgba(199,168,105,0.1)"
+                : "var(--input-bg)",
               borderRadius: "var(--radius-sm)",
               border: `1px solid ${userSettings?.isPremium ? "var(--accent)" : "var(--border)"}`,
             }}
           >
             <div>
-              <div style={{ fontWeight: 600, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
-                {userSettings?.premiumTier && userSettings.premiumTier !== 'free' && userSettings.isPremium ? (
+              <div
+                style={{
+                  fontWeight: 600,
+                  marginBottom: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                {userSettings?.premiumTier &&
+                userSettings.premiumTier !== "free" &&
+                userSettings.isPremium ? (
                   <>
-                    <span>★</span>
-                    {userSettings.premiumTier === 'pro' ? 'Pro Plan' : 'Max Plan'}
+                    <FaStar size={12} />
+                    {userSettings.premiumTier === "pro"
+                      ? "Pro Plan"
+                      : "Max Plan"}
                   </>
                 ) : (
-                  'Free Plan'
+                  "Free Plan"
                 )}
               </div>
               <div className="sub text-sm" style={{ marginBottom: 4 }}>
-                {userSettings?.isPremium 
+                {userSettings?.isPremium
                   ? userSettings.subscription?.endDate
                     ? `Active until ${new Date(userSettings.subscription.endDate).toLocaleDateString()}`
-                    : 'Active subscription'
-                  : 'Unlock premium features and models'}
+                    : "Active subscription"
+                  : "Unlock premium features and models"}
               </div>
-              {userSettings?.subscription?.status === 'expired' && (
-                <div className="sub text-xs" style={{ color: "var(--accent)", marginTop: 4 }}>
-                  Your subscription has expired. Renew to continue using premium features.
+              {userSettings?.subscription?.status === "expired" && (
+                <div
+                  className="sub text-xs"
+                  style={{ color: "var(--accent)", marginTop: 4 }}
+                >
+                  Your subscription has expired. Renew to continue using premium
+                  features.
                 </div>
               )}
             </div>
@@ -845,7 +942,7 @@ export default function ProfilePage() {
                 style={{
                   color: "var(--accent)",
                   fontWeight: 600,
-                  fontSize: "var(--font-sm)"
+                  fontSize: "var(--font-sm)",
                 }}
               >
                 Manage →
@@ -910,10 +1007,15 @@ export default function ProfilePage() {
               style={{
                 minWidth: 60,
                 opacity: updatingSetting === "darkMode" ? 0.6 : 1,
-                cursor: updatingSetting === "darkMode" ? "not-allowed" : "pointer"
+                cursor:
+                  updatingSetting === "darkMode" ? "not-allowed" : "pointer",
               }}
             >
-              {updatingSetting === "darkMode" ? "..." : userSettings.darkMode ? "On" : "Off"}
+              {updatingSetting === "darkMode"
+                ? "..."
+                : userSettings.darkMode
+                  ? "On"
+                  : "Off"}
             </button>
           </div>
 
@@ -937,16 +1039,26 @@ export default function ProfilePage() {
             <button
               className={`pill ${userSettings.searchHistory ? "active" : ""}`}
               onClick={() =>
-                handleSettingChange("searchHistory", !userSettings.searchHistory)
+                handleSettingChange(
+                  "searchHistory",
+                  !userSettings.searchHistory,
+                )
               }
               disabled={updatingSetting === "searchHistory"}
               style={{
                 minWidth: 60,
                 opacity: updatingSetting === "searchHistory" ? 0.6 : 1,
-                cursor: updatingSetting === "searchHistory" ? "not-allowed" : "pointer"
+                cursor:
+                  updatingSetting === "searchHistory"
+                    ? "not-allowed"
+                    : "pointer",
               }}
             >
-              {updatingSetting === "searchHistory" ? "..." : userSettings.searchHistory ? "On" : "Off"}
+              {updatingSetting === "searchHistory"
+                ? "..."
+                : userSettings.searchHistory
+                  ? "On"
+                  : "Off"}
             </button>
           </div>
 
@@ -956,7 +1068,9 @@ export default function ProfilePage() {
             style={{ justifyContent: "space-between", alignItems: "center" }}
           >
             <div>
-              <div style={{ fontWeight: 500, marginBottom: 2 }}>Voice Search</div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                Voice Search
+              </div>
               <div className="sub text-sm">Enable voice input for searches</div>
             </div>
             <button
@@ -968,10 +1082,15 @@ export default function ProfilePage() {
               style={{
                 minWidth: 60,
                 opacity: updatingSetting === "voiceSearch" ? 0.6 : 1,
-                cursor: updatingSetting === "voiceSearch" ? "not-allowed" : "pointer"
+                cursor:
+                  updatingSetting === "voiceSearch" ? "not-allowed" : "pointer",
               }}
             >
-              {updatingSetting === "voiceSearch" ? "..." : userSettings.voiceSearch ? "On" : "Off"}
+              {updatingSetting === "voiceSearch"
+                ? "..."
+                : userSettings.voiceSearch
+                  ? "On"
+                  : "Off"}
             </button>
           </div>
         </div>
@@ -980,7 +1099,14 @@ export default function ProfilePage() {
       {/* Search History - Only show when authenticated */}
       {isAuthenticated && (
         <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div
+            className="row"
+            style={{
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
+            }}
+          >
             <div className="h3" style={{ margin: 0 }}>
               Search History
             </div>
@@ -991,10 +1117,20 @@ export default function ProfilePage() {
               style={{
                 padding: "6px 12px",
                 fontSize: "var(--font-sm)",
-                opacity: isLoadingHistory ? 0.6 : 1
+                opacity: isLoadingHistory ? 0.6 : 1,
               }}
             >
-              {isLoadingHistory ? "Loading..." : "🔄 Refresh"}
+              {isLoadingHistory ? (
+                "Loading..."
+              ) : (
+                <>
+                  <FaSync
+                    size={14}
+                    style={{ marginRight: 6, verticalAlign: "middle" }}
+                  />
+                  Refresh
+                </>
+              )}
             </button>
           </div>
 
@@ -1008,7 +1144,9 @@ export default function ProfilePage() {
             </div>
           ) : (
             <>
-              <div style={{ maxHeight: 400, overflowY: "auto", marginBottom: 12 }}>
+              <div
+                style={{ maxHeight: 400, overflowY: "auto", marginBottom: 12 }}
+              >
                 {searchHistory.map((item) => (
                   <button
                     key={item.id}
@@ -1039,32 +1177,53 @@ export default function ProfilePage() {
                       >
                         {item.query}
                       </div>
-                      <div className="sub text-sm" style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                      <div
+                        className="sub text-sm"
+                        style={{
+                          display: "flex",
+                          gap: 12,
+                          alignItems: "center",
+                        }}
+                      >
                         <span>{item.mode || "Ask"}</span>
                         <span>•</span>
                         <span>
-                          {new Date(item.timestamp || item.created_at).toLocaleDateString("en-US", {
+                          {new Date(
+                            item.timestamp || item.created_at,
+                          ).toLocaleDateString("en-US", {
                             month: "short",
                             day: "numeric",
-                            year: new Date(item.timestamp || item.created_at).getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+                            year:
+                              new Date(
+                                item.timestamp || item.created_at,
+                              ).getFullYear() !== new Date().getFullYear()
+                                ? "numeric"
+                                : undefined,
                           })}
                         </span>
                       </div>
                     </div>
-                    <div style={{ marginLeft: 12, color: "var(--accent)" }}>→</div>
+                    <div style={{ marginLeft: 12, color: "var(--accent)" }}>
+                      →
+                    </div>
                   </button>
                 ))}
               </div>
               <button
                 className="btn-ghost"
                 onClick={async () => {
-                  if (confirm("Clear all search history? This cannot be undone.")) {
+                  if (
+                    confirm("Clear all search history? This cannot be undone.")
+                  ) {
                     if (API_URL) {
                       try {
-                        const response = await fetch(`${API_URL}/api/search/history`, {
-                          method: 'DELETE',
-                          headers: getAuthHeaders(),
-                        });
+                        const response = await fetch(
+                          `${API_URL}/api/search/history`,
+                          {
+                            method: "DELETE",
+                            headers: getAuthHeaders(),
+                          },
+                        );
                         // Handle 401 - user logged out
                         if (response.status === 401) {
                           removeAuthToken();
@@ -1074,11 +1233,11 @@ export default function ProfilePage() {
                         }
                         if (response.ok) {
                           setSearchHistory([]);
-                          alert('Search history cleared');
+                          alert("Search history cleared");
                         }
                       } catch (error) {
-                        console.error('Failed to clear history:', error);
-                        alert('Failed to clear history');
+                        console.error("Failed to clear history:", error);
+                        alert("Failed to clear history");
                       }
                     } else {
                       localStorage.removeItem("perle-search-history");
@@ -1089,10 +1248,15 @@ export default function ProfilePage() {
                 style={{
                   width: "100%",
                   color: "#ff4444",
-                  borderColor: "#ff4444"
+                  borderColor: "#ff4444",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  justifyContent: "flex-start",
                 }}
               >
-                🗑️ Clear All Search History
+                <FaTrashAlt size={18} />
+                Clear All Search History
               </button>
             </>
           )}
@@ -1109,9 +1273,17 @@ export default function ProfilePage() {
           <button
             className="btn-ghost"
             onClick={() => navigateTo("/spaces")}
-            style={{ width: "100%", marginBottom: 12 }}
+            style={{
+              width: "100%",
+              marginBottom: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              justifyContent: "flex-start",
+            }}
           >
-            🧩 Manage Spaces
+            <FaPuzzlePiece size={18} />
+            Manage Spaces
           </button>
 
           <button
@@ -1122,18 +1294,120 @@ export default function ProfilePage() {
               width: "100%",
               marginBottom: 12,
               opacity: isExporting ? 0.6 : 1,
-              cursor: isExporting ? "not-allowed" : "pointer"
+              cursor: isExporting ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              justifyContent: "flex-start",
             }}
           >
-            {isExporting ? "⏳ Exporting..." : "📤 Export My Data"}
+            <FaFileExport size={18} />
+            {isExporting ? "Exporting..." : "Export My Data"}
           </button>
 
           <button
             className="btn-ghost"
             onClick={() => navigateTo("/library")}
-            style={{ width: "100%" }}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              justifyContent: "flex-start",
+            }}
           >
-            📚 View My Library
+            <FaBook size={18} />
+            View My Library
+          </button>
+        </div>
+      )}
+
+      {/* Support & Legal - Only show when authenticated */}
+      {isAuthenticated && (
+        <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+          <div className="h3" style={{ marginBottom: 16 }}>
+            Support & Legal
+          </div>
+
+          <a
+            href="mailto:business@syntraiq.ai"
+            className="btn-ghost"
+            style={{
+              width: "100%",
+              marginBottom: 12,
+              justifyContent: "flex-start",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            <FaBug size={18} />
+            Report Bug
+          </a>
+
+          <button
+            className="btn-ghost"
+            onClick={() => navigateTo("/about")}
+            style={{
+              width: "100%",
+              marginBottom: 12,
+              justifyContent: "flex-start",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <FaInfoCircle size={18} />
+            About
+          </button>
+
+          <button
+            className="btn-ghost"
+            onClick={() => navigateTo("/privacy")}
+            style={{
+              width: "100%",
+              marginBottom: 12,
+              justifyContent: "flex-start",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <FaLock size={18} />
+            Privacy Policy
+          </button>
+
+          <button
+            className="btn-ghost"
+            onClick={() => navigateTo("/terms")}
+            style={{
+              width: "100%",
+              marginBottom: 12,
+              justifyContent: "flex-start",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <FaFileAlt size={18} />
+            Terms of Service
+          </button>
+
+          <button
+            className="btn-ghost"
+            onClick={() => navigateTo("/help")}
+            style={{
+              width: "100%",
+              justifyContent: "flex-start",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <FaQuestionCircle size={18} />
+            Help & FAQ
           </button>
         </div>
       )}
@@ -1148,9 +1422,17 @@ export default function ProfilePage() {
           <button
             className="btn-ghost"
             onClick={handleLogout}
-            style={{ width: "100%", marginBottom: 12 }}
+            style={{
+              width: "100%",
+              marginBottom: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              justifyContent: "flex-start",
+            }}
           >
-            🚪 Sign Out
+            <FaSignOutAlt size={18} />
+            Sign Out
           </button>
 
           <button
@@ -1160,9 +1442,14 @@ export default function ProfilePage() {
               width: "100%",
               color: "#ff4444",
               borderColor: "#ff4444",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              justifyContent: "flex-start",
             }}
           >
-            🗑️ Delete Account
+            <FaTrashAlt size={18} />
+            Delete Account
           </button>
         </div>
       )}
@@ -1171,17 +1458,17 @@ export default function ProfilePage() {
       {showEditProfile && userSettings && (
         <div
           style={{
-            position: 'fixed',
+            position: "fixed",
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             zIndex: 10000,
-            padding: 20
+            padding: 20,
           }}
           onClick={() => setShowEditProfile(false)}
         >
@@ -1190,9 +1477,9 @@ export default function ProfilePage() {
             style={{
               padding: 24,
               maxWidth: 400,
-              width: '100%',
-              maxHeight: '90vh',
-              overflow: 'auto'
+              width: "100%",
+              maxHeight: "90vh",
+              overflow: "auto",
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1204,10 +1491,10 @@ export default function ProfilePage() {
               <label
                 htmlFor="edit-name"
                 style={{
-                  display: 'block',
+                  display: "block",
                   marginBottom: 6,
                   fontWeight: 500,
-                  color: 'var(--text)'
+                  color: "var(--text)",
                 }}
               >
                 Full Name
@@ -1220,12 +1507,12 @@ export default function ProfilePage() {
                 placeholder="Enter your name"
                 className="input"
                 style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--card)',
-                  fontSize: 'var(--font-md)'
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--card)",
+                  fontSize: "var(--font-md)",
                 }}
               />
             </div>
@@ -1234,10 +1521,10 @@ export default function ProfilePage() {
               <label
                 htmlFor="edit-dp"
                 style={{
-                  display: 'block',
+                  display: "block",
                   marginBottom: 6,
                   fontWeight: 500,
-                  color: 'var(--text)'
+                  color: "var(--text)",
                 }}
               >
                 Display Picture
@@ -1253,14 +1540,14 @@ export default function ProfilePage() {
                       // Check file size (2MB limit)
                       if (file.size > 2 * 1024 * 1024) {
                         showToast({
-                          message: 'File size exceeds 2MB limit',
-                          type: 'error',
-                          duration: 3000
+                          message: "File size exceeds 2MB limit",
+                          type: "error",
+                          duration: 3000,
                         });
                         return;
                       }
                       setPictureFile(file);
-                      setEditDp(''); // Clear URL input
+                      setEditDp(""); // Clear URL input
                       // Create preview
                       const reader = new FileReader();
                       reader.onloadend = () => {
@@ -1269,30 +1556,37 @@ export default function ProfilePage() {
                       reader.readAsDataURL(file);
                     }
                   }}
-                  style={{ display: 'none' }}
+                  style={{ display: "none" }}
                 />
                 <label
                   htmlFor="edit-dp-file"
                   style={{
-                    display: 'inline-block',
-                    padding: '8px 16px',
-                    background: 'var(--accent)',
-                    color: '#111',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                    fontSize: 'var(--font-sm)',
+                    display: "inline-block",
+                    padding: "8px 16px",
+                    background: "var(--accent)",
+                    color: "#111",
+                    borderRadius: "var(--radius-sm)",
+                    cursor: "pointer",
+                    fontSize: "var(--font-sm)",
                     fontWeight: 600,
-                    marginRight: 8
+                    marginRight: 8,
                   }}
                 >
-                  {uploadingPicture ? 'Uploading...' : 'Upload Image'}
+                  {uploadingPicture ? "Uploading..." : "Upload Image"}
                 </label>
-                <span className="sub" style={{ fontSize: 'var(--font-xs)' }}>
+                <span className="sub" style={{ fontSize: "var(--font-xs)" }}>
                   Max 2MB (JPG, PNG, WebP, GIF)
                 </span>
               </div>
               <div style={{ marginBottom: 8 }}>
-                <span className="sub" style={{ fontSize: 'var(--font-xs)', display: 'block', marginBottom: 4 }}>
+                <span
+                  className="sub"
+                  style={{
+                    fontSize: "var(--font-xs)",
+                    display: "block",
+                    marginBottom: 4,
+                  }}
+                >
                   Or enter URL:
                 </span>
                 <input
@@ -1307,12 +1601,12 @@ export default function ProfilePage() {
                   placeholder="Enter profile picture URL"
                   className="input"
                   style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--card)',
-                    fontSize: 'var(--font-md)'
+                    width: "100%",
+                    padding: "12px 16px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--card)",
+                    fontSize: "var(--font-md)",
                   }}
                 />
               </div>
@@ -1321,15 +1615,15 @@ export default function ProfilePage() {
                   src={picturePreview || editDp}
                   alt="Preview"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
+                    (e.target as HTMLImageElement).style.display = "none";
                   }}
                   style={{
                     width: 80,
                     height: 80,
-                    borderRadius: '50%',
-                    objectFit: 'cover',
+                    borderRadius: "50%",
+                    objectFit: "cover",
                     marginTop: 8,
-                    border: '1px solid var(--border)'
+                    border: "1px solid var(--border)",
                   }}
                 />
               )}
@@ -1339,10 +1633,10 @@ export default function ProfilePage() {
               <label
                 htmlFor="edit-personality"
                 style={{
-                  display: 'block',
+                  display: "block",
                   marginBottom: 6,
                   fontWeight: 500,
-                  color: 'var(--text)'
+                  color: "var(--text)",
                 }}
               >
                 Personality
@@ -1355,12 +1649,12 @@ export default function ProfilePage() {
                 placeholder="e.g., Friendly, Creative, Analytical"
                 className="input"
                 style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--card)',
-                  fontSize: 'var(--font-md)'
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--card)",
+                  fontSize: "var(--font-md)",
                 }}
               />
             </div>
@@ -1369,10 +1663,10 @@ export default function ProfilePage() {
               <label
                 htmlFor="edit-gender"
                 style={{
-                  display: 'block',
+                  display: "block",
                   marginBottom: 6,
                   fontWeight: 500,
-                  color: 'var(--text)'
+                  color: "var(--text)",
                 }}
               >
                 Gender
@@ -1383,13 +1677,13 @@ export default function ProfilePage() {
                 onChange={(e) => setEditGender(e.target.value)}
                 className="input"
                 style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--card)',
-                  fontSize: 'var(--font-md)',
-                  cursor: 'pointer'
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--card)",
+                  fontSize: "var(--font-md)",
+                  cursor: "pointer",
                 }}
               >
                 <option value="">Select gender</option>
@@ -1404,10 +1698,10 @@ export default function ProfilePage() {
               <label
                 htmlFor="edit-age"
                 style={{
-                  display: 'block',
+                  display: "block",
                   marginBottom: 6,
                   fontWeight: 500,
-                  color: 'var(--text)'
+                  color: "var(--text)",
                 }}
               >
                 Age
@@ -1422,12 +1716,12 @@ export default function ProfilePage() {
                 max="120"
                 className="input"
                 style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--card)',
-                  fontSize: 'var(--font-md)'
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--card)",
+                  fontSize: "var(--font-md)",
                 }}
               />
             </div>
@@ -1437,11 +1731,11 @@ export default function ProfilePage() {
                 className="btn-ghost"
                 onClick={() => {
                   setShowEditProfile(false);
-                  setEditName('');
-                  setEditDp('');
-                  setEditPersonality('');
-                  setEditGender('');
-                  setEditAge('');
+                  setEditName("");
+                  setEditDp("");
+                  setEditPersonality("");
+                  setEditGender("");
+                  setEditAge("");
                   setPictureFile(null);
                   setPicturePreview(null);
                 }}
@@ -1457,17 +1751,21 @@ export default function ProfilePage() {
                     if (pictureFile && API_URL) {
                       setUploadingPicture(true);
                       const formData = new FormData();
-                      formData.append('picture', pictureFile);
+                      formData.append("picture", pictureFile);
 
-                      const headers: Record<string, string> = getAuthHeaders() as Record<string, string>;
+                      const headers: Record<string, string> =
+                        getAuthHeaders() as Record<string, string>;
                       // Remove Content-Type header to let browser set it with boundary
-                      delete headers['Content-Type'];
+                      delete headers["Content-Type"];
 
-                      const uploadResponse = await fetch(`${API_URL}/api/profile/upload-picture`, {
-                        method: 'POST',
-                        headers: headers,
-                        body: formData
-                      });
+                      const uploadResponse = await fetch(
+                        `${API_URL}/api/profile/upload-picture`,
+                        {
+                          method: "POST",
+                          headers: headers,
+                          body: formData,
+                        },
+                      );
 
                       // Handle 401 - user logged out
                       if (uploadResponse.status === 401) {
@@ -1479,8 +1777,12 @@ export default function ProfilePage() {
                       }
 
                       if (!uploadResponse.ok) {
-                        const errorData = await uploadResponse.json().catch(() => ({ error: 'Upload failed' }));
-                        throw new Error(errorData.error || 'Failed to upload picture');
+                        const errorData = await uploadResponse
+                          .json()
+                          .catch(() => ({ error: "Upload failed" }));
+                        throw new Error(
+                          errorData.error || "Failed to upload picture",
+                        );
                       }
 
                       const uploadData = await uploadResponse.json();
@@ -1490,57 +1792,78 @@ export default function ProfilePage() {
                       setUploadingPicture(false);
                     }
 
-                    const hasChanges = 
-                      (editName.trim() !== (userSettings.name || '')) ||
-                      (editDp !== ((userSettings as any).dp || (userSettings as any).displayPictureUrl || '')) ||
-                      (editPersonality !== ((userSettings as any).personality || '')) ||
-                      (editGender !== ((userSettings as any).gender || '')) ||
-                      (editAge !== ((userSettings as any).age?.toString() || ''));
+                    const hasChanges =
+                      editName.trim() !== (userSettings.name || "") ||
+                      editDp !==
+                        ((userSettings as any).dp ||
+                          (userSettings as any).displayPictureUrl ||
+                          "") ||
+                      editPersonality !==
+                        ((userSettings as any).personality || "") ||
+                      editGender !== ((userSettings as any).gender || "") ||
+                      editAge !== ((userSettings as any).age?.toString() || "");
 
                     if (hasChanges) {
                       // Update name if changed
-                      if (editName.trim() && editName.trim() !== userSettings.name) {
-                        await handleSettingChange('name', editName.trim());
+                      if (
+                        editName.trim() &&
+                        editName.trim() !== userSettings.name
+                      ) {
+                        await handleSettingChange("name", editName.trim());
                       }
                       // Update dp if changed
-                      if (editDp !== ((userSettings as any).dp || (userSettings as any).displayPictureUrl || '')) {
-                        await handleSettingChange('dp', editDp || null);
+                      if (
+                        editDp !==
+                        ((userSettings as any).dp ||
+                          (userSettings as any).displayPictureUrl ||
+                          "")
+                      ) {
+                        await handleSettingChange("dp", editDp || null);
                       }
                       // Update personality if changed
-                      if (editPersonality !== ((userSettings as any).personality || '')) {
-                        await handleSettingChange('personality', editPersonality);
+                      if (
+                        editPersonality !==
+                        ((userSettings as any).personality || "")
+                      ) {
+                        await handleSettingChange(
+                          "personality",
+                          editPersonality,
+                        );
                       }
                       // Update gender if changed
-                      if (editGender !== ((userSettings as any).gender || '')) {
-                        await handleSettingChange('gender', editGender);
+                      if (editGender !== ((userSettings as any).gender || "")) {
+                        await handleSettingChange("gender", editGender);
                       }
                       // Update age if changed (convert to number)
-                      if (editAge !== ((userSettings as any).age?.toString() || '')) {
+                      if (
+                        editAge !==
+                        ((userSettings as any).age?.toString() || "")
+                      ) {
                         const ageNum = editAge ? parseInt(editAge, 10) : null;
                         if (ageNum && ageNum > 0 && ageNum < 150) {
-                          await handleSettingChange('age', ageNum);
-                        } else if (editAge === '') {
-                          await handleSettingChange('age', null);
+                          await handleSettingChange("age", ageNum);
+                        } else if (editAge === "") {
+                          await handleSettingChange("age", null);
                         }
                       }
                     }
                     setShowEditProfile(false);
-                    setEditName('');
-                    setEditDp('');
-                    setEditPersonality('');
-                    setEditGender('');
-                    setEditAge('');
+                    setEditName("");
+                    setEditDp("");
+                    setEditPersonality("");
+                    setEditGender("");
+                    setEditAge("");
                     setPictureFile(null);
                     setPicturePreview(null);
-                    
+
                     // Refresh profile after saving to ensure all data is synced
                     await fetchProfile();
                   } catch (error: any) {
-                    console.error('Save profile error:', error);
+                    console.error("Save profile error:", error);
                     showToast({
-                      message: error.message || 'Failed to save profile',
-                      type: 'error',
-                      duration: 3000
+                      message: error.message || "Failed to save profile",
+                      type: "error",
+                      duration: 3000,
                     });
                     setUploadingPicture(false);
                   }
@@ -1548,7 +1871,7 @@ export default function ProfilePage() {
                 disabled={!editName.trim() || uploadingPicture}
                 style={{ flex: 1 }}
               >
-                {uploadingPicture ? 'Uploading...' : 'Save'}
+                {uploadingPicture ? "Uploading..." : "Save"}
               </button>
             </div>
           </div>

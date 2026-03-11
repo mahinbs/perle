@@ -1,25 +1,41 @@
 import React from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
+import { FaCheck } from "react-icons/fa";
 
 export const UpgradeCard: React.FC = () => {
   const { navigateTo } = useRouterNavigation();
 
   const features = [
-    "More messages",
-    "More file uploads",
-    "More image generation",
-    "More advanced data analysis",
-    "More memory",
+    "Access to all AI models — GPT-4o, Claude, Gemini, Grok & more",
+    "20 messages of deep conversation memory (vs 5 on Free)",
+    "Unlimited image generation (vs 3/day on Free)",
+    "Video generation — up to 6 videos/day on Pro, 12/day on Max",
+    "Longer search conversation history — 50 messages retained",
+    "10 MB file uploads in chat & search (images, PDFs, docs)",
+    "Unlimited saved Spaces & prompts",
+    "Toggle auto-renewal anytime",
   ];
-
-  const handleRestore = () => {
-    // Frontend-only: placeholder for restore action
-    console.log("Restore subscription clicked");
-  };
 
   return (
     <div className="card" style={{ padding: 24 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              fontSize: "var(--font-lg)",
+              fontWeight: 700,
+              marginBottom: 4,
+            }}
+          >
+            Upgrade to{" "}
+            <span style={{ color: "var(--accent)" }}>SyntraIQ Pro</span> or{" "}
+            <span style={{ color: "var(--accent)" }}>Max</span>
+          </div>
+          <div className="sub" style={{ fontSize: "var(--font-sm)" }}>
+            Unlock the full power of SyntraIQ
+          </div>
+        </div>
+
         {/* Features List */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {features.map((feature, index) => (
@@ -27,22 +43,21 @@ export const UpgradeCard: React.FC = () => {
               key={index}
               style={{
                 display: "flex",
-                alignItems: "center",
+                alignItems: "flex-start",
                 gap: 12,
-                fontSize: "var(--font-md)",
+                fontSize: "var(--font-sm)",
                 color: "var(--text)",
               }}
             >
-              <span
+              <FaCheck
+                size={14}
                 style={{
                   color: "var(--accent)",
-                  fontSize: "var(--font-xl)",
-                  fontWeight: 600,
+                  flexShrink: 0,
+                  marginTop: 3,
                 }}
-              >
-                ✓
-              </span>
-              <span>{feature}</span>
+              />
+              <span style={{ lineHeight: 1.5 }}>{feature}</span>
             </div>
           ))}
         </div>
@@ -50,7 +65,7 @@ export const UpgradeCard: React.FC = () => {
         {/* Restore Subscription Link */}
         <button
           className="btn-ghost"
-          onClick={handleRestore}
+          onClick={() => console.log("Restore subscription clicked")}
           style={{
             padding: 0,
             border: "none",
@@ -99,7 +114,7 @@ export const UpgradeCard: React.FC = () => {
             e.currentTarget.style.transform = "scale(1)";
           }}
         >
-          Upgrade to IQ
+          View Plans
         </button>
       </div>
     </div>

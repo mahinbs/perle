@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from "react";
+import logo from "../assets/images/logo.png";
 import { Header } from "../components/Header";
 import { SearchBar } from "../components/SearchBar";
 import { AnswerCard } from "../components/AnswerCard";
@@ -540,10 +541,20 @@ export default function HomePage() {
       />
 
       {/* Main Content - ORIGINAL LAYOUT */}
-      <div className="container !px-2 flex flex-col justify-between h-full">
-        <Header />
+      <div className="container !px-2 flex flex-col justify-between h-full relative">
+        {/* Background Logo */}
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none -translate-y-[5%] z-0 opacity-[0.04] select-none dark:invert">
+          <img
+            src={logo}
+            alt=""
+            className="w-[70%] max-w-[400px] h-auto object-contain grayscale"
+          />
+        </div>
 
-        <>
+        <div className="relative z-10 flex flex-col justify-between h-full">
+          <Header />
+
+          <>
           {/* <div className="sub text-sm" style={{ marginTop: 6 }}>
           An elegant answer engine with citations, comparisons, and summaries.
         </div> */}
@@ -658,6 +669,7 @@ export default function HomePage() {
         <UpgradeCard /> */}
 
         {/* <div className="spacer-40" /> */}
+        </div>
       </div>
     </>
   );

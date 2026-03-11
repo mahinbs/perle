@@ -1156,7 +1156,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           </div>
 
           {/* Desktop dropdown container */}
-          <div className="hidden md:flex relative" data-tools-menu>
+          <div className="hidden md:flex relative mb-2" data-tools-menu>
             <button
               className={`btn-ghost btn-shadow !border-[#dfb768] !font-normal ${toolMode ? "!text-black" : ""
                 }`}
@@ -1347,7 +1347,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         </>
       )}
       <div
-        className="card font-ubuntu !px-3 !py-5"
+        className="card font-ubuntu !px-3 !pt-1 !pb-2"
         style={{
           position: "relative",
           overflow: "visible",
@@ -1635,7 +1635,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           </div>
         )}
 
-        <div className="row search-container">
+        <div className="row search-container !gap-0">
           {/* Tools Dropdown */}
 
           <div style={{ display: "flex", flexDirection: "column", maxWidth: "100%", minWidth: 0, flex: toolMode ? 1 : "unset" }}>
