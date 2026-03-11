@@ -261,7 +261,7 @@ router.post('/ai-friends', authenticateToken, async (req: AuthRequest, res) => {
 
     const { name, description, logoUrl, defaultLogo, customGreeting } = parse.data;
 
-    // Check if user already has 4 friends
+    // Check if user already has 5 friends
     const { count, error: countError } = await supabase
       .from('ai_friends')
       .select('*', { count: 'exact', head: true })
@@ -272,8 +272,8 @@ router.post('/ai-friends', authenticateToken, async (req: AuthRequest, res) => {
       return res.status(500).json({ error: 'Failed to check friend limit' });
     }
 
-    if (count && count >= 4) {
-      return res.status(400).json({ error: 'Maximum of 4 AI friends allowed per user' });
+    if (count && count >= 5) {
+      return res.status(400).json({ error: 'Maximum of 5 AI friends allowed per user' });
     }
 
     // Check if name already exists for this user
@@ -319,8 +319,8 @@ router.post('/ai-friends', authenticateToken, async (req: AuthRequest, res) => {
       if (error.code === '23505') { // Unique constraint violation
         return res.status(400).json({ error: 'An AI friend with this name already exists' });
       }
-      if (error.message?.includes('Maximum of 4')) {
-        return res.status(400).json({ error: 'Maximum of 4 AI friends allowed per user' });
+      if (error.message?.includes('Maximum of 5')) {
+        return res.status(400).json({ error: 'Maximum of 5 AI friends allowed per user' });
       }
       return res.status(500).json({ error: 'Failed to create AI friend' });
     }

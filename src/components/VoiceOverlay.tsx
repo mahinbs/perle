@@ -103,20 +103,16 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
     };
   }, [isOpen, isListening, onToggleListening, playActivationBeep]);
 
-  // Cancel any ongoing speech and clear text when overlay opens
+  // When overlay opens: only cancel speech if starting fresh; do NOT clear answer text
+  // (AnswerCard writes to perle-current-answer-text for TTS - we display that same text)
   useEffect(() => {
     if (isOpen) {
-      // Cancel any ongoing speech synthesis
+      // Only cancel speech when overlay opens - don't clear answer text, we need it for display
       try {
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
           window.speechSynthesis.cancel();
         }
       } catch { }
-
-      // Clear any existing answer text from localStorage
-      localStorage.removeItem("perle-current-answer-text");
-      localStorage.removeItem("perle-current-word-index");
-      localStorage.removeItem("perle-speak-next-answer");
     }
   }, [isOpen]);
 
@@ -177,6 +173,9 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           onClick={() => {
             try {
               if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+              localStorage.removeItem("perle-current-answer-text");
+              localStorage.removeItem("perle-current-word-index");
+              localStorage.removeItem("perle-keep-voice-overlay-open");
             } catch { }
             onClose();
           }}
@@ -231,6 +230,7 @@ const SpeakingGradientCircle: React.FC<{
   responseText?: string;
 }> = ({ responseText: propResponseText }) => {
   const [speaking, setSpeaking] = useState(false);
+  const [displayText, setDisplayText] = useState<string>(propResponseText || "");
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Use vmin for fluid sizing that respects both viewport dimensions
@@ -253,54 +253,41 @@ const SpeakingGradientCircle: React.FC<{
     return () => mediaQuery.removeEventListener("change", checkTheme);
   }, []);
 
-  // Trigger speech when text changes
+  // Sync displayText from prop when it changes (e.g. new answer received)
   useEffect(() => {
-    if (!propResponseText) return;
-
-    const speak = () => {
-      if (!window.speechSynthesis) return;
-
-      // Cancel previous
-      window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(propResponseText);
-      // Optional: Select a specific voice if desired, or let browser default
-      // const voices = window.speechSynthesis.getVoices();
-      // utterance.voice = voices.find(...) || null;
-
-      utterance.onstart = () => setSpeaking(true);
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => setSpeaking(false);
-
-      window.speechSynthesis.speak(utterance);
-    };
-
-    speak();
-
-    return () => {
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
-    };
+    if (propResponseText && propResponseText.length > 0) {
+      setDisplayText((prev) => (prev.length < propResponseText.length ? propResponseText : prev));
+    }
   }, [propResponseText]);
 
-  // Keep the RAF check as a backup for external interruptions (optional, but good for robustness)
+  // Keep display text and speaking state in sync with AnswerCard voice output
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      // Only update if we think we shouldn't be speaking but browser says we are, 
-      // or vice versa, but trust our event listeners primarily to avoid flickering.
-      // Actually, relying purely on events is safer for React state sync unless dealing with external events.
-      // Let's rely on the events from the utterance we created.
-      // But if user cancels via browser controls, we might miss it. 
-      // So slight polling is okay, but let's be careful.
-      if (window.speechSynthesis?.speaking !== speaking) {
-        setSpeaking(window.speechSynthesis?.speaking ?? false);
-      }
+      try {
+        const storedText =
+          typeof window !== "undefined"
+            ? window.localStorage.getItem("perle-current-answer-text")
+            : null;
+
+        if (storedText) {
+          setDisplayText((prev) => (storedText !== prev ? storedText : prev));
+        } else if (propResponseText) {
+          setDisplayText((prev) => (!prev || prev.length < propResponseText.length ? propResponseText : prev));
+        }
+
+        if (typeof window !== "undefined" && "speechSynthesis" in window) {
+          const isSpeakingNow = window.speechSynthesis.speaking;
+          setSpeaking((s) => (isSpeakingNow !== s ? isSpeakingNow : s));
+        }
+      } catch { /* ignore */ }
+
       raf = requestAnimationFrame(tick);
     };
+
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [speaking]);
+  }, [propResponseText]);
 
   // Sample globe data for arcs - Multiple points across the globe
   const globeData: Position[] = useMemo(
@@ -644,7 +631,7 @@ const SpeakingGradientCircle: React.FC<{
       </div>
 
       {/* AI Response Text Display - Responsive height for mobile and desktop */}
-      <VoiceResponseText text={propResponseText} speaking={speaking} />
+      <VoiceResponseText text={displayText} speaking={speaking} />
     </div>
   );
 };
