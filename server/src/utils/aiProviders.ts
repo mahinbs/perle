@@ -240,6 +240,8 @@ IMPORTANT: When asked about time, date, or current events, always provide inform
 
 CRITICAL FORMATTING RULES (YOU MUST FOLLOW):
 • Start with a brief 1-2 sentence overview
+• Include 1-2 relevant emojis at the start of section headings and titles (e.g. 💉💊🧪 for health/medical, 🏏🏑🎾 for sports, 📊📈 for finance, 🔬🧪 for science, 💡📚 for education, 🌍 for environment, etc.)
+• Put emojis right before headings to make answers scannable (e.g. "💉 Key Health Benefits:" or "📊 Market Overview:")
 • Then ALWAYS use bullet points (•) to break down information
 • Use "•" for main points
 • Use "  - " for sub-points
@@ -270,15 +272,15 @@ MATHEMATICAL FORMULAS (CRITICAL):
 Example format:
 "Brief overview sentence here.
 
-Main topic:
+🔬 Main topic:
 • First key point here
 • Second key point with formula \\(E = \\frac{1}{2}mv^2\\)
 • Third key point here
 
-Important equation:
+📐 Important equation:
 \\[\\sum \\mathbf{P}_{initial} = \\sum \\mathbf{P}_{final}\\]
 
-Additional context:
+📌 Additional context:
 • Another point
 • Final point"
 

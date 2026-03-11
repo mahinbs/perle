@@ -1180,7 +1180,7 @@ export default function AIFriendPage() {
       {/* Header */}
       <div className="border-b border-[var(--border)] bg-[var(--card)] sticky top-0 z-[100]">
         <div className="row flex-nowrap! flex justify-between items-center p-4">
-          <div className="row flex items-center gap-3">
+            <div className="row flex items-center gap-3">
             <button
               className="btn-ghost p-2! text-[length:var(--font-md)]"
               onClick={() => navigateTo("/")}
@@ -1227,8 +1227,8 @@ export default function AIFriendPage() {
                         >
                           <FaPlus size={14} />
                           <span className="text-sm font-semibold">
-                            {aiFriends.length >= 4
-                              ? "Maximum 4 friends reached"
+                            {aiFriends.length >= 5
+                              ? "Maximum 5 friends reached"
                               : "Create New Friend"}
                           </span>
                         </button>
@@ -1315,7 +1315,31 @@ export default function AIFriendPage() {
               )}
             </div>
           </div>
-          <div className="row flex items-center gap-2.5">
+            {/* Group chat avatars row */}
+            {isLoggedIn && isGroupChat && aiFriends.length > 0 && (
+              <div className="mt-2 flex -space-x-2">
+                {aiFriends.slice(0, 5).map((friend) => (
+                  <img
+                    key={friend.id}
+                    src={
+                      friend.logo_url ||
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                        friend.name
+                      )}&background=C7A869&color=111&size=40&bold=true`
+                    }
+                    alt={friend.name}
+                    className="w-7 h-7 rounded-full object-cover border border-[var(--card)] shadow-sm"
+                  />
+                ))}
+                {aiFriends.length > 5 && (
+                  <div className="w-7 h-7 rounded-full bg-[var(--input-bg)] border border-[var(--card)] flex items-center justify-center text-[length:var(--font-xs)] text-[var(--text)]">
+                    +{aiFriends.length - 5}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="row flex items-center gap-2.5">
             {isLoggedIn && aiFriends.length > 0 && (
             <button
                 className={`btn-ghost !p-2 flex gap-2 rounded-lg transition-colors ${isGroupChat ? "bg-[rgba(199,168,105,0.15)]" : ""

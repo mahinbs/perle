@@ -13,12 +13,12 @@ CREATE TABLE IF NOT EXISTS ai_friends (
 -- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_ai_friends_user_id ON ai_friends(user_id, created_at DESC);
 
--- Add constraint to limit 4 friends per user
+-- Add constraint to limit 5 friends per user
 CREATE OR REPLACE FUNCTION check_ai_friends_limit()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF (SELECT COUNT(*) FROM ai_friends WHERE user_id = NEW.user_id) >= 4 THEN
-    RAISE EXCEPTION 'Maximum of 4 AI friends allowed per user';
+  IF (SELECT COUNT(*) FROM ai_friends WHERE user_id = NEW.user_id) >= 5 THEN
+    RAISE EXCEPTION 'Maximum of 5 AI friends allowed per user';
   END IF;
   RETURN NEW;
 END;

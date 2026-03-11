@@ -26,7 +26,16 @@ export default function DiscoverPage() {
     fetchItems();
   }, []);
 
-  const categories = ["All", "Technology", "Environment", "Science", "Sports"];
+  const categories = [
+    "All",
+    ...Array.from(
+      new Set(
+        discoverItems
+          .map((item) => item.category || "Other")
+          .filter((category) => !!category)
+      )
+    ),
+  ];
 
   const filteredItems = discoverItems.filter((item) => {
     const matchesCategory =
