@@ -32,7 +32,7 @@ export default function HomePage() {
   const [isLoadingOldConversation, setIsLoadingOldConversation] = useState(false); // Flag to disable animations
   const lastLoadedConversationIdRef = useRef<string | null>(null); // Track which conversation was loaded from sidebar
   const answerCardRef = useRef<HTMLDivElement>(null);
-  const scrollBottomRef = useRef<HTMLDivElement>(null);
+  const loadingCardRef = useRef<HTMLDivElement>(null);
   const lastSearchedQueryRef = useRef<string>("");
   const isSearchingRef = useRef<boolean>(false);
   const queryRef = useRef<string>(""); // Keep query in ref to avoid stale closures
@@ -415,8 +415,14 @@ export default function HomePage() {
     setShowHistory(newQuery.length > 0);
   }, []);
 
-  const scrollToBottom = useCallback(() => {
-    scrollBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  const scrollToLoadingCard = useCallback(() => {
+    // Delay so the loading card ("IQ is thinking...") has time to render
+    const scrollToTarget = () => {
+      loadingCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    requestAnimationFrame(() => {
+      setTimeout(scrollToTarget, 150);
+    });
   }, []);
 
   // Auto-scroll to AnswerCard when answer is received
@@ -556,18 +562,11 @@ export default function HomePage() {
           />
         </div>
 
-        <div className="relative z-10 flex flex-col justify-between h-full">
+        <div className="relative z-10 flex flex-col justify-start h-full min-h-0">
           <Header />
 
-          <>
-          {/* <div className="sub text-sm" style={{ marginTop: 6 }}>
-          An elegant answer engine with citations, comparisons, and summaries.
-        </div> */}
-
-          <div className="spacer-8" />
-          {/* <ModeBar mode={mode} setMode={setMode} /> */}
-
-          <div className="spacer-12" />
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+          <div className="spacer-4" />
           <div ref={answerCardRef}>
             {/* Render all answers in conversation history */}
             {conversationHistory.map((prevAnswer, index) => {
@@ -621,6 +620,7 @@ export default function HomePage() {
 
             {/* Show current answer only if loading (it will be added to history when complete) */}
             {isLoading && (
+              <div ref={loadingCardRef}>
               <AnswerCard
                 chunks={[]}
                 sources={[]}
@@ -640,13 +640,13 @@ export default function HomePage() {
                 }}
                 attachments={currentUploadedFiles}
               />
+              </div>
             )}
           </div>
-          <div ref={scrollBottomRef} className="shrink-0 h-px" aria-hidden="true" />
           <div className="spacer-12" />
-        </>
+          </div>
 
-        <div className="sticky bottom-0 left-0 w-full mt-3">
+        <div className="shrink-0 sticky bottom-0 left-0 w-full mt-3">
           <SearchBar
             selectedModel={selectedModel}
             setSelectedModel={setSelectedModel}
@@ -666,7 +666,7 @@ export default function HomePage() {
             isPremium={isPremium}
             onNewConversation={handleNewConversation}
             onMediaGenerated={handleMediaGenerated}
-            onScrollToBottom={scrollToBottom}
+            onScrollToBottom={scrollToLoadingCard}
           />
         </div>
         {/* <div className="spacer-16" />

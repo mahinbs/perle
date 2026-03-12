@@ -47,7 +47,7 @@ interface SearchBarProps {
   onNewConversation?: () => void; // Callback to start new conversation
   onMediaGenerated?: (media: { type: 'image' | 'video'; url: string; prompt: string }) => void; // Callback when media is generated
   answer?: AnswerResult | null;
-  /** Called when search is triggered (e.g. button click) so the page can scroll to bottom */
+  /** Called once when follow-up is submitted (scroll to bottom only on submit, not during answer typing) */
   onScrollToBottom?: () => void;
 }
 
@@ -206,29 +206,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [hasAnswer, searchedQuery, query]);
 
-  const scrollToBottom = () => {
-    // Use callback from parent (e.g. HomePage) for reliable scroll-into-view
-    if (onScrollToBottom) {
-      onScrollToBottom();
-      return;
-    }
-    // Fallback: scroll document
-    const doc = document.documentElement;
-    const scrollTop = doc.scrollHeight - window.innerHeight;
-    window.scrollTo({ top: Math.max(0, scrollTop), behavior: "smooth" });
-  };
-
   const triggerSearchWithScroll = () => {
     if (!query.trim()) return;
     onSearch();
     setQuery("");
-    // Scroll to bottom on follow-up submit — multiple attempts to catch DOM updates
-    requestAnimationFrame(() => {
-      scrollToBottom();
-      setTimeout(scrollToBottom, 300);
-      setTimeout(scrollToBottom, 600);
-      setTimeout(scrollToBottom, 1200); // Extra delay for async answer render
-    });
+    // Scroll to bottom once on submit (not during answer typing)
+    if (onScrollToBottom) {
+      requestAnimationFrame(() => onScrollToBottom());
+    } else {
+      requestAnimationFrame(() => {
+        const doc = document.documentElement;
+        const scrollTop = doc.scrollHeight - window.innerHeight;
+        window.scrollTo({ top: Math.max(0, scrollTop), behavior: "smooth" });
+      });
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
