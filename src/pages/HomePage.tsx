@@ -32,6 +32,7 @@ export default function HomePage() {
   const [isLoadingOldConversation, setIsLoadingOldConversation] = useState(false); // Flag to disable animations
   const lastLoadedConversationIdRef = useRef<string | null>(null); // Track which conversation was loaded from sidebar
   const answerCardRef = useRef<HTMLDivElement>(null);
+  const scrollBottomRef = useRef<HTMLDivElement>(null);
   const lastSearchedQueryRef = useRef<string>("");
   const isSearchingRef = useRef<boolean>(false);
   const queryRef = useRef<string>(""); // Keep query in ref to avoid stale closures
@@ -414,6 +415,10 @@ export default function HomePage() {
     setShowHistory(newQuery.length > 0);
   }, []);
 
+  const scrollToBottom = useCallback(() => {
+    scrollBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, []);
+
   // Auto-scroll to AnswerCard when answer is received
   // Commented out - prevents scrolling to top when answer is received
   // useEffect(() => {
@@ -637,6 +642,7 @@ export default function HomePage() {
               />
             )}
           </div>
+          <div ref={scrollBottomRef} className="shrink-0 h-px" aria-hidden="true" />
           <div className="spacer-12" />
         </>
 
@@ -660,6 +666,7 @@ export default function HomePage() {
             isPremium={isPremium}
             onNewConversation={handleNewConversation}
             onMediaGenerated={handleMediaGenerated}
+            onScrollToBottom={scrollToBottom}
           />
         </div>
         {/* <div className="spacer-16" />

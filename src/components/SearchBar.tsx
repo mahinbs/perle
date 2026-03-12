@@ -47,6 +47,8 @@ interface SearchBarProps {
   onNewConversation?: () => void; // Callback to start new conversation
   onMediaGenerated?: (media: { type: 'image' | 'video'; url: string; prompt: string }) => void; // Callback when media is generated
   answer?: AnswerResult | null;
+  /** Called when search is triggered (e.g. button click) so the page can scroll to bottom */
+  onScrollToBottom?: () => void;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -65,6 +67,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   setSelectedModel,
   onModelChange,
   answer = null,
+  onScrollToBottom,
 }) => {
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
@@ -203,37 +206,36 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [hasAnswer, searchedQuery, query]);
 
+  const scrollToBottom = () => {
+    // Use callback from parent (e.g. HomePage) for reliable scroll-into-view
+    if (onScrollToBottom) {
+      onScrollToBottom();
+      return;
+    }
+    // Fallback: scroll document
+    const doc = document.documentElement;
+    const scrollTop = doc.scrollHeight - window.innerHeight;
+    window.scrollTo({ top: Math.max(0, scrollTop), behavior: "smooth" });
+  };
+
+  const triggerSearchWithScroll = () => {
+    if (!query.trim()) return;
+    onSearch();
+    setQuery("");
+    // Scroll to bottom on follow-up submit — multiple attempts to catch DOM updates
+    requestAnimationFrame(() => {
+      scrollToBottom();
+      setTimeout(scrollToBottom, 300);
+      setTimeout(scrollToBottom, 600);
+      setTimeout(scrollToBottom, 1200); // Extra delay for async answer render
+    });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      // Only search if there's input in the search box
       if (query.trim()) {
-        onSearch();
-        // Always clear the query immediately after triggering search
-        setQuery("");
-        // Scroll to bottom of page when search is triggered
-        // Use multiple attempts to ensure it works even if page is still loading
-        const scrollToBottom = () => {
-          const scrollHeight = Math.max(
-            document.body.scrollHeight,
-            document.documentElement.scrollHeight,
-            document.body.offsetHeight,
-            document.documentElement.offsetHeight,
-            document.body.clientHeight,
-            document.documentElement.clientHeight
-          );
-          window.scrollTo({
-            top: scrollHeight,
-            behavior: "smooth",
-          });
-        };
-
-        // Try immediately and after delays to catch different render states
-        requestAnimationFrame(() => {
-          scrollToBottom();
-          setTimeout(scrollToBottom, 300);
-          setTimeout(scrollToBottom, 600);
-        });
+        triggerSearchWithScroll();
       }
     }
   };
@@ -2120,13 +2122,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             {query.trim() ? (
               <button
                 className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
-                onClick={() => {
-                  if (query.trim()) {
-                    onSearch();
-                    // Always clear the query immediately after triggering search
-                    setQuery("");
-                  }
-                }}
+                onClick={triggerSearchWithScroll}
                 disabled={isLoading}
                 aria-label="Search"
                 style={{
