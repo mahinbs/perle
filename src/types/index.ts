@@ -1,6 +1,39 @@
 export type Mode = 'Ask' | 'Research' | 'Summarize' | 'Compare';
 
-export type LLMModel = 'auto' | 'gpt-5' | 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-4' | 'gpt-3.5-turbo' | 'gemini-2.0-latest' | 'gemini-lite' | 'claude-4.5-sonnet' | 'claude-4.5-opus' | 'claude-4.5-haiku' | 'claude-4-sonnet' | 'claude-3.5-sonnet' | 'claude-3-opus' | 'claude-3-sonnet' | 'claude-3-haiku' | 'grok-3' | 'grok-3-mini' | /* 'grok-4' | */ 'grok-4-heavy' | 'grok-4-fast' | 'grok-code-fast-1' | 'grok-beta' | 'gemini-pro' | 'gemini-pro-vision' | 'llama-2' | 'mistral-7b';
+export type LLMModel =
+  | 'auto'
+  | 'gpt-5'
+  | 'gpt-5.1'
+  | 'gpt-5.2'
+  | 'gpt-5.3'
+  | 'gpt-4o'
+  | 'gpt-4o-mini'
+  | 'gpt-4-turbo'
+  | 'gpt-4'
+  | 'gpt-3.5-turbo'
+  | 'gemini-2.0-latest'
+  | 'gemini-3.0'
+  | 'gemini-3.1'
+  | 'gemini-3.1-flash'
+  | 'gemini-lite'
+  | 'claude-4.5-sonnet'
+  | 'claude-4.5-opus'
+  | 'claude-4.5-haiku'
+  | 'claude-4-sonnet'
+  | 'claude-3.5-sonnet'
+  | 'claude-3-opus'
+  | 'claude-3-sonnet'
+  | 'claude-3-haiku'
+  | 'grok-3'
+  | 'grok-3-mini'
+  | /* 'grok-4' | */ 'grok-4-heavy'
+  | 'grok-4-fast'
+  | 'grok-code-fast-1'
+  | 'grok-beta'
+  | 'gemini-pro'
+  | 'gemini-pro-vision'
+  | 'llama-2'
+  | 'mistral-7b';
 
 export interface LLMModelInfo {
   id: LLMModel;

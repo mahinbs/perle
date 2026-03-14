@@ -1,5 +1,3 @@
-import { searchWithAzureGrounding } from './azureGroundingSearch.js';
-
 export interface SearchResult {
   title: string;
   url: string;
@@ -343,15 +341,6 @@ export function requiresCurrentInfo(query: string): boolean {
 }
 
 /**
- * Perform web search using Azure Grounding with Bing via AI Foundry Agent Service
- * This replaces the old Bing Search v7 API which was retired in August 2025
- */
-export async function searchWeb(query: string, maxResults: number = 15): Promise<SearchResult[]> {
-  // Use Azure AI Foundry Agent Service with Grounding with Bing
-  return await searchWithAzureGrounding(query, maxResults);
-}
-
-/**
  * Format search results for AI context
  */
 export function formatSearchResultsForContext(results: SearchResult[]): string {
@@ -383,13 +372,13 @@ Prioritize ${currentYear} and late 2025 information. Older data (2024, 2023) may
 
 🔴🔴🔴 END BACKGROUND CONTEXT 🔴🔴🔴
 
-🌐 WEB SEARCH RESULTS (Live Bing search from ${currentDate}):
+🌐 WEB SEARCH RESULTS (Live web search from ${currentDate}):
 
 ${formattedResults}
 
 CRITICAL INSTRUCTIONS:
 1. Use ONLY the above web search results to provide current, accurate information
-2. These results are from live Bing search as of ${currentDate}
+2. These results are from live web search as of ${currentDate}
 3. Always cite sources using [1], [2], [3], etc. notation from the numbered search results above
 4. ⚠️ NEVER use the phrase "[Context provided]" - ONLY cite numbered sources like [1], [2], etc.
 5. ALL facts MUST come from search results with [source number] citations

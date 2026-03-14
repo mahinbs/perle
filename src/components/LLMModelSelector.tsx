@@ -22,6 +22,27 @@ const premiumModels: LLMModelInfo[] = [
     capabilities: ["Advanced Reasoning", "Latest Tech", "High Performance"],
   },
   {
+    id: "gpt-5.1",
+    name: "GPT-5.1",
+    provider: "OpenAI",
+    description: "GPT-5.1 compatibility profile",
+    capabilities: ["Reasoning", "Long Context", "Compatibility"],
+  },
+  {
+    id: "gpt-5.2",
+    name: "GPT-5.2",
+    provider: "OpenAI",
+    description: "GPT-5.2 compatibility profile",
+    capabilities: ["Reasoning", "Tool Use", "Compatibility"],
+  },
+  {
+    id: "gpt-5.3",
+    name: "GPT-5.3",
+    provider: "OpenAI",
+    description: "GPT-5.3 compatibility profile",
+    capabilities: ["Advanced", "Fast", "Compatibility"],
+  },
+  {
     id: "gpt-4o",
     name: "GPT-4o",
     provider: "OpenAI",
@@ -49,6 +70,27 @@ const premiumModels: LLMModelInfo[] = [
     provider: "Google",
     description: "Google's latest and most powerful model",
     capabilities: ["Latest Version", "Multimodal", "Advanced AI"],
+  },
+  {
+    id: "gemini-3.0",
+    name: "Gemini 3.0",
+    provider: "Google",
+    description: "Gemini 3.0 profile",
+    capabilities: ["Latest", "Multimodal", "High Quality"],
+  },
+  {
+    id: "gemini-3.1",
+    name: "Gemini 3.1",
+    provider: "Google",
+    description: "Gemini 3.1 Pro profile",
+    capabilities: ["Pro Quality", "Reasoning", "Tooling"],
+  },
+  {
+    id: "gemini-3.1-flash",
+    name: "Gemini 3.1 Flash",
+    provider: "Google",
+    description: "Gemini 3.1 fast profile",
+    capabilities: ["Fast", "Low Latency", "Multimodal"],
   },
   // Anthropic Claude Models (Latest First)
   {

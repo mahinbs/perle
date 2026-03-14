@@ -16,6 +16,7 @@ import { getUserData, getAuthHeaders, getAuthToken, isAuthenticated, removeAuthT
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
+import { getUserLocalContext } from "../utils/userLocalContext";
 
 interface Space {
   id: string;
@@ -390,6 +391,14 @@ export default function SpacesPage() {
 
     try {
       const token = getAuthToken();
+      const contextMessageLimit = isPremium ? 20 : 10;
+      const conversationHistoryPayload = messages
+        .slice(-contextMessageLimit)
+        .map((m) => ({
+          role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
+          content: m.content,
+        }));
+      const userContextPayload = getUserLocalContext();
       const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: {
@@ -402,6 +411,8 @@ export default function SpacesPage() {
           chatMode: "space",
           spaceId: selectedSpace.id,
           newConversation: newConversation,
+          conversationHistory: conversationHistoryPayload,
+          userContext: userContextPayload,
         }),
       });
 

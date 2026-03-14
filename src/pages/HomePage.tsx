@@ -238,7 +238,21 @@ export default function HomePage() {
       // Call the real API with uploaded files and conversation ID
       try {
         console.log(`🚀 FRONTEND SENDING: conversationId=${activeConversationId}, newConversation=${newConversation}`);
-        const res = await searchAPI(q, mode, selectedModel, newConversation, filesToProcess, activeConversationId);
+        const localConversationHistory = conversationHistory
+          .slice(-10)
+          .flatMap((item) => [
+            { role: "user" as const, content: item.query },
+            { role: "assistant" as const, content: item.chunks.map((c) => c.text).join("\n\n") },
+          ]);
+        const res = await searchAPI(
+          q,
+          mode,
+          selectedModel,
+          newConversation,
+          filesToProcess,
+          activeConversationId,
+          localConversationHistory
+        );
 
         console.log(`✅ FRONTEND RECEIVED: conversationId=${res.conversationId}`);
 
@@ -328,7 +342,7 @@ export default function HomePage() {
       // Removed 'query' from dependencies to prevent re-creation on every query change
       // The function uses query from closure, which is fine since we pass it explicitly when needed
     },
-    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation]
+    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory]
   );
 
   // Handle keyboard shortcuts

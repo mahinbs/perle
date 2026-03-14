@@ -1,5 +1,6 @@
 import type { Source, AnswerResult, Mode, LLMModel } from '../types';
 import { rerankSources, chunkAnswer } from './helpers';
+import { getUserLocalContext } from './userLocalContext';
 
 interface UploadedFile {
   id: string;
@@ -152,7 +153,8 @@ export async function searchAPI(
   model: LLMModel = 'gpt-4', 
   newConversation: boolean = false,
   uploadedFiles: UploadedFile[] = [],
-  conversationId: string | null = null
+  conversationId: string | null = null,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
 ): Promise<AnswerResult & { conversationId?: string }> {
   const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
@@ -161,6 +163,7 @@ export async function searchAPI(
   
   // Import auth utilities dynamically to avoid circular dependencies
   const { getAuthHeaders } = await import('./auth');
+  const userContext = getUserLocalContext();
   
   // If files are uploaded, use FormData; otherwise use JSON
   if (uploadedFiles.length > 0) {
@@ -172,6 +175,10 @@ export async function searchAPI(
     if (conversationId) {
       formData.append('conversationId', conversationId);
     }
+    if (conversationHistory.length > 0) {
+      formData.append('conversationHistory', JSON.stringify(conversationHistory));
+    }
+    formData.append('userContext', JSON.stringify(userContext));
     
     // Attach only the first file (for now, single file support)
     if (uploadedFiles[0]?.file) {
@@ -198,7 +205,7 @@ export async function searchAPI(
     const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ query, mode, model, newConversation, conversationId })
+      body: JSON.stringify({ query, mode, model, newConversation, conversationId, conversationHistory, userContext })
     });
     
     if (!res.ok) {

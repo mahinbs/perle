@@ -17,6 +17,7 @@ import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
+import { getUserLocalContext } from "../utils/userLocalContext";
 
 interface Message {
   id: string;
@@ -281,6 +282,15 @@ export default function AIPsychologyPage() {
     }
 
     try {
+      const contextMessageLimit = isPremium ? 20 : 10;
+      const conversationHistoryPayload = messages
+        .slice(-contextMessageLimit)
+        .map((m) => ({
+          role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
+          content: m.content,
+        }));
+      const userContextPayload = getUserLocalContext();
+
       const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: getAuthHeaders(),
@@ -289,6 +299,8 @@ export default function AIPsychologyPage() {
           model: selectedModel,
           newConversation: newConversation,
           chatMode: "ai_psychologist", // Use AI psychologist mode
+          conversationHistory: conversationHistoryPayload,
+          userContext: userContextPayload,
         }),
       });
 

@@ -26,6 +26,7 @@ import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
+import { getUserLocalContext } from "../utils/userLocalContext";
 
 interface Message {
   id: string;
@@ -528,6 +529,15 @@ export default function AIFriendPage() {
     }
 
     try {
+      const contextMessageLimit = !isLoggedIn ? 5 : isPremium ? 20 : 10;
+      const conversationHistoryPayload = messages
+        .slice(-contextMessageLimit)
+        .map((m) => ({
+          role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
+          content: m.content,
+        }));
+      const userContextPayload = getUserLocalContext();
+
       // Handle group chat vs individual chat
       if (isGroupChat && isLoggedIn && aiFriends.length > 0) {
         // Group chat: parse @ mentions
@@ -563,6 +573,8 @@ export default function AIFriendPage() {
               formData.append('newConversation', 'false');
               formData.append('chatMode', 'ai_friend');
               formData.append('aiFriendId', friend.id);
+              formData.append('conversationHistory', JSON.stringify(conversationHistoryPayload));
+              formData.append('userContext', JSON.stringify(userContextPayload));
               formData.append('image', fileToSend);
               body = formData;
               // Remove Content-Type header to let browser set it with boundary
@@ -575,6 +587,8 @@ export default function AIFriendPage() {
                 newConversation: false,
                 chatMode: "ai_friend",
                 aiFriendId: friend.id,
+                conversationHistory: conversationHistoryPayload,
+                userContext: userContextPayload,
               });
             }
             
@@ -665,6 +679,8 @@ export default function AIFriendPage() {
           if (selectedFriendId) {
             formData.append('aiFriendId', selectedFriendId);
           }
+          formData.append('conversationHistory', JSON.stringify(conversationHistoryPayload));
+          formData.append('userContext', JSON.stringify(userContextPayload));
           formData.append('image', fileToSend);
           body = formData;
           // Remove Content-Type header to let browser set it with boundary
@@ -677,6 +693,8 @@ export default function AIFriendPage() {
           newConversation: newConversation,
             chatMode: "ai_friend",
             aiFriendId: selectedFriendId || undefined,
+            conversationHistory: conversationHistoryPayload,
+            userContext: userContextPayload,
           });
         }
         

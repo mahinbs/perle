@@ -5,12 +5,18 @@ export type ChatMode = 'normal' | 'ai_friend' | 'ai_psychologist' | 'space';
 export type LLMModel =
   | 'auto'
   | 'gpt-5'
+  | 'gpt-5.1'
+  | 'gpt-5.2'
+  | 'gpt-5.3'
   | 'gpt-4o'
   | 'gpt-4o-mini'
   | 'gpt-4-turbo'
   | 'gpt-4'
   | 'gpt-3.5-turbo'
   | 'gemini-2.0-latest'
+  | 'gemini-3.0'
+  | 'gemini-3.1'
+  | 'gemini-3.1-flash'
   | 'gemini-lite'
   | 'grok-3'
   | 'grok-3-mini'
@@ -50,6 +56,18 @@ export interface AnswerChunk {
 export interface ConversationMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+export interface UserLocalContext {
+  locale?: string;
+  timeZone?: string;
+  localDateTime?: string;
+  countryCode?: string;
+  currencyCode?: string;
+  utcOffsetMinutes?: number;
+  region?: string;
+  city?: string;
+  source?: 'client' | 'server-headers' | 'merged';
 }
 
 export interface GeneratedImage {

@@ -5,6 +5,7 @@ import { generateAIAnswer } from '../utils/aiProviders.js';
 import type { LLMModel, ConversationMessage, ChatMode } from '../types.js';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
+import { buildUserLocalContext } from '../utils/requestLocalContext.js';
 
 const router = Router();
 
@@ -40,12 +41,18 @@ const chatSchema = z.object({
   model: z.enum([
     'auto',
     'gpt-5',
+    'gpt-5.1',
+    'gpt-5.2',
+    'gpt-5.3',
     'gpt-4o',
     'gpt-4o-mini',
     'gpt-4-turbo',
     'gpt-4',
     'gpt-3.5-turbo',
     'gemini-2.0-latest',
+    'gemini-3.0',
+    'gemini-3.1',
+    'gemini-3.1-flash',
     'gemini-lite',
     'claude-4.5-sonnet',
     'claude-4.5-opus',
@@ -68,6 +75,23 @@ const chatSchema = z.object({
     'mistral-7b'
   ]).optional().default('gemini-lite'),
   newConversation: z.boolean().optional().default(false),
+  conversationHistory: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().min(1).max(6000),
+      })
+    )
+    .optional()
+    .default([]),
+  userContext: z.object({
+    locale: z.string().min(2).max(35).optional(),
+    timeZone: z.string().min(1).max(80).optional(),
+    localDateTime: z.string().min(1).max(200).optional(),
+    countryCode: z.string().min(2).max(3).optional(),
+    currencyCode: z.string().min(3).max(3).optional(),
+    utcOffsetMinutes: z.number().int().min(-840).max(840).optional(),
+  }).optional(),
   chatMode: z.enum(['normal', 'ai_friend', 'ai_psychologist', 'space']).optional().default('normal'),
   aiFriendId: z.string().uuid().optional(), // Optional AI friend ID for individual chat
   mentionedFriendIds: z.array(z.string().uuid()).optional(), // Array of friend IDs for group chat (@ mentions)
@@ -84,6 +108,20 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
     if (bodyData.newConversation === 'true' || bodyData.newConversation === 'false') {
       bodyData.newConversation = bodyData.newConversation === 'true';
     }
+    if (typeof bodyData.conversationHistory === 'string') {
+      try {
+        bodyData.conversationHistory = JSON.parse(bodyData.conversationHistory);
+      } catch {
+        bodyData.conversationHistory = [];
+      }
+    }
+    if (typeof bodyData.userContext === 'string') {
+      try {
+        bodyData.userContext = JSON.parse(bodyData.userContext);
+      } catch {
+        bodyData.userContext = undefined;
+      }
+    }
     
     const parse = chatSchema.safeParse(bodyData);
     if (!parse.success) {
@@ -93,8 +131,9 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
       });
     }
 
-    const { message, model, newConversation, chatMode, aiFriendId, mentionedFriendIds, spaceId } = parse.data;
+    const { message, model, newConversation, conversationHistory: clientConversationHistory, userContext, chatMode, aiFriendId, mentionedFriendIds, spaceId } = parse.data;
     const trimmedMessage = message.trim();
+    const effectiveUserContext = buildUserLocalContext(req, userContext);
 
     if (!trimmedMessage) {
       return res.status(400).json({ error: 'Message cannot be empty' });
@@ -199,12 +238,14 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
     }
 
     // Fetch conversation history for context - ISOLATED BY CHAT MODE, SPACE, AND AI FRIEND
-    // Free users: 5 messages, Premium users: 20 messages
+    // Non-logged: 5 messages (from client fallback only)
+    // Free logged: 10 messages
+    // Premium logged: 20 messages
+    const contextMessageLimit = req.userId ? (isPremium ? 20 : 10) : 5;
     // Context is isolated per user, chat mode, space, AND ai_friend_id (no mixing between friends)
     let conversationHistory: ConversationMessage[] = [];
     if (req.userId && !newConversation) {
       try {
-        const messageLimit = isPremium ? 20 : 5; // Premium: 20, Free: 5
         let query = supabase
           .from('conversation_history')
           .select('query, answer')
@@ -231,7 +272,7 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
         
         const { data: history } = await query
           .order('created_at', { ascending: false })
-          .limit(messageLimit);
+          .limit(contextMessageLimit);
         
         if (history && history.length > 0) {
           // Convert to conversation format (reverse to get chronological order)
@@ -244,6 +285,11 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
         console.warn('Failed to fetch conversation history:', historyError);
         // Continue without history if fetch fails
       }
+    }
+
+    // Fallback context: if server-side history isn't available, use client-provided history
+    if ((!conversationHistory || conversationHistory.length === 0) && clientConversationHistory.length > 0) {
+      conversationHistory = clientConversationHistory.slice(-contextMessageLimit);
     }
     
     // If starting new conversation, clear existing history for this user, chat mode, space, and ai friend
@@ -338,7 +384,8 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
         aiFriendName, 
         spaceTitle, 
         spaceDescription,
-        imageDataUrl // Pass image for vision models
+        imageDataUrl, // Pass image for vision models
+        effectiveUserContext
       );
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
@@ -381,8 +428,8 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
         }
         
         // Keep only last N messages per user per chat mode per friend/space (cleanup old ones)
-        // Free: 5 messages, Premium: 20 messages
-        const maxHistory = isPremium ? 20 : 5;
+        // Free: 10 messages, Premium: 20 messages
+        const maxHistory = isPremium ? 20 : 10;
         let cleanupQuery = supabase
           .from('conversation_history')
           .select('id')
@@ -467,9 +514,9 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
       console.warn('Failed to fetch premium status for history:', e);
     }
 
-    // Free: 5 messages, Premium: 20 messages
+    // Free: 10 messages, Premium: 20 messages
     // Context is isolated per user AND chat mode (no mixing between modes)
-    const messageLimit = isPremium ? 20 : 5;
+    const messageLimit = isPremium ? 20 : 10;
 
     // Get spaceId and aiFriendId from query parameters if provided
     const spaceId = req.query.spaceId as string | undefined;

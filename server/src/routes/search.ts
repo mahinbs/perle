@@ -5,6 +5,7 @@ import { generateAIAnswer } from '../utils/aiProviders.js';
 import type { AnswerResult, Mode, LLMModel } from '../types.js';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
+import { buildUserLocalContext } from '../utils/requestLocalContext.js';
 
 const router = Router();
 
@@ -40,16 +41,47 @@ const searchSchema = z.object({
   mode: z.enum(['Ask', 'Research', 'Summarize', 'Compare']).default('Ask'),
   newConversation: z.boolean().optional().default(false), // Flag to start new conversation
   conversationId: z.union([z.string().uuid(), z.null()]).optional(), // Optional conversation ID to continue existing conversation (can be null)
+  conversationHistory: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().min(1).max(6000),
+      })
+    )
+    .optional()
+    .default([]),
+  userContext: z.object({
+    locale: z.string().min(2).max(35).optional(),
+    timeZone: z.string().min(1).max(80).optional(),
+    localDateTime: z.string().min(1).max(200).optional(),
+    countryCode: z.string().min(2).max(3).optional(),
+    currencyCode: z.string().min(3).max(3).optional(),
+    utcOffsetMinutes: z.number().int().min(-840).max(840).optional(),
+  }).optional(),
   model: z.enum([
     'auto',
     'gpt-5',
+    'gpt-5.1',
+    'gpt-5.2',
+    'gpt-5.3',
     'gpt-4o',
     'gpt-4o-mini',
     'gpt-4-turbo',
     'gpt-4',
     'gpt-3.5-turbo',
     'gemini-2.0-latest',
+    'gemini-3.0',
+    'gemini-3.1',
+    'gemini-3.1-flash',
     'gemini-lite',
+    'claude-4.5-sonnet',
+    'claude-4.5-opus',
+    'claude-4.5-haiku',
+    'claude-4-sonnet',
+    'claude-3.5-sonnet',
+    'claude-3-opus',
+    'claude-3-sonnet',
+    'claude-3-haiku',
     'grok-3',
     'grok-3-mini',
     // 'grok-4', // COMMENTED OUT - temporarily disabled
@@ -78,6 +110,20 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
     if (bodyData.newConversation === 'true' || bodyData.newConversation === 'false') {
       bodyData.newConversation = bodyData.newConversation === 'true';
     }
+    if (typeof bodyData.conversationHistory === 'string') {
+      try {
+        bodyData.conversationHistory = JSON.parse(bodyData.conversationHistory);
+      } catch {
+        bodyData.conversationHistory = [];
+      }
+    }
+    if (typeof bodyData.userContext === 'string') {
+      try {
+        bodyData.userContext = JSON.parse(bodyData.userContext);
+      } catch {
+        bodyData.userContext = undefined;
+      }
+    }
     
     const parse = searchSchema.safeParse(bodyData);
     if (!parse.success) {
@@ -87,8 +133,9 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
       });
     }
 
-    const { query, mode, model, newConversation, conversationId } = parse.data;
+    const { query, mode, model, newConversation, conversationId, conversationHistory: clientConversationHistory, userContext } = parse.data;
     const trimmedQuery = query.trim();
+    const effectiveUserContext = buildUserLocalContext(req, userContext);
 
     if (!trimmedQuery) {
       return res.status(400).json({ error: 'Query cannot be empty' });
@@ -184,18 +231,19 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
     }
 
     // Fetch conversation history for context
-    // Both free and premium users get history (different limits)
-    // Free: 5 messages, Premium: 20 messages
+    // Non-logged: 5 messages (from client fallback only)
+    // Free logged: 10 messages
+    // Premium logged: 20 messages
+    const contextMessageLimit = req.userId ? (isPremium ? 20 : 10) : 5;
     let conversationHistory: any[] = [];
     if (req.userId && currentConversationId && !newConversation) {
       try {
-        const messageLimit = isPremium ? 20 : 5;
         const { data: history } = await supabase
           .from('conversation_history')
           .select('query, answer')
           .eq('conversation_id', currentConversationId)
           .order('created_at', { ascending: false })
-          .limit(messageLimit);
+          .limit(contextMessageLimit);
         
         if (history && history.length > 0) {
           // Convert to conversation format (reverse to get chronological order)
@@ -221,6 +269,11 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
         console.warn('Failed to clear conversation history:', clearError);
         // Continue even if clear fails
       }
+    }
+
+    // Fallback context: if server-side history isn't available, use client-provided history
+    if ((!conversationHistory || conversationHistory.length === 0) && clientConversationHistory.length > 0) {
+      conversationHistory = clientConversationHistory.slice(-contextMessageLimit);
     }
 
     // Process uploaded file (image/document) if present
@@ -270,7 +323,7 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
     // Generate answer using real AI provider only - no fallbacks
     let result: AnswerResult;
     try {
-      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory, 'normal', null, null, null, null, imageDataUrl);
+      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory, 'normal', null, null, null, null, imageDataUrl, effectiveUserContext);
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
       const errorMessage = apiError?.message || 'Failed to generate answer';
@@ -323,9 +376,9 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
               .eq('id', currentConversationId);
           }
           
-          // Keep only last N messages per conversation (cleanup old ones)
-          // Free: 10 messages, Premium: 50 messages per conversation
-          const maxHistory = isPremium ? 50 : 10;
+          // Keep only last N messages per conversation (aligned with context limits)
+          // Free: 10 messages, Premium: 20 messages per conversation
+          const maxHistory = isPremium ? 20 : 10;
           if (currentConversationId) {
             const { data: convHistory } = await supabase
               .from('conversation_history')

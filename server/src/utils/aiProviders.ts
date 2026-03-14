@@ -1,9 +1,10 @@
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
-import type { AnswerResult, Mode, LLMModel, Source, ConversationMessage, ChatMode } from '../types.js';
+import type { AnswerResult, Mode, LLMModel, Source, ConversationMessage, ChatMode, UserLocalContext } from '../types.js';
 import { shouldGenerateImage, extractImagePrompt, generateImage } from './imageGeneration.js';
-import { requiresCurrentInfo, searchWeb, formatSearchResultsForContext } from './webSearch.js';
+import { requiresCurrentInfo, formatSearchResultsForContext } from './webSearch.js';
+import { searchWithGeminiGrounding, searchWithOpenAIWebTool, searchWithGrokWebTool } from './providerWebSearch.js';
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -196,12 +197,40 @@ Only discuss historical information when explicitly asked about the past (e.g., 
 }
 
 // Get system prompt based on chat mode, optional AI friend description, and optional space context
+function getUserLocalContextBlock(userContext?: UserLocalContext): string {
+  if (!userContext) {
+    return `\n\n📍 USER LOCAL CONTEXT:\n- Locale/timezone unavailable.\n- Fallback for time/date: IST (UTC+5:30).\n- Fallback for prices: INR where localization is requested.`;
+  }
+
+  const lines = [
+    `- Locale: ${userContext.locale || 'unknown'}`,
+    `- Timezone: ${userContext.timeZone || 'unknown'}`,
+    `- Local date/time: ${userContext.localDateTime || 'unknown'}`,
+    `- Country: ${userContext.countryCode || 'unknown'}`,
+    `- Preferred currency: ${userContext.currencyCode || 'unknown'}`,
+  ];
+  if (userContext.region) lines.push(`- Region: ${userContext.region}`);
+  if (userContext.city) lines.push(`- City: ${userContext.city}`);
+  if (userContext.source) lines.push(`- Context source: ${userContext.source}`);
+
+  if (typeof userContext.utcOffsetMinutes === 'number') {
+    lines.push(`- UTC offset (minutes): ${userContext.utcOffsetMinutes}`);
+  }
+
+  return `\n\n📍 USER LOCAL CONTEXT:\n${lines.join('\n')}\n\nLOCALIZATION RULES:
+- For price questions, present prices in the user's preferred currency when available.
+- For date/time questions, use the user's local timezone and local date/time context.
+- If exact local pricing is unavailable, show best-known global price and an approximate local conversion.
+- Mention uncertainty briefly when local data cannot be verified.`;
+}
+
 function getSystemPrompt(
   chatMode: ChatMode = 'normal', 
   friendDescription?: string | null, 
   friendName?: string | null,
   spaceTitle?: string | null,
-  spaceDescription?: string | null
+  spaceDescription?: string | null,
+  userContext?: UserLocalContext
 ): string {
   // Use IST for AI Friend and AI Psychology modes, regular timezone for normal mode
   const currentDate = (chatMode === 'ai_friend' || chatMode === 'ai_psychologist') 
@@ -214,6 +243,7 @@ function getSystemPrompt(
   const spaceContext = spaceTitle && spaceDescription 
     ? `\n\n📁 SPACE CONTEXT: You are in a space called "${spaceTitle}". ${spaceDescription}\n\nIMPORTANT: All conversations in this space should be relevant to this space's purpose and context. Keep responses focused on the space's theme and description.`
     : '';
+  const userLocalContext = getUserLocalContextBlock(userContext);
   
   switch (chatMode) {
     case 'ai_friend':
@@ -223,16 +253,16 @@ function getSystemPrompt(
 
 Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.
 
-IMPORTANT: When asked about time, date, or current events, always provide information according to IST (Indian Standard Time, UTC+5:30).${spaceContext}${dateContext}`;
+IMPORTANT: When asked about time, date, current events, or prices, prioritize the USER LOCAL CONTEXT. If unavailable, fallback to IST and INR.${spaceContext}${dateContext}${userLocalContext}`;
       }
       return `You are a warm, supportive friend having a casual conversation. Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.
 
-IMPORTANT: When asked about time, date, or current events, always provide information according to IST (Indian Standard Time, UTC+5:30).${spaceContext}${dateContext}`;
+IMPORTANT: When asked about time, date, current events, or prices, prioritize the USER LOCAL CONTEXT. If unavailable, fallback to IST and INR.${spaceContext}${dateContext}${userLocalContext}`;
     
     case 'ai_psychologist':
       return `You are a professional, empathetic psychologist providing supportive guidance. Use active listening techniques, validate feelings, and ask thoughtful questions to help users explore their thoughts and emotions. Provide evidence-based insights when appropriate, but always be non-judgmental and supportive. Help users develop coping strategies and self-awareness. Maintain professional boundaries while being warm and understanding. Speak in a natural, conversational therapeutic tone - NOT in bullet points unless specifically giving actionable steps. Remember to consider the full context of the conversation in your responses.
 
-IMPORTANT: When asked about time, date, or current events, always provide information according to IST (Indian Standard Time, UTC+5:30).${spaceContext}${dateContext}`;
+IMPORTANT: When asked about time, date, current events, or prices, prioritize the USER LOCAL CONTEXT. If unavailable, fallback to IST and INR.${spaceContext}${dateContext}${userLocalContext}`;
     
     case 'normal':
     default:
@@ -289,7 +319,10 @@ IMPORTANT:
 • For regular questions, answer DIRECTLY without any introduction
 • Do NOT start answers with "SyntraIQ, founded in 2025..." or similar
 • NEVER mention which AI model you are using (GPT, Gemini, Grok, Claude, etc.)
-• Just provide the answer to the user's question${spaceContext}${dateContext}`;
+• CRITICAL CONTEXT RULE: If the user asks an ambiguous follow-up (e.g., "what processor they use?", "and price?", "which is better?"), you MUST resolve pronouns using prior turns and continue the same topic unless user explicitly changes topic
+• If context is unclear, ask one concise clarification question instead of switching topic
+• For prices, dates, and times, use USER LOCAL CONTEXT when available
+• Just provide the answer to the user's question${spaceContext}${dateContext}${userLocalContext}`;
   }
 }
 
@@ -304,7 +337,8 @@ export async function generateOpenAIAnswer(
   friendName?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  userContext?: UserLocalContext
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -335,23 +369,23 @@ export async function generateOpenAIAnswer(
   }
   const client = new OpenAI({ apiKey });
 
-  // Check if query requires current information and perform web search with Microsoft Bing
+  // Check if query requires current information and perform provider-native web search
   let searchContext = '';
-  let webSearchResults: Awaited<ReturnType<typeof searchWeb>> = [];
+  let webSearchResults: Awaited<ReturnType<typeof searchWithOpenAIWebTool>> = [];
   if (requiresCurrentInfo(query)) {
-    console.log('🌐 Query requires current info - performing web search with Microsoft Bing...');
-    webSearchResults = await searchWeb(query, 15);
+    console.log('🌐 Query requires current info - performing OpenAI web search...');
+    webSearchResults = await searchWithOpenAIWebTool(query, apiKey, 15);
     searchContext = formatSearchResultsForContext(webSearchResults);
-    console.log(`✅ Microsoft Bing returned ${webSearchResults.length} search results`);
+    console.log(`✅ OpenAI web search returned ${webSearchResults.length} search results`);
   }
   
   // Get system prompt based on chat mode, friend description, and space context
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription, userContext);
   
-  // Append Bing search context
+  // Append web search context
   if (searchContext) {
     sys += searchContext;
-    console.log('📝 Added Microsoft Bing search context to system prompt');
+    console.log('📝 Added web search context to system prompt');
   }
   
   // Build messages array with conversation history
@@ -359,8 +393,8 @@ export async function generateOpenAIAnswer(
     { role: 'system', content: sys }
   ];
   
-  // Add conversation history (last 10 messages)
-  const recentHistory = conversationHistory.slice(-10);
+  // Add conversation history (already capped in routes by user tier)
+  const recentHistory = conversationHistory;
   for (const msg of recentHistory) {
     messages.push({
       role: msg.role === 'user' ? 'user' : 'assistant',
@@ -396,7 +430,7 @@ export async function generateOpenAIAnswer(
 
   // Map model names to actual OpenAI models
   let openaiModel = 'gpt-4o-mini'; // Default
-  if (model === 'gpt-5' || model === 'gpt-4o') {
+  if (model === 'gpt-5' || model === 'gpt-5.1' || model === 'gpt-5.2' || model === 'gpt-5.3' || model === 'gpt-4o') {
     openaiModel = 'gpt-4o'; // Use GPT-4o for GPT-5 and gpt-4o
   } else if (model === 'gpt-4o-mini') {
     openaiModel = 'gpt-4o-mini';
@@ -445,15 +479,15 @@ export async function generateOpenAIAnswer(
     throw new Error('AI model returned an empty response. Please try again.');
   }
   
-  // Extract sources from Microsoft Bing web search results
+  // Extract sources from provider-native web search results
   const sources: Source[] = [];
   
   if (webSearchResults.length > 0) {
-    console.log('📚 Converting Microsoft Bing search results to sources');
+    console.log('📚 Converting web search results to sources');
     for (const result of webSearchResults) {
       const url = new URL(result.url);
       sources.push({
-        id: `bing-${sources.length + 1}`,
+        id: `web-${sources.length + 1}`,
         title: result.title,
         url: result.url,
         domain: url.hostname.replace('www.', ''),
@@ -461,7 +495,7 @@ export async function generateOpenAIAnswer(
         snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
       });
     }
-    console.log(`✅ Found ${sources.length} sources from Microsoft Bing for OpenAI`);
+    console.log(`✅ Found ${sources.length} sources from web search for OpenAI`);
   }
 
   return {
@@ -485,7 +519,8 @@ export async function generateGeminiAnswer(
   friendName?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  userContext?: UserLocalContext
 ): Promise<AnswerResult> {
   // Always prioritize GEMINI_API_KEY_FREE to avoid quota issues
   // Try GEMINI_API_KEY_FREE -> GOOGLE_API_KEY_FREE -> GOOGLE_API_KEY
@@ -501,6 +536,12 @@ export async function generateGeminiAnswer(
   let geminiModel = 'gemini-2.5-flash-lite'; // Cheapest/cost-optimized (for auto mode)
   if (model === 'gemini-2.0-latest') {
     geminiModel = 'gemini-3-flash-preview'; // Latest high-speed model
+  } else if (model === 'gemini-3.0') {
+    geminiModel = 'gemini-3-flash-preview';
+  } else if (model === 'gemini-3.1') {
+    geminiModel = 'gemini-3-flash-preview';
+  } else if (model === 'gemini-3.1-flash') {
+    geminiModel = 'gemini-3-flash-preview';
   } else if (model === 'gemini-lite' || model === 'auto') {
     geminiModel = 'gemini-2.5-flash-lite'; // Cheapest option (cost-optimized for free tier)
   }
@@ -530,29 +571,29 @@ export async function generateGeminiAnswer(
 
   const modelInstance = genAI.getGenerativeModel({ model: geminiModel });
 
-  // Perform web search with Microsoft Bing if needed
+  // Perform provider-native web search if needed
   let searchContext = '';
-  let webSearchResults: Awaited<ReturnType<typeof searchWeb>> = [];
+  let webSearchResults: Awaited<ReturnType<typeof searchWithGeminiGrounding>> = [];
   if (requiresCurrentInfo(query)) {
-    console.log('🌐 Query requires current info - performing web search with Microsoft Bing...');
-    webSearchResults = await searchWeb(query, 15);
+    console.log('🌐 Query requires current info - performing Gemini grounding search...');
+    webSearchResults = await searchWithGeminiGrounding(query, apiKey, 15, geminiModel);
     searchContext = formatSearchResultsForContext(webSearchResults);
-    console.log(`✅ Microsoft Bing returned ${webSearchResults.length} search results`);
+    console.log(`✅ Gemini grounding search returned ${webSearchResults.length} search results`);
   }
 
   // Get system prompt based on chat mode, friend description, and space context
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription, userContext);
   
-  // Append Bing search context
+  // Append web search context
   if (searchContext) {
     sys += searchContext;
-    console.log('📝 Added Microsoft Bing search context to system prompt');
+    console.log('📝 Added web search context to system prompt');
   }
   
   // Build conversation context from history
   let contextPrompt = '';
   if (conversationHistory.length > 0) {
-    const recentHistory = conversationHistory.slice(-10);
+    const recentHistory = conversationHistory;
     contextPrompt = 'Previous conversation:\n';
     for (const msg of recentHistory) {
       contextPrompt += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
@@ -699,15 +740,15 @@ export async function generateGeminiAnswer(
   
   content = content.trim();
   
-  // Extract sources from Microsoft Bing web search results
+  // Extract sources from provider-native web search results
   const sources: Source[] = [];
   
   if (webSearchResults.length > 0) {
-    console.log('📚 Converting Microsoft Bing search results to sources');
+    console.log('📚 Converting web search results to sources');
     for (const result of webSearchResults) {
       const url = new URL(result.url);
       sources.push({
-        id: `bing-${sources.length + 1}`,
+        id: `web-${sources.length + 1}`,
         title: result.title,
         url: result.url,
         domain: url.hostname.replace('www.', ''),
@@ -715,7 +756,7 @@ export async function generateGeminiAnswer(
         snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
       });
     }
-    console.log(`✅ Found ${sources.length} sources from Microsoft Bing for Gemini`);
+    console.log(`✅ Found ${sources.length} sources from web search for Gemini`);
   }
 
   return {
@@ -738,7 +779,8 @@ export async function generateClaudeAnswer(
   friendName?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  userContext?: UserLocalContext
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -769,30 +811,50 @@ export async function generateClaudeAnswer(
   }
   const client = new Anthropic({ apiKey });
 
-  // Check if query requires current information and perform web search with Microsoft Bing
+  // Check if query requires current information and perform provider-native web search
   let searchContext = '';
-  let webSearchResults: Awaited<ReturnType<typeof searchWeb>> = [];
+  let webSearchResults: Source[] = [];
   if (requiresCurrentInfo(query)) {
-    console.log('🌐 Query requires current info - performing web search with Microsoft Bing...');
-    webSearchResults = await searchWeb(query, 15);
-    searchContext = formatSearchResultsForContext(webSearchResults);
-    console.log(`✅ Microsoft Bing returned ${webSearchResults.length} search results`);
+    console.log('🌐 Query requires current info - performing web search for Claude...');
+    const openAiKey = process.env.OPENAI_API_KEY || '';
+    const geminiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
+
+    const openAIResults = openAiKey ? await searchWithOpenAIWebTool(query, openAiKey, 15) : [];
+    const geminiResults =
+      openAIResults.length > 0 || !geminiKey
+        ? []
+        : await searchWithGeminiGrounding(query, geminiKey, 15, 'gemini-2.5-flash-lite');
+
+    const mergedResults = [...openAIResults, ...geminiResults]
+      .filter((r, idx, arr) => arr.findIndex((x) => x.url === r.url) === idx)
+      .slice(0, 15);
+
+    searchContext = formatSearchResultsForContext(mergedResults);
+    webSearchResults = mergedResults.map((r, i) => ({
+      id: `web-${i + 1}`,
+      title: r.title,
+      url: r.url,
+      domain: new URL(r.url).hostname.replace('www.', ''),
+      year: new Date().getFullYear(),
+      snippet: r.content,
+    }));
+    console.log(`✅ Claude web search returned ${webSearchResults.length} search results`);
   }
 
   // Get system prompt based on chat mode, friend description, and space context
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription, userContext);
   
-  // Append Bing search context if available
+  // Append web search context if available
   if (searchContext) {
     sys += searchContext;
-    console.log('📝 Added Microsoft Bing search context to system prompt');
+    console.log('📝 Added web search context to system prompt');
   }
   
   // Build messages array with conversation history
   const messages: any[] = [];
   
   // Add conversation history (last 10 messages)
-  const recentHistory = conversationHistory.slice(-10);
+  const recentHistory = conversationHistory;
   for (const msg of recentHistory) {
     messages.push({
       role: msg.role === 'user' ? 'user' : 'assistant',
@@ -867,24 +929,8 @@ export async function generateClaudeAnswer(
     throw new Error('AI model returned an empty response. Please try again.');
   }
   
-  // Extract sources from Microsoft Bing web search results
-  const sources: Source[] = [];
-  
-  if (webSearchResults.length > 0) {
-    console.log('📚 Converting Microsoft Bing search results to sources');
-    for (const result of webSearchResults) {
-      const url = new URL(result.url);
-      sources.push({
-        id: `bing-${sources.length + 1}`,
-        title: result.title,
-        url: result.url,
-        domain: url.hostname.replace('www.', ''),
-        year: new Date().getFullYear(),
-        snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
-      });
-    }
-    console.log(`✅ Found ${sources.length} sources from Microsoft Bing for Claude`);
-  }
+  // Sources were already prepared from provider-native web search
+  const sources: Source[] = webSearchResults;
 
   return {
     sources,
@@ -906,7 +952,8 @@ export async function generateGrokAnswer(
   friendName?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  userContext?: UserLocalContext
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -931,7 +978,7 @@ export async function generateGrokAnswer(
     };
   }
 
-  const apiKey = process.env.XAI_API_KEY;
+  const apiKey = process.env.XAI_API_KEY || process.env.X_API_KEY;
   if (!apiKey) {
     throw new Error('XAI_API_KEY_MISSING');
   }
@@ -942,23 +989,39 @@ export async function generateGrokAnswer(
     baseURL: 'https://api.x.ai/v1'
   });
 
-  // Check if query requires current information and perform web search with Microsoft Bing
+  // Check if query requires current information and perform provider-native web search
   let searchContext = '';
-  let webSearchResults: Awaited<ReturnType<typeof searchWeb>> = [];
+  let webSearchResults: Awaited<ReturnType<typeof searchWithGrokWebTool>> = [];
   if (requiresCurrentInfo(query)) {
-    console.log('🌐 Query requires current info - performing web search with Microsoft Bing...');
-    webSearchResults = await searchWeb(query, 15);
+    console.log('🌐 Query requires current info - performing Grok web search...');
+    webSearchResults = await searchWithGrokWebTool(query, apiKey, 15);
+    if (webSearchResults.length === 0) {
+      console.log('⚠️ Grok web search returned 0 results, falling back to OpenAI/Gemini search...');
+      const openAiKey = process.env.OPENAI_API_KEY || '';
+      const geminiKey =
+        process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
+
+      const openAIResults = openAiKey ? await searchWithOpenAIWebTool(query, openAiKey, 15) : [];
+      const geminiResults =
+        openAIResults.length > 0 || !geminiKey
+          ? []
+          : await searchWithGeminiGrounding(query, geminiKey, 15, 'gemini-2.5-flash-lite');
+
+      webSearchResults = [...openAIResults, ...geminiResults]
+        .filter((r, idx, arr) => arr.findIndex((x) => x.url === r.url) === idx)
+        .slice(0, 15);
+    }
     searchContext = formatSearchResultsForContext(webSearchResults);
-    console.log(`✅ Microsoft Bing returned ${webSearchResults.length} search results`);
+    console.log(`✅ Grok web search returned ${webSearchResults.length} search results`);
   }
   
   // Get system prompt based on chat mode, friend description, and space context
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription, userContext);
   
-  // Append Bing search context
+  // Append web search context
   if (searchContext) {
     sys += searchContext;
-    console.log('📝 Added Microsoft Bing search context to system prompt');
+    console.log('📝 Added web search context to system prompt');
   }
   
   // Build messages array with conversation history
@@ -967,7 +1030,7 @@ export async function generateGrokAnswer(
   ];
   
   // Add conversation history (last 10 messages)
-  const recentHistory = conversationHistory.slice(-10);
+  const recentHistory = conversationHistory;
   for (const msg of recentHistory) {
     messages.push({
       role: msg.role === 'user' ? 'user' : 'assistant',
@@ -1063,15 +1126,15 @@ export async function generateGrokAnswer(
     throw new Error('AI model returned an empty response. Please try again.');
   }
   
-  // Extract sources from Microsoft Bing web search results
+  // Extract sources from provider-native web search results
   const sources: Source[] = [];
   
   if (webSearchResults.length > 0) {
-    console.log('📚 Converting Microsoft Bing search results to sources');
+    console.log('📚 Converting web search results to sources');
     for (const result of webSearchResults) {
       const url = new URL(result.url);
       sources.push({
-        id: `bing-${sources.length + 1}`,
+        id: `web-${sources.length + 1}`,
         title: result.title,
         url: result.url,
         domain: url.hostname.replace('www.', ''),
@@ -1079,7 +1142,7 @@ export async function generateGrokAnswer(
         snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
       });
     }
-    console.log(`✅ Found ${sources.length} sources from Microsoft Bing for Grok`);
+    console.log(`✅ Found ${sources.length} sources from web search for Grok`);
   }
 
   return {
@@ -1103,23 +1166,24 @@ export async function generateAIAnswer(
   friendName?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  userContext?: UserLocalContext
 ): Promise<AnswerResult> {
   // Route to appropriate provider based on model
   let result: AnswerResult;
   
-  if (model === 'gpt-5' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
-    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
-  } else if (model === 'gemini-2.0-latest' || model === 'gemini-lite' || model === 'auto') {
+  if (model === 'gpt-5' || model === 'gpt-5.1' || model === 'gpt-5.2' || model === 'gpt-5.3' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
+    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
+  } else if (model === 'gemini-2.0-latest' || model === 'gemini-3.0' || model === 'gemini-3.1' || model === 'gemini-3.1-flash' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
+    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
   } else if (model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
-    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
+    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
-    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
+    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
   } else {
     // Fallback to Gemini Lite for unknown models
-    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl);
+    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
   }
   
   // Add image generation for normal mode if query requires it
