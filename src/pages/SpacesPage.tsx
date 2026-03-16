@@ -103,13 +103,30 @@ export default function SpacesPage() {
   useEffect(() => {
     const user = getUserData();
     if (user) {
-      setIsPremium(user.isPremium ?? false);
+      const isActiveSubscription =
+        user.subscription?.status === "active" &&
+        (!!user.subscription?.endDate
+          ? new Date(user.subscription.endDate) > new Date()
+          : true);
+      const hasPaidTier =
+        user.premiumTier === "pro" ||
+        user.premiumTier === "max" ||
+        user.subscription?.tier === "pro" ||
+        user.subscription?.tier === "max";
+      const premium = Boolean(user.isPremium || (hasPaidTier && isActiveSubscription));
+      setIsPremium(premium);
+
       const savedModel = localStorage.getItem("perle-space-model") as LLMModel | null;
-      if (savedModel && user.isPremium) {
+      if (savedModel && premium) {
         setSelectedModel(savedModel);
-      } else if (user.isPremium) {
+      } else if (premium) {
         setSelectedModel("auto");
+      } else {
+        setSelectedModel("gemini-lite");
       }
+    } else {
+      setIsPremium(false);
+      setSelectedModel("gemini-lite");
     }
   }, []);
 

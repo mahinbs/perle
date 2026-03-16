@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AnswerResult, Mode, LLMModel, Source, ConversationMessage, ChatMode, UserLocalContext } from '../types.js';
 import { shouldGenerateImage, extractImagePrompt, generateImage } from './imageGeneration.js';
-import { requiresCurrentInfo, formatSearchResultsForContext } from './webSearch.js';
+import { requiresCurrentInfo, formatSearchResultsForContext, isLikelyFollowUpNeedingSearch, isSmallTalkQuery } from './webSearch.js';
 import { searchWithGeminiGrounding, searchWithOpenAIWebTool, searchWithGrokWebTool } from './providerWebSearch.js';
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -133,7 +133,7 @@ REQUIRED ACTIONS:
 - If you're unsure about very recent information, acknowledge this and suggest verifying with current sources
 
 EXAMPLES:
-- "What's the latest mobile processor?" → Provide ${year}'s latest processors (Snapdragon 8 Gen 3, A17 Pro, etc. from ${year})
+- "What's the latest mobile processor?" → Use live web results and cite current sources from ${year}
 - "Best smartphones now" → Provide ${year}'s current flagship phones
 - "Current AI trends" → Provide trends as of ${dateStr}, ${year}
 
@@ -189,7 +189,7 @@ REQUIRED ACTIONS:
 - If you're unsure about very recent information, acknowledge this and suggest verifying with current sources
 
 EXAMPLES:
-- "What's the latest mobile processor?" → Provide ${year}'s latest processors (Snapdragon 8 Gen 3, A17 Pro, etc. from ${year})
+- "What's the latest mobile processor?" → Use live web results and cite current sources from ${year}
 - "Best smartphones now" → Provide ${year}'s current flagship phones
 - "Current AI trends" → Provide trends as of ${dateStr}, ${year}
 
@@ -224,10 +224,42 @@ function getUserLocalContextBlock(userContext?: UserLocalContext): string {
 - Mention uncertainty briefly when local data cannot be verified.`;
 }
 
+function getLastMeaningfulUserTopic(conversationHistory: ConversationMessage[] = []): string | null {
+  for (let i = conversationHistory.length - 1; i >= 0; i--) {
+    const msg = conversationHistory[i];
+    if (msg.role !== 'user') continue;
+    const content = msg.content?.trim();
+    if (!content) continue;
+    if (isSmallTalkQuery(content)) continue;
+    return content.length > 180 ? `${content.slice(0, 180)}...` : content;
+  }
+  return null;
+}
+
+function buildSmallTalkContextGuidance(
+  query: string,
+  conversationHistory: ConversationMessage[] = []
+): string {
+  if (!isSmallTalkQuery(query)) return '';
+
+  const lastTopic = getLastMeaningfulUserTopic(conversationHistory);
+  const topicLine = lastTopic
+    ? `\n- Previous meaningful topic from this chat: "${lastTopic}"`
+    : '\n- No earlier meaningful topic detected in this chat.';
+
+  return `\n\n💬 SMALL-TALK MODE (AUTO):
+- The user is making a conversational/small-talk message.
+- Reply naturally, warmly, and with personality (2-5 concise lines).
+- Be context-aware: use prior conversation tone and continuity.${topicLine}
+- If a prior topic exists, add a short optional bridge like "Want to continue that?".
+- Do NOT force web/factual citations for pure small-talk unless user asks factual/current info.`;
+}
+
 function getSystemPrompt(
   chatMode: ChatMode = 'normal', 
   friendDescription?: string | null, 
   friendName?: string | null,
+  friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   userContext?: UserLocalContext
@@ -248,16 +280,19 @@ function getSystemPrompt(
   switch (chatMode) {
     case 'ai_friend':
       // If custom friend description is provided, use it; otherwise use default
+      const memoryContextBlock = friendMemoryContext
+        ? `\n\n🧠 USER MEMORY (PERSISTENT):\n${friendMemoryContext}\n\nMEMORY RULES:\n- Use this memory naturally in replies.\n- Respect and use these pronouns consistently.\n- When relevant, connect responses to remembered nouns/interests.\n- Do not claim new memory unless user explicitly states it.`
+        : '';
       if (friendDescription && friendName) {
         return `You are ${friendName}, a friend having a casual conversation. ${friendDescription}
 
 Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.
 
-IMPORTANT: When asked about time, date, current events, or prices, prioritize the USER LOCAL CONTEXT. If unavailable, fallback to IST and INR.${spaceContext}${dateContext}${userLocalContext}`;
+IMPORTANT: When asked about time, date, current events, or prices, prioritize the USER LOCAL CONTEXT. If unavailable, fallback to IST and INR.${memoryContextBlock}${spaceContext}${dateContext}${userLocalContext}`;
       }
       return `You are a warm, supportive friend having a casual conversation. Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.
 
-IMPORTANT: When asked about time, date, current events, or prices, prioritize the USER LOCAL CONTEXT. If unavailable, fallback to IST and INR.${spaceContext}${dateContext}${userLocalContext}`;
+IMPORTANT: When asked about time, date, current events, or prices, prioritize the USER LOCAL CONTEXT. If unavailable, fallback to IST and INR.${memoryContextBlock}${spaceContext}${dateContext}${userLocalContext}`;
     
     case 'ai_psychologist':
       return `You are a professional, empathetic psychologist providing supportive guidance. Use active listening techniques, validate feelings, and ask thoughtful questions to help users explore their thoughts and emotions. Provide evidence-based insights when appropriate, but always be non-judgmental and supportive. Help users develop coping strategies and self-awareness. Maintain professional boundaries while being warm and understanding. Speak in a natural, conversational therapeutic tone - NOT in bullet points unless specifically giving actionable steps. Remember to consider the full context of the conversation in your responses.
@@ -335,6 +370,7 @@ export async function generateOpenAIAnswer(
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
   friendName?: string | null,
+  friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
@@ -372,15 +408,28 @@ export async function generateOpenAIAnswer(
   // Check if query requires current information and perform provider-native web search
   let searchContext = '';
   let webSearchResults: Awaited<ReturnType<typeof searchWithOpenAIWebTool>> = [];
-  if (requiresCurrentInfo(query)) {
+  const shouldWebSearch =
+    !isSmallTalkQuery(query) &&
+    (requiresCurrentInfo(query) || isLikelyFollowUpNeedingSearch(query, conversationHistory));
+  if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing OpenAI web search...');
     webSearchResults = await searchWithOpenAIWebTool(query, apiKey, 15);
+    if (webSearchResults.length === 0) {
+      const geminiKey =
+        process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
+      if (geminiKey) {
+        console.log('⚠️ OpenAI web search returned 0 results, falling back to Gemini grounding...');
+        webSearchResults = await searchWithGeminiGrounding(query, geminiKey, 15, 'gemini-2.5-flash-lite');
+      }
+    }
     searchContext = formatSearchResultsForContext(webSearchResults);
     console.log(`✅ OpenAI web search returned ${webSearchResults.length} search results`);
   }
   
   // Get system prompt based on chat mode, friend description, and space context
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription, userContext);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext);
+  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
+  if (smallTalkGuidance) sys += smallTalkGuidance;
   
   // Append web search context
   if (searchContext) {
@@ -517,6 +566,7 @@ export async function generateGeminiAnswer(
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
   friendName?: string | null,
+  friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
@@ -574,15 +624,27 @@ export async function generateGeminiAnswer(
   // Perform provider-native web search if needed
   let searchContext = '';
   let webSearchResults: Awaited<ReturnType<typeof searchWithGeminiGrounding>> = [];
-  if (requiresCurrentInfo(query)) {
+  const shouldWebSearch =
+    !isSmallTalkQuery(query) &&
+    (requiresCurrentInfo(query) || isLikelyFollowUpNeedingSearch(query, conversationHistory));
+  if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing Gemini grounding search...');
     webSearchResults = await searchWithGeminiGrounding(query, apiKey, 15, geminiModel);
+    if (webSearchResults.length === 0) {
+      const openAiKey = process.env.OPENAI_API_KEY || '';
+      if (openAiKey) {
+        console.log('⚠️ Gemini grounding returned 0 results, falling back to OpenAI web search...');
+        webSearchResults = await searchWithOpenAIWebTool(query, openAiKey, 15);
+      }
+    }
     searchContext = formatSearchResultsForContext(webSearchResults);
     console.log(`✅ Gemini grounding search returned ${webSearchResults.length} search results`);
   }
 
   // Get system prompt based on chat mode, friend description, and space context
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription, userContext);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext);
+  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
+  if (smallTalkGuidance) sys += smallTalkGuidance;
   
   // Append web search context
   if (searchContext) {
@@ -777,6 +839,7 @@ export async function generateClaudeAnswer(
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
   friendName?: string | null,
+  friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
@@ -814,7 +877,10 @@ export async function generateClaudeAnswer(
   // Check if query requires current information and perform provider-native web search
   let searchContext = '';
   let webSearchResults: Source[] = [];
-  if (requiresCurrentInfo(query)) {
+  const shouldWebSearch =
+    !isSmallTalkQuery(query) &&
+    (requiresCurrentInfo(query) || isLikelyFollowUpNeedingSearch(query, conversationHistory));
+  if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing web search for Claude...');
     const openAiKey = process.env.OPENAI_API_KEY || '';
     const geminiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
@@ -842,7 +908,9 @@ export async function generateClaudeAnswer(
   }
 
   // Get system prompt based on chat mode, friend description, and space context
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription, userContext);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext);
+  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
+  if (smallTalkGuidance) sys += smallTalkGuidance;
   
   // Append web search context if available
   if (searchContext) {
@@ -950,6 +1018,7 @@ export async function generateGrokAnswer(
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
   friendName?: string | null,
+  friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
@@ -992,7 +1061,10 @@ export async function generateGrokAnswer(
   // Check if query requires current information and perform provider-native web search
   let searchContext = '';
   let webSearchResults: Awaited<ReturnType<typeof searchWithGrokWebTool>> = [];
-  if (requiresCurrentInfo(query)) {
+  const shouldWebSearch =
+    !isSmallTalkQuery(query) &&
+    (requiresCurrentInfo(query) || isLikelyFollowUpNeedingSearch(query, conversationHistory));
+  if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing Grok web search...');
     webSearchResults = await searchWithGrokWebTool(query, apiKey, 15);
     if (webSearchResults.length === 0) {
@@ -1016,7 +1088,9 @@ export async function generateGrokAnswer(
   }
   
   // Get system prompt based on chat mode, friend description, and space context
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, spaceTitle, spaceDescription, userContext);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext);
+  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
+  if (smallTalkGuidance) sys += smallTalkGuidance;
   
   // Append web search context
   if (searchContext) {
@@ -1164,6 +1238,7 @@ export async function generateAIAnswer(
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
   friendName?: string | null,
+  friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
@@ -1173,17 +1248,17 @@ export async function generateAIAnswer(
   let result: AnswerResult;
   
   if (model === 'gpt-5' || model === 'gpt-5.1' || model === 'gpt-5.2' || model === 'gpt-5.3' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
-    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-3.0' || model === 'gemini-3.1' || model === 'gemini-3.1-flash' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
   } else if (model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
-    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
-    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
   } else {
     // Fallback to Gemini Lite for unknown models
-    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
   }
   
   // Add image generation for normal mode if query requires it

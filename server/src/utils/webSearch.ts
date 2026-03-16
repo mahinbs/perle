@@ -341,6 +341,79 @@ export function requiresCurrentInfo(query: string): boolean {
 }
 
 /**
+ * Detect small-talk / chit-chat queries that should NOT trigger web search.
+ */
+export function isSmallTalkQuery(query: string): boolean {
+  const lower = query.toLowerCase().trim();
+  if (!lower) return true;
+
+  const directMatches = new Set([
+    'hi',
+    'hello',
+    'hey',
+    'yo',
+    'sup',
+    'how are you',
+    'how are u',
+    'how r you',
+    'how do you do',
+    'good morning',
+    'good afternoon',
+    'good evening',
+    'good night',
+    'thanks',
+    'thank you',
+    'ok',
+    'okay',
+    'cool',
+    'great',
+    'nice',
+    'bye',
+    'goodbye',
+    'see you',
+  ]);
+  if (directMatches.has(lower)) return true;
+
+  // Short conversational phrases
+  const smallTalkPatterns = [
+    /^(hi|hello|hey)[!. ]*$/i,
+    /^how (are|r) (you|u)\??$/i,
+    /^(i am|i'm)\s+(good|fine|ok|okay|great|well)\b/i,
+    /^(thanks|thank you)[!. ]*$/i,
+    /^(good morning|good afternoon|good evening|good night)[!. ]*$/i,
+  ];
+
+  return smallTalkPatterns.some((p) => p.test(lower));
+}
+
+/**
+ * Detect ambiguous follow-ups that should still trigger web search
+ * so citations remain available in subsequent turns.
+ */
+export function isLikelyFollowUpNeedingSearch(
+  query: string,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+): boolean {
+  if (!query || conversationHistory.length === 0) return false;
+  const lower = query.toLowerCase().trim();
+  const words = lower.split(/\s+/).filter(Boolean);
+  if (words.length > 14) return false;
+
+  const followUpPronouns = [
+    'it', 'its', 'they', 'them', 'their', 'those', 'these', 'that', 'this', 'them?',
+  ];
+  const followUpIntents = [
+    'what', 'which', 'how much', 'price', 'cost', 'spec', 'specs', 'processor',
+    'chip', 'chipset', 'release', 'launch', 'availability', 'compare', 'better',
+  ];
+
+  const hasPronoun = followUpPronouns.some((p) => lower.includes(p));
+  const hasIntent = followUpIntents.some((p) => lower.includes(p));
+  const looksLikeQuestion = lower.includes('?') || /^(what|which|how|when|where)\b/.test(lower);
+  return hasPronoun && (hasIntent || looksLikeQuestion);
+}
+
+/**
  * Format search results for AI context
  */
 export function formatSearchResultsForContext(results: SearchResult[]): string {
@@ -383,63 +456,11 @@ CRITICAL INSTRUCTIONS:
 4. ⚠️ NEVER use the phrase "[Context provided]" - ONLY cite numbered sources like [1], [2], etc.
 5. ALL facts MUST come from search results with [source number] citations
 
-⚠️ CRITICAL INTERPRETATION GUIDELINES (NOT to be cited - only for interpreting search results):
-
-🔴 WHEN USER ASKS ABOUT "PROCESSORS" OR "CHIPSETS" - READ THIS CAREFULLY:
-
-THE USER WANTS PROCESSOR/CHIPSET NAMES, NOT PHONE MODEL NAMES!
-
-✅ ANSWER WITH THESE (from search results):
-• Processor/Chipset names: "Snapdragon 8 Elite Gen 5", "Apple A19 Pro", "Dimensity 9500", "Exynos 2600", "Tensor G5"
-• Performance specs: CPU cores, GPU, benchmarks, AnTuTu scores
-• Manufacturing process: 3nm, 2nm, etc.
-• Release timeline: when each processor was announced/released
-
-❌ DO NOT ANSWER WITH THESE:
-• Phone model names: "Galaxy S26", "iPhone 17 Pro", "Pixel 10a" (these are PHONES, not PROCESSORS!)
-• Phone features: camera specs, screen size, battery
-• Only mention phone models when explaining "which phones use this processor"
-
-🔴 MANDATORY FORMAT when answering processor questions:
-
-"The latest mobile processors in ${currentMonth} ${currentYear} include:
-
-1. **[Processor Name]** by [Manufacturer] [source]
-   - Used in: [phone models that use it]
-   - Performance: [CPU/GPU specs, benchmarks]
-   - Release: [when it was announced/released]
-
-2. **[Next Processor Name]** by [Manufacturer] [source]
-   ..."
-
-🔴 BRAND BALANCE:
-- Search results contain info about Apple, Qualcomm, MediaTek, Samsung, Google processors
-- You MUST mention ALL brands found in search results
-- DO NOT present only Apple/iPhone processors
-- DO NOT skip Android chipsets (Snapdragon, Dimensity, Exynos, Tensor)
-
-🔴 GENERAL GUIDELINES FOR ALL QUERIES:
-
-1. TEMPORAL AWARENESS:
-   - Today's date: ${currentDate} (${currentMonth} ${currentYear})
-   - Interpret "latest", "current", "recent", "now" as of ${currentMonth} ${currentYear}
-   - Prioritize ${currentYear} and late 2025 information from search results
-   - If search results show conflicting years/dates, note which is most recent
-
-2. CITATION REQUIREMENTS:
-   - ALL facts MUST cite search results: [1], [2], [3], etc.
-   - NEVER use "[Context provided]" or similar phrases
-   - Only cite the numbered search results above
-   - Do NOT cite these interpretation guidelines
-
-3. COMPREHENSIVENESS:
-   - Present ALL relevant information found in search results
-   - Do NOT cherry-pick only certain brands/options
-   - If multiple brands/options are mentioned, include them ALL
-   - Present in order of prominence in search results
-
-4. ACCURACY:
-   - Use ONLY information from search results
-   - Do NOT add facts not present in search results
-   - If information is unclear/conflicting, cite multiple sources and note the discrepancy`;
+GENERAL GUIDELINES:
+1. Use only facts supported by the search results above.
+2. Cite every factual claim with [1], [2], [3], etc.
+3. Never output placeholder text like "[Context provided]".
+4. For follow-up questions, keep topic continuity and still cite sources.
+5. If results conflict, mention the discrepancy and cite both sources.
+6. If results are limited, say so briefly instead of inventing details.`;
 }

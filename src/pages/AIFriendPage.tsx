@@ -1046,21 +1046,21 @@ export default function AIFriendPage() {
         setShowFriendModal(false);
         resetFriendForm();
         showToast({
-          message: "AI Friend created successfully!",
+          message: "Character created successfully!",
           type: "success",
           duration: 2000,
         });
       } else {
         const error = await response.json();
         showToast({
-          message: error.error || "Failed to create AI friend",
+          message: error.error || "Failed to create character",
           type: "error",
           duration: 3000,
         });
       }
     } catch (error: any) {
       showToast({
-        message: error.message || "Failed to create AI friend",
+        message: error.message || "Failed to create character",
         type: "error",
         duration: 3000,
       });
@@ -1099,21 +1099,21 @@ export default function AIFriendPage() {
         setShowFriendModal(false);
         resetFriendForm();
         showToast({
-          message: "AI Friend updated successfully!",
+          message: "Character updated successfully!",
           type: "success",
           duration: 2000,
         });
       } else {
         const error = await response.json();
         showToast({
-          message: error.error || "Failed to update AI friend",
+          message: error.error || "Failed to update character",
           type: "error",
           duration: 3000,
         });
       }
     } catch (error: any) {
       showToast({
-        message: error.message || "Failed to update AI friend",
+        message: error.message || "Failed to update character",
         type: "error",
         duration: 3000,
       });
@@ -1121,7 +1121,7 @@ export default function AIFriendPage() {
   };
 
   const handleDeleteFriend = async (friendId: string) => {
-    if (!confirm("Are you sure you want to delete this AI friend?")) {
+    if (!confirm("Are you sure you want to delete this character?")) {
       return;
     }
 
@@ -1140,14 +1140,14 @@ export default function AIFriendPage() {
           setSelectedFriendId(null);
         }
         showToast({
-          message: "AI Friend deleted successfully!",
+          message: "Character deleted successfully!",
           type: "success",
           duration: 2000,
         });
       } else {
         const error = await response.json();
         showToast({
-          message: error.error || "Failed to delete AI friend",
+          message: error.error || "Failed to delete character",
           type: "error",
           duration: 3000,
         });
@@ -1241,13 +1241,14 @@ export default function AIFriendPage() {
                       <div className="p-2">
                         <button
                           onClick={openCreateFriendModal}
-                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--input-bg)] transition-colors text-left mb-2"
+                          disabled={aiFriends.length >= 5}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--input-bg)] transition-colors text-left mb-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <FaPlus size={14} />
                           <span className="text-sm font-semibold">
                             {aiFriends.length >= 5
                               ? "Maximum 5 friends reached"
-                              : "Create New Friend"}
+                              : "Create Character"}
                           </span>
                         </button>
                         {aiFriends.map((friend) => (
@@ -1379,6 +1380,17 @@ export default function AIFriendPage() {
                   color={isGroupChat ? "var(--accent)" : "var(--text)"}
                 />{" "} */}
                 <span className={`text-sm ${isGroupChat ? "var(--accent)" : "var(--text)"}`}>Group Chat</span>
+              </button>
+            )}
+            {isLoggedIn && (
+              <button
+                className="btn-ghost !p-2 flex gap-2 rounded-lg transition-colors hover:bg-[var(--input-bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={openCreateFriendModal}
+                disabled={aiFriends.length >= 5}
+                title={aiFriends.length >= 5 ? "Maximum 5 characters reached" : "Create Character"}
+              >
+                <FaPlus size={14} />
+                <span className="text-sm">Create Character</span>
               </button>
             )}
             {/* <button
@@ -1761,7 +1773,7 @@ export default function AIFriendPage() {
           <div className="bg-[var(--card)] rounded-lg border border-[var(--border)] max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-bold mb-4">
-                {editingFriend ? "Edit AI Friend" : "Create AI Friend"}
+                {editingFriend ? "Edit Character" : "Create Character"}
               </h2>
 
               <div className="space-y-4">
@@ -1781,7 +1793,7 @@ export default function AIFriendPage() {
 
                 <div>
                   <label className="block text-sm font-semibold mb-2">
-                    Description (10-500 characters)
+                    Character Personality (10-500 characters)
                   </label>
                   <textarea
                     value={friendDescription}
@@ -1789,7 +1801,7 @@ export default function AIFriendPage() {
                     maxLength={500}
                     rows={4}
                     className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--text)] resize-none"
-                    placeholder="Describe how this friend should behave, their personality, interests, etc."
+                    placeholder="Describe personality, speaking style, interests, and role-play traits."
                   />
                   <div className="text-xs opacity-70 mt-1">
                     {friendDescription.length}/500

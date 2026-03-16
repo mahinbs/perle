@@ -6,6 +6,7 @@ import type { LLMModel, ConversationMessage, ChatMode } from '../types.js';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 import { buildUserLocalContext } from '../utils/requestLocalContext.js';
+import { extractMemoryFromUserMessage, formatAIFriendMemoryContext, mergeAIFriendMemory, type AIFriendMemory } from '../utils/aiFriendMemory.js';
 
 const router = Router();
 
@@ -142,6 +143,8 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
     // Fetch AI friend details if aiFriendId is provided (only for ai_friend mode)
     let aiFriendDescription: string | null = null;
     let aiFriendName: string | null = null;
+    let aiFriendMemory: AIFriendMemory | null = null;
+    let aiFriendMemoryContext: string | null = null;
     if (chatMode === 'ai_friend' && aiFriendId && req.userId) {
       try {
         const { data: friend } = await supabase
@@ -154,6 +157,23 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
         if (friend) {
           aiFriendDescription = friend.description;
           aiFriendName = friend.name;
+        }
+
+        // Load memory for this user+friend pair (best effort)
+        const { data: memoryRow } = await supabase
+          .from('ai_friend_user_memory')
+          .select('preferred_name, pronouns, key_nouns')
+          .eq('user_id', req.userId)
+          .eq('ai_friend_id', aiFriendId)
+          .maybeSingle();
+
+        if (memoryRow) {
+          aiFriendMemory = {
+            preferredName: (memoryRow as any).preferred_name || null,
+            pronouns: (memoryRow as any).pronouns || null,
+            keyNouns: Array.isArray((memoryRow as any).key_nouns) ? (memoryRow as any).key_nouns : []
+          };
+          aiFriendMemoryContext = formatAIFriendMemoryContext(aiFriendMemory);
         }
       } catch (friendError) {
         console.warn('Failed to fetch AI friend:', friendError);
@@ -382,6 +402,7 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
         chatMode, 
         aiFriendDescription, 
         aiFriendName, 
+        aiFriendMemoryContext,
         spaceTitle, 
         spaceDescription,
         imageDataUrl, // Pass image for vision models
@@ -461,6 +482,30 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
             .from('conversation_history')
             .delete()
             .in('id', idsToDelete);
+        }
+
+        // Update user memory for this specific AI friend (best effort)
+        if (chatMode === 'ai_friend' && aiFriendId) {
+          try {
+            const extracted = extractMemoryFromUserMessage(trimmedMessage);
+            if (extracted.preferredName || extracted.pronouns || extracted.nouns.length > 0) {
+              const merged = mergeAIFriendMemory(aiFriendMemory, extracted);
+              await supabase
+                .from('ai_friend_user_memory')
+                .upsert(
+                  {
+                    user_id: req.userId,
+                    ai_friend_id: aiFriendId,
+                    preferred_name: merged.preferredName,
+                    pronouns: merged.pronouns,
+                    key_nouns: merged.keyNouns
+                  },
+                  { onConflict: 'user_id,ai_friend_id' }
+                );
+            }
+          } catch (memoryError) {
+            console.warn('Failed to update AI friend memory:', memoryError);
+          }
         }
       } catch (convError) {
         // Log but don't fail the request if conversation history save fails
