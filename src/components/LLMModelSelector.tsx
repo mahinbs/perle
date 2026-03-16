@@ -94,6 +94,20 @@ const premiumModels: LLMModelInfo[] = [
   },
   // Anthropic Claude Models (Latest First)
   {
+    id: "claude-4.6-sonnet",
+    name: "Claude Sonnet 4.6",
+    provider: "Anthropic",
+    description: "Claude 4.6 Sonnet profile with strong reasoning and coding",
+    capabilities: ["200K Context", "Reasoning", "Coding", "Latest"],
+  },
+  {
+    id: "claude-4.6-opus",
+    name: "Claude Opus 4.6",
+    provider: "Anthropic",
+    description: "Claude 4.6 Opus profile for maximum depth and quality",
+    capabilities: ["200K Context", "Max Intelligence", "Deep Analysis", "Latest"],
+  },
+  {
     id: "claude-4.5-sonnet",
     name: "Claude 4.5 Sonnet",
     provider: "Anthropic",

@@ -27,6 +27,8 @@ export type LLMModel =
   | 'grok-beta'
   | 'claude-4.5-sonnet'
   | 'claude-4.5-opus'
+  | 'claude-4.6-sonnet'
+  | 'claude-4.6-opus'
   | 'claude-4.5-haiku'
   | 'claude-4-sonnet'
   | 'claude-3.5-sonnet'

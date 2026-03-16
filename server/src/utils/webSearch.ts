@@ -387,6 +387,28 @@ export function isSmallTalkQuery(query: string): boolean {
 }
 
 /**
+ * Detect explicit user intent to force a web search.
+ * This supports prompts like "search the web for..." even when
+ * regular freshness heuristics might not trigger.
+ */
+export function isExplicitWebSearchRequest(query: string): boolean {
+  const lower = query.toLowerCase().trim();
+  if (!lower) return false;
+
+  const explicitPatterns = [
+    /\bsearch the web\b/,
+    /\bweb search\b/,
+    /\bsearch online\b/,
+    /\blook (it )?up\b/,
+    /\bbased on recent news\b/,
+    /\bfrom this week\b/,
+    /\blatest reviews?\b/,
+  ];
+
+  return explicitPatterns.some((pattern) => pattern.test(lower));
+}
+
+/**
  * Detect continuation follow-ups that should inherit previous topic context.
  */
 export function isContinuationFollowUpQuery(query: string): boolean {

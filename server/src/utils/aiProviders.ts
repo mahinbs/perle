@@ -8,6 +8,7 @@ import {
   formatSearchResultsForContext,
   isLikelyFollowUpNeedingSearch,
   isSmallTalkQuery,
+  isExplicitWebSearchRequest,
   isContinuationFollowUpQuery,
   isContextLinkedFollowUpQuery,
 } from './webSearch.js';
@@ -530,9 +531,11 @@ export async function generateOpenAIAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
+  const explicitWebSearch = isExplicitWebSearchRequest(query);
   const shouldWebSearch =
     !isSmallTalkQuery(query) &&
     (
+      explicitWebSearch ||
       requiresCurrentInfo(query) ||
       isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
       continuationMode
@@ -747,9 +750,11 @@ export async function generateGeminiAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
+  const explicitWebSearch = isExplicitWebSearchRequest(query);
   const shouldWebSearch =
     !isSmallTalkQuery(query) &&
     (
+      explicitWebSearch ||
       requiresCurrentInfo(query) ||
       isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
       continuationMode
@@ -1001,9 +1006,11 @@ export async function generateClaudeAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
+  const explicitWebSearch = isExplicitWebSearchRequest(query);
   const shouldWebSearch =
     !isSmallTalkQuery(query) &&
     (
+      explicitWebSearch ||
       requiresCurrentInfo(query) ||
       isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
       continuationMode
@@ -1067,7 +1074,14 @@ export async function generateClaudeAnswer(
 
   // Map model names to actual Claude models
   let claudeModel = 'claude-4-5-sonnet-20250929'; // Default to latest Claude 4.5 Sonnet
-  if (model === 'claude-4.5-sonnet') {
+  if (model === 'claude-4.6-sonnet') {
+    // Claude 4.6 is routed to the current newest Sonnet profile until
+    // Anthropic publishes a distinct API model ID for 4.6 in this project.
+    claudeModel = 'claude-4-5-sonnet-20250929';
+  } else if (model === 'claude-4.6-opus') {
+    // Claude 4.6 Opus compatibility alias to latest Opus profile.
+    claudeModel = 'claude-4-5-opus-20251124';
+  } else if (model === 'claude-4.5-sonnet') {
     claudeModel = 'claude-4-5-sonnet-20250929'; // Latest - Best coding model
   } else if (model === 'claude-4.5-opus') {
     claudeModel = 'claude-4-5-opus-20251124'; // Maximum intelligence
@@ -1188,9 +1202,11 @@ export async function generateGrokAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
+  const explicitWebSearch = isExplicitWebSearchRequest(query);
   const shouldWebSearch =
     !isSmallTalkQuery(query) &&
     (
+      explicitWebSearch ||
       requiresCurrentInfo(query) ||
       isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
       continuationMode
@@ -1374,7 +1390,7 @@ export async function generateAIAnswer(
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-3.0' || model === 'gemini-3.1' || model === 'gemini-3.1-flash' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
     result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
-  } else if (model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
+  } else if (model === 'claude-4.6-sonnet' || model === 'claude-4.6-opus' || model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
     result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
     result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
