@@ -387,6 +387,31 @@ export function isSmallTalkQuery(query: string): boolean {
 }
 
 /**
+ * Detect continuation follow-ups that should inherit previous topic context.
+ */
+export function isContinuationFollowUpQuery(query: string): boolean {
+  const lower = query.toLowerCase().trim();
+  if (!lower) return false;
+
+  const continuationPhrases = [
+    'explain in detail',
+    'explain more',
+    'more details',
+    'in detail',
+    'detail please',
+    'tell me more',
+    'go deeper',
+    'elaborate',
+    'expand this',
+    'continue',
+    'and more',
+    'what more',
+  ];
+
+  return continuationPhrases.some((p) => lower.includes(p));
+}
+
+/**
  * Detect ambiguous follow-ups that should still trigger web search
  * so citations remain available in subsequent turns.
  */
@@ -411,6 +436,68 @@ export function isLikelyFollowUpNeedingSearch(
   const hasIntent = followUpIntents.some((p) => lower.includes(p));
   const looksLikeQuestion = lower.includes('?') || /^(what|which|how|when|where)\b/.test(lower);
   return hasPronoun && (hasIntent || looksLikeQuestion);
+}
+
+function getLastMeaningfulUserQuery(
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+): string | null {
+  for (let i = conversationHistory.length - 1; i >= 0; i--) {
+    const msg = conversationHistory[i];
+    if (msg.role !== 'user') continue;
+    const content = msg.content?.trim();
+    if (!content) continue;
+    if (isSmallTalkQuery(content)) continue;
+    return content;
+  }
+  return null;
+}
+
+/**
+ * Strong context-link detector:
+ * if the current query looks like a follow-up and previous user query
+ * was a factual/current-info topic, force web search to keep sources.
+ */
+export function isContextLinkedFollowUpQuery(
+  query: string,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+): boolean {
+  const lower = query.toLowerCase().trim();
+  if (!lower || isSmallTalkQuery(lower) || conversationHistory.length === 0) return false;
+
+  const lastUserTopic = getLastMeaningfulUserQuery(conversationHistory);
+  if (!lastUserTopic) return false;
+  const lastTopicNeedsSearch = requiresCurrentInfo(lastUserTopic);
+  if (!lastTopicNeedsSearch) return false;
+
+  const words = lower.split(/\s+/).filter(Boolean);
+  const shortFollowUp = words.length <= 8;
+
+  const bridgePatterns = [
+    /^(and|also|then|so)\b/,
+    /^what about\b/,
+    /^how about\b/,
+    /^explain\b/,
+    /^elaborate\b/,
+    /^go deeper\b/,
+    /^in detail\b/,
+    /^more\b/,
+    /^continue\b/,
+  ];
+  const hasBridge = bridgePatterns.some((p) => p.test(lower));
+
+  const pronounRefs = ['it', 'its', 'they', 'them', 'their', 'those', 'these', 'that', 'this', 'one', 'ones'];
+  const hasPronounRef = pronounRefs.some((p) => new RegExp(`\\b${p}\\b`).test(lower));
+
+  const detailIntent =
+    lower.includes('detail') ||
+    lower.includes('more') ||
+    lower.includes('price') ||
+    lower.includes('spec') ||
+    lower.includes('compare') ||
+    lower.includes('better') ||
+    lower.includes('source');
+
+  return hasBridge || hasPronounRef || (shortFollowUp && detailIntent);
 }
 
 /**
@@ -441,7 +528,7 @@ export function formatSearchResultsForContext(results: SearchResult[]): string {
 
 You are operating in ${currentMonth} ${currentYear}.
 ALL references to "latest", "current", "newest", "recent", "now" mean "as of ${currentMonth} ${currentYear}".
-Prioritize ${currentYear} and late 2025 information. Older data (2024, 2023) may be outdated.
+Prioritize the most recent information available in the current year and clearly label older data as historical.
 
 🔴🔴🔴 END BACKGROUND CONTEXT 🔴🔴🔴
 

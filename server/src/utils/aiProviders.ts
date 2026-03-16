@@ -3,8 +3,16 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AnswerResult, Mode, LLMModel, Source, ConversationMessage, ChatMode, UserLocalContext } from '../types.js';
 import { shouldGenerateImage, extractImagePrompt, generateImage } from './imageGeneration.js';
-import { requiresCurrentInfo, formatSearchResultsForContext, isLikelyFollowUpNeedingSearch, isSmallTalkQuery } from './webSearch.js';
+import {
+  requiresCurrentInfo,
+  formatSearchResultsForContext,
+  isLikelyFollowUpNeedingSearch,
+  isSmallTalkQuery,
+  isContinuationFollowUpQuery,
+  isContextLinkedFollowUpQuery,
+} from './webSearch.js';
 import { searchWithGeminiGrounding, searchWithOpenAIWebTool, searchWithGrokWebTool } from './providerWebSearch.js';
+import type { SearchResult } from './webSearch.js';
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -99,6 +107,13 @@ function getTokenLimit(mode: Mode): number {
   }
 }
 
+function getEffectiveTokenLimit(mode: Mode, detailedContinuation: boolean): number {
+  const base = getTokenLimit(mode);
+  if (!detailedContinuation) return base;
+  // Allow deeper expansion for "explain in detail" style follow-ups.
+  return Math.min(Math.round(base * 1.8), 7000);
+}
+
 // Get current date in a readable format
 function getCurrentDateContext(): string {
   const now = new Date();
@@ -122,7 +137,7 @@ function getCurrentDateContext(): string {
 ⚠️ ABSOLUTE REQUIREMENT: You MUST provide ONLY the LATEST and MOST CURRENT information available as of ${dateStr}, ${year}. 
 
 FORBIDDEN ACTIONS:
-- DO NOT provide information from 2023, 2024, or any previous years as if it's current
+- DO NOT provide outdated information from previous years as if it's current
 - DO NOT reference outdated products, processors, phones, or technology from past years
 - DO NOT discuss past events or trends as if they are happening now
 
@@ -177,7 +192,7 @@ function getCurrentDateContextIST(): string {
 ⚠️ ABSOLUTE REQUIREMENT: You MUST provide ONLY the LATEST and MOST CURRENT information available as of ${dateStr}, ${year} (IST - Indian Standard Time).
 
 FORBIDDEN ACTIONS:
-- DO NOT provide information from 2023, 2024, or any previous years as if it's current
+- DO NOT provide outdated information from previous years as if it's current
 - DO NOT reference outdated products, processors, phones, or technology from past years
 - DO NOT discuss past events or trends as if they are happening now
 
@@ -255,6 +270,109 @@ function buildSmallTalkContextGuidance(
 - Do NOT force web/factual citations for pure small-talk unless user asks factual/current info.`;
 }
 
+function buildFollowUpSearchQuery(
+  query: string,
+  conversationHistory: ConversationMessage[] = []
+): string {
+  const isContinuation = isContinuationFollowUpQuery(query);
+  if (!isContinuation && !isContextLinkedFollowUpQuery(query, conversationHistory)) return query;
+  const lastTopic = getLastMeaningfulUserTopic(conversationHistory);
+  if (!lastTopic) return query;
+  // For continuation follow-ups, keep the search anchored to the original topic
+  // to preserve/refresh the same source set as much as possible.
+  if (isContinuation) return lastTopic;
+  return `${lastTopic}\nFollow-up request: ${query}`;
+}
+
+function buildDetailedContinuationInstruction(
+  query: string,
+  chatMode: ChatMode,
+  conversationHistory: ConversationMessage[] = []
+): string {
+  if (!(chatMode === 'normal' || chatMode === 'space')) return '';
+  if (!isContinuationFollowUpQuery(query)) return '';
+  if (conversationHistory.length === 0) return '';
+
+  const lastTopic = getLastMeaningfulUserTopic(conversationHistory);
+  return `\n\nDETAILED CONTINUATION MODE:
+- The user asked to continue/elaborate on the previous answer.
+- Keep the SAME topic continuity${lastTopic ? ` (topic: "${lastTopic}")` : ''}.
+- Reuse and expand prior points in significantly more depth.
+- Add richer technical detail, practical examples, edge cases, and comparisons.
+- Keep citations aligned with current web-search results and cite claims clearly.
+- Do NOT switch topic unless user explicitly asks a new different question.`;
+}
+
+const CONTINUATION_MIN_SOURCES = 6;
+
+function dedupeSearchResults(results: SearchResult[], maxResults: number = 15): SearchResult[] {
+  const seen = new Set<string>();
+  const out: SearchResult[] = [];
+  for (const r of results) {
+    if (!r?.url) continue;
+    let key = r.url;
+    try {
+      key = new URL(r.url).toString();
+    } catch {
+      // keep raw URL if parsing fails
+    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...r, url: key });
+    if (out.length >= maxResults) break;
+  }
+  return out;
+}
+
+async function enrichContinuationSources(
+  query: string,
+  continuationMode: boolean,
+  existingResults: SearchResult[]
+): Promise<SearchResult[]> {
+  if (!continuationMode || existingResults.length >= CONTINUATION_MIN_SOURCES) {
+    return existingResults;
+  }
+
+  const openAiKey = process.env.OPENAI_API_KEY || '';
+  const geminiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
+  const grokKey = process.env.XAI_API_KEY || process.env.X_API_KEY || '';
+
+  const settled = await Promise.allSettled([
+    openAiKey ? searchWithOpenAIWebTool(query, openAiKey, 15) : Promise.resolve([]),
+    geminiKey ? searchWithGeminiGrounding(query, geminiKey, 15, 'gemini-2.5-flash-lite') : Promise.resolve([]),
+    grokKey ? searchWithGrokWebTool(query, grokKey, 15) : Promise.resolve([]),
+  ]);
+
+  const extra: SearchResult[] = [];
+  for (const item of settled) {
+    if (item.status === 'fulfilled' && Array.isArray(item.value)) {
+      extra.push(...item.value);
+    }
+  }
+
+  return dedupeSearchResults([...existingResults, ...extra], 15);
+}
+
+function toSources(results: SearchResult[]): Source[] {
+  const sources: Source[] = [];
+  for (const result of results) {
+    try {
+      const url = new URL(result.url);
+      sources.push({
+        id: `web-${sources.length + 1}`,
+        title: result.title,
+        url: result.url,
+        domain: url.hostname.replace('www.', ''),
+        year: new Date().getFullYear(),
+        snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
+      });
+    } catch {
+      // Skip invalid URLs to avoid breaking the response.
+    }
+  }
+  return sources;
+}
+
 function getSystemPrompt(
   chatMode: ChatMode = 'normal', 
   friendDescription?: string | null, 
@@ -269,7 +387,7 @@ function getSystemPrompt(
     ? getCurrentDateContextIST() 
     : getCurrentDateContext();
   
-  const dateContext = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n⏰ CURRENT DATE & TIME CONTEXT:\n${currentDate}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🚨 THIS IS YOUR MOST IMPORTANT INSTRUCTION 🚨\n\nYou are operating in real-time with the date shown above. When users ask about:\n\n1. "Latest" or "newest" anything → Provide information from the CURRENT YEAR shown above\n2. "Current" or "now" → Reference the CURRENT DATE shown above\n3. Technology, products, processors, phones → Provide CURRENT YEAR versions\n4. Trends, statistics, news → Provide information current to the DATE shown above\n\n❌ NEVER NEVER NEVER:\n- Present 2023 or 2024 information as "current" or "latest"\n- Say "as of 2023" or "in 2024" when discussing current topics\n- Reference old product versions when asked about "latest"\n- Discuss past years' releases as if they're new\n\n✅ ALWAYS ALWAYS ALWAYS:\n- Check the current date at the top of this message\n- Provide information relevant to THAT EXACT DATE\n- If unsure about very recent info, acknowledge the uncertainty\n- When discussing history, clearly mark it as "in [past year]"\n\n💡 REMEMBER: The user expects information current to the date shown at the top. Old information presented as current is WRONG and HARMFUL.`;
+  const dateContext = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n⏰ CURRENT DATE & TIME CONTEXT:\n${currentDate}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🚨 THIS IS YOUR MOST IMPORTANT INSTRUCTION 🚨\n\nYou are operating in real-time with the date shown above. When users ask about:\n\n1. "Latest" or "newest" anything → Provide information from the CURRENT YEAR shown above\n2. "Current" or "now" → Reference the CURRENT DATE shown above\n3. Technology, products, processors, phones → Provide CURRENT YEAR versions\n4. Trends, statistics, news → Provide information current to the DATE shown above\n\n❌ NEVER NEVER NEVER:\n- Present past-year information as "current" or "latest"\n- Use outdated year framing for current-topic answers\n- Reference old product versions when asked about "latest"\n- Discuss past years' releases as if they're new\n\n✅ ALWAYS ALWAYS ALWAYS:\n- Check the current date at the top of this message\n- Provide information relevant to THAT EXACT DATE\n- If unsure about very recent info, acknowledge the uncertainty\n- When discussing history, clearly mark it as "in [past year]"\n\n💡 REMEMBER: The user expects information current to the date shown at the top. Old information presented as current is WRONG and HARMFUL.`;
   
   // Space context to add to all modes
   const spaceContext = spaceTitle && spaceDescription 
@@ -408,20 +526,29 @@ export async function generateOpenAIAnswer(
   // Check if query requires current information and perform provider-native web search
   let searchContext = '';
   let webSearchResults: Awaited<ReturnType<typeof searchWithOpenAIWebTool>> = [];
+  const continuationFollowUp = isContinuationFollowUpQuery(query);
+  const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
+  const continuationMode = continuationFollowUp || contextLinkedFollowUp;
+  const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
   const shouldWebSearch =
     !isSmallTalkQuery(query) &&
-    (requiresCurrentInfo(query) || isLikelyFollowUpNeedingSearch(query, conversationHistory));
+    (
+      requiresCurrentInfo(query) ||
+      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
+      continuationMode
+    );
   if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing OpenAI web search...');
-    webSearchResults = await searchWithOpenAIWebTool(query, apiKey, 15);
+    webSearchResults = await searchWithOpenAIWebTool(searchQuery, apiKey, 15);
     if (webSearchResults.length === 0) {
       const geminiKey =
         process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
       if (geminiKey) {
         console.log('⚠️ OpenAI web search returned 0 results, falling back to Gemini grounding...');
-        webSearchResults = await searchWithGeminiGrounding(query, geminiKey, 15, 'gemini-2.5-flash-lite');
+        webSearchResults = await searchWithGeminiGrounding(searchQuery, geminiKey, 15, 'gemini-2.5-flash-lite');
       }
     }
+    webSearchResults = await enrichContinuationSources(searchQuery, continuationMode, webSearchResults);
     searchContext = formatSearchResultsForContext(webSearchResults);
     console.log(`✅ OpenAI web search returned ${webSearchResults.length} search results`);
   }
@@ -430,6 +557,8 @@ export async function generateOpenAIAnswer(
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const detailedContinuationInstruction = buildDetailedContinuationInstruction(query, chatMode, conversationHistory);
+  if (detailedContinuationInstruction) sys += detailedContinuationInstruction;
   
   // Append web search context
   if (searchContext) {
@@ -458,7 +587,10 @@ export async function generateOpenAIAnswer(
     prompt = query;
   } else {
     // For normal mode, include mode context for structured answers
-    prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
+    prompt = detailedFollowUp
+      ? `Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
+      : `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
   }
   
   // Build user message content (text + optional image)
@@ -491,7 +623,7 @@ export async function generateOpenAIAnswer(
     openaiModel = 'gpt-3.5-turbo';
   }
 
-  const tokenLimit = getTokenLimit(mode);
+  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0);
 
   const response = await withTimeout(
     client.chat.completions.create({
@@ -529,21 +661,8 @@ export async function generateOpenAIAnswer(
   }
   
   // Extract sources from provider-native web search results
-  const sources: Source[] = [];
-  
-  if (webSearchResults.length > 0) {
-    console.log('📚 Converting web search results to sources');
-    for (const result of webSearchResults) {
-      const url = new URL(result.url);
-      sources.push({
-        id: `web-${sources.length + 1}`,
-        title: result.title,
-        url: result.url,
-        domain: url.hostname.replace('www.', ''),
-        year: new Date().getFullYear(),
-        snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
-      });
-    }
+  const sources = toSources(webSearchResults);
+  if (sources.length > 0) {
     console.log(`✅ Found ${sources.length} sources from web search for OpenAI`);
   }
 
@@ -624,19 +743,28 @@ export async function generateGeminiAnswer(
   // Perform provider-native web search if needed
   let searchContext = '';
   let webSearchResults: Awaited<ReturnType<typeof searchWithGeminiGrounding>> = [];
+  const continuationFollowUp = isContinuationFollowUpQuery(query);
+  const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
+  const continuationMode = continuationFollowUp || contextLinkedFollowUp;
+  const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
   const shouldWebSearch =
     !isSmallTalkQuery(query) &&
-    (requiresCurrentInfo(query) || isLikelyFollowUpNeedingSearch(query, conversationHistory));
+    (
+      requiresCurrentInfo(query) ||
+      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
+      continuationMode
+    );
   if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing Gemini grounding search...');
-    webSearchResults = await searchWithGeminiGrounding(query, apiKey, 15, geminiModel);
+    webSearchResults = await searchWithGeminiGrounding(searchQuery, apiKey, 15, geminiModel);
     if (webSearchResults.length === 0) {
       const openAiKey = process.env.OPENAI_API_KEY || '';
       if (openAiKey) {
         console.log('⚠️ Gemini grounding returned 0 results, falling back to OpenAI web search...');
-        webSearchResults = await searchWithOpenAIWebTool(query, openAiKey, 15);
+        webSearchResults = await searchWithOpenAIWebTool(searchQuery, openAiKey, 15);
       }
     }
+    webSearchResults = await enrichContinuationSources(searchQuery, continuationMode, webSearchResults);
     searchContext = formatSearchResultsForContext(webSearchResults);
     console.log(`✅ Gemini grounding search returned ${webSearchResults.length} search results`);
   }
@@ -645,6 +773,8 @@ export async function generateGeminiAnswer(
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const detailedContinuationInstruction = buildDetailedContinuationInstruction(query, chatMode, conversationHistory);
+  if (detailedContinuationInstruction) sys += detailedContinuationInstruction;
   
   // Append web search context
   if (searchContext) {
@@ -670,10 +800,13 @@ export async function generateGeminiAnswer(
     prompt = `${contextPrompt}${query}`;
   } else {
     // For normal mode, include mode context for structured answers
-    prompt = `${contextPrompt}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
+    prompt = detailedFollowUp
+      ? `${contextPrompt}Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
+      : `${contextPrompt}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
   }
 
-  const tokenLimit = getTokenLimit(mode);
+  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0);
   const maxOutputTokens = Math.min(tokenLimit, 8192); // Gemini supports up to 8192 tokens, use full limit to prevent truncation
   
   // Build parts array (text + optional image)
@@ -803,21 +936,8 @@ export async function generateGeminiAnswer(
   content = content.trim();
   
   // Extract sources from provider-native web search results
-  const sources: Source[] = [];
-  
-  if (webSearchResults.length > 0) {
-    console.log('📚 Converting web search results to sources');
-    for (const result of webSearchResults) {
-      const url = new URL(result.url);
-      sources.push({
-        id: `web-${sources.length + 1}`,
-        title: result.title,
-        url: result.url,
-        domain: url.hostname.replace('www.', ''),
-        year: new Date().getFullYear(),
-        snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
-      });
-    }
+  const sources = toSources(webSearchResults);
+  if (sources.length > 0) {
     console.log(`✅ Found ${sources.length} sources from web search for Gemini`);
   }
 
@@ -876,34 +996,33 @@ export async function generateClaudeAnswer(
 
   // Check if query requires current information and perform provider-native web search
   let searchContext = '';
-  let webSearchResults: Source[] = [];
+  let webSearchResults: SearchResult[] = [];
+  const continuationFollowUp = isContinuationFollowUpQuery(query);
+  const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
+  const continuationMode = continuationFollowUp || contextLinkedFollowUp;
+  const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
   const shouldWebSearch =
     !isSmallTalkQuery(query) &&
-    (requiresCurrentInfo(query) || isLikelyFollowUpNeedingSearch(query, conversationHistory));
+    (
+      requiresCurrentInfo(query) ||
+      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
+      continuationMode
+    );
   if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing web search for Claude...');
     const openAiKey = process.env.OPENAI_API_KEY || '';
     const geminiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
 
-    const openAIResults = openAiKey ? await searchWithOpenAIWebTool(query, openAiKey, 15) : [];
+    const openAIResults = openAiKey ? await searchWithOpenAIWebTool(searchQuery, openAiKey, 15) : [];
     const geminiResults =
       openAIResults.length > 0 || !geminiKey
         ? []
-        : await searchWithGeminiGrounding(query, geminiKey, 15, 'gemini-2.5-flash-lite');
+        : await searchWithGeminiGrounding(searchQuery, geminiKey, 15, 'gemini-2.5-flash-lite');
 
-    const mergedResults = [...openAIResults, ...geminiResults]
-      .filter((r, idx, arr) => arr.findIndex((x) => x.url === r.url) === idx)
-      .slice(0, 15);
+    const mergedResults = dedupeSearchResults([...openAIResults, ...geminiResults], 15);
 
-    searchContext = formatSearchResultsForContext(mergedResults);
-    webSearchResults = mergedResults.map((r, i) => ({
-      id: `web-${i + 1}`,
-      title: r.title,
-      url: r.url,
-      domain: new URL(r.url).hostname.replace('www.', ''),
-      year: new Date().getFullYear(),
-      snippet: r.content,
-    }));
+    webSearchResults = await enrichContinuationSources(searchQuery, continuationMode, mergedResults);
+    searchContext = formatSearchResultsForContext(webSearchResults);
     console.log(`✅ Claude web search returned ${webSearchResults.length} search results`);
   }
 
@@ -911,6 +1030,8 @@ export async function generateClaudeAnswer(
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const detailedContinuationInstruction = buildDetailedContinuationInstruction(query, chatMode, conversationHistory);
+  if (detailedContinuationInstruction) sys += detailedContinuationInstruction;
   
   // Append web search context if available
   if (searchContext) {
@@ -937,7 +1058,10 @@ export async function generateClaudeAnswer(
     prompt = query;
   } else {
     // For normal mode, include mode context for structured answers
-    prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
+    prompt = detailedFollowUp
+      ? `Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
+      : `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
   }
   messages.push({ role: 'user', content: prompt });
 
@@ -961,7 +1085,7 @@ export async function generateClaudeAnswer(
     claudeModel = 'claude-3-haiku-20240307';
   }
 
-  const tokenLimit = getTokenLimit(mode);
+  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0);
 
   const response = await withTimeout(
     client.messages.create({
@@ -997,8 +1121,7 @@ export async function generateClaudeAnswer(
     throw new Error('AI model returned an empty response. Please try again.');
   }
   
-  // Sources were already prepared from provider-native web search
-  const sources: Source[] = webSearchResults;
+  const sources = toSources(webSearchResults);
 
   return {
     sources,
@@ -1061,28 +1184,37 @@ export async function generateGrokAnswer(
   // Check if query requires current information and perform provider-native web search
   let searchContext = '';
   let webSearchResults: Awaited<ReturnType<typeof searchWithGrokWebTool>> = [];
+  const continuationFollowUp = isContinuationFollowUpQuery(query);
+  const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
+  const continuationMode = continuationFollowUp || contextLinkedFollowUp;
+  const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
   const shouldWebSearch =
     !isSmallTalkQuery(query) &&
-    (requiresCurrentInfo(query) || isLikelyFollowUpNeedingSearch(query, conversationHistory));
+    (
+      requiresCurrentInfo(query) ||
+      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
+      continuationMode
+    );
   if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing Grok web search...');
-    webSearchResults = await searchWithGrokWebTool(query, apiKey, 15);
+    webSearchResults = await searchWithGrokWebTool(searchQuery, apiKey, 15);
     if (webSearchResults.length === 0) {
       console.log('⚠️ Grok web search returned 0 results, falling back to OpenAI/Gemini search...');
       const openAiKey = process.env.OPENAI_API_KEY || '';
       const geminiKey =
         process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
 
-      const openAIResults = openAiKey ? await searchWithOpenAIWebTool(query, openAiKey, 15) : [];
+      const openAIResults = openAiKey ? await searchWithOpenAIWebTool(searchQuery, openAiKey, 15) : [];
       const geminiResults =
         openAIResults.length > 0 || !geminiKey
           ? []
-          : await searchWithGeminiGrounding(query, geminiKey, 15, 'gemini-2.5-flash-lite');
+          : await searchWithGeminiGrounding(searchQuery, geminiKey, 15, 'gemini-2.5-flash-lite');
 
       webSearchResults = [...openAIResults, ...geminiResults]
         .filter((r, idx, arr) => arr.findIndex((x) => x.url === r.url) === idx)
         .slice(0, 15);
     }
+    webSearchResults = await enrichContinuationSources(searchQuery, continuationMode, webSearchResults);
     searchContext = formatSearchResultsForContext(webSearchResults);
     console.log(`✅ Grok web search returned ${webSearchResults.length} search results`);
   }
@@ -1119,7 +1251,10 @@ export async function generateGrokAnswer(
     prompt = query;
   } else {
     // For normal mode, include mode context for structured answers
-    prompt = `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
+    prompt = detailedFollowUp
+      ? `Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
+      : `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
   }
   messages.push({ role: 'user', content: prompt });
 
@@ -1144,7 +1279,7 @@ export async function generateGrokAnswer(
     grokModel = 'grok-3'; // grok-beta deprecated, use grok-3 instead
   }
 
-  const tokenLimit = getTokenLimit(mode);
+  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0);
   
   let response;
   try {
@@ -1201,21 +1336,8 @@ export async function generateGrokAnswer(
   }
   
   // Extract sources from provider-native web search results
-  const sources: Source[] = [];
-  
-  if (webSearchResults.length > 0) {
-    console.log('📚 Converting web search results to sources');
-    for (const result of webSearchResults) {
-      const url = new URL(result.url);
-      sources.push({
-        id: `web-${sources.length + 1}`,
-        title: result.title,
-        url: result.url,
-        domain: url.hostname.replace('www.', ''),
-        year: new Date().getFullYear(),
-        snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
-      });
-    }
+  const sources = toSources(webSearchResults);
+  if (sources.length > 0) {
     console.log(`✅ Found ${sources.length} sources from web search for Grok`);
   }
 

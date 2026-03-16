@@ -237,6 +237,31 @@ export default function HomePage() {
 
       // Call the real API with uploaded files and conversation ID
       try {
+        const isContinuationFollowUp = (text: string): boolean => {
+          const lower = text.toLowerCase().trim();
+          const continuationPhrases = [
+            "explain in detail",
+            "explain more",
+            "more details",
+            "in detail",
+            "tell me more",
+            "go deeper",
+            "elaborate",
+            "continue",
+          ];
+          return continuationPhrases.some((p) => lower.includes(p));
+        };
+
+        const getLastNonEmptySources = () => {
+          for (let i = conversationHistory.length - 1; i >= 0; i--) {
+            const maybeSources = (conversationHistory[i] as any)?.sources;
+            if (Array.isArray(maybeSources) && maybeSources.length > 0) {
+              return maybeSources;
+            }
+          }
+          return [];
+        };
+
         console.log(`🚀 FRONTEND SENDING: conversationId=${activeConversationId}, newConversation=${newConversation}`);
         const localConversationHistory = conversationHistory
           .slice(-10)
@@ -255,6 +280,18 @@ export default function HomePage() {
         );
 
         console.log(`✅ FRONTEND RECEIVED: conversationId=${res.conversationId}`);
+
+        // Reuse prior non-empty sources for continuation follow-ups when backend returns 0.
+        if (
+          (!res.sources || res.sources.length === 0) &&
+          !newConversation &&
+          isContinuationFollowUp(q)
+        ) {
+          const fallbackSources = getLastNonEmptySources();
+          if (fallbackSources.length > 0) {
+            res.sources = fallbackSources as any;
+          }
+        }
 
         // Update active conversation ID from response
         if (res.conversationId) {

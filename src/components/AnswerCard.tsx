@@ -1308,7 +1308,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
       <div className="spacer-16" />
 
-      {/* Sources Section */}
+      {/* Sources Section (hide completely when no sources) */}
+      {sources.length > 0 && (
       <div>
         <button
           className="btn-ghost"
@@ -1366,6 +1367,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           </div>
         )}
       </div>
+      )}
 
       <div className="spacer-16" />
 

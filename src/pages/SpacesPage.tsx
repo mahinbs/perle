@@ -611,6 +611,7 @@ export default function SpacesPage() {
             {isPremium && (
               <LLMModelSelector
                 selectedModel={selectedModel}
+                isPremium={isPremium}
                 onModelChange={(model) => {
                   setSelectedModel(model);
                   localStorage.setItem("perle-space-model", model);
