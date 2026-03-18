@@ -2120,44 +2120,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               ) : null}
             </div>
 
-            {query.trim() ? (
-              <button
-                className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
-                onClick={triggerSearchWithScroll}
-                disabled={isLoading}
-                aria-label="Search"
-                style={{
-                  padding: hasAnswer ? 6 : 8,
-                  color: "",
-                  opacity: isLoading ? 0.5 : 1,
-                  cursor: isLoading ? "not-allowed" : "pointer",
-                }}
-              >
-                {isLoading ? "…" : <FaSearch size={hasAnswer ? 16 : 20} />}
-              </button>
-            ) : speechSupported ? (
-              <button
-                className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
-                onClick={() => setShowVoiceOverlay(true)}
-                disabled={isListening}
-                style={{
-                  padding: hasAnswer ? 6 : 8,
-                  color: "",
-                  opacity: isListening ? 0.5 : 1,
-                  cursor: isListening ? "not-allowed" : "pointer",
-                }}
-              >
-                <HeadsetWaveIcon size={hasAnswer ? 22 : 27} />
-              </button>
-            ) : null}
-
             {/* Show conversation options for premium users with existing answers */}
             {isPremium && hasAnswer && (
               <div
                 style={{
                   display: "flex",
                   gap: 8,
-                  marginRight: 8,
                   alignItems: "center",
                 }}
               >
@@ -2183,7 +2151,37 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             )}
 
-            {/* Old Search Button Removed */}
+            {query.trim() ? (
+              <button
+                className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                onClick={triggerSearchWithScroll}
+                disabled={isLoading}
+                aria-label="Search"
+                style={{
+                  padding: hasAnswer ? 6 : 8,
+                  color: "",
+                  opacity: isLoading ? 0.5 : 1,
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                  marginRight: 8,
+                }}
+              >
+                {isLoading ? "…" : <FaSearch size={hasAnswer ? 16 : 20} />}
+              </button>
+            ) : speechSupported ? (
+              <button
+                className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                onClick={() => setShowVoiceOverlay(true)}
+                disabled={isListening}
+                style={{
+                  padding: hasAnswer ? 6 : 8,
+                  color: "",
+                  opacity: isListening ? 0.5 : 1,
+                  cursor: isListening ? "not-allowed" : "pointer",
+                }}
+              >
+                <HeadsetWaveIcon size={hasAnswer ? 22 : 27} />
+              </button>
+            ) : null}
           </div>
         </div>
 
