@@ -50,6 +50,7 @@ interface SearchBarProps {
   /** Called once when follow-up is submitted (scroll to bottom only on submit, not during answer typing) */
   onScrollToBottom?: () => void;
   experienceMode?: ExperienceMode;
+  onExperienceModeChange?: (mode: ExperienceMode) => void;
   showModelSelector?: boolean;
 }
 
@@ -71,6 +72,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   answer = null,
   onScrollToBottom,
   experienceMode = "normal",
+  onExperienceModeChange,
   showModelSelector = true,
 }) => {
   const [showUploadMenu, setShowUploadMenu] = useState(false);
@@ -2024,6 +2026,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   }}
                   isPremium={isPremium}
                   experienceMode={experienceMode}
+                  onExperienceModeChange={onExperienceModeChange}
                 />
               </div>
             )}

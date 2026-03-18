@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import type { LLMModel, LLMModelInfo } from "../types";
+import type { LLMModel, LLMModelInfo, ExperienceMode } from "../types";
 import { isAuthenticated } from "../utils/auth";
 
 // Premium models available to premium users
@@ -267,8 +267,6 @@ const legacyModels: LLMModelInfo[] = [
   },
 ];
 
-type ExperienceMode = 'normal' | 'web_search' | 'deep_research';
-
 interface LLMModelSelectorProps {
   selectedModel: LLMModel;
   onModelChange: (model: LLMModel) => void;
@@ -276,6 +274,7 @@ interface LLMModelSelectorProps {
   isPremium?: boolean;
   size?: "small" | "medium" | "large";
   experienceMode?: ExperienceMode;
+  onExperienceModeChange?: (mode: ExperienceMode) => void;
 }
 
 export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
@@ -285,6 +284,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   isPremium = false,
   size = "medium",
   experienceMode = 'normal',
+  onExperienceModeChange,
 }) => {
   // Hide the selector if user is not logged in
   if (!isAuthenticated()) {
@@ -693,7 +693,39 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                   touchAction: "pan-y", // Allow vertical scrolling
                 }}
               >
-                {!isPremium && (
+                  {/* Mode Selector Section */}
+                  <div style={{
+                    padding: "8px 12px",
+                    borderBottom: "1px solid var(--border)",
+                    display: "flex",
+                    gap: 8,
+                    overflowX: "auto",
+                    backgroundColor: "rgba(0,0,0,0.02)"
+                  }}>
+                    {(['normal', 'web_search', 'deep_research'] as ExperienceMode[]).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onExperienceModeChange?.(mode);
+                        }}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: 999,
+                          fontSize: "var(--font-xs)",
+                          fontWeight: 600,
+                          backgroundColor: experienceMode === mode ? "var(--accent)" : "transparent",
+                          color: experienceMode === mode ? "black" : "var(--text)",
+                          border: "1px solid var(--border)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {mode === 'normal' ? 'Normal' : mode === 'web_search' ? 'Web search' : 'Deep research'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {!isPremium && (
                   <button
                     onClick={() => {
                       setIsOpen(false);
@@ -766,6 +798,38 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                 minWidth: 280,
               }}
             >
+              {/* Mode Selector Section (Desktop) */}
+              <div style={{
+                padding: "8px 12px",
+                borderBottom: "1px solid var(--border)",
+                display: "flex",
+                gap: 8,
+                backgroundColor: "rgba(0,0,0,0.02)"
+              }}>
+                {(['normal', 'web_search', 'deep_research'] as ExperienceMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onExperienceModeChange?.(mode);
+                    }}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: "var(--font-xs)",
+                      fontWeight: 600,
+                      backgroundColor: experienceMode === mode ? "var(--accent)" : "transparent",
+                      color: experienceMode === mode ? "black" : "var(--text)",
+                      border: "1px solid var(--border)",
+                      whiteSpace: "nowrap",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {mode === 'normal' ? 'Normal' : mode === 'web_search' ? 'Web search' : 'Deep research'}
+                  </button>
+                ))}
+              </div>
+
               {!isPremium && (
                 <button
                   onClick={() => {

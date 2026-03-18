@@ -196,6 +196,23 @@ body {
   padding-bottom: calc(16px + var(--safe-area-bottom));
 }
 
+::-webkit-scrollbar{
+  width: 5px;
+}
+
+::-webkit-scrollbar-track{
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb{
+  background: var(--accent);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar:horizontal {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .search-container {
     display: grid !important;
@@ -553,20 +570,7 @@ body {
 }
 
 .scroll-x::-webkit-scrollbar {
-  height: 6px;
-}
-
-.scroll-x::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.scroll-x::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 999px;
-}
-
-.scroll-x::-webkit-scrollbar-thumb:hover {
-  background: var(--sub);
+  display: none;
 }
 
 /* Custom scrollbar for search input */

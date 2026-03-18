@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from "react";
-import logo from "../assets/images/logo.png";
+import logo from "../assets/images/logo-1.png";
 import { Header } from "../components/Header";
 import { SearchBar } from "../components/SearchBar";
 import { AnswerCard } from "../components/AnswerCard";
@@ -613,7 +613,7 @@ export default function HomePage() {
       {/* Main Content - ORIGINAL LAYOUT */}
       <div className="container !px-2 flex flex-col justify-between h-full relative">
         {/* Background Logo */}
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none -translate-y-[5%] z-0 opacity-[0.04] select-none dark:invert">
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none -translate-y-[5%] z-0 opacity-[0.05] select-none dark:invert">
           <img
             src={logo}
             alt=""
@@ -626,34 +626,6 @@ export default function HomePage() {
 
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           <div className="spacer-4" />
-          {/* Simple mode selector aligned with mobile bottom sheet UX:
-              - Normal
-              - Web search
-              - Deep research */}
-          <div className="mb-3 flex justify-center">
-            <button
-              className="btn-ghost btn-shadow"
-              style={{ borderRadius: 999, padding: "6px 14px", fontSize: "var(--font-sm)" }}
-              onClick={() => {
-                // First interaction: mark that user has explicitly chosen a mode
-                if (!hasSelectedMode) {
-                  setHasSelectedMode(true);
-                }
-                const next: ExperienceMode =
-                  experienceMode === "normal"
-                    ? "web_search"
-                    : experienceMode === "web_search"
-                    ? "deep_research"
-                    : "normal";
-                setExperienceMode(next);
-              }}
-            >
-              <span style={{ opacity: 0.7, marginRight: 8 }}>Mode:</span>
-              {experienceMode === "normal" && <span>Normal</span>}
-              {experienceMode === "web_search" && <span>Web search</span>}
-              {experienceMode === "deep_research" && <span>Deep research</span>}
-            </button>
-          </div>
           <div ref={answerCardRef}>
             {/* Render all answers in conversation history */}
             {conversationHistory.map((prevAnswer, index) => {
@@ -757,7 +729,13 @@ export default function HomePage() {
             onMediaGenerated={handleMediaGenerated}
             onScrollToBottom={scrollToLoadingCard}
             experienceMode={experienceMode}
-            showModelSelector={hasSelectedMode}
+            onExperienceModeChange={(mode) => {
+              if (!hasSelectedMode) {
+                setHasSelectedMode(true);
+              }
+              setExperienceMode(mode);
+            }}
+            showModelSelector={true}
           />
         </div>
         {/* <div className="spacer-16" />
