@@ -267,12 +267,15 @@ const legacyModels: LLMModelInfo[] = [
   },
 ];
 
+type ExperienceMode = 'normal' | 'web_search' | 'deep_research';
+
 interface LLMModelSelectorProps {
   selectedModel: LLMModel;
   onModelChange: (model: LLMModel) => void;
   disabled?: boolean;
   isPremium?: boolean;
   size?: "small" | "medium" | "large";
+  experienceMode?: ExperienceMode;
 }
 
 export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
@@ -281,6 +284,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   disabled = false,
   isPremium = false,
   size = "medium",
+  experienceMode = 'normal',
 }) => {
   // Hide the selector if user is not logged in
   if (!isAuthenticated()) {
@@ -297,7 +301,36 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   const { navigateTo } = useRouterNavigation();
 
   // Use premium models if user is premium, otherwise return empty (shouldn't be shown)
-  const availableModels = isPremium ? premiumModels : [];
+  // Filter based on high-level experience mode:
+  // - normal: hide the heaviest deep-research-only models
+  // - web_search: show all premium models
+  // - deep_research: show only the strongest deep research models
+  const deepResearchIds: LLMModel[] = [
+    'gpt-5.3',
+    'gpt-5.2',
+    'gpt-5.1',
+    'gpt-5',
+    'gpt-4o',
+    'grok-4-heavy',
+    'grok-4-fast',
+    'claude-4.6-opus',
+    'claude-4.6-sonnet',
+    'claude-4.5-opus',
+    'claude-4.5-sonnet',
+    'gemini-3.1',
+    'gemini-3.1-flash',
+  ];
+
+  const availableModels = isPremium
+    ? premiumModels.filter((model) => {
+        if (experienceMode === 'web_search') return true;
+        if (experienceMode === 'deep_research') {
+          return deepResearchIds.includes(model.id);
+        }
+        // normal: exclude deepest research-only models
+        return !deepResearchIds.includes(model.id as LLMModel);
+      })
+    : [];
 
   // Find selected model info from premium or legacy models
   const selectedModelInfo =

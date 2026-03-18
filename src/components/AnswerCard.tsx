@@ -29,6 +29,7 @@ interface AnswerCardProps {
   attachments?: UploadedFile[];
   skipTypewriter?: boolean; // Skip typewriter effect for old conversations
   generatedMedia?: { type: 'image' | 'video'; url: string; prompt: string }; // Generated media to display
+  hideSources?: boolean;
 }
 
 export const AnswerCard: React.FC<AnswerCardProps> = ({
@@ -42,6 +43,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   attachments,
   skipTypewriter = false,
   generatedMedia,
+  hideSources = false,
 }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
@@ -1308,8 +1310,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
       <div className="spacer-16" />
 
-      {/* Sources Section (hide completely when no sources) */}
-      {sources.length > 0 && (
+      {/* Sources Section (hide completely when no sources or when explicitly hidden) */}
+      {!hideSources && sources.length > 0 && (
       <div>
         <button
           className="btn-ghost"

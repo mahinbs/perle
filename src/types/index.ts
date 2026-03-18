@@ -1,5 +1,8 @@
 export type Mode = 'Ask' | 'Research' | 'Summarize' | 'Compare';
 
+// High-level chat experience modes used in the UI
+export type ExperienceMode = 'normal' | 'web_search' | 'deep_research';
+
 export type LLMModel =
   | 'auto'
   | 'gpt-5'

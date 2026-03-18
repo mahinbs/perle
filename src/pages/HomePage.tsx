@@ -8,11 +8,13 @@ import { searchAPI } from "../utils/answerEngine";
 import { formatQuery } from "../utils/helpers";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getUserData } from "../utils/auth";
-import type { Mode, AnswerResult, LLMModel, UploadedFile } from "../types";
+import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode } from "../types";
 
 export default function HomePage() {
   const { state: currentData } = useRouterNavigation();
   const [mode, setMode] = useState<Mode>("Ask");
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
+  const [hasSelectedMode, setHasSelectedMode] = useState(false);
   const [query, setQuery] = useState<string>("");
   const [searchedQuery, setSearchedQuery] = useState<string>(""); // Track the query that was actually searched
   const [answer, setAnswer] = useState<AnswerResult | null>(null);
@@ -269,9 +271,12 @@ export default function HomePage() {
             { role: "user" as const, content: item.query },
             { role: "assistant" as const, content: item.chunks.map((c) => c.text).join("\n\n") },
           ]);
+        const backendMode: Mode =
+          experienceMode === "normal" ? "Ask" : "Research";
+
         const res = await searchAPI(
           q,
-          mode,
+          backendMode,
           selectedModel,
           newConversation,
           filesToProcess,
@@ -347,6 +352,9 @@ export default function HomePage() {
       } catch (error: any) {
         console.error("Search API error:", error);
         // Show error to user - no mock fallback
+        const backendMode: Mode =
+          experienceMode === "normal" ? "Ask" : "Research";
+
         const errorAnswer = {
           chunks: [
             {
@@ -359,7 +367,7 @@ export default function HomePage() {
           ],
           sources: [],
           query: q,
-          mode,
+                mode: backendMode,
           timestamp: Date.now(),
         };
 
@@ -379,7 +387,7 @@ export default function HomePage() {
       // Removed 'query' from dependencies to prevent re-creation on every query change
       // The function uses query from closure, which is fine since we pass it explicitly when needed
     },
-    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory]
+    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode]
   );
 
   // Handle keyboard shortcuts
@@ -618,6 +626,34 @@ export default function HomePage() {
 
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           <div className="spacer-4" />
+          {/* Simple mode selector aligned with mobile bottom sheet UX:
+              - Normal
+              - Web search
+              - Deep research */}
+          <div className="mb-3 flex justify-center">
+            <button
+              className="btn-ghost btn-shadow"
+              style={{ borderRadius: 999, padding: "6px 14px", fontSize: "var(--font-sm)" }}
+              onClick={() => {
+                // First interaction: mark that user has explicitly chosen a mode
+                if (!hasSelectedMode) {
+                  setHasSelectedMode(true);
+                }
+                const next: ExperienceMode =
+                  experienceMode === "normal"
+                    ? "web_search"
+                    : experienceMode === "web_search"
+                    ? "deep_research"
+                    : "normal";
+                setExperienceMode(next);
+              }}
+            >
+              <span style={{ opacity: 0.7, marginRight: 8 }}>Mode:</span>
+              {experienceMode === "normal" && <span>Normal</span>}
+              {experienceMode === "web_search" && <span>Web search</span>}
+              {experienceMode === "deep_research" && <span>Deep research</span>}
+            </button>
+          </div>
           <div ref={answerCardRef}>
             {/* Render all answers in conversation history */}
             {conversationHistory.map((prevAnswer, index) => {
@@ -653,6 +689,7 @@ export default function HomePage() {
                     skipTypewriter={shouldSkipTypewriter}
                     attachments={prevAnswer.attachments}
                     generatedMedia={prevAnswer.generatedMedia}
+                    hideSources={experienceMode === "normal"}
                     onQueryEdit={(editedQuery) => {
                       setQuery(editedQuery);
                       doSearch(editedQuery);
@@ -690,6 +727,7 @@ export default function HomePage() {
                   doSearch(searchQuery);
                 }}
                 attachments={currentUploadedFiles}
+                hideSources={experienceMode === "normal"}
               />
               </div>
             )}
@@ -718,6 +756,8 @@ export default function HomePage() {
             onNewConversation={handleNewConversation}
             onMediaGenerated={handleMediaGenerated}
             onScrollToBottom={scrollToLoadingCard}
+            experienceMode={experienceMode}
+            showModelSelector={hasSelectedMode}
           />
         </div>
         {/* <div className="spacer-16" />

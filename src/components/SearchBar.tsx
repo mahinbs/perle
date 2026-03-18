@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useToast } from "../contexts/ToastContext";
-import type { LLMModel, AnswerResult } from "../types";
+import type { LLMModel, AnswerResult, ExperienceMode } from "../types";
 import {
   FaPaperclip,
   FaFolderOpen,
@@ -49,6 +49,8 @@ interface SearchBarProps {
   answer?: AnswerResult | null;
   /** Called once when follow-up is submitted (scroll to bottom only on submit, not during answer typing) */
   onScrollToBottom?: () => void;
+  experienceMode?: ExperienceMode;
+  showModelSelector?: boolean;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -68,6 +70,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onModelChange,
   answer = null,
   onScrollToBottom,
+  experienceMode = "normal",
+  showModelSelector = true,
 }) => {
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
@@ -2005,8 +2009,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             )}
 
-            {/* Model Selector - Only show for premium users, disabled during tool mode */}
-            {!toolMode && (
+            {/* Model Selector - Only show for premium users after user has selected a mode, disabled during tool mode */}
+            {!toolMode && showModelSelector && (
               <div>
                 <LLMModelSelector
                   selectedModel={selectedModel}
@@ -2019,6 +2023,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     }
                   }}
                   isPremium={isPremium}
+                  experienceMode={experienceMode}
                 />
               </div>
             )}
