@@ -214,6 +214,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   const triggerSearchWithScroll = () => {
     if (!query.trim()) return;
+    inputRef.current?.blur();
     onSearch();
     setQuery("");
     // Scroll to bottom once on submit (not during answer typing)
@@ -1829,6 +1830,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       (e.metaKey || e.ctrlKey)
                     ) {
                       e.preventDefault();
+                      inputRef.current?.blur();
                       handleGenerateMedia();
                     }
                   }}
