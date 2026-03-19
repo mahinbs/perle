@@ -1121,28 +1121,28 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               }
             }}
             style={{
+              cursor: onQueryEdit ? "pointer" : "default",
+              transition: "background-color 0.2s ease",
+            }}
+            className="flex justify-end"
+            // onMouseEnter={(e) => {
+            //   if (onQueryEdit) {
+            //     e.currentTarget.style.backgroundColor = "var(--border)";
+            //   }
+            // }}
+            // onMouseLeave={(e) => {
+            //   e.currentTarget.style.backgroundColor = "transparent";
+            // }}
+            title={onQueryEdit ? "Click to edit query" : undefined}
+          >
+            <div style={{
               fontSize: "var(--font-xl)",
               fontWeight: 600,
               lineHeight: "32px",
               color: "var(--text)",
               wordBreak: "break-word",
-              cursor: onQueryEdit ? "pointer" : "default",
-              padding: "8px 12px",
               borderRadius: "8px",
-              transition: "background-color 0.2s ease",
-            }}
-            className="text-end"
-            onMouseEnter={(e) => {
-              if (onQueryEdit) {
-                e.currentTarget.style.backgroundColor = "var(--border)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-            title={onQueryEdit ? "Click to edit query" : undefined}
-          >
-            {query}
+            }} className="glass-card !max-w-[calc(90%)] !px-4 !py-2">{query}</div>
           </div>
         </div>
       )}
@@ -1312,63 +1312,63 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
       {/* Sources Section (hide completely when no sources or when explicitly hidden) */}
       {!hideSources && sources.length > 0 && (
-      <div>
-        <button
-          className="btn-ghost"
-          onClick={() => setExpandedSources(!expandedSources)}
-          style={{
-            width: "100%",
-            justifyContent: "space-between",
-            padding: "12px 0",
-            borderBottom: "1px solid var(--border)",
-            marginBottom: 16,
-            fontSize: "var(--font-md)",
-            fontWeight: 500,
-          }}
-        >
-          <span>Sources ({sources.length})</span>
-          <span
+        <div>
+          <button
+            className="btn-ghost"
+            onClick={() => setExpandedSources(!expandedSources)}
             style={{
-              transform: expandedSources ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 0.2s",
-              fontSize: "var(--font-sm)",
+              width: "100%",
+              justifyContent: "space-between",
+              padding: "12px 0",
+              borderBottom: "1px solid var(--border)",
+              marginBottom: 16,
+              fontSize: "var(--font-md)",
+              fontWeight: 500,
             }}
           >
-            <FaChevronDown size={14} />
-          </span>
-        </button>
+            <span>Sources ({sources.length})</span>
+            <span
+              style={{
+                transform: expandedSources ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.2s",
+                fontSize: "var(--font-sm)",
+              }}
+            >
+              <FaChevronDown size={14} />
+            </span>
+          </button>
 
-        {expandedSources && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {sources.map((source) => (
-              <div key={source.id} className="card" style={{ padding: 12 }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  {source.title}
-                </div>
-                <div className="sub text-sm" style={{ marginBottom: 6 }}>
-                  {source.domain} • {source.year}
-                </div>
-                {source.snippet && (
-                  <div className="sub text-sm" style={{ lineHeight: "18px" }}>
-                    {source.snippet}
+          {expandedSources && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {sources.map((source) => (
+                <div key={source.id} className="card" style={{ padding: 12 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    {source.title}
                   </div>
-                )}
-                <button
-                  className="btn-ghost"
-                  onClick={() => window.open(source.url, "_blank")}
-                  style={{
-                    marginTop: 8,
-                    padding: "4px 8px",
-                    fontSize: "var(--font-sm)",
-                  }}
-                >
-                  Visit Source →
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                  <div className="sub text-sm" style={{ marginBottom: 6 }}>
+                    {source.domain} • {source.year}
+                  </div>
+                  {source.snippet && (
+                    <div className="sub text-sm" style={{ lineHeight: "18px" }}>
+                      {source.snippet}
+                    </div>
+                  )}
+                  <button
+                    className="btn-ghost"
+                    onClick={() => window.open(source.url, "_blank")}
+                    style={{
+                      marginTop: 8,
+                      padding: "4px 8px",
+                      fontSize: "var(--font-sm)",
+                    }}
+                  >
+                    Visit Source →
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="spacer-16" />

@@ -512,7 +512,7 @@ export default function ProfilePage() {
         >
           <div className="h1">Sign In</div>
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => {
               setShowLogin(false);
               setAuthError("");
@@ -551,7 +551,7 @@ export default function ProfilePage() {
         >
           <div className="h1">Sign Up</div>
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => {
               setShowSignup(false);
               setAuthError("");
@@ -590,7 +590,7 @@ export default function ProfilePage() {
       >
         <div className="h1">Profile</div>
         <button
-          className="btn-ghost"
+          className="btn-ghost glass-button"
           onClick={() => navigateTo("/")}
           style={{ fontSize: "var(--font-md)" }}
         >
@@ -620,7 +620,7 @@ export default function ProfilePage() {
               Sign In
             </button>
             <button 
-              className="btn-ghost" 
+              className="btn-ghost glass-button" 
               onClick={() => setShowSignup(true)}
               style={{ flex: 1, maxWidth: 120, opacity: isLoading ? 0.6 : 1, cursor: isLoading ? "not-allowed" : "pointer" }}
               disabled={isLoading}
@@ -654,7 +654,7 @@ export default function ProfilePage() {
             </p>
           </div>
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => handleGoogleAuth("signup")}
             disabled={isLoading}
             style={{
@@ -673,7 +673,7 @@ export default function ProfilePage() {
             Continue with Google
           </button>
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => setShowSignup(true)}
             disabled={isLoading}
             style={{
@@ -711,7 +711,7 @@ export default function ProfilePage() {
         </div>
       ) : userSettings ? (
         /* User Info Card */
-        <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <div className="card glass-card" style={{ padding: 20, marginBottom: 20 }}>
           <div
             className="row"
             style={{ alignItems: "center", marginBottom: 16 }}
@@ -837,7 +837,7 @@ export default function ProfilePage() {
             </div>
           </div>
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             style={{ width: "100%" }}
             onClick={() => {
               setEditName(userSettings.name || "");
@@ -861,7 +861,7 @@ export default function ProfilePage() {
 
       {/* Settings - Only show when authenticated */}
       {isAuthenticated && userSettings && (
-        <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <div className="card glass-card" style={{ padding: 20, marginBottom: 20 }}>
           <div className="h3" style={{ marginBottom: 16 }}>
             Settings
           </div>
@@ -937,7 +937,7 @@ export default function ProfilePage() {
             )}
             {userSettings?.isPremium && userSettings.subscription?.endDate && (
               <button
-                className="btn-ghost"
+                className="btn-ghost glass-button"
                 onClick={() => navigateTo("/subscription")}
                 style={{
                   color: "var(--accent)",
@@ -1098,7 +1098,7 @@ export default function ProfilePage() {
 
       {/* Search History - Only show when authenticated */}
       {isAuthenticated && (
-        <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <div className="card glass-card" style={{ padding: 20, marginBottom: 20 }}>
           <div
             className="row"
             style={{
@@ -1111,7 +1111,7 @@ export default function ProfilePage() {
               Search History
             </div>
             <button
-              className="btn-ghost"
+              className="btn-ghost glass-button"
               onClick={fetchSearchHistory}
               disabled={isLoadingHistory}
               style={{
@@ -1150,7 +1150,7 @@ export default function ProfilePage() {
                 {searchHistory.map((item) => (
                   <button
                     key={item.id}
-                    className="btn-ghost"
+                    className="btn-ghost glass-button"
                     onClick={() => {
                       navigateTo("/", { searchQuery: item.query });
                     }}
@@ -1210,7 +1210,7 @@ export default function ProfilePage() {
                 ))}
               </div>
               <button
-                className="btn-ghost"
+                className="btn-ghost glass-button"
                 onClick={async () => {
                   if (
                     confirm("Clear all search history? This cannot be undone.")
@@ -1265,13 +1265,13 @@ export default function ProfilePage() {
 
       {/* Data Management - Only show when authenticated */}
       {isAuthenticated && (
-        <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <div className="card glass-card" style={{ padding: 20, marginBottom: 20 }}>
           <div className="h3" style={{ marginBottom: 16 }}>
             Data Management
           </div>
 
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => navigateTo("/spaces")}
             style={{
               width: "100%",
@@ -1287,7 +1287,7 @@ export default function ProfilePage() {
           </button>
 
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={handleExportData}
             disabled={isExporting}
             style={{
@@ -1306,7 +1306,7 @@ export default function ProfilePage() {
           </button>
 
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => navigateTo("/library")}
             style={{
               width: "100%",
@@ -1324,14 +1324,14 @@ export default function ProfilePage() {
 
       {/* Support & Legal - Only show when authenticated */}
       {isAuthenticated && (
-        <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <div className="card glass-card" style={{ padding: 20, marginBottom: 20 }}>
           <div className="h3" style={{ marginBottom: 16 }}>
             Support & Legal
           </div>
 
           <a
             href="mailto:business@syntraiq.ai"
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             style={{
               width: "100%",
               marginBottom: 12,
@@ -1348,7 +1348,7 @@ export default function ProfilePage() {
           </a>
 
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => navigateTo("/about")}
             style={{
               width: "100%",
@@ -1364,7 +1364,7 @@ export default function ProfilePage() {
           </button>
 
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => navigateTo("/privacy")}
             style={{
               width: "100%",
@@ -1380,7 +1380,7 @@ export default function ProfilePage() {
           </button>
 
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => navigateTo("/terms")}
             style={{
               width: "100%",
@@ -1396,7 +1396,7 @@ export default function ProfilePage() {
           </button>
 
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => navigateTo("/help")}
             style={{
               width: "100%",
@@ -1414,13 +1414,13 @@ export default function ProfilePage() {
 
       {/* Account Actions - Only show when authenticated */}
       {isAuthenticated && (
-        <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <div className="card glass-card" style={{ padding: 20, marginBottom: 20 }}>
           <div className="h3" style={{ marginBottom: 16 }}>
             Account
           </div>
 
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={handleLogout}
             style={{
               width: "100%",
@@ -1436,7 +1436,7 @@ export default function ProfilePage() {
           </button>
 
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={handleDeleteAccount}
             style={{
               width: "100%",
@@ -1473,7 +1473,7 @@ export default function ProfilePage() {
           onClick={() => setShowEditProfile(false)}
         >
           <div
-            className="card"
+            className="card glass-card"
             style={{
               padding: 24,
               maxWidth: 400,
@@ -1728,7 +1728,7 @@ export default function ProfilePage() {
 
             <div className="row" style={{ gap: 12, marginTop: 24 }}>
               <button
-                className="btn-ghost"
+                className="btn-ghost glass-button"
                 onClick={() => {
                   setShowEditProfile(false);
                   setEditName("");
@@ -1908,7 +1908,7 @@ export default function ProfilePage() {
             }}
           >
             <button
-              className="btn-ghost"
+              className="btn-ghost glass-button"
               onClick={() => setShowUpgradeModal(false)}
               style={{
                 position: "absolute",

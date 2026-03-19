@@ -1200,7 +1200,7 @@ export default function AIFriendPage() {
         <div className="row flex-nowrap! flex justify-between items-center p-4">
             <div className="row flex items-center gap-3">
             <button
-              className="btn-ghost p-2! text-[length:var(--font-md)]"
+              className="btn-ghost glass-button p-2! text-[length:var(--font-md)]"
               onClick={() => navigateTo("/")}
               aria-label="Back"
             >
@@ -1236,7 +1236,7 @@ export default function AIFriendPage() {
                   {showFriendSelector && !showFriendModal && (
                     <div
                       ref={friendSelectorRef}
-                      className="absolute top-full left-0 mt-2 bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-lg z-50 min-w-[280px] max-h-[400px] overflow-y-auto"
+                      className="absolute top-full left-0 mt-2 glass-panel border border-[var(--border)] rounded-lg shadow-lg z-50 min-w-[280px] max-h-[400px] overflow-y-auto"
                     >
                       <div className="p-2">
                         <button
@@ -1361,7 +1361,7 @@ export default function AIFriendPage() {
             <div className="row flex items-center gap-2.5">
             {isLoggedIn && aiFriends.length > 0 && (
             <button
-                className={`btn-ghost !p-2 flex gap-2 rounded-lg transition-colors ${isGroupChat ? "bg-[rgba(199,168,105,0.15)]" : ""
+                className={`btn-ghost glass-button !p-2 flex gap-2 rounded-lg transition-colors ${isGroupChat ? "bg-[rgba(199,168,105,0.15)]" : ""
                   }`}
                 onClick={() => {
                   setIsGroupChat(!isGroupChat);
@@ -1384,7 +1384,7 @@ export default function AIFriendPage() {
             )}
             {isLoggedIn && (
               <button
-                className="btn-ghost !p-2 flex gap-2 rounded-lg transition-colors hover:bg-[var(--input-bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-ghost glass-button !p-2 flex gap-2 rounded-lg transition-colors hover:bg-[var(--input-bg)] disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={openCreateFriendModal}
                 disabled={aiFriends.length >= 5}
                 title={aiFriends.length >= 5 ? "Maximum 5 characters reached" : "Create Character"}
@@ -1538,7 +1538,7 @@ export default function AIFriendPage() {
               )}
             </div>
             <button
-              className="btn-ghost flex items-center gap-1.5 text-[length:var(--font-xs)]"
+              className="btn-ghost glass-button flex items-center gap-1.5 text-[length:var(--font-xs)]"
               onClick={() => {
                 setAttachedFileName(null);
                 setAttachedFile(null);
@@ -1565,7 +1565,7 @@ export default function AIFriendPage() {
           <div className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-1 sm:border border-[var(--border)] min-h-[34px] max-h-[120px] relative">
             {/* Mention List */}
             {showMentionList && (
-              <div className="absolute bottom-full left-0 mb-2 w-full max-w-[250px] bg-[var(--card)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="absolute bottom-full left-0 mb-2 w-full max-w-[250px] glass-panel border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
                 <div className="p-1 max-h-[200px] overflow-y-auto">
                   {filteredFriends.map((friend, index) => (
                     <button
@@ -1625,7 +1625,7 @@ export default function AIFriendPage() {
             <div className="flex gap-2">
               {isListening ? (
                 <button
-                  className="btn w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-[#EF4444]"
+                  className="btn w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-[#EF4444] glass-button"
                   onClick={stopVoiceInput}
                   aria-label="Stop recording"
                 >
@@ -1633,7 +1633,7 @@ export default function AIFriendPage() {
                 </button>
               ) : (
                 <button
-                  className="btn-ghost min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center"
+                  className="btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center"
                   onClick={startVoiceInput}
                   aria-label="Voice input"
                   disabled={isLoading}
@@ -1739,7 +1739,7 @@ export default function AIFriendPage() {
                 </div>
               </div>
               <button
-                className="btn-ghost w-8 min-w-[32px] h-8 rounded-[10%] flex items-center justify-center p-0"
+                className="btn-ghost glass-button w-8 min-w-[32px] h-8 rounded-[10%] flex items-center justify-center p-0"
                 onClick={refreshSuggestions}
                 aria-label="Refresh inspiration replies"
               >
@@ -1752,7 +1752,7 @@ export default function AIFriendPage() {
                 <button
                   key={suggestion}
                   onClick={() => handleUseSuggestion(suggestion)}
-                  className="text-left bg-[var(--card)] border border-[var(--border)] rounded-[var(--radius-sm)] px-3.5 py-3 flex gap-3 items-start cursor-pointer transition-all duration-200 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-px"
+                  className="text-left glass-card border border-[var(--border)] rounded-[var(--radius-sm)] px-3.5 py-3 flex gap-3 items-start cursor-pointer transition-all duration-200 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-px"
                 >
                   <span className="text-[var(--accent)] flex items-center justify-center mt-0.5">
                     <FaPen size={12} />
@@ -1770,7 +1770,7 @@ export default function AIFriendPage() {
       {/* Friend Management Modal */}
       {showFriendModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[101] p-4">
-          <div className="bg-[var(--card)] rounded-lg border border-[var(--border)] max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="glass-card rounded-lg border border-[var(--border)] max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-bold mb-4">
                 {editingFriend ? "Edit Character" : "Create Character"}
@@ -1921,7 +1921,7 @@ export default function AIFriendPage() {
                     setShowFriendModal(false);
                     resetFriendForm();
                   }}
-                  className="flex-1 px-4 py-2 bg-[var(--input-bg)] rounded-lg hover:bg-[var(--border)] transition-colors"
+                  className="flex-1 px-4 py-2 glass-button bg-[var(--input-bg)] rounded-lg hover:bg-[var(--border)] transition-colors"
                 >
                   Cancel
                 </button>

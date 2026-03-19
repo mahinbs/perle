@@ -116,11 +116,11 @@ export default function DetailsPage() {
   if (articleError) {
     return (
       <div className="container" style={{ paddingTop: 40 }}>
-        <div className="card" style={{ padding: 24, textAlign: "center", borderLeft: "3px solid #ff6b6b" }}>
+        <div className="glass-card" style={{ padding: 24, textAlign: "center", borderLeft: "3px solid #ff6b6b" }}>
           <div style={{ color: "#ff6b6b", fontSize: "var(--font-md)", marginBottom: 8 }}>⚠ {articleError}</div>
           <div className="sub" style={{ marginBottom: 16 }}>Start the backend with: npm run server:dev</div>
           <button className="btn" onClick={handleRetry} style={{ marginRight: 8 }}>Retry</button>
-          <button className="btn-ghost" onClick={() => navigateTo("/discover")}>Back to Discover</button>
+          <button className="btn-ghost glass-button" onClick={() => navigateTo("/discover")}>Back to Discover</button>
         </div>
       </div>
     );
@@ -131,10 +131,10 @@ export default function DetailsPage() {
   return (
     <div className="container" style={{ paddingBottom: 80 }}>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <button className="btn-ghost" onClick={() => navigateTo("/discover")} style={{ fontSize: "var(--font-md)" }}>
+        <button className="btn-ghost glass-button" onClick={() => navigateTo("/discover")} style={{ fontSize: "var(--font-md)" }}>
           <IoIosArrowBack size={22} /> Back
         </button>
-        <button className="btn-ghost" onClick={handleShare} style={{ fontSize: "var(--font-md)" }}>
+        <button className="btn-ghost glass-button" onClick={handleShare} style={{ fontSize: "var(--font-md)" }}>
           {shareSuccess ? "✓ Copied!" : "Share"}
         </button>
       </div>
@@ -198,13 +198,13 @@ export default function DetailsPage() {
         <p style={{ color: "var(--sub-text)", lineHeight: 1.6, fontSize: "var(--font-md)" }}>{item.description}</p>
       </div>
 
-      <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+      <div className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
         <div style={{ fontSize: "var(--font-xs)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 12 }}>Overview</div>
         <p style={{ lineHeight: 1.7, fontSize: "var(--font-md)", color: "var(--text)" }}>{article.overview}</p>
       </div>
 
       {article.keyFacts && article.keyFacts.length > 0 && (
-        <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+        <div className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
           <div style={{ fontSize: "var(--font-xs)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 14 }}>Key Facts</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {article.keyFacts.map((fact, i) => (
@@ -220,7 +220,7 @@ export default function DetailsPage() {
       {article.sections && article.sections.length > 0 && (
         <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           {article.sections.map((section, i) => (
-            <div key={i} className="card" style={{ padding: 20 }}>
+            <div key={i} className="glass-card" style={{ padding: 20 }}>
               <h2 style={{ fontSize: "var(--font-lg)", fontWeight: 700, marginBottom: 10, color: "var(--text)" }}>{section.title}</h2>
               <p style={{ lineHeight: 1.7, fontSize: "var(--font-md)", color: "var(--text)", margin: 0 }}>{section.content}</p>
             </div>
@@ -229,7 +229,7 @@ export default function DetailsPage() {
       )}
 
       <div
-        className="card"
+        className="glass-card"
         style={{ padding: 16, marginBottom: 16, background: "linear-gradient(135deg, var(--accent)18, var(--accent)08)", border: "1px solid var(--accent)33", cursor: "pointer" }}
         onClick={() => handleAskAI(item.title)}
       >
@@ -244,7 +244,7 @@ export default function DetailsPage() {
       </div>
 
       {article.relatedTopics && article.relatedTopics.length > 0 && (
-        <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+        <div className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
           <div style={{ fontSize: "var(--font-xs)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 14 }}>Related Topics</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {article.relatedTopics.map((topic, i) => (

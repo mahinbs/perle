@@ -30,7 +30,7 @@ export const Header: React.FC = () => {
         >
           <div className="flex items-center" style={{ gap: "clamp(2px, 1vw, 12px)", flexShrink: 0 }}>
             <button
-              className="active !font-bold font-ubuntu backdrop-blur-md bg-black/5 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border !border-[#dfb768] dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 px-2 md:px-3 text-[14px] md:text-[14px] h-[32px] md:h-[40px] flex items-center justify-center cursor-pointer whitespace-nowrap"
+              className="active glass-button !font-bold font-ubuntu backdrop-blur-md bg-black/5 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border !border-[#dfb768] dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 px-2 md:px-3 text-[14px] md:text-[14px] h-[32px] md:h-[40px] flex items-center justify-center cursor-pointer whitespace-nowrap"
               onClick={() => navigateTo("/ai-friend")}
               aria-label="AI Friend"
             >
@@ -38,7 +38,7 @@ export const Header: React.FC = () => {
             </button>
 
             <button
-              className="active !font-bold font-ubuntu backdrop-blur-md bg-black/5 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border !border-[#dfb768] dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 px-2 md:px-3 text-[14px] md:text-[14px] h-[32px] md:h-[40px] flex items-center justify-center cursor-pointer whitespace-nowrap"
+              className="active glass-button !font-bold font-ubuntu backdrop-blur-md bg-black/5 dark:bg-yellow-400/10 hover:bg-yellow-500/20 dark:hover:bg-yellow-400/20 border !border-[#dfb768] dark:border-yellow-300/25 shadow-lg shadow-yellow-500/10 dark:shadow-yellow-500/15 hover:shadow-xl hover:shadow-yellow-500/15 dark:hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-[2px] rounded-lg text-yellow-950 dark:text-yellow-50 px-2 md:px-3 text-[14px] md:text-[14px] h-[32px] md:h-[40px] flex items-center justify-center cursor-pointer whitespace-nowrap"
               onClick={() => navigateTo("/ai-psychology")}
               aria-label="AI Psychology"
             >
@@ -47,7 +47,7 @@ export const Header: React.FC = () => {
           </div>
           <div className="flex items-center" style={{ gap: "clamp(2px, 1vw, 8px)" }}>
             <button
-              className={`btn-ghost btn-shadow !border-[#dfb768] p-1 flex items-center justify-center h-[32px] w-[32px] md:h-[40px] md:w-[48px] ${isActive("/discover") ? "active" : ""}`}
+              className={`btn-ghost glass-button btn-shadow !border-[#dfb768] p-1 flex items-center justify-center h-[32px] w-[32px] md:h-[40px] md:w-[48px] ${isActive("/discover") ? "active" : ""}`}
               onClick={() => navigateTo("/discover")}
               aria-label="Discover"
             >
@@ -63,7 +63,7 @@ export const Header: React.FC = () => {
               </span>
             </button>
             <button
-              className={`btn-ghost btn-shadow !border-[#dfb768] p-1 flex items-center justify-center h-[32px] w-[32px] md:h-[40px] md:w-[48px] ${isActive("/profile") ? "active" : ""}`}
+              className={`btn-ghost glass-button btn-shadow !border-[#dfb768] p-1 flex items-center justify-center h-[32px] w-[32px] md:h-[40px] md:w-[48px] ${isActive("/profile") ? "active" : ""}`}
               onClick={() => navigateTo("/profile")}
               aria-label="Profile"
             >

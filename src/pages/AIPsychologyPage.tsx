@@ -412,7 +412,7 @@ export default function AIPsychologyPage() {
         <div className="row flex-nowrap! flex justify-between items-center p-4">
           <div className="row flex items-center gap-3">
             <button
-              className="btn-ghost p-2! text-[length:var(--font-md)]"
+              className="btn-ghost glass-button p-2! text-[length:var(--font-md)]"
               onClick={() => navigateTo("/")}
               aria-label="Back"
             >
@@ -437,7 +437,7 @@ export default function AIPsychologyPage() {
           </div>
           <div className="row flex items-center gap-2.5">
             <button
-              className="btn-ghost p-2"
+              className="btn-ghost glass-button p-2"
               aria-label="Favorite conversation"
             >
               <FaStar size={18} color="var(--accent)" />
@@ -527,7 +527,7 @@ export default function AIPsychologyPage() {
               )}
             </div>
             <button
-              className="btn-ghost flex items-center gap-1.5 text-[length:var(--font-xs)]"
+              className="btn-ghost glass-button flex items-center gap-1.5 text-[length:var(--font-xs)]"
               onClick={() => {
                 setAttachedFileName(null);
                 setIsUploading(false);
@@ -573,7 +573,7 @@ export default function AIPsychologyPage() {
             <div className="flex gap-2">
               {isListening ? (
                 <button
-                  className="btn w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-[#EF4444]"
+                  className="btn w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-[#EF4444] glass-button"
                   onClick={stopVoiceInput}
                   aria-label="Stop recording"
                 >
@@ -581,7 +581,7 @@ export default function AIPsychologyPage() {
                 </button>
               ) : (
                 <button
-                  className="btn-ghost min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center"
+                  className="btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center"
                   onClick={startVoiceInput}
                   aria-label="Voice input"
                   disabled={isLoading}
@@ -692,7 +692,7 @@ export default function AIPsychologyPage() {
                 </div>
               </div>
               <button
-                className="btn-ghost w-8 min-w-[32px] h-8 rounded-[10%] flex items-center justify-center p-0"
+                className="btn-ghost glass-button w-8 min-w-[32px] h-8 rounded-[10%] flex items-center justify-center p-0"
                 onClick={refreshSuggestions}
                 aria-label="Refresh topic suggestions"
               >
@@ -705,7 +705,7 @@ export default function AIPsychologyPage() {
                 <button
                   key={suggestion}
                   onClick={() => handleUseSuggestion(suggestion)}
-                  className="text-left bg-[var(--card)] border border-[var(--border)] rounded-[var(--radius-sm)] px-3.5 py-3 flex gap-3 items-start cursor-pointer transition-all duration-200 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-px"
+                  className="text-left glass-card border border-[var(--border)] rounded-[var(--radius-sm)] px-3.5 py-3 flex gap-3 items-start cursor-pointer transition-all duration-200 hover:shadow-[0_8px_20px_rgba(0,0,0,0.12)] hover:-translate-y-px"
                 >
                   <span className="text-[#9B59B6] flex items-center justify-center mt-0.5">
                     <FaPen size={12} />

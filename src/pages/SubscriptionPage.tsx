@@ -138,7 +138,7 @@ export default function SubscriptionPage() {
                 key={plan.id}
                 onClick={() => setSelectedPlanId(plan.id)}
                 className={`flex-none w-full border rounded-[18px] p-4 cursor-pointer flex flex-col justify-between h-[130px] transition-all duration-200 shadow-[0_4px_12px_rgba(0,0,0,0.05)] ${isSelected
-                  ? "border-2 border-[var(--text)] bg-[var(--card)]"
+                  ? "border-2 !border-[var(--text)] bg-[var(--card)] glass-button"
                   : "border border-[var(--border)] backdrop-blur-[1.5px]"
                   }`}
               >

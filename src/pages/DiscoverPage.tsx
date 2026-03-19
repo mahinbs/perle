@@ -66,7 +66,7 @@ export default function DiscoverPage() {
       >
         <div className="h1">Discover</div>
         <button
-          className="btn-ghost"
+          className="btn-ghost glass-button"
           onClick={() => navigateTo("/")}
           style={{ fontSize: "var(--font-md)" }}
         >
@@ -76,7 +76,7 @@ export default function DiscoverPage() {
 
       {/* Search Bar */}
       <div
-        className="card"
+        className="glass-card"
         style={{ padding: 16, marginBottom: 20, width: "100%" }}
       >
         <input
@@ -109,7 +109,7 @@ export default function DiscoverPage() {
 
       {/* Loading State */}
       {isLoading && (
-        <div className="card" style={{ padding: 40, textAlign: "center" }}>
+        <div className="glass-card" style={{ padding: 40, textAlign: "center" }}>
           <div className="sub">Loading discover items...</div>
         </div>
       )}
@@ -134,7 +134,7 @@ export default function DiscoverPage() {
           {filteredItems.map((item) => (
           <div
             key={item.id}
-            className="card"
+            className="glass-card"
             style={{
               padding: 0,
               overflow: "hidden",
@@ -181,7 +181,7 @@ export default function DiscoverPage() {
       )}
 
       {!isLoading && filteredItems.length === 0 && (
-        <div className="card" style={{ padding: 40, textAlign: "center" }}>
+        <div className="glass-card" style={{ padding: 40, textAlign: "center" }}>
           <div className="h3" style={{ marginBottom: 8 }}>
             No results found
           </div>

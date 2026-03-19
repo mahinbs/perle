@@ -148,6 +148,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const recognitionRef = useRef<any>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const hasClearedForAnswerRef = useRef<boolean>(false);
+  const uploadBtnRef = useRef<HTMLButtonElement>(null);
 
   // Check for speech support
   useEffect(() => {
@@ -1029,7 +1030,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             <style>{`.search-tools-scroll::-webkit-scrollbar { display: none; }`}</style>
             {!isPremium && (
               <button
-                className="btn-ghost btn-shadow !border-yellow-600 !text-yellow-600"
+                className="btn-ghost glass-button btn-shadow !border-yellow-600 !text-yellow-600"
                 onClick={() => navigateTo("/pricing")}
                 style={{
                   padding: "6px 10px",
@@ -1056,7 +1057,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </button>
             )}
             <button
-              className="btn-ghost btn-shadow !font-normal !border-[#dfb768]"
+              className="btn-ghost glass-button btn-shadow !font-normal !border-[#dfb768]"
               onClick={() => {
                 setToolMode("video");
                 setToolDescription("");
@@ -1086,7 +1087,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </span>
             </button>
             <button
-              className="btn-ghost btn-shadow !font-normal !border-[#dfb768]"
+              className="btn-ghost glass-button btn-shadow !font-normal !border-[#dfb768]"
               onClick={() => {
                 setToolMode("image");
                 setToolDescription("");
@@ -1123,7 +1124,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </span>
             </button>
             <button
-              className="btn-ghost btn-shadow !font-normal !border-[#dfb768]"
+              className="btn-ghost glass-button btn-shadow !font-normal !border-[#dfb768]"
               onClick={() => {
                 if (isAuthenticated()) {
                   navigateTo("/gallery");
@@ -1158,7 +1159,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           {/* Desktop dropdown container */}
           <div className="hidden md:flex relative mb-2" data-tools-menu>
             <button
-              className={`btn-ghost btn-shadow !border-[#dfb768] !font-normal ${toolMode ? "!text-black" : ""
+              className={`btn-ghost glass-button btn-shadow !border-[#dfb768] !font-normal ${toolMode ? "!text-black" : ""
                 }`}
               onClick={() => {
                 if (toolMode) {
@@ -1193,7 +1194,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
             {showToolsMenu && (
               <div
-                className="card !font-normal"
+                className="glass-panel !font-normal"
                 data-tools-menu
                 style={{
                   position: "absolute",
@@ -1203,18 +1204,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   padding: 8,
                   zIndex: 9999,
                   minWidth: 200,
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  boxShadow: "var(--shadow)",
-                  borderRadius: "var(--radius-sm)",
                   color: "var(--text)",
-                  backdropFilter: "blur(6px)",
-                  transition: "background 0.2s ease, border 0.2s ease",
                 }}
               >
                 {!isPremium && (
                   <button
-                    className="btn-ghost btn-shadow"
+                    className="btn-ghost glass-button btn-shadow"
                     onClick={() => {
                       setShowToolsMenu(false);
                       navigateTo("/pricing");
@@ -1234,7 +1229,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 )}
 
                 <button
-                  className="btn-ghost btn-shadow"
+                  className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
                     setToolMode("video");
                     setShowToolsMenu(false);
@@ -1268,7 +1263,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 </button>
 
                 <button
-                  className="btn-ghost btn-shadow"
+                  className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
                     setToolMode("image");
                     setShowToolsMenu(false);
@@ -1309,7 +1304,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 />
 
                 <button
-                  className="btn-ghost btn-shadow"
+                  className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
                     setShowToolsMenu(false);
                     if (isAuthenticated()) {
@@ -1347,7 +1342,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         </>
       )}
       <div
-        className="card font-ubuntu !px-3 !pt-1 !pb-2"
+        className="glass-card font-ubuntu !px-3 !pt-1 !pb-2"
         style={{
           position: "relative",
           overflow: "visible",
@@ -1365,7 +1360,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             >
               Generating {toolMode === "image" ? "Image" : "Video"}
             </div>
-            <div className="card" style={{ padding: 12, position: "relative" }}>
+            <div className="glass-card" style={{ padding: 12, position: "relative" }}>
               <div
                 style={{
                   fontSize: "var(--font-md)",
@@ -1455,7 +1450,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             >
               Generated {generatedMedia.type === "image" ? "Image" : "Video"}
             </div>
-            <div className="card" style={{ padding: 12, position: "relative" }}>
+            <div className="glass-card" style={{ padding: 12, position: "relative" }}>
               {generatedMedia.type === "image" ? (
                 <img
                   src={generatedMedia.url}
@@ -1506,7 +1501,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 {generatedMedia.prompt}
               </div>
               <button
-                className="btn-ghost btn-shadow"
+                className="btn-ghost glass-button btn-shadow"
                 onClick={() => setGeneratedMedia(null)}
                 style={{
                   position: "absolute",
@@ -1521,7 +1516,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <FaTimes size={14} style={{ color: "white" }} />
               </button>
               <button
-                className="btn-ghost btn-shadow"
+                className="btn-ghost glass-button btn-shadow"
                 onClick={handleDownloadMedia}
                 style={{
                   position: "absolute",
@@ -1570,7 +1565,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               {uploadedFiles.map((file) => (
                 <div
                   key={file.id}
-                  className="card"
+                  className="glass-card"
                   style={{
                     padding: 8,
                     display: "flex",
@@ -1622,7 +1617,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     </div>
                   </div>
                   <button
-                    className="btn-ghost btn-shadow"
+                    className="btn-ghost glass-button btn-shadow"
                     onClick={() => removeFile(file.id)}
                     style={{ padding: 4 }}
                     aria-label="Remove file"
@@ -1638,7 +1633,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         <div className="row search-container !gap-0">
           {/* Tools Dropdown */}
 
-          <div style={{ display: "flex", flexDirection: "column", maxWidth: "100%", minWidth: 0, flex: toolMode ? 1 : "unset" }}>
+          <div style={{ display: "flex", flexDirection: "column", maxWidth: "100%", minWidth: 0}}>
             {/* Attached Images Display - Above textarea */}
             {toolAttachedImages.length > 0 && (
               <div
@@ -1681,7 +1676,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       <span style={{ fontSize: "20px" }}>🖼️</span>
                     )}
                     <button
-                      className="btn-ghost btn-shadow"
+                      className="btn-ghost glass-button btn-shadow"
                       onClick={(e) => {
                         e.stopPropagation();
                         setToolAttachedImages(
@@ -1714,6 +1709,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
           {toolMode ? (
             <div
+            className="w-full"
               style={{
                 flex: 1,
                 display: "flex",
@@ -1734,7 +1730,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   }}
                 >
                   <button
-                    className="btn-ghost max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[12px] max-md:![&>svg]:!h-[12px]"
+                    className="btn-ghost glass-button max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[12px] max-md:![&>svg]:!h-[12px]"
                     onClick={() => {
                       setToolMode(null);
                       setToolDescription("");
@@ -1754,7 +1750,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   </button>
                   {toolAttachedImages.length === 0 && (
                     <button
-                      className="btn-ghost btn-shadow max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[12px] max-md:![&>svg]:!h-[12px]"
+                      className="btn-ghost glass-button btn-shadow max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[12px] max-md:![&>svg]:!h-[12px]"
                       onClick={(e) => {
                         e.stopPropagation();
                         fileInputRef.current?.click();
@@ -1890,9 +1886,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             />
           )}
 
-          <div className="row gap-[5px] max-md:!gap-[4px] max-md:flex-nowrap" style={{ flexShrink: 0 }}>
-
-
+          <div className="row gap-[5px] max-md:!gap-[9px] max-md:flex-nowrap" style={{ flexShrink: 0 }}>
             {/* Attach File - Hide when tool mode is active */}
             {!toolMode && (
               <div
@@ -1901,7 +1895,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 data-upload-menu
               >
                 <button
-                  className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                  ref={uploadBtnRef}
+                  className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
                   onClick={() => setShowUploadMenu(!showUploadMenu)}
                   aria-label="Upload files"
                   disabled={isListening}
@@ -1914,27 +1909,24 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   <FaPaperclip size={hasAnswer ? 14 : 18} />
                 </button>
 
-                {showUploadMenu && (
+                {showUploadMenu && (() => {
+                  const rect = uploadBtnRef.current?.getBoundingClientRect();
+                  return (
                   <div
-                    className=""
+                    className="glass-panel"
                     data-upload-menu
                     style={{
-                      position: "absolute",
-                      bottom: "100%",
-                      left: 0,
-                      marginTop: 8,
+                      position: "fixed",
+                      bottom: rect ? window.innerHeight - rect.top + 8 : 0,
+                      left: rect ? rect.left : 0,
                       padding: 8,
                       zIndex: 9999,
                       minWidth: 220,
-                      boxShadow: "var(--shadow)",
-                      borderRadius: "var(--radius-sm)",
                       color: "var(--text)",
-                      backdropFilter: "blur(6px)",
-                      transition: "background 0.2s ease, border 0.2s ease",
                     }}
                   >
                     <button
-                      className="btn-ghost btn-shadow"
+                      className="btn-ghost !backdrop-blur-lg glass-button btn-shadow"
                       onClick={() => {
                         fileInputRef.current?.click();
                         setShowUploadMenu(false);
@@ -1960,7 +1952,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     </button>
 
                     <button
-                      className="btn-ghost btn-shadow"
+                      className="btn-ghost glass-button btn-shadow"
                       onClick={() => {
                         fileInputRef.current?.click();
                         setShowUploadMenu(false);
@@ -1985,7 +1977,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       </span>
                     </button>
                     <button
-                      className="btn-ghost btn-shadow"
+                      className="btn-ghost glass-button btn-shadow"
                       onClick={() => {
                         startCameraCapture();
                         setShowUploadMenu(false);
@@ -2009,7 +2001,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       </span>
                     </button>
                   </div>
-                )}
+                  );
+                })()}
               </div>
             )}
 
@@ -2097,7 +2090,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 </button>
               ) : speechSupported ? (
                 <button
-                  className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                  className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                   onClick={() => {
                     if (isListening) {
                       stopVoiceInput();
@@ -2130,7 +2123,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 }}
               >
                 <button
-                  className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                  className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
                   onClick={() => {
                     if (onNewConversation) {
                       onNewConversation();
@@ -2153,7 +2146,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
             {query.trim() ? (
               <button
-                className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
                 onClick={triggerSearchWithScroll}
                 disabled={isLoading}
                 aria-label="Search"
@@ -2169,7 +2162,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </button>
             ) : speechSupported ? (
               <button
-                className="btn-ghost btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                 onClick={() => setShowVoiceOverlay(true)}
                 disabled={isListening}
                 style={{
@@ -2241,7 +2234,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 📸 Capture
               </button>
               <button
-                className="btn-ghost btn-shadow"
+                className="btn-ghost glass-button btn-shadow"
                 onClick={stopCameraCapture}
                 style={{ padding: "12px 24px" }}
               >
@@ -2276,7 +2269,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           {searchHistory.slice(0, 5).map((item, index) => (
             <button
               key={index}
-              className="btn-ghost btn-shadow"
+              className="btn-ghost glass-button btn-shadow"
               onClick={() => onQuerySelect(item)}
               style={{
                 width: "100%",

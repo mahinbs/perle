@@ -630,7 +630,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       )}
       <div ref={dropdownRef} style={{ position: "relative" }}>
         <button
-          className="btn-ghost btn-shadow !border-[#dfb768] max-md:!h-[34px] max-md:!min-h-[34px] max-md:!py-0 max-md:!px-[8px]"
+          className="btn-ghost glass-button btn-shadow !border-[#dfb768] max-md:!h-[34px] max-md:!min-h-[34px] max-md:!py-0 max-md:!px-[8px]"
           onClick={() => setIsOpen(!isOpen)}
           disabled={disabled}
           style={{
@@ -676,15 +676,12 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                 ref={mobileDropdownRef}
                 onClick={(e) => e.stopPropagation()}
                 onTouchStart={(e) => e.stopPropagation()}
+                className="glass-panel"
                 style={{
                   position: "fixed",
                   top: "120px",
                   left: 0,
                   right: 0,
-                  backgroundColor: "var(--card)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)",
-                  boxShadow: "var(--shadow)",
                   zIndex: 99999,
                   maxHeight: "300px",
                   overflowY: "auto",
@@ -782,15 +779,12 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
             )
           ) : (
             <div
+              className="glass-panel"
               style={{
                 position: "absolute",
                 top: "100%",
                 left: 0,
                 right: 0,
-                backgroundColor: "var(--card)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                boxShadow: "var(--shadow)",
                 zIndex: 99999,
                 maxHeight: 300,
                 overflowY: "auto",
