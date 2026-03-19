@@ -1057,7 +1057,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </button>
             )}
             <button
-              className="btn-ghost glass-button btn-shadow !font-normal !border-[#dfb768]"
+              className="btn-ghost glass-button btn-shadow !font-normal"
               onClick={() => {
                 setToolMode("video");
                 setToolDescription("");
@@ -1087,7 +1087,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </span>
             </button>
             <button
-              className="btn-ghost glass-button btn-shadow !font-normal !border-[#dfb768]"
+              className="btn-ghost glass-button btn-shadow !font-normal"
               onClick={() => {
                 setToolMode("image");
                 setToolDescription("");
@@ -1124,7 +1124,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </span>
             </button>
             <button
-              className="btn-ghost glass-button btn-shadow !font-normal !border-[#dfb768]"
+              className="btn-ghost glass-button btn-shadow !font-normal"
               onClick={() => {
                 if (isAuthenticated()) {
                   navigateTo("/gallery");
@@ -1159,7 +1159,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           {/* Desktop dropdown container */}
           <div className="hidden md:flex relative mb-2" data-tools-menu>
             <button
-              className={`btn-ghost glass-button btn-shadow !border-[#dfb768] !font-normal ${toolMode ? "!text-black" : ""
+              className={`btn-ghost glass-button btn-shadow !font-normal ${toolMode ? "!text-black" : ""
                 }`}
               onClick={() => {
                 if (toolMode) {
@@ -1896,7 +1896,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               >
                 <button
                   ref={uploadBtnRef}
-                  className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
                   onClick={() => setShowUploadMenu(!showUploadMenu)}
                   aria-label="Upload files"
                   disabled={isListening}
@@ -2037,7 +2037,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             >
               {toolMode ? (
                 <button
-                  className="btn !border-[#dfb768] !text-black max-md:!px-2 max-md:!py-1 max-md:!text-sm"
+                  className="btn !text-black max-md:!px-2 max-md:!py-1 max-md:!text-sm"
                   onClick={handleGenerateMedia}
                   disabled={
                     isGenerating ||
@@ -2090,7 +2090,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 </button>
               ) : speechSupported ? (
                 <button
-                  className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                   onClick={() => {
                     if (isListening) {
                       stopVoiceInput();
@@ -2123,7 +2123,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 }}
               >
                 <button
-                  className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
                   onClick={() => {
                     if (onNewConversation) {
                       onNewConversation();
@@ -2146,7 +2146,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
             {query.trim() ? (
               <button
-                className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
                 onClick={triggerSearchWithScroll}
                 disabled={isLoading}
                 aria-label="Search"
@@ -2162,7 +2162,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </button>
             ) : speechSupported ? (
               <button
-                className="btn-ghost glass-button btn-shadow aspect-square !border-[#dfb768] max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                 onClick={() => setShowVoiceOverlay(true)}
                 disabled={isListening}
                 style={{

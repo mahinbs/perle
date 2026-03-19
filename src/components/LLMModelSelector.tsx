@@ -630,7 +630,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       )}
       <div ref={dropdownRef} style={{ position: "relative" }}>
         <button
-          className="btn-ghost glass-button btn-shadow !border-[#dfb768] max-md:!h-[34px] max-md:!min-h-[34px] max-md:!py-0 max-md:!px-[8px]"
+          className="btn-ghost glass-button btn-shadow max-md:!h-[34px] max-md:!min-h-[34px] max-md:!py-0 max-md:!px-[8px]"
           onClick={() => setIsOpen(!isOpen)}
           disabled={disabled}
           style={{

@@ -902,8 +902,28 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           Syntra<span className="text-[var(--accent)]">IQ</span>
         </div> */}
         {query && (
-          <div className="my-7 text-2xl font-bold text-end">
-            {query}
+          // <div className="my-1 text-2xl font-bold text-end">
+          //   {query}
+          // </div>
+          <div
+            className="flex justify-end"
+          // onMouseEnter={(e) => {
+          //   if (onQueryEdit) {
+          //     e.currentTarget.style.backgroundColor = "var(--border)";
+          //   }
+          // }}
+          // onMouseLeave={(e) => {
+          //   e.currentTarget.style.backgroundColor = "transparent";
+          // }}
+          >
+            <div style={{
+              fontSize: "var(--font-xl)",
+              fontWeight: 600,
+              lineHeight: "32px",
+              color: "var(--text)",
+              wordBreak: "break-word",
+              borderRadius: "8px",
+            }} className="glass-card !max-w-[calc(90%)] !px-4 !py-2">{query}</div>
           </div>
         )}
         <div className="flex items-center gap-2">
@@ -1308,11 +1328,11 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         ))}
       </div>
 
-      <div className="spacer-16" />
 
       {/* Sources Section (hide completely when no sources or when explicitly hidden) */}
       {!hideSources && sources.length > 0 && (
         <div>
+          <div className="spacer-4" />
           <button
             className="btn-ghost"
             onClick={() => setExpandedSources(!expandedSources)}
@@ -1371,11 +1391,11 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         </div>
       )}
 
-      <div className="spacer-16" />
 
       {/* Uploaded Attachments Download Section */}
       {attachments && attachments.length > 0 && !isLoading && (
         <div>
+          <div className="spacer-4" />
           <div
             style={{
               fontSize: "var(--font-md)",
@@ -1506,7 +1526,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         </div>
       )}
 
-      <div className="spacer-16" />
+      {/* <div className="spacer-4" /> */}
 
       {/* Follow-up Actions */}
       {/* <div>

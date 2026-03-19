@@ -624,7 +624,7 @@ export default function HomePage() {
         <div className="relative z-10 flex flex-col justify-start h-full min-h-0">
           <Header />
 
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col">
           <div className="spacer-4" />
           <div ref={answerCardRef}>
             {/* Render all answers in conversation history */}
@@ -647,7 +647,7 @@ export default function HomePage() {
                 <div
                   key={`answer-${prevAnswer.timestamp}-${index}`}
                   style={{
-                    marginBottom: index < conversationHistory.length - 1 ? 24 : 0,
+                    marginBottom: index < conversationHistory.length - 1 ? 5 : 0,
                     transition: isLoadingOldConversation ? 'none' : undefined,
                     animation: isLoadingOldConversation ? 'none' : undefined
                   }}

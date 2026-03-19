@@ -1473,7 +1473,7 @@ export default function ProfilePage() {
           onClick={() => setShowEditProfile(false)}
         >
           <div
-            className="card glass-card"
+            className="card glass-card !bg-white/30 dark:!bg-black/30 no-scrollbar"
             style={{
               padding: 24,
               maxWidth: 400,
