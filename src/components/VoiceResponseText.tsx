@@ -12,26 +12,17 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
   const [displayedText, setDisplayedText] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Typewriter effect
+  // Render full text directly to avoid jittery re-typing during TTS updates.
   useEffect(() => {
-    if (!providedText) {
+    const cleaned = (providedText || "")
+      .replace(/\bundefined\b/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    if (!cleaned) {
       setDisplayedText("");
       return;
     }
-
-    let currentIndex = 0;
-    setDisplayedText(""); // Reset on new text
-
-    const intervalId = setInterval(() => {
-      if (currentIndex < providedText.length) {
-        setDisplayedText((prev) => prev + providedText[currentIndex]);
-        currentIndex++;
-      } else {
-        clearInterval(intervalId);
-      }
-    }, 25); // Typing speed
-
-    return () => clearInterval(intervalId);
+    setDisplayedText(cleaned);
   }, [providedText]);
 
   // Auto-scroll to bottom

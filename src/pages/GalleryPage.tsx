@@ -28,16 +28,20 @@ export default function GalleryPage() {
   const [filter, setFilter] = useState<"all" | "image" | "video">("all");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<GeneratedMedia | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 10;
 
   useEffect(() => {
     // For logged-out users, show empty gallery (free user experience)
     if (!isLoggedIn) {
       setMedia([]);
+      setTotalCount(0);
       setIsLoading(false);
       return;
     }
     loadGallery();
-  }, [isLoggedIn, filter]);
+  }, [isLoggedIn, filter, currentPage]);
 
   const loadGallery = async () => {
     const API_URL = import.meta.env.VITE_API_URL;
@@ -46,8 +50,9 @@ export default function GalleryPage() {
     setIsLoading(true);
     try {
       const typeParam = filter !== "all" ? `&type=${filter}` : "";
+      const offset = (currentPage - 1) * PAGE_SIZE;
       const response = await fetch(
-        `${API_URL}/api/media/gallery?limit=100${typeParam}`,
+        `${API_URL}/api/media/gallery?limit=${PAGE_SIZE}&offset=${offset}${typeParam}`,
         {
           method: "GET",
           headers: getAuthHeaders(),
@@ -64,6 +69,7 @@ export default function GalleryPage() {
       if (response.ok) {
         const data = await response.json();
         setMedia(data.media || []);
+        setTotalCount(data.total || 0);
       } else {
         const error = await response.json().catch(() => ({ error: "Failed to load gallery" }));
         showToast({
@@ -113,9 +119,9 @@ export default function GalleryPage() {
 
   // Show free user experience for logged-out users
 
-  const filteredMedia = filter === "all" 
-    ? media 
-    : media.filter((m) => m.media_type === filter);
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const canGoPrev = currentPage > 1;
+  const canGoNext = currentPage < totalPages;
 
   return (
     <div className="container" style={{ minHeight: "100vh", padding: "16px" }}>
@@ -153,32 +159,41 @@ export default function GalleryPage() {
       >
         <button
           className={filter === "all" ? "btn" : "btn-ghost"}
-          onClick={() => setFilter("all")}
+          onClick={() => {
+            setFilter("all");
+            setCurrentPage(1);
+          }}
           style={{
             borderBottom: filter === "all" ? "2px solid var(--accent)" : "none",
           }}
         >
-          All ({media.length})
+          All
         </button>
         <button
           className={filter === "image" ? "btn" : "btn-ghost"}
-          onClick={() => setFilter("image")}
+          onClick={() => {
+            setFilter("image");
+            setCurrentPage(1);
+          }}
           style={{
             borderBottom: filter === "image" ? "2px solid var(--accent)" : "none",
           }}
         >
           <FaImage size={14} style={{ marginRight: 6 }} />
-          Images ({media.filter((m) => m.media_type === "image").length})
+          Images
         </button>
         <button
           className={filter === "video" ? "btn" : "btn-ghost"}
-          onClick={() => setFilter("video")}
+          onClick={() => {
+            setFilter("video");
+            setCurrentPage(1);
+          }}
           style={{
             borderBottom: filter === "video" ? "2px solid var(--accent)" : "none",
           }}
         >
           <FaVideo size={14} style={{ marginRight: 6 }} />
-          Videos ({media.filter((m) => m.media_type === "video").length})
+          Videos
         </button>
       </div>
 
@@ -197,7 +212,7 @@ export default function GalleryPage() {
           <FaSpinner size={32} className="animate-spin" />
           <div className="sub">Loading gallery...</div>
         </div>
-      ) : filteredMedia.length === 0 ? (
+      ) : media.length === 0 ? (
         <div
           className="card"
           style={{
@@ -231,14 +246,15 @@ export default function GalleryPage() {
           )}
         </div>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-            gap: 16,
-          }}
-        >
-          {filteredMedia.map((item) => (
+        <>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+              gap: 16,
+            }}
+          >
+          {media.map((item) => (
             <div
               key={item.id}
               className="card"
@@ -327,7 +343,39 @@ export default function GalleryPage() {
               </button>
             </div>
           ))}
-        </div>
+          </div>
+
+          {/* Pagination */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+              marginTop: 20,
+            }}
+          >
+            <button
+              className="btn-ghost"
+              disabled={!canGoPrev}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              style={{ opacity: canGoPrev ? 1 : 0.5, cursor: canGoPrev ? "pointer" : "not-allowed" }}
+            >
+              Previous
+            </button>
+            <div className="sub text-sm">
+              Page {currentPage} of {totalPages}
+            </div>
+            <button
+              className="btn-ghost"
+              disabled={!canGoNext}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              style={{ opacity: canGoNext ? 1 : 0.5, cursor: canGoNext ? "pointer" : "not-allowed" }}
+            >
+              Next
+            </button>
+          </div>
+        </>
       )}
 
       {/* Media Detail Modal */}

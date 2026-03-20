@@ -47,6 +47,7 @@ interface SearchBarProps {
   onNewConversation?: () => void; // Callback to start new conversation
   onMediaGenerated?: (media: { type: 'image' | 'video'; url: string; prompt: string }) => void; // Callback when media is generated
   answer?: AnswerResult | null;
+  currentAnswerText?: string;
   /** Called once when follow-up is submitted (scroll to bottom only on submit, not during answer typing) */
   onScrollToBottom?: () => void;
   experienceMode?: ExperienceMode;
@@ -70,6 +71,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   setSelectedModel,
   onModelChange,
   answer = null,
+  currentAnswerText = "",
   onScrollToBottom,
   experienceMode = "normal",
   onExperienceModeChange,
@@ -107,13 +109,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     const checkVoiceOverlay = () => {
       const shouldKeepOpen = localStorage.getItem("perle-keep-voice-overlay-open");
       const currentAnswerText = localStorage.getItem("perle-current-answer-text");
-      const voiceComplete = localStorage.getItem("perle-voice-output-complete");
 
-      if (shouldKeepOpen || currentAnswerText || voiceComplete) {
+      if (shouldKeepOpen || currentAnswerText) {
         console.log('🔍 Voice overlay check:', {
           shouldKeepOpen: !!shouldKeepOpen,
           currentAnswerText: !!currentAnswerText,
-          voiceComplete: !!voiceComplete,
           showVoiceOverlay
         });
       }
@@ -122,16 +122,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       if (shouldKeepOpen && currentAnswerText) {
         console.log('✅ Reopening voice overlay for response');
         setShowVoiceOverlay(true);
+        localStorage.setItem("perle-voice-session-active", "1");
         // Clear the flag once overlay is opened
         localStorage.removeItem("perle-keep-voice-overlay-open");
-      }
-
-      // Auto-close overlay when voice output completes
-      if (voiceComplete && showVoiceOverlay) {
-        console.log('✅ Auto-closing voice overlay after completion');
-        setTimeout(() => {
-          setShowVoiceOverlay(false);
-        }, 1000); // Give user a moment to see the final text
       }
     };
 
@@ -148,6 +141,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const recognitionRef = useRef<any>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const hasClearedForAnswerRef = useRef<boolean>(false);
+  const voiceSilenceTimerRef = useRef<number | null>(null);
   const uploadBtnRef = useRef<HTMLButtonElement>(null);
 
   // Check for speech support
@@ -247,6 +241,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       return;
     }
 
+    // Always open voice globe overlay when mic flow starts.
+    setShowVoiceOverlay(true);
+    localStorage.setItem("perle-voice-session-active", "1");
+
     // Stop any ongoing TTS playback before starting a new recording
     try {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -270,20 +268,77 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     recognition.lang = "en-US";
 
     let finalTranscript = "";
+    let shouldRestartAfterSilencePrompt = false;
+
+    const clearSilenceTimer = () => {
+      if (voiceSilenceTimerRef.current) {
+        window.clearTimeout(voiceSilenceTimerRef.current);
+        voiceSilenceTimerRef.current = null;
+      }
+    };
+
+    const startSilenceTimer = () => {
+      clearSilenceTimer();
+      voiceSilenceTimerRef.current = window.setTimeout(() => {
+        // If user hasn't spoken in 10s, prompt and continue listening cycle.
+        if (!finalTranscript.trim()) {
+          shouldRestartAfterSilencePrompt = true;
+          try {
+            recognition.stop();
+          } catch { }
+          try {
+            if ("speechSynthesis" in window) {
+              window.speechSynthesis.cancel();
+              const nudge = new SpeechSynthesisUtterance(
+                "Please give me an input so I can help you."
+              );
+              nudge.rate = 1;
+              nudge.pitch = 1;
+              nudge.volume = 1;
+              window.speechSynthesis.speak(nudge);
+            }
+          } catch { }
+        }
+      }, 10_000);
+    };
 
     recognition.onstart = () => {
       setIsListening(true);
       setShowUploadMenu(false); // Close upload menu when recording starts
+      startSilenceTimer();
     };
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
+      // If user starts speaking while TTS is in progress, barge-in and stop TTS.
+      try {
+        if ("speechSynthesis" in window && window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+        }
+      } catch { }
       setQuery(transcript);
       finalTranscript = transcript; // Store the latest transcript
+      // User provided input, so no silence nudge needed for this turn.
+      clearSilenceTimer();
     };
 
     recognition.onend = () => {
+      clearSilenceTimer();
       setIsListening(false);
+
+      if (shouldRestartAfterSilencePrompt) {
+        shouldRestartAfterSilencePrompt = false;
+        // Resume listening after the spoken prompt ends.
+        window.setTimeout(() => {
+          const voiceSessionActive =
+            localStorage.getItem("perle-voice-session-active") === "1";
+          if (voiceSessionActive && showVoiceOverlay) {
+            startVoiceInput();
+          }
+        }, 1800);
+        return;
+      }
+
       // Auto-trigger search when voice recording stops using the final transcript
       if (finalTranscript.trim()) {
         console.log('🎤 Voice input complete, transcript:', finalTranscript);
@@ -296,6 +351,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         console.log('✅ Set perle-speak-next-answer flag');
         // Keep voice overlay open so the response can be shown
         localStorage.setItem("perle-keep-voice-overlay-open", "1");
+        localStorage.setItem("perle-voice-session-active", "1");
         console.log('✅ Set perle-keep-voice-overlay-open flag');
         // Always clear the query immediately after triggering search
         setTimeout(() => {
@@ -306,6 +362,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     recognition.onerror = (event: any) => {
       console.error("Speech recognition error:", event.error);
+      clearSilenceTimer();
       setIsListening(false);
       if (event.error === "not-allowed") {
         showToast({
@@ -334,6 +391,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   const stopVoiceInput = () => {
+    if (voiceSilenceTimerRef.current) {
+      window.clearTimeout(voiceSilenceTimerRef.current);
+      voiceSilenceTimerRef.current = null;
+    }
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
@@ -347,6 +408,57 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
   };
+
+  const speakTextImmediately = (text: string) => {
+    const content = (text || "")
+      .replace(/\bundefined\b/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    if (!content) return;
+    try {
+      if (!("speechSynthesis" in window)) {
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(content);
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.volume = 0.9;
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+        localStorage.setItem("perle-current-answer-text", content);
+      };
+      utterance.onend = () => {
+        setIsSpeaking(false);
+        const voiceSessionActive =
+          localStorage.getItem("perle-voice-session-active") === "1";
+        if (voiceSessionActive) {
+          localStorage.setItem("perle-auto-listen-next", "1");
+        }
+      };
+      utterance.onerror = () => {
+        setIsSpeaking(false);
+      };
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      setIsSpeaking(false);
+    }
+  };
+
+  // When an answer finishes in active voice session, start listening again automatically.
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const shouldAutoListen =
+        localStorage.getItem("perle-auto-listen-next") === "1";
+      const voiceSessionActive =
+        localStorage.getItem("perle-voice-session-active") === "1";
+      if (shouldAutoListen && voiceSessionActive && showVoiceOverlay && !isListening) {
+        localStorage.removeItem("perle-auto-listen-next");
+        startVoiceInput();
+      }
+    }, 250);
+    return () => window.clearInterval(interval);
+  }, [showVoiceOverlay, isListening]);
 
   const getFileType = (file: File): "image" | "document" | "other" => {
     if (file.type.startsWith("image/")) return "image";
@@ -1551,6 +1663,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             setShowVoiceOverlay(false);
             // Clear the flag when manually closing
             localStorage.removeItem("perle-keep-voice-overlay-open");
+            localStorage.removeItem("perle-voice-session-active");
+            localStorage.removeItem("perle-auto-listen-next");
           }}
         />
 
@@ -2163,7 +2277,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             ) : speechSupported ? (
               <button
                 className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
-                onClick={() => setShowVoiceOverlay(true)}
+                onClick={() => {
+                  localStorage.setItem("perle-voice-session-active", "1");
+                  // If we already have an answer on screen, speak it first when opening voice mode.
+                  const textToSpeak = (currentAnswerText || "").trim();
+                  if (textToSpeak) {
+                    localStorage.setItem("perle-voice-open-speak-first", "1");
+                    localStorage.setItem("perle-keep-voice-overlay-open", "1");
+                  }
+                  setShowVoiceOverlay(true);
+                  if (textToSpeak) {
+                    speakTextImmediately(textToSpeak);
+                  }
+                }}
                 disabled={isListening}
                 style={{
                   padding: hasAnswer ? 6 : 8,

@@ -521,7 +521,8 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
       message: answerText,
       model: actualModel,
       images: result.images || [], // Include generated images if any
-      sources: result.sources || [] // Include sources for citations
+      sources: chatMode === 'ai_psychologist' ? [] : (result.sources || []), // No sources in psychology mode
+      suggestedQuestions: result.suggestedQuestions || []
     });
   } catch (error) {
     console.error('Chat error:', error);
