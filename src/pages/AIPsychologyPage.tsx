@@ -408,7 +408,7 @@ export default function AIPsychologyPage() {
   return (
     <div className="container h-screen flex flex-col !p-0">
       {/* Header */}
-      <div className="border-b border-[var(--border)] bg-[var(--card)] sticky top-0 z-[100]">
+      <div className="border-b border-[var(--border)] sticky top-0 z-[100]">
         <div className="row flex-nowrap! flex justify-between items-center p-4">
           <div className="row flex items-center gap-3">
             <button
@@ -447,7 +447,7 @@ export default function AIPsychologyPage() {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-5 bg-[var(--bg)]">
+      <div className="flex-1 overflow-y-auto px-4 py-5">
         {messages.map((message) => (
           <div
             key={message.id}
@@ -473,8 +473,8 @@ export default function AIPsychologyPage() {
             <div
               className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${
                 message.role === "user"
-                  ? "bg-[var(--accent)] text-[#111]"
-                  : "bg-[var(--card)] text-[var(--text)] border border-[var(--border)]"
+                  ? "bg-[rgba(199,168,105,0.15)] text-(--accent) border border-[rgba(199,168,105,0.3)] glass-panel"
+                  : "glass-panel text-[var(--text)] border border-[rgba(255,255,255,0.1)]"
               }`}
             >
               <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
@@ -498,7 +498,7 @@ export default function AIPsychologyPage() {
               alt={`${aiProfile.name} avatar`}
               className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(155,89,182,0.5)]"
             />
-            <div className="px-4 py-3 rounded-[var(--radius-sm)] bg-[var(--card)] border border-[var(--border)]">
+            <div className="px-4 py-3 rounded-[var(--radius-sm)] glass-panel border border-[rgba(255,255,255,0.1)]">
               <div className="flex gap-1 items-center">
                 <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite]" />
                 <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.2s]" />
@@ -512,7 +512,7 @@ export default function AIPsychologyPage() {
       </div>
 
       {/* Input Area */}
-      <div className="p-3 px-4 border-none border-[var(--border)] bg-[var(--card)] sticky bottom-0">
+      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0">
         {attachedFileName && (
           <div className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3">
             <div className="flex items-center gap-2.5 text-[length:var(--font-sm)] text-[var(--text)] flex-1 min-w-0">
@@ -541,7 +541,7 @@ export default function AIPsychologyPage() {
           </div>
         )}
 
-        <div className="flex gap-2 items-end flex-wrap bg-[var(--input-bg)] sm:bg-none p-3 rounded-xl border border-[var(--border)]">
+        <div className="flex gap-2 items-end flex-wrap glass-panel p-3 rounded-xl border border-[var(--border)]">
           <input
             ref={fileInputRef}
             type="file"
@@ -549,7 +549,7 @@ export default function AIPsychologyPage() {
             onChange={handleFileSelected}
             aria-hidden
           />
-          <div className="flex-1 flex items-center bg-[var(--input-bg)] rounded-[var(--radius-lg)] px-3 py-1 sm:border border-[var(--border)] min-h-[34px] max-h-[80px]">
+          <div className="flex-1 flex items-center rounded-[var(--radius-lg)] px-3 py-1 !border-none min-h-[34px] max-h-[80px]">
             <textarea
               ref={inputRef}
               value={inputValue}
@@ -563,7 +563,7 @@ export default function AIPsychologyPage() {
               }}
               onKeyDown={handleKeyPress}
               placeholder="Share what's on your mind..."
-              className="flex-1 border-none bg-transparent resize-none py-1 text-[length:var(--font-md)] text-[var(--text)] outline-none font-inherit leading-relaxed min-h-[24px] max-h-[100px] overflow-y-auto h-auto"
+              className="flex-1 border-none bg-transparent resize-none py-1 text-[length:var(--font-md)] text-[var(--text)] !outline-none font-inherit leading-relaxed min-h-[24px] max-h-[100px] overflow-y-auto h-auto"
               rows={1}
               disabled={isLoading}
             />
@@ -591,7 +591,7 @@ export default function AIPsychologyPage() {
               )}
 
               <button
-                className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${
+                className={`btn-ghost glass-button w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${
                   isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
                 } ${
                   attachedFileName
@@ -606,7 +606,7 @@ export default function AIPsychologyPage() {
               </button>
 
               <button
-                className={`btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${
+                className={`btn-ghost glass-button w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 ${
                   showSuggestions
                     ? "bg-[rgba(199,168,105,0.2)] text-[var(--accent)]"
                     : "bg-transparent text-inherit"
@@ -619,7 +619,7 @@ export default function AIPsychologyPage() {
               </button>
 
               <button
-                className="btn-ghost w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 bg-transparent text-inherit"
+                className="btn-ghost glass-button w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 bg-transparent text-inherit"
                 onClick={() => {
                   // Start new chat - clear messages and reset
                   setMessages([
@@ -643,7 +643,7 @@ export default function AIPsychologyPage() {
               </button>
 
               <button
-                className={`btn bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${
+                className={`btn glass-button bg-transparent! text-[#C7A869]! w-7 h-7 min-h-fit! border! rounded-full !p-0 flex items-center justify-center ${
                   inputValue.trim() && !isLoading && !isUploading
                     ? "opacity-100 cursor-pointer"
                     : "opacity-50 cursor-not-allowed"

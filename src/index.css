@@ -8,6 +8,16 @@
   color: var(--text);
 }
 
+:root::after {
+  content: "";
+  @apply w-[90%] left-1/2 -translate-x-1/2 h-1/5 fixed bottom-0 left-0 bg-[#dfb768] blur-[120px] pointer-events-none -z-10;
+}
+
+.gold-gradient-bg::after {
+  content: "";
+  @apply w-[90%] left-1/2 -translate-x-1/2 h-1/5 fixed bottom-0 left-0 bg-[#dfb768] blur-[120px] pointer-events-none -z-10;
+}
+
 .katex-display {
   margin: 20px 0;
   padding: 12px 0;
@@ -65,35 +75,33 @@
   height: 1em;
 }
 
-/* Ensure proper rendering in dark mode */
-@media (prefers-color-scheme: dark) {
-  .katex {
-    color: var(--text);
-  }
+/* Keep math symbols in dark theme only */
+.katex {
+  color: var(--text);
+}
 
-  .katex .mord {
-    color: var(--text);
-  }
+.katex .mord {
+  color: var(--text);
+}
 
-  .katex .mrel {
-    color: var(--text);
-  }
+.katex .mrel {
+  color: var(--text);
+}
 
-  .katex .mbin {
-    color: var(--text);
-  }
+.katex .mbin {
+  color: var(--text);
+}
 
-  .katex .mopen {
-    color: var(--text);
-  }
+.katex .mopen {
+  color: var(--text);
+}
 
-  .katex .mclose {
-    color: var(--text);
-  }
+.katex .mclose {
+  color: var(--text);
+}
 
-  .katex .mpunct {
-    color: var(--text);
-  }
+.katex .mpunct {
+  color: var(--text);
 }
 
 .font-ubuntu {
@@ -104,16 +112,28 @@
   color: #dfb768;
 }
 
-/* Mobile-first CSS with enhanced touch interactions */
+/* Mobile-first CSS with enhanced touch interactions - Enforced DARK THEME ONLY */
 :root {
+  /* Light theme styles - Commented out
   --bg: #f8f7f4;
   --card: #ffffff;
   --text: #111111;
   --sub: #4b4b4b;
   --border: #d0d0d0;
-  --accent: #c7a869;
   --shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
   --shadow-hover: 0 12px 24px rgba(0, 0, 0, 0.1);
+  */
+
+  /* Dark theme styles */
+  --bg: #0e0e0e;
+  --card: #131313;
+  --text: #ececec;
+  --sub: #b8b8b8;
+  --border: #1f1f1f;
+  --shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+  --shadow-hover: 0 12px 24px rgba(0, 0, 0, 0.4);
+
+  --accent: #c7a869;
   --radius: 18px;
   --radius-sm: 12px;
   --radius-lg: 24px;
@@ -126,18 +146,6 @@
   --font-lg: 1.125rem;
   --font-xl: 1.375rem;
   --font-2xl: 1.75rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e0e0e;
-    --card: #131313;
-    --text: #ececec;
-    --sub: #b8b8b8;
-    --border: #1f1f1f;
-    --shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
-    --shadow-hover: 0 12px 24px rgba(0, 0, 0, 0.4);
-  }
 }
 
 * {
@@ -155,25 +163,22 @@ body,
 }
 
 :root {
-  /* Shared semantic tokens used by components (light theme) */
+  /* Shared semantic tokens used by components (Light theme commented out)
   --card-bg: var(--card);
   --bg-secondary: #f0ece5;
   --bg-tertiary: #e4ddcf;
   --text-primary: var(--text);
   --text-secondary: var(--sub);
   --primary: var(--accent);
-}
+  */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Shared semantic tokens used by components (dark theme) */
-    --card-bg: var(--card);
-    --bg-secondary: #151515;
-    --bg-tertiary: #1b1b1b;
-    --text-primary: var(--text);
-    --text-secondary: #9a9a9a;
-    --primary: var(--accent);
-  }
+  /* Shared semantic tokens used by components (Dark theme enforced) */
+  --card-bg: var(--card);
+  --bg-secondary: #151515;
+  --bg-tertiary: #1b1b1b;
+  --text-primary: var(--text);
+  --text-secondary: #9a9a9a;
+  --primary: var(--accent);
 }
 
 body {
@@ -405,21 +410,8 @@ body {
 }
 
 .pill.active {
-  border-color: var(--accent);
-  color: var(--text);
-  background: #fffdf8;
-  box-shadow: 0 2px 8px rgba(199, 168, 105, 0.2);
-}
-
-.btn-shadow {
+  background: #1a1a1a;
   box-shadow: 0 2px 8px rgba(199, 168, 105, 0.3);
-}
-
-@media (prefers-color-scheme: dark) {
-  .pill.active {
-    background: #1a1a1a;
-    box-shadow: 0 2px 8px rgba(199, 168, 105, 0.3);
-  }
 }
 
 .pill:active {
@@ -937,80 +929,45 @@ body {
    Based on user reference — adapted for light + dark themes
    ============================================================ */
 
-/* ---- LIGHT MODE TOKENS ---- */
+/* ---- DARK MODE TOKENS ENFORCED ---- */
 :root {
-  /* Card & Panel */
-  --glass-bg: rgba(255, 255, 255, 0.08);
-  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-bg: rgba(0, 0, 0, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.12);
   --glass-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.05),
-    inset 0 1px 1px rgba(255, 255, 255, 0.8),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.03),
-    inset 0 0 15px rgba(255, 255, 255, 0.3);
+    0 8px 32px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 20px 10px rgba(255, 255, 255, 0.03);
   --glass-blur: 25px;
-  --glass-saturate: 200%;
-  --glass-h-shimmer: rgba(255, 255, 255, 0.9);
-  --glass-v-shimmer-t: rgba(255, 255, 255, 0.8);
-  --glass-v-shimmer-b: rgba(255, 255, 255, 0.2);
+  --glass-saturate: 120%;
+  --glass-h-shimmer: rgba(255, 255, 255, 0.20);
+  --glass-v-shimmer-t: rgba(255, 255, 255, 0.20);
+  --glass-v-shimmer-b: rgba(255, 255, 255, 0.07);
 
-  /* Button */
-  --glass-btn-bg: rgba(255, 255, 255, 0.1);
-  --glass-btn-border: rgba(255, 255, 255, 0.4);
+  --glass-btn-bg: rgba(255, 255, 255, 0.07);
+  --glass-btn-border: rgba(255, 255, 255, 0.14);
   --glass-btn-shadow:
-    0 4px 6px rgba(0, 0, 0, 0.05),
-    inset 0 1px 1px rgba(255, 255, 255, 0.8),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.05),
-    inset 0 0 15px rgba(255, 255, 255, 0.5);
+    0 4px 16px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 12px 4px rgba(255, 255, 255, 0.02);
 
-  /* Input */
-  --glass-input-bg: rgba(255, 255, 255, 0.05);
-  --glass-input-border: rgba(255, 255, 255, 0.6);
+  --glass-input-bg: rgba(255, 255, 255, 0.06);
+  --glass-input-border: rgba(255, 255, 255, 0.12);
   --glass-input-shadow:
-    inset 0 2px 10px rgba(0, 0, 0, 0.03),
-    inset 0 0 15px rgba(255, 255, 255, 0.4),
-    0 1px 1px rgba(255, 255, 255, 0.5);
+    inset 0 2px 8px rgba(0, 0, 0, 0.30),
+    inset 0 0 16px 6px rgba(255, 255, 255, 0.02),
+    0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
-/* ---- DARK MODE TOKENS ---- */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --glass-bg: rgba(0, 0, 0, 0.65);
-    --glass-border: rgba(255, 255, 255, 0.12);
-    --glass-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.55),
-      inset 0 1px 0 rgba(255, 255, 255, 0.14),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.05),
-      inset 0 0 20px 10px rgba(255, 255, 255, 0.03);
-    --glass-saturate: 120%;
-    --glass-h-shimmer: rgba(255, 255, 255, 0.20);
-    --glass-v-shimmer-t: rgba(255, 255, 255, 0.20);
-    --glass-v-shimmer-b: rgba(255, 255, 255, 0.07);
-
-    --glass-btn-bg: rgba(255, 255, 255, 0.07);
-    --glass-btn-border: rgba(255, 255, 255, 0.14);
-    --glass-btn-shadow:
-      0 4px 16px rgba(0, 0, 0, 0.45),
-      inset 0 1px 0 rgba(255, 255, 255, 0.12),
-      inset 0 0 12px 4px rgba(255, 255, 255, 0.02);
-
-    --glass-input-bg: rgba(255, 255, 255, 0.06);
-    --glass-input-border: rgba(255, 255, 255, 0.12);
-    --glass-input-shadow:
-      inset 0 2px 8px rgba(0, 0, 0, 0.30),
-      inset 0 0 16px 6px rgba(255, 255, 255, 0.02),
-      0 1px 0 rgba(255, 255, 255, 0.07);
-  }
-
-  /* Override gradient backgrounds for dark theme */
-  .glass-card,
-  .glass-panel {
-    background: linear-gradient(135deg,
-        rgba(31, 31, 31, 0.75),
-        rgba(45, 45, 45, 0.55));
-  }
+/* Override gradient backgrounds for dark theme */
+.glass-card,
+.glass-panel {
+  background: linear-gradient(135deg,
+      rgba(31, 31, 31, 0.467),
+      rgba(45, 45, 45, 0.211));
 }
 
-/* ---- DARK MODE TOKENS (Tailwind .dark class) ---- */
+/* Also ensure .dark class matches (if still used by Tailwind) */
 .dark {
   --glass-bg: rgba(45, 45, 45, 0.65);
   --glass-border: rgba(255, 255, 255, 0.12);
@@ -1043,8 +1000,8 @@ body {
 /* ----- CARD ----- */
 .glass-card {
   background: linear-gradient(135deg,
-      rgba(255, 255, 255, 0.10),
-      rgba(255, 255, 255, 0.06));
+      rgba(31, 31, 31, 0.467),
+      rgba(45, 45, 45, 0.211));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 180%));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 180%));
   border-radius: 20px;
@@ -1124,35 +1081,33 @@ body {
 }
 
 /* Override gradient backgrounds for dark theme — richer glass base */
-@media (prefers-color-scheme: dark) {
-  .glass-card {
-    background: linear-gradient(135deg,
-        rgba(48, 48, 48, 0.8),
-        rgba(22, 22, 22, 0.65));
-  }
+.glass-card {
+  background: linear-gradient(135deg,
+      rgba(31, 31, 31, 0.467),
+      rgba(45, 45, 45, 0.211));
+}
 
-  .glass-panel {
-    background: linear-gradient(135deg,
-        rgba(48, 48, 48, 0.8),
-        rgba(22, 22, 22, 0.65));
-  }
+.glass-panel {
+  background: linear-gradient(135deg,
+      rgba(48, 48, 48, 0.8),
+      rgba(22, 22, 22, 0.65));
+}
 
-  .glass-button:hover {
-    background: rgba(255, 255, 255, 0.13) !important;
-  }
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.13) !important;
 }
 
 /* Tailwind .dark class overrides */
 .dark .glass-card {
   background: linear-gradient(135deg,
-      rgba(48, 48, 48, 0.8),
-        rgba(22, 22, 22, 0.65));
+      rgba(31, 31, 31, 0.467),
+      rgba(45, 45, 45, 0.211));
 }
 
 .dark .glass-panel {
   background: linear-gradient(135deg,
       rgba(48, 48, 48, 0.8),
-        rgba(22, 22, 22, 0.65));
+      rgba(22, 22, 22, 0.65));
 }
 
 .dark .glass-button:hover {
@@ -1199,10 +1154,8 @@ body {
   transform: translateY(-1px) !important;
 }
 
-@media (prefers-color-scheme: dark) {
-  .glass-button:hover {
-    background: rgba(255, 255, 255, 0.13) !important;
-  }
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.13) !important;
 }
 
 .glass-button:active {

@@ -779,17 +779,17 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
             )
           ) : (
             <div
-              className="glass-panel"
+              className="glass-panel no-scrollbar"
               style={{
                 position: "absolute",
-                top: "100%",
+                bottom: "100%",
                 left: 0,
                 right: 0,
                 zIndex: 99999,
                 maxHeight: 300,
                 overflowY: "auto",
-                marginTop: 4,
-                minWidth: 280,
+                marginBottom: 4,
+                minWidth: 300,
               }}
             >
               {/* Mode Selector Section (Desktop) */}

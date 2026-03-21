@@ -29,7 +29,7 @@ export default function AboutPage() {
         <img 
           src={logo} 
           alt="SyntraIQ Logo" 
-          style={{ width: 80, height: 80, objectFit: "contain", marginBottom: 16 }} 
+          style={{ width: 80, height: 80, objectFit: "contain", marginBottom: 16, filter: "invert(1)" }} 
         />
         <h2 className="h2" style={{ marginBottom: 8 }}>SyntraIQ</h2>
         <p className="sub" style={{ marginBottom: 24 }}>Version 1.0.0</p>

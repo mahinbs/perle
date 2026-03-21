@@ -984,7 +984,7 @@ export default function ProfilePage() {
           </div> */}
 
           {/* Dark Mode */}
-          <div
+          {/* <div
             className="row"
             style={{
               justifyContent: "space-between",
@@ -1017,7 +1017,7 @@ export default function ProfilePage() {
                   ? "On"
                   : "Off"}
             </button>
-          </div>
+          </div> */}
 
           {/* Search History */}
           <div

@@ -1159,7 +1159,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           {/* Desktop dropdown container */}
           <div className="hidden md:flex relative mb-2" data-tools-menu>
             <button
-              className={`btn-ghost glass-button btn-shadow !font-normal ${toolMode ? "!text-black" : ""
+              className={`btn-ghost  glass-button btn-shadow !font-normal ${toolMode ? "!text-black" : ""
                 }`}
               onClick={() => {
                 if (toolMode) {
@@ -1218,7 +1218,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       width: "100%",
                       justifyContent: "flex-start",
                       marginBottom: 4,
-                      color: "#007AFF",
+                      color: "#dfb768",
                       fontWeight: 500,
                     }}
                   >
@@ -1342,7 +1342,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         </>
       )}
       <div
-        className="glass-card font-ubuntu !px-3 !pt-1 !pb-2"
+        className="glass-card font-ubuntu !px-3 !pt-1 !pb-2 no-scrollbar"
         style={{
           position: "relative",
           overflow: "visible",
