@@ -807,7 +807,7 @@ router.get('/gallery', authenticateToken, async (req: AuthRequest, res) => {
     // Build query
     let query = supabase
       .from('generated_media')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('user_id', req.userId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -817,7 +817,7 @@ router.get('/gallery', authenticateToken, async (req: AuthRequest, res) => {
       query = query.eq('media_type', mediaType);
     }
 
-    const { data: media, error } = await query;
+    const { data: media, error, count } = await query;
 
     if (error) {
       console.error('Error fetching gallery:', error);
@@ -826,7 +826,7 @@ router.get('/gallery', authenticateToken, async (req: AuthRequest, res) => {
 
     res.json({ 
       media: media || [],
-      total: media?.length || 0,
+      total: count || 0,
       limit,
       offset
     });

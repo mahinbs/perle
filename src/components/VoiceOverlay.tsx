@@ -91,6 +91,15 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
     const kickOffListening = async () => {
       await playActivationBeep();
       if (cancelled) return;
+      // When opening voice mode to read existing chat answer, do not immediately
+      // start listening (which would cancel TTS). Let TTS start first.
+      try {
+        const speakFirst = localStorage.getItem("perle-voice-open-speak-first") === "1";
+        if (speakFirst) {
+          localStorage.removeItem("perle-voice-open-speak-first");
+          return;
+        }
+      } catch { }
       if (!isListening) {
         onToggleListening();
       }
@@ -103,18 +112,9 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
     };
   }, [isOpen, isListening, onToggleListening, playActivationBeep]);
 
-  // When overlay opens: only cancel speech if starting fresh; do NOT clear answer text
-  // (AnswerCard writes to perle-current-answer-text for TTS - we display that same text)
-  useEffect(() => {
-    if (isOpen) {
-      // Only cancel speech when overlay opens - don't clear answer text, we need it for display
-      try {
-        if (typeof window !== "undefined" && "speechSynthesis" in window) {
-          window.speechSynthesis.cancel();
-        }
-      } catch { }
-    }
-  }, [isOpen]);
+  // Do not cancel speech when opening overlay.
+  // TTS may have just been intentionally triggered from chat answer and canceling here
+  // causes partial/garbled playback that feels like hallucination.
 
   // Cancel speech synthesis on page refresh/component mount
   useEffect(() => {
@@ -253,14 +253,8 @@ const SpeakingGradientCircle: React.FC<{
     return () => mediaQuery.removeEventListener("change", checkTheme);
   }, []);
 
-  // Sync displayText from prop when it changes (e.g. new answer received)
-  useEffect(() => {
-    if (propResponseText && propResponseText.length > 0) {
-      setDisplayText((prev) => (prev.length < propResponseText.length ? propResponseText : prev));
-    }
-  }, [propResponseText]);
-
-  // Keep display text and speaking state in sync with AnswerCard voice output
+  // Keep display text and speaking state in sync with live voice output text only.
+  // This avoids stale/placeholder prop text ("...undefined") appearing in overlay.
   useEffect(() => {
     let raf = 0;
     const tick = () => {
@@ -271,9 +265,14 @@ const SpeakingGradientCircle: React.FC<{
             : null;
 
         if (storedText) {
-          setDisplayText((prev) => (storedText !== prev ? storedText : prev));
-        } else if (propResponseText) {
-          setDisplayText((prev) => (!prev || prev.length < propResponseText.length ? propResponseText : prev));
+          const cleaned = storedText
+            .replace(/\bundefined\b/gi, "")
+            .replace(/\s{2,}/g, " ")
+            .trim();
+          setDisplayText((prev) => (cleaned && cleaned !== prev ? cleaned : prev));
+        } else {
+          // No active spoken text -> keep overlay clean instead of showing stale fallback.
+          setDisplayText((prev) => (prev ? "" : prev));
         }
 
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -287,7 +286,7 @@ const SpeakingGradientCircle: React.FC<{
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [propResponseText]);
+  }, []);
 
   // Sample globe data for arcs - Multiple points across the globe
   const globeData: Position[] = useMemo(
@@ -586,14 +585,14 @@ const SpeakingGradientCircle: React.FC<{
       maxRings: 3,
       initialPosition: { lat: 0, lng: 0 },
       autoRotate: true,
-      autoRotateSpeed: speaking ? 50 : 15,
+      autoRotateSpeed: 24,
       polygonColor: basePolygonColor,
       ambientLight: baseAmbientLight,
       directionalLeftLight: "#ffffff",
       directionalTopLight: "#ffffff",
       pointLight: "#ffffff",
     };
-  }, [isDarkMode, speaking]);
+  }, [isDarkMode]);
 
   return (
     <div

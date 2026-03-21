@@ -655,6 +655,7 @@ export default function HomePage() {
                   <AnswerCard
                     chunks={prevAnswer.chunks}
                     sources={prevAnswer.sources}
+                    suggestedQuestions={prevAnswer.suggestedQuestions || []}
                     isLoading={false}
                     mode={prevAnswer.mode || mode}
                     query={prevAnswer.query}
@@ -684,6 +685,7 @@ export default function HomePage() {
               <AnswerCard
                 chunks={[]}
                 sources={[]}
+                suggestedQuestions={[]}
                 isLoading={true}
                 mode={mode}
                 query={searchedQuery}
@@ -723,6 +725,15 @@ export default function HomePage() {
             onFilesChange={setUploadedFiles}
             hasAnswer={!!answer && !isLoading}
             answer={answer}
+            currentAnswerText={
+              (answer?.chunks?.map((c) => c.text).join(" ").trim()) ||
+              (conversationHistory.length > 0
+                ? conversationHistory[conversationHistory.length - 1].chunks
+                    ?.map((c) => c.text)
+                    .join(" ")
+                    .trim()
+                : "")
+            }
             searchedQuery={searchedQuery}
             isPremium={isPremium}
             onNewConversation={handleNewConversation}

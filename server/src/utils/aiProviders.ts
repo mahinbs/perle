@@ -374,6 +374,43 @@ function toSources(results: SearchResult[]): Source[] {
   return sources;
 }
 
+function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
+  const cleaned = query.replace(/\s+/g, ' ').trim();
+  const shortTopic = cleaned.length > 70 ? `${cleaned.slice(0, 70)}...` : cleaned;
+
+  if (chatMode === 'ai_psychologist') {
+    return [
+      'When do these feelings become strongest during your day?',
+      'What thoughts usually show up right before you feel this way?',
+      'What has helped you feel even 10% better in the past?',
+    ];
+  }
+
+  return [
+    `Do you want a step-by-step action plan for "${shortTopic}"?`,
+    `Should I compare the top options related to "${shortTopic}"?`,
+    `Want practical examples and common mistakes for "${shortTopic}"?`,
+  ];
+}
+
+function isPsychologyMusicReliefQuery(query: string): boolean {
+  const lower = query.toLowerCase();
+  const musicIntent = /(music|song|songs|playlist|spotify|youtube)/.test(lower);
+  const reliefIntent = /(anxious|anxiety|depressed|depression|stress|stressed|panic|overwhelm|calm|relax|sleep|sad)/.test(lower);
+  return musicIntent && reliefIntent;
+}
+
+function appendPsychologyMusicRelief(content: string, query: string): string {
+  if (!isPsychologyMusicReliefQuery(query)) return content;
+  if (/https?:\/\//i.test(content)) return content;
+
+  const searchQuery = encodeURIComponent(`${query} calming music`);
+  const youtubeLink = `https://www.youtube.com/results?search_query=${searchQuery}`;
+  const spotifyLink = `https://open.spotify.com/search/${searchQuery}`;
+
+  return `${content}\n\n🎵 Music Relief Options:\n• YouTube mix: ${youtubeLink}\n• Spotify playlist search: ${spotifyLink}\n• Suggested songs:\n  - Weightless - Marconi Union\n  - Experience - Ludovico Einaudi\n  - Nuvole Bianche - Ludovico Einaudi`;
+}
+
 function getSystemPrompt(
   chatMode: ChatMode = 'normal', 
   friendDescription?: string | null, 
@@ -415,6 +452,12 @@ IMPORTANT: When asked about time, date, current events, or prices, prioritize th
     
     case 'ai_psychologist':
       return `You are a professional, empathetic psychologist providing supportive guidance. Use active listening techniques, validate feelings, and ask thoughtful questions to help users explore their thoughts and emotions. Provide evidence-based insights when appropriate, but always be non-judgmental and supportive. Help users develop coping strategies and self-awareness. Maintain professional boundaries while being warm and understanding. Speak in a natural, conversational therapeutic tone - NOT in bullet points unless specifically giving actionable steps. Remember to consider the full context of the conversation in your responses.
+
+CRITICAL AI PSYCHOLOGY RULES:
+- Never show a "Sources" section in this mode.
+- If the user asks for music for anxiety/depression/stress relief, provide YouTube and Spotify links automatically plus 3 suitable song suggestions.
+- At the end of every response, include at least 3 related follow-up questions that help understand user pain/persona better.
+- Always ask at least one gentle clarifying question to continue therapy-style support.
 
 IMPORTANT: When asked about time, date, current events, or prices, prioritize the USER LOCAL CONTEXT. If unavailable, fallback to IST and INR.${spaceContext}${dateContext}${userLocalContext}`;
     
@@ -533,6 +576,7 @@ export async function generateOpenAIAnswer(
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
   const explicitWebSearch = isExplicitWebSearchRequest(query);
   const shouldWebSearch =
+    chatMode !== 'ai_psychologist' &&
     !isSmallTalkQuery(query) &&
     (
       explicitWebSearch ||
@@ -643,7 +687,7 @@ export async function generateOpenAIAnswer(
   );
 
   const choice = response.choices?.[0];
-  const content = choice?.message?.content?.trim();
+  let content = choice?.message?.content?.trim();
   const finishReason = choice?.finish_reason;
   
   // Check if response was truncated
@@ -662,9 +706,13 @@ export async function generateOpenAIAnswer(
     });
     throw new Error('AI model returned an empty response. Please try again.');
   }
+
+  if (chatMode === 'ai_psychologist') {
+    content = appendPsychologyMusicRelief(content, query);
+  }
   
   // Extract sources from provider-native web search results
-  const sources = toSources(webSearchResults);
+  const sources = chatMode === 'ai_psychologist' ? [] : toSources(webSearchResults);
   if (sources.length > 0) {
     console.log(`✅ Found ${sources.length} sources from web search for OpenAI`);
   }
@@ -674,7 +722,8 @@ export async function generateOpenAIAnswer(
     chunks: chunkTextToAnswer(content, sources),
     query,
     mode,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    suggestedQuestions: buildSuggestedQuestions(query, chatMode)
   };
 }
 
@@ -752,6 +801,7 @@ export async function generateGeminiAnswer(
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
   const explicitWebSearch = isExplicitWebSearchRequest(query);
   const shouldWebSearch =
+    chatMode !== 'ai_psychologist' &&
     !isSmallTalkQuery(query) &&
     (
       explicitWebSearch ||
@@ -939,9 +989,12 @@ export async function generateGeminiAnswer(
   }
   
   content = content.trim();
+  if (chatMode === 'ai_psychologist') {
+    content = appendPsychologyMusicRelief(content, query);
+  }
   
   // Extract sources from provider-native web search results
-  const sources = toSources(webSearchResults);
+  const sources = chatMode === 'ai_psychologist' ? [] : toSources(webSearchResults);
   if (sources.length > 0) {
     console.log(`✅ Found ${sources.length} sources from web search for Gemini`);
   }
@@ -951,7 +1004,8 @@ export async function generateGeminiAnswer(
     chunks: chunkTextToAnswer(content, sources),
     query,
     mode,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    suggestedQuestions: buildSuggestedQuestions(query, chatMode)
   };
 }
 
@@ -1008,6 +1062,7 @@ export async function generateClaudeAnswer(
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
   const explicitWebSearch = isExplicitWebSearchRequest(query);
   const shouldWebSearch =
+    chatMode !== 'ai_psychologist' &&
     !isSmallTalkQuery(query) &&
     (
       explicitWebSearch ||
@@ -1113,7 +1168,7 @@ export async function generateClaudeAnswer(
     30_000 // 30s timeout - reduced for faster responses
   ) as any;
 
-  const content = response?.content?.[0]?.type === 'text' 
+  let content = response?.content?.[0]?.type === 'text' 
     ? response.content[0].text 
     : '';
   
@@ -1134,15 +1189,19 @@ export async function generateClaudeAnswer(
     });
     throw new Error('AI model returned an empty response. Please try again.');
   }
+  if (chatMode === 'ai_psychologist') {
+    content = appendPsychologyMusicRelief(content, query);
+  }
   
-  const sources = toSources(webSearchResults);
+  const sources = chatMode === 'ai_psychologist' ? [] : toSources(webSearchResults);
 
   return {
     sources,
     chunks: chunkTextToAnswer(content, sources),
     query,
     mode,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    suggestedQuestions: buildSuggestedQuestions(query, chatMode)
   };
 }
 
@@ -1204,6 +1263,7 @@ export async function generateGrokAnswer(
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
   const explicitWebSearch = isExplicitWebSearchRequest(query);
   const shouldWebSearch =
+    chatMode !== 'ai_psychologist' &&
     !isSmallTalkQuery(query) &&
     (
       explicitWebSearch ||
@@ -1331,7 +1391,7 @@ export async function generateGrokAnswer(
   }
 
   const choice = response.choices?.[0];
-  const content = choice?.message?.content?.trim();
+  let content = choice?.message?.content?.trim();
   const finishReason = choice?.finish_reason;
   
   // Check if response was truncated
@@ -1350,9 +1410,12 @@ export async function generateGrokAnswer(
     });
     throw new Error('AI model returned an empty response. Please try again.');
   }
+  if (chatMode === 'ai_psychologist') {
+    content = appendPsychologyMusicRelief(content, query);
+  }
   
   // Extract sources from provider-native web search results
-  const sources = toSources(webSearchResults);
+  const sources = chatMode === 'ai_psychologist' ? [] : toSources(webSearchResults);
   if (sources.length > 0) {
     console.log(`✅ Found ${sources.length} sources from web search for Grok`);
   }
@@ -1362,7 +1425,8 @@ export async function generateGrokAnswer(
     chunks: chunkTextToAnswer(content, sources),
     query,
     mode,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    suggestedQuestions: buildSuggestedQuestions(query, chatMode)
   };
 }
 

@@ -30,6 +30,7 @@ interface AnswerCardProps {
   skipTypewriter?: boolean; // Skip typewriter effect for old conversations
   generatedMedia?: { type: 'image' | 'video'; url: string; prompt: string }; // Generated media to display
   hideSources?: boolean;
+  suggestedQuestions?: string[];
 }
 
 export const AnswerCard: React.FC<AnswerCardProps> = ({
@@ -44,6 +45,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   skipTypewriter = false,
   generatedMedia,
   hideSources = false,
+  suggestedQuestions = [],
 }) => {
   const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
@@ -695,11 +697,14 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
       // Clear after a delay
       setTimeout(() => {
-        localStorage.removeItem("perle-current-answer-text");
-        localStorage.setItem("perle-voice-output-complete", "1");
-        setTimeout(() => {
-          localStorage.removeItem("perle-voice-output-complete");
-        }, 100);
+        const voiceSessionActive = localStorage.getItem("perle-voice-session-active") === "1";
+        if (!voiceSessionActive) {
+          localStorage.removeItem("perle-current-answer-text");
+          localStorage.setItem("perle-voice-output-complete", "1");
+          setTimeout(() => {
+            localStorage.removeItem("perle-voice-output-complete");
+          }, 100);
+        }
       }, 5000); // Show for 5 seconds
 
       return;
@@ -828,17 +833,24 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       }
       // Show full text when speech ends
       localStorage.setItem("perle-current-answer-text", answerText);
-      // Clear the stored text after a delay
-      setTimeout(() => {
-        localStorage.removeItem("perle-current-answer-text");
-        localStorage.removeItem("perle-current-word-index");
-        // Signal that voice output has completed
-        localStorage.setItem("perle-voice-output-complete", "1");
-        // Clean up this flag after a moment
+      // Keep full answer text visible while voice session is active.
+      const voiceSessionActive = localStorage.getItem("perle-voice-session-active") === "1";
+      if (voiceSessionActive) {
+        // Continue hands-free loop: once answer is spoken, go back to listening.
+        localStorage.setItem("perle-auto-listen-next", "1");
+      }
+      if (!voiceSessionActive) {
         setTimeout(() => {
-          localStorage.removeItem("perle-voice-output-complete");
-        }, 100);
-      }, 2000);
+          localStorage.removeItem("perle-current-answer-text");
+          localStorage.removeItem("perle-current-word-index");
+          // Signal that voice output has completed
+          localStorage.setItem("perle-voice-output-complete", "1");
+          // Clean up this flag after a moment
+          setTimeout(() => {
+            localStorage.removeItem("perle-voice-output-complete");
+          }, 100);
+        }, 2000);
+      }
     };
 
     utterance.onerror = (event) => {
@@ -1328,6 +1340,26 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         ))}
       </div>
 
+
+      {suggestedQuestions.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div className="sub text-sm" style={{ marginBottom: 8 }}>
+            Related questions
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {suggestedQuestions.slice(0, 3).map((question) => (
+              <button
+                key={question}
+                className="chip"
+                style={{ cursor: "pointer" }}
+                onClick={() => _onSearch?.(question, _mode)}
+              >
+                {question}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sources Section (hide completely when no sources or when explicitly hidden) */}
       {!hideSources && sources.length > 0 && (

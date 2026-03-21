@@ -24,6 +24,7 @@ interface Message {
   role: "user" | "ai";
   content: string;
   timestamp: Date;
+  suggestedQuestions?: string[];
 }
 
 export default function AIPsychologyPage() {
@@ -332,6 +333,9 @@ export default function AIPsychologyPage() {
         role: "ai",
         content: data.message,
         timestamp: new Date(),
+        suggestedQuestions: Array.isArray(data.suggestedQuestions)
+          ? data.suggestedQuestions.slice(0, 3)
+          : [],
       };
       setMessages((prev) => [...prev, aiResponse]);
 
@@ -480,6 +484,21 @@ export default function AIPsychologyPage() {
               <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
                 {message.content}
               </div>
+              {message.role === "ai" &&
+                message.suggestedQuestions &&
+                message.suggestedQuestions.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {message.suggestedQuestions.slice(0, 3).map((q) => (
+                      <button
+                        key={`${message.id}-${q}`}
+                        onClick={() => handleUseSuggestion(q)}
+                        className="text-left glass-card border border-[var(--border)] rounded-[var(--radius-sm)] px-3 py-2 text-[length:var(--font-sm)]"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
               <div
                 className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${
                   message.role === "user" ? "text-right" : "text-left"

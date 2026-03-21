@@ -86,6 +86,7 @@ export interface AnswerResult {
   mode: Mode;
   timestamp: number;
   images?: GeneratedImage[]; // Optional generated images
+  suggestedQuestions?: string[];
 }
 
 export interface DiscoverItem {

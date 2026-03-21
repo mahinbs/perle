@@ -78,6 +78,7 @@ export interface AnswerResult {
   timestamp: number;
   attachments?: UploadedFile[];
   generatedMedia?: { type: 'image' | 'video'; url: string; prompt: string }; // For generated images/videos
+  suggestedQuestions?: string[];
 }
 
 export interface SearchHistoryItem {
