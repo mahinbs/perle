@@ -907,6 +907,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     }
   }, [isLoading]);
 
+  // In modes where sources are enabled, show source cards by default.
+  useEffect(() => {
+    if (!hideSources && sources.length > 0) {
+      setExpandedSources(true);
+    } else {
+      setExpandedSources(false);
+    }
+  }, [hideSources, sources.length]);
+
   if (isLoading) {
     return (
       <div className="" style={{ padding: 18 }}>
@@ -1310,12 +1319,13 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                   flex: 1,
                 }}
               >
-                {chunk.citationIds.map((id) => {
-                  const source = sources.find((s) => s.id === id);
-                  return source ? (
-                    <SourceChip key={`${id}-${index}`} source={source} />
-                  ) : null;
-                })}
+                {!hideSources &&
+                  chunk.citationIds.map((id) => {
+                    const source = sources.find((s) => s.id === id);
+                    return source ? (
+                      <SourceChip key={`${id}-${index}`} source={source} />
+                    ) : null;
+                  })}
               </div>
 
               <button
@@ -1393,15 +1403,51 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           {expandedSources && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {sources.map((source) => (
-                <div key={source.id} className="card" style={{ padding: 12 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                <div
+                  key={source.id}
+                  className="card"
+                  style={{
+                    padding: 14,
+                    border: "1px solid var(--border)",
+                    borderRadius: 12,
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      fontSize: "var(--font-md)",
+                      marginBottom: 6,
+                      color: "var(--text)",
+                      lineHeight: 1.35,
+                    }}
+                  >
                     {source.title}
                   </div>
-                  <div className="sub text-sm" style={{ marginBottom: 6 }}>
-                    {source.domain} • {source.year}
+                  <div
+                    className="sub text-sm"
+                    style={{
+                      marginBottom: 8,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 6,
+                      alignItems: "center",
+                    }}
+                  >
+                    <span className="chip" style={{ padding: "2px 8px" }}>
+                      {source.domain || "source"}
+                    </span>
+                    {source.year && <span>• {source.year}</span>}
                   </div>
                   {source.snippet && (
-                    <div className="sub text-sm" style={{ lineHeight: "18px" }}>
+                    <div
+                      className="sub text-sm"
+                      style={{
+                        lineHeight: "20px",
+                        color: "var(--text)",
+                        opacity: 0.9,
+                      }}
+                    >
                       {source.snippet}
                     </div>
                   )}
@@ -1409,12 +1455,14 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     className="btn-ghost"
                     onClick={() => window.open(source.url, "_blank")}
                     style={{
-                      marginTop: 8,
-                      padding: "4px 8px",
+                      marginTop: 10,
+                      padding: "6px 10px",
                       fontSize: "var(--font-sm)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
                     }}
                   >
-                    Visit Source →
+                    Open Source
                   </button>
                 </div>
               ))}

@@ -12,7 +12,8 @@ import {
   isContinuationFollowUpQuery,
   isContextLinkedFollowUpQuery,
 } from './webSearch.js';
-import { searchWithGeminiGrounding, searchWithOpenAIWebTool, searchWithGrokWebTool } from './providerWebSearch.js';
+import { searchWithExa, searchWithGeminiGrounding, searchWithOpenAIWebTool, searchWithGrokWebTool } from './providerWebSearch.js';
+import type { ExaSearchType } from './providerWebSearch.js';
 import type { SearchResult } from './webSearch.js';
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -374,6 +375,12 @@ function toSources(results: SearchResult[]): Source[] {
   return sources;
 }
 
+function resolveExaSearchType(mode: Mode, override?: ExaSearchType): ExaSearchType {
+  if (override) return override;
+  if (mode === 'Research') return 'instant';
+  return 'auto';
+}
+
 function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
   const cleaned = query.replace(/\s+/g, ' ').trim();
   const shortTopic = cleaned.length > 70 ? `${cleaned.slice(0, 70)}...` : cleaned;
@@ -536,7 +543,8 @@ export async function generateOpenAIAnswer(
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
-  userContext?: UserLocalContext
+  userContext?: UserLocalContext,
+  searchType?: ExaSearchType
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -585,8 +593,19 @@ export async function generateOpenAIAnswer(
       continuationMode
     );
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing OpenAI web search...');
-    webSearchResults = await searchWithOpenAIWebTool(searchQuery, apiKey, 15);
+    console.log('🌐 Query requires current info - performing web search...');
+    const exaKey = process.env.EXA_API_KEY || '';
+    if (exaKey) {
+      webSearchResults = await searchWithExa(
+        searchQuery,
+        exaKey,
+        resolveExaSearchType(mode, searchType),
+        15
+      );
+    }
+    if (webSearchResults.length === 0) {
+      webSearchResults = await searchWithOpenAIWebTool(searchQuery, apiKey, 15);
+    }
     if (webSearchResults.length === 0) {
       const geminiKey =
         process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
@@ -741,7 +760,8 @@ export async function generateGeminiAnswer(
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
-  userContext?: UserLocalContext
+  userContext?: UserLocalContext,
+  searchType?: ExaSearchType
 ): Promise<AnswerResult> {
   // Always prioritize GEMINI_API_KEY_FREE to avoid quota issues
   // Try GEMINI_API_KEY_FREE -> GOOGLE_API_KEY_FREE -> GOOGLE_API_KEY
@@ -810,8 +830,19 @@ export async function generateGeminiAnswer(
       continuationMode
     );
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing Gemini grounding search...');
-    webSearchResults = await searchWithGeminiGrounding(searchQuery, apiKey, 15, geminiModel);
+    console.log('🌐 Query requires current info - performing web search...');
+    const exaKey = process.env.EXA_API_KEY || '';
+    if (exaKey) {
+      webSearchResults = await searchWithExa(
+        searchQuery,
+        exaKey,
+        resolveExaSearchType(mode, searchType),
+        15
+      );
+    }
+    if (webSearchResults.length === 0) {
+      webSearchResults = await searchWithGeminiGrounding(searchQuery, apiKey, 15, geminiModel);
+    }
     if (webSearchResults.length === 0) {
       const openAiKey = process.env.OPENAI_API_KEY || '';
       if (openAiKey) {
@@ -1022,7 +1053,8 @@ export async function generateClaudeAnswer(
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
-  userContext?: UserLocalContext
+  userContext?: UserLocalContext,
+  searchType?: ExaSearchType
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -1072,6 +1104,19 @@ export async function generateClaudeAnswer(
     );
   if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing web search for Claude...');
+    const exaKey = process.env.EXA_API_KEY || '';
+    if (exaKey) {
+      webSearchResults = await searchWithExa(
+        searchQuery,
+        exaKey,
+        resolveExaSearchType(mode, searchType),
+        15
+      );
+    }
+    if (webSearchResults.length > 0) {
+      searchContext = formatSearchResultsForContext(webSearchResults);
+      console.log(`✅ Claude web search returned ${webSearchResults.length} search results`);
+    } else {
     const openAiKey = process.env.OPENAI_API_KEY || '';
     const geminiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY || '';
 
@@ -1086,6 +1131,7 @@ export async function generateClaudeAnswer(
     webSearchResults = await enrichContinuationSources(searchQuery, continuationMode, mergedResults);
     searchContext = formatSearchResultsForContext(webSearchResults);
     console.log(`✅ Claude web search returned ${webSearchResults.length} search results`);
+    }
   }
 
   // Get system prompt based on chat mode, friend description, and space context
@@ -1218,7 +1264,8 @@ export async function generateGrokAnswer(
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
-  userContext?: UserLocalContext
+  userContext?: UserLocalContext,
+  searchType?: ExaSearchType
 ): Promise<AnswerResult> {
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
@@ -1273,7 +1320,18 @@ export async function generateGrokAnswer(
     );
   if (shouldWebSearch) {
     console.log('🌐 Query requires current info - performing Grok web search...');
-    webSearchResults = await searchWithGrokWebTool(searchQuery, apiKey, 15);
+    const exaKey = process.env.EXA_API_KEY || '';
+    if (exaKey) {
+      webSearchResults = await searchWithExa(
+        searchQuery,
+        exaKey,
+        resolveExaSearchType(mode, searchType),
+        15
+      );
+    }
+    if (webSearchResults.length === 0) {
+      webSearchResults = await searchWithGrokWebTool(searchQuery, apiKey, 15);
+    }
     if (webSearchResults.length === 0) {
       console.log('⚠️ Grok web search returned 0 results, falling back to OpenAI/Gemini search...');
       const openAiKey = process.env.OPENAI_API_KEY || '';
@@ -1444,23 +1502,24 @@ export async function generateAIAnswer(
   spaceTitle?: string | null,
   spaceDescription?: string | null,
   imageDataUrl?: string,
-  userContext?: UserLocalContext
+  userContext?: UserLocalContext,
+  searchType?: ExaSearchType
 ): Promise<AnswerResult> {
   // Route to appropriate provider based on model
   let result: AnswerResult;
   
   if (model === 'gpt-5' || model === 'gpt-5.1' || model === 'gpt-5.2' || model === 'gpt-5.3' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
-    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-3.0' || model === 'gemini-3.1' || model === 'gemini-3.1-flash' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
   } else if (model === 'claude-4.6-sonnet' || model === 'claude-4.6-opus' || model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
-    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
-    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
   } else {
     // Fallback to Gemini Lite for unknown models
-    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext);
+    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
   }
   
   // Add image generation for normal mode if query requires it

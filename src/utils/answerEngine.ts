@@ -154,7 +154,8 @@ export async function searchAPI(
   newConversation: boolean = false,
   uploadedFiles: UploadedFile[] = [],
   conversationId: string | null = null,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  searchType?: 'auto' | 'instant' | 'deep'
 ): Promise<AnswerResult & { conversationId?: string }> {
   const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
@@ -177,6 +178,9 @@ export async function searchAPI(
     }
     if (conversationHistory.length > 0) {
       formData.append('conversationHistory', JSON.stringify(conversationHistory));
+    }
+    if (searchType) {
+      formData.append('searchType', searchType);
     }
     formData.append('userContext', JSON.stringify(userContext));
     
@@ -205,7 +209,7 @@ export async function searchAPI(
     const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ query, mode, model, newConversation, conversationId, conversationHistory, userContext })
+      body: JSON.stringify({ query, mode, model, newConversation, conversationId, conversationHistory, userContext, searchType })
     });
     
     if (!res.ok) {

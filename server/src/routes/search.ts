@@ -9,6 +9,22 @@ import { buildUserLocalContext } from '../utils/requestLocalContext.js';
 
 const router = Router();
 
+const buildFallbackSuggestedQuestions = (query: string): string[] => {
+  const q = query.trim();
+  if (!q) {
+    return [
+      "Can you explain this in simpler terms?",
+      "What are the key points to focus on?",
+      "Can you give me a practical example?"
+    ];
+  }
+  return [
+    `Can you explain "${q}" in simpler terms?`,
+    `What are the most important points about "${q}"?`,
+    `Can you give a practical example for "${q}"?`
+  ];
+};
+
 // Configure multer for file uploads (images and documents)
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -99,7 +115,8 @@ const searchSchema = z.object({
     'gemini-pro-vision',
     'llama-2',
     'mistral-7b'
-  ]).default('gemini-lite')
+  ]).default('gemini-lite'),
+  searchType: z.enum(['auto', 'instant', 'deep']).optional()
 });
 
 // Main search endpoint (supports file uploads)
@@ -135,7 +152,7 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
       });
     }
 
-    const { query, mode, model, newConversation, conversationId, conversationHistory: clientConversationHistory, userContext } = parse.data;
+    const { query, mode, model, newConversation, conversationId, conversationHistory: clientConversationHistory, userContext, searchType } = parse.data;
     const trimmedQuery = query.trim();
     const effectiveUserContext = buildUserLocalContext(req, userContext);
 
@@ -325,7 +342,7 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
     // Generate answer using real AI provider only - no fallbacks
     let result: AnswerResult;
     try {
-      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory, 'normal', null, null, null, null, null, imageDataUrl, effectiveUserContext);
+      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory, 'normal', null, null, null, null, null, imageDataUrl, effectiveUserContext, searchType as any);
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
       const errorMessage = apiError?.message || 'Failed to generate answer';
@@ -404,8 +421,16 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
 
     console.log(`📤 Sending back: conversationId=${currentConversationId}`);
     
+    const resolvedSuggestions = Array.isArray((result as any).suggestedQuestions)
+      ? (result as any).suggestedQuestions.filter((s: any) => typeof s === 'string' && s.trim().length > 0).slice(0, 3)
+      : [];
+
     res.json({
       ...result,
+      suggestedQuestions:
+        resolvedSuggestions.length >= 3
+          ? resolvedSuggestions
+          : buildFallbackSuggestedQuestions(trimmedQuery),
       conversationId: currentConversationId
     });
   } catch (error) {

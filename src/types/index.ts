@@ -4,6 +4,9 @@ export type Mode = 'Ask' | 'Research' | 'Summarize' | 'Compare';
 export type ExperienceMode = 'normal' | 'web_search' | 'deep_research';
 
 export type LLMModel =
+  | 'exa-auto'
+  | 'exa-instant'
+  | 'exa-deep'
   | 'auto'
   | 'gpt-5'
   | 'gpt-5.1'

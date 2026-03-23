@@ -10,6 +10,31 @@ import { extractMemoryFromUserMessage, formatAIFriendMemoryContext, mergeAIFrien
 
 const router = Router();
 
+const buildFallbackSuggestedQuestions = (message: string, chatMode: ChatMode): string[] => {
+  if (chatMode === 'ai_psychologist') {
+    return [
+      "When does this feeling become strongest for you?",
+      "What has helped you even a little in similar moments before?",
+      "Would you like a small 5-minute step you can try right now?"
+    ];
+  }
+
+  const q = message.trim();
+  if (!q) {
+    return [
+      "Can you explain this in simpler terms?",
+      "What should I do next?",
+      "Can you give me one practical example?"
+    ];
+  }
+
+  return [
+    `Can you explain "${q}" in simpler terms?`,
+    `What should I do next about "${q}"?`,
+    `Can you give one practical example for "${q}"?`
+  ];
+};
+
 // Configure multer for file uploads (images and documents)
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -95,6 +120,7 @@ const chatSchema = z.object({
     currencyCode: z.string().min(3).max(3).optional(),
     utcOffsetMinutes: z.number().int().min(-840).max(840).optional(),
   }).optional(),
+  searchType: z.enum(['auto', 'instant', 'deep']).optional(),
   chatMode: z.enum(['normal', 'ai_friend', 'ai_psychologist', 'space']).optional().default('normal'),
   aiFriendId: z.string().uuid().optional(), // Optional AI friend ID for individual chat
   mentionedFriendIds: z.array(z.string().uuid()).optional(), // Array of friend IDs for group chat (@ mentions)
@@ -134,7 +160,7 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
       });
     }
 
-    const { message, model, newConversation, conversationHistory: clientConversationHistory, userContext, chatMode, aiFriendId, mentionedFriendIds, spaceId } = parse.data;
+    const { message, model, newConversation, conversationHistory: clientConversationHistory, userContext, searchType, chatMode, aiFriendId, mentionedFriendIds, spaceId } = parse.data;
     const trimmedMessage = message.trim();
     const effectiveUserContext = buildUserLocalContext(req, userContext);
 
@@ -408,7 +434,8 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
         spaceTitle, 
         spaceDescription,
         imageDataUrl, // Pass image for vision models
-        effectiveUserContext
+        effectiveUserContext,
+        searchType as any
       );
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
@@ -517,12 +544,24 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
 
     // Return answer text with optional images
     const answerText = result.chunks.map(c => c.text).join('\n\n');
+    const resolvedSuggestions = Array.isArray((result as any).suggestedQuestions)
+      ? (result as any).suggestedQuestions.filter((s: any) => typeof s === 'string' && s.trim().length > 0).slice(0, 3)
+      : [];
+
+    const shouldDisableSuggestions = chatMode === 'ai_friend';
+
     res.json({ 
       message: answerText,
       model: actualModel,
       images: result.images || [], // Include generated images if any
       sources: chatMode === 'ai_psychologist' ? [] : (result.sources || []), // No sources in psychology mode
-      suggestedQuestions: result.suggestedQuestions || []
+      suggestedQuestions: shouldDisableSuggestions
+        ? []
+        : (
+          resolvedSuggestions.length >= 3
+            ? resolvedSuggestions
+            : buildFallbackSuggestedQuestions(trimmedMessage, chatMode)
+        )
     });
   } catch (error) {
     console.error('Chat error:', error);

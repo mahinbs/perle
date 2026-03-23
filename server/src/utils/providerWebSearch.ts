@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { SearchResult } from './webSearch.js';
+export type ExaSearchType = 'auto' | 'instant' | 'deep';
 
 interface JsonSource {
   title?: string;
@@ -216,6 +217,72 @@ No markdown, no extra text.`,
     return jsonResults.length > 0 ? jsonResults : parseUrlResultsFromText(text, maxResults);
   } catch (error) {
     console.warn('Grok web search failed:', error);
+    return [];
+  }
+}
+
+export async function searchWithExa(
+  query: string,
+  apiKey: string,
+  type: ExaSearchType = 'auto',
+  maxResults: number = 10
+): Promise<SearchResult[]> {
+  if (!apiKey) return [];
+
+  try {
+    const payload: any = {
+      query,
+      type,
+      numResults: Math.max(1, Math.min(maxResults, 25)),
+      useAutoprompt: true,
+    };
+
+    if (type === 'instant') {
+      payload.livecrawl = 'always';
+    }
+
+    if (type === 'auto' || type === 'instant') {
+      payload.contents = {
+        highlights: true,
+        text: { maxCharacters: 1000 },
+      };
+    }
+
+    const response = await fetch('https://api.exa.ai/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) return [];
+    const data: any = await response.json();
+
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const mapped: SearchResult[] = results
+      .map((item: any, idx: number) => {
+        const url = typeof item?.url === 'string' ? item.url : '';
+        const title = typeof item?.title === 'string' ? item.title : `Source ${idx + 1}`;
+        const highlights = Array.isArray(item?.highlights)
+          ? item.highlights.join(' ')
+          : '';
+        const text = typeof item?.text === 'string' ? item.text : '';
+        const summary = typeof item?.summary === 'string' ? item.summary : '';
+        const content = (highlights || text || summary || '').trim();
+        return {
+          title,
+          url,
+          content: content || title,
+          score: typeof item?.score === 'number' ? item.score : Math.max(0.1, 1 - idx * 0.05),
+        } as SearchResult;
+      })
+      .filter((r: SearchResult) => r.url);
+
+    return dedupeResults(mapped, maxResults);
+  } catch (error) {
+    console.warn('Exa search failed:', error);
     return [];
   }
 }

@@ -273,15 +273,35 @@ export default function HomePage() {
           ]);
         const backendMode: Mode =
           experienceMode === "normal" ? "Ask" : "Research";
+        const backendSearchType: 'auto' | 'instant' | 'deep' =
+          experienceMode === "normal"
+            ? "auto"
+            : experienceMode === "web_search"
+            ? "instant"
+            : "deep";
+        const isExaShortcutModel =
+          selectedModel === "exa-auto" ||
+          selectedModel === "exa-instant" ||
+          selectedModel === "exa-deep";
+        const effectiveSearchType: "auto" | "instant" | "deep" =
+          selectedModel === "exa-auto"
+            ? "auto"
+            : selectedModel === "exa-instant"
+            ? "instant"
+            : selectedModel === "exa-deep"
+            ? "deep"
+            : backendSearchType;
+        const effectiveModel: LLMModel = isExaShortcutModel ? "auto" : selectedModel;
 
         const res = await searchAPI(
           q,
           backendMode,
-          selectedModel,
+          effectiveModel,
           newConversation,
           filesToProcess,
           activeConversationId,
-          localConversationHistory
+          localConversationHistory,
+          effectiveSearchType
         );
 
         console.log(`✅ FRONTEND RECEIVED: conversationId=${res.conversationId}`);

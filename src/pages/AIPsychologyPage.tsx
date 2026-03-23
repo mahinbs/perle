@@ -249,18 +249,19 @@ export default function AIPsychologyPage() {
     setIsListening(false);
   };
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
+  const handleSendMessage = async (overrideText?: string) => {
+    const textToSend = (overrideText ?? inputValue).trim();
+    if (!textToSend || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: inputValue.trim(),
+      content: textToSend,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    const messageText = inputValue.trim();
+    const messageText = textToSend;
     setInputValue("");
     if (attachedFileName) {
       setAttachedFileName(null);
@@ -387,8 +388,9 @@ export default function AIPsychologyPage() {
   };
 
   const handleUseSuggestion = (text: string) => {
+    // Keep behavior consistent with main chat: one tap asks in same thread.
     setInputValue(text);
-    inputRef.current?.focus();
+    handleSendMessage(text);
   };
 
   const handleAttachClick = () => {
@@ -667,7 +669,9 @@ export default function AIPsychologyPage() {
                     ? "opacity-100 cursor-pointer"
                     : "opacity-50 cursor-not-allowed"
                 }`}
-                onClick={handleSendMessage}
+                onClick={() => {
+                  void handleSendMessage();
+                }}
                 disabled={!inputValue.trim() || isLoading || isUploading}
                 aria-label="Send message"
               >

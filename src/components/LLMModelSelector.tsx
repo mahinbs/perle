@@ -7,6 +7,27 @@ import { isAuthenticated } from "../utils/auth";
 // Premium models available to premium users
 const premiumModels: LLMModelInfo[] = [
   {
+    id: "exa-auto",
+    name: "Exa Auto",
+    provider: "Exa",
+    description: "Exa semantic search (auto) + AI answer generation",
+    capabilities: ["Search Auto", "Balanced", "Fast Setup"],
+  },
+  {
+    id: "exa-instant",
+    name: "Exa Instant",
+    provider: "Exa",
+    description: "Exa low-latency instant web search + AI answer generation",
+    capabilities: ["Instant", "Live Crawl", "Real-time"],
+  },
+  {
+    id: "exa-deep",
+    name: "Exa Deep",
+    provider: "Exa",
+    description: "Exa deep web search for research-heavy responses",
+    capabilities: ["Deep Search", "Research", "High Recall"],
+  },
+  {
     id: "auto",
     name: "Auto",
     provider: "SyntraIQ",
@@ -306,6 +327,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   // - web_search: show all premium models
   // - deep_research: show only the strongest deep research models
   const deepResearchIds: LLMModel[] = [
+    'exa-deep',
     'gpt-5.3',
     'gpt-5.2',
     'gpt-5.1',
@@ -321,7 +343,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     'gemini-3.1-flash',
   ];
 
-  const availableModels = isPremium
+  const filteredModels = isPremium
     ? premiumModels.filter((model) => {
         if (experienceMode === 'web_search') return true;
         if (experienceMode === 'deep_research') {
@@ -331,6 +353,14 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
         return !deepResearchIds.includes(model.id as LLMModel);
       })
     : [];
+
+  const availableModels =
+    experienceMode === 'normal' || experienceMode === 'web_search'
+      ? [
+          ...filteredModels.filter((model) => model.id === 'auto'),
+          ...filteredModels.filter((model) => model.id !== 'auto'),
+        ]
+      : filteredModels;
 
   // Find selected model info from premium or legacy models
   const selectedModelInfo =
@@ -439,6 +469,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
         return "#000000";
       case "SyntraIQ":
         return "#6366F1";
+      case "Exa":
+        return "#22C55E";
       case "Meta":
         return "#1877F2";
       case "Mistral AI":
