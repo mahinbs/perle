@@ -384,6 +384,12 @@ function resolveExaSearchType(mode: Mode, override?: ExaSearchType): ExaSearchTy
 function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
   const cleaned = query.replace(/\s+/g, ' ').trim();
   const shortTopic = cleaned.length > 70 ? `${cleaned.slice(0, 70)}...` : cleaned;
+  const lower = cleaned.toLowerCase();
+  const isGreeting =
+    /^(hi|hello|hey|yo|sup|what'?s up|how are you|how r u|good (morning|afternoon|evening))[\s!?.,]*$/.test(lower) ||
+    /(how are you|how r u)/.test(lower);
+  const asksCurrentInfo =
+    /(latest|current|today|now|this week|this month|2026|price|cost|launch|release|news)/.test(lower);
 
   if (chatMode === 'ai_psychologist') {
     return [
@@ -393,10 +399,26 @@ function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
     ];
   }
 
+  if (isGreeting) {
+    return [
+      'What should we work on right now?',
+      'Do you want a quick update on a topic you care about?',
+      'Should I help with planning, research, or decision-making next?',
+    ];
+  }
+
+  if (asksCurrentInfo) {
+    return [
+      `Do you want the latest update on "${shortTopic}" with fresh sources?`,
+      `Should I compare top options and key differences for "${shortTopic}"?`,
+      `Want prices, timeline, and availability for "${shortTopic}" in your region?`,
+    ];
+  }
+
   return [
-    `Do you want a step-by-step action plan for "${shortTopic}"?`,
-    `Should I compare the top options related to "${shortTopic}"?`,
-    `Want practical examples and common mistakes for "${shortTopic}"?`,
+    `Do you want a concise summary of "${shortTopic}" first?`,
+    `Should I explain "${shortTopic}" in deeper detail with examples?`,
+    `Want a practical checklist or next steps for "${shortTopic}"?`,
   ];
 }
 
@@ -1174,28 +1196,23 @@ export async function generateClaudeAnswer(
   messages.push({ role: 'user', content: prompt });
 
   // Map model names to actual Claude models
-  let claudeModel = 'claude-4-5-sonnet-20250929'; // Default to latest Claude 4.5 Sonnet
+  let claudeModel = 'claude-sonnet-4-6'; // Default to latest Claude Sonnet 4.6
   if (model === 'claude-4.6-sonnet') {
-    // Claude 4.6 is routed to the current newest Sonnet profile until
-    // Anthropic publishes a distinct API model ID for 4.6 in this project.
-    claudeModel = 'claude-4-5-sonnet-20250929';
+    claudeModel = 'claude-sonnet-4-6';
   } else if (model === 'claude-4.6-opus') {
-    // Claude 4.6 Opus compatibility alias to latest Opus profile.
-    claudeModel = 'claude-4-5-opus-20251124';
+    claudeModel = 'claude-opus-4-6';
   } else if (model === 'claude-4.5-sonnet') {
-    claudeModel = 'claude-4-5-sonnet-20250929'; // Latest - Best coding model
+    claudeModel = 'claude-sonnet-4-5-20250929';
   } else if (model === 'claude-4.5-opus') {
-    claudeModel = 'claude-4-5-opus-20251124'; // Maximum intelligence
+    claudeModel = 'claude-opus-4-5-20251101';
   } else if (model === 'claude-4.5-haiku') {
-    claudeModel = 'claude-4-5-haiku-20251015'; // Fastest, most cost-effective
+    claudeModel = 'claude-haiku-4-5-20251001';
   } else if (model === 'claude-4-sonnet') {
-    claudeModel = 'claude-4-sonnet-20250522'; // Claude 4.0
-  } else if (model === 'claude-3.5-sonnet') {
-    claudeModel = 'claude-3-5-sonnet-20241022';
-  } else if (model === 'claude-3-opus') {
-    claudeModel = 'claude-3-opus-20240229';
-  } else if (model === 'claude-3-sonnet') {
-    claudeModel = 'claude-3-sonnet-20240229';
+    claudeModel = 'claude-sonnet-4-20250514';
+  } else if (model === 'claude-4-opus') {
+    claudeModel = 'claude-opus-4-20250514';
+  } else if (model === 'claude-4.1-opus') {
+    claudeModel = 'claude-opus-4-1-20250805';
   } else if (model === 'claude-3-haiku') {
     claudeModel = 'claude-3-haiku-20240307';
   }
@@ -1513,7 +1530,7 @@ export async function generateAIAnswer(
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-3.0' || model === 'gemini-3.1' || model === 'gemini-3.1-flash' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
     result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
-  } else if (model === 'claude-4.6-sonnet' || model === 'claude-4.6-opus' || model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-3.5-sonnet' || model === 'claude-3-opus' || model === 'claude-3-sonnet' || model === 'claude-3-haiku') {
+  } else if (model === 'claude-4.6-sonnet' || model === 'claude-4.6-opus' || model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-4-opus' || model === 'claude-4.1-opus' || model === 'claude-3-haiku') {
     result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
     result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);

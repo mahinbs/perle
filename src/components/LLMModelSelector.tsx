@@ -162,26 +162,18 @@ const premiumModels: LLMModelInfo[] = [
     capabilities: ["200K Context", "Dual Mode", "Coding", "Balanced"],
   },
   {
-    id: "claude-3.5-sonnet",
-    name: "Claude 3.5 Sonnet",
+    id: "claude-4-opus",
+    name: "Claude Opus 4",
     provider: "Anthropic",
-    description:
-      "Most intelligent model for complex tasks, coding, and analysis",
-    capabilities: ["200K Context", "Advanced Reasoning", "Coding", "Fast"],
+    description: "High-intelligence Claude Opus 4 profile",
+    capabilities: ["200K Context", "Deep Analysis", "Reasoning", "Stable"],
   },
   {
-    id: "claude-3-opus",
-    name: "Claude 3 Opus",
+    id: "claude-4.1-opus",
+    name: "Claude Opus 4.1",
     provider: "Anthropic",
-    description: "Top-level performance for demanding tasks and analysis",
-    capabilities: ["200K Context", "Advanced", "Reasoning", "Multimodal"],
-  },
-  {
-    id: "claude-3-sonnet",
-    name: "Claude 3 Sonnet",
-    provider: "Anthropic",
-    description: "Balanced performance and speed for everyday tasks",
-    capabilities: ["200K Context", "Balanced", "Efficient", "Multimodal"],
+    description: "Refined Opus profile for complex reasoning",
+    capabilities: ["200K Context", "Reasoning", "Reliable", "Advanced"],
   },
   {
     id: "claude-3-haiku",
@@ -339,6 +331,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     'claude-4.6-sonnet',
     'claude-4.5-opus',
     'claude-4.5-sonnet',
+    'claude-4-opus',
+    'claude-4-sonnet',
     'gemini-3.1',
     'gemini-3.1-flash',
   ];

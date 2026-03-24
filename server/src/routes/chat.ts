@@ -20,6 +20,21 @@ const buildFallbackSuggestedQuestions = (message: string, chatMode: ChatMode): s
   }
 
   const q = message.trim();
+  const lower = q.toLowerCase();
+  const isGreeting =
+    /^(hi|hello|hey|yo|sup|what'?s up|how are you|how r u|good (morning|afternoon|evening))[\s!?.,]*$/.test(lower) ||
+    /(how are you|how r u)/.test(lower);
+  const asksCurrentInfo =
+    /(latest|current|today|now|this week|this month|2026|price|cost|launch|release|news)/.test(lower);
+
+  if (isGreeting) {
+    return [
+      "What should we work on right now?",
+      "Do you want a quick update on a topic you care about?",
+      "Should I help with planning, research, or decision-making next?"
+    ];
+  }
+
   if (!q) {
     return [
       "Can you explain this in simpler terms?",
@@ -28,10 +43,18 @@ const buildFallbackSuggestedQuestions = (message: string, chatMode: ChatMode): s
     ];
   }
 
+  if (asksCurrentInfo) {
+    return [
+      `Do you want the latest update on "${q}" with fresh sources?`,
+      `Should I compare top options and key differences for "${q}"?`,
+      `Want prices, timeline, and availability for "${q}" in your region?`
+    ];
+  }
+
   return [
-    `Can you explain "${q}" in simpler terms?`,
-    `What should I do next about "${q}"?`,
-    `Can you give one practical example for "${q}"?`
+    `Do you want a concise summary of "${q}" first?`,
+    `Should I explain "${q}" in deeper detail with examples?`,
+    `Want a practical checklist or next steps for "${q}"?`
   ];
 };
 
@@ -86,9 +109,8 @@ const chatSchema = z.object({
     'claude-4.6-opus',
     'claude-4.5-haiku',
     'claude-4-sonnet',
-    'claude-3.5-sonnet',
-    'claude-3-opus',
-    'claude-3-sonnet',
+    'claude-4-opus',
+    'claude-4.1-opus',
     'claude-3-haiku',
     'grok-3',
     'grok-3-mini',
