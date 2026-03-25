@@ -633,7 +633,7 @@ export default function HomePage() {
       {/* Main Content - ORIGINAL LAYOUT */}
       <div className="container !px-2 flex flex-col justify-between h-full relative">
         {/* Background Logo */}
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none -translate-y-[5%] z-0 opacity-[0.1] select-none invert">
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none -translate-y-[5%] z-0 opacity-[0.1] select-none dark:invert">
           <img
             src={logo}
             alt=""

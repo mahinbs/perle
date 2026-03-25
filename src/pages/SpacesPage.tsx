@@ -12,7 +12,13 @@ import {
   FaFile,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, getAuthHeaders, getAuthToken, isAuthenticated, removeAuthToken } from "../utils/auth";
+import {
+  getUserData,
+  getAuthHeaders,
+  getAuthToken,
+  isAuthenticated,
+  removeAuthToken,
+} from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
@@ -62,10 +68,14 @@ export default function SpacesPage() {
   const [spaceTitle, setSpaceTitle] = useState("");
   const [spaceDescription, setSpaceDescription] = useState("");
   const [spaceLogoUrl, setSpaceLogoUrl] = useState("");
-  const [selectedDefaultLogo, setSelectedDefaultLogo] = useState<string | null>(null);
+  const [selectedDefaultLogo, setSelectedDefaultLogo] = useState<string | null>(
+    null,
+  );
   const [isPublic, setIsPublic] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [defaultLogos, setDefaultLogos] = useState<Array<{ id: string; name: string; url: string }>>([]);
+  const [defaultLogos, setDefaultLogos] = useState<
+    Array<{ id: string; name: string; url: string }>
+  >([]);
   const [showCommunity, setShowCommunity] = useState(false);
 
   // Chat state (when viewing a space)
@@ -79,7 +89,7 @@ export default function SpacesPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const spaceFileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Files state
   const [spaceFiles, setSpaceFiles] = useState<SpaceFile[]>([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -113,10 +123,14 @@ export default function SpacesPage() {
         user.premiumTier === "max" ||
         user.subscription?.tier === "pro" ||
         user.subscription?.tier === "max";
-      const premium = Boolean(user.isPremium || (hasPaidTier && isActiveSubscription));
+      const premium = Boolean(
+        user.isPremium || (hasPaidTier && isActiveSubscription),
+      );
       setIsPremium(premium);
 
-      const savedModel = localStorage.getItem("perle-space-model") as LLMModel | null;
+      const savedModel = localStorage.getItem(
+        "perle-space-model",
+      ) as LLMModel | null;
       if (savedModel && premium) {
         setSelectedModel(savedModel);
       } else if (premium) {
@@ -202,7 +216,7 @@ export default function SpacesPage() {
         {
           method: "GET",
           headers: getAuthHeaders(),
-        }
+        },
       );
 
       // Handle 401 - user logged out
@@ -215,12 +229,14 @@ export default function SpacesPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.messages && data.messages.length > 0) {
-          const historyMessages: Message[] = data.messages.map((msg: any, index: number) => ({
-            id: `history-${index}`,
-            role: msg.role === "user" ? "user" : "ai",
-            content: msg.content,
-            timestamp: new Date(msg.timestamp),
-          }));
+          const historyMessages: Message[] = data.messages.map(
+            (msg: any, index: number) => ({
+              id: `history-${index}`,
+              role: msg.role === "user" ? "user" : "ai",
+              content: msg.content,
+              timestamp: new Date(msg.timestamp),
+            }),
+          );
 
           setMessages([
             {
@@ -268,7 +284,11 @@ export default function SpacesPage() {
   };
 
   const handleDeleteSpace = async (spaceId: string) => {
-    if (!confirm("Are you sure you want to delete this space? This action cannot be undone.")) {
+    if (
+      !confirm(
+        "Are you sure you want to delete this space? This action cannot be undone.",
+      )
+    ) {
       return;
     }
 
@@ -336,7 +356,10 @@ export default function SpacesPage() {
 
   const handleSaveSpace = async () => {
     if (!spaceTitle.trim() || !spaceDescription.trim()) {
-      showToast({ message: "Please fill in all required fields", type: "error" });
+      showToast({
+        message: "Please fill in all required fields",
+        type: "error",
+      });
       return;
     }
 
@@ -373,7 +396,9 @@ export default function SpacesPage() {
 
       if (response.ok) {
         showToast({
-          message: editingSpace ? "Space updated successfully" : "Space created successfully",
+          message: editingSpace
+            ? "Space updated successfully"
+            : "Space created successfully",
           type: "success",
         });
         setShowSpaceModal(false);
@@ -381,7 +406,10 @@ export default function SpacesPage() {
         loadPublicSpaces();
       } else {
         const error = await response.json();
-        showToast({ message: error.error || "Failed to save space", type: "error" });
+        showToast({
+          message: error.error || "Failed to save space",
+          type: "error",
+        });
       }
     } catch (error) {
       console.error("Failed to save space:", error);
@@ -452,7 +480,10 @@ export default function SpacesPage() {
         setNewConversation(false);
       } else {
         const error = await response.json();
-        showToast({ message: error.error || "Failed to send message", type: "error" });
+        showToast({
+          message: error.error || "Failed to send message",
+          type: "error",
+        });
       }
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -494,18 +525,24 @@ export default function SpacesPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`${API_URL}/api/spaces/${selectedSpace.id}/upload-file`, {
-        method: "POST",
-        headers: getAuthHeaders() as Record<string, string>,
-        body: formData,
-      });
+      const response = await fetch(
+        `${API_URL}/api/spaces/${selectedSpace.id}/upload-file`,
+        {
+          method: "POST",
+          headers: getAuthHeaders() as Record<string, string>,
+          body: formData,
+        },
+      );
 
       if (response.ok) {
         showToast({ message: "File uploaded successfully!", type: "success" });
         loadSpaceFiles(selectedSpace.id);
       } else {
         const error = await response.json();
-        showToast({ message: error.error || "Failed to upload file", type: "error" });
+        showToast({
+          message: error.error || "Failed to upload file",
+          type: "error",
+        });
       }
     } catch (error) {
       console.error("Failed to upload file:", error);
@@ -524,17 +561,23 @@ export default function SpacesPage() {
     if (!API_URL) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/spaces/${selectedSpace.id}/files/${fileId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders() as Record<string, string>,
-      });
+      const response = await fetch(
+        `${API_URL}/api/spaces/${selectedSpace.id}/files/${fileId}`,
+        {
+          method: "DELETE",
+          headers: getAuthHeaders() as Record<string, string>,
+        },
+      );
 
       if (response.ok) {
         showToast({ message: "File deleted successfully!", type: "success" });
         setSpaceFiles((prev) => prev.filter((f) => f.id !== fileId));
       } else {
         const error = await response.json();
-        showToast({ message: error.error || "Failed to delete file", type: "error" });
+        showToast({
+          message: error.error || "Failed to delete file",
+          type: "error",
+        });
       }
     } catch (error) {
       console.error("Failed to delete file:", error);
@@ -551,8 +594,11 @@ export default function SpacesPage() {
 
   // If space is selected, show chat interface
   if (selectedSpace) {
-  return (
-      <div className="container" style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    return (
+      <div
+        className="container"
+        style={{ display: "flex", flexDirection: "column", height: "100vh" }}
+      >
         {/* Header */}
         <div
           className="row"
@@ -589,7 +635,14 @@ export default function SpacesPage() {
               )}
             </div>
           </div>
-          <div style={{ width: 100, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div
+            style={{
+              width: 100,
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 8,
+            }}
+          >
             {isLoggedIn && selectedSpace.user_id === userData?.id && (
               <>
                 <button
@@ -622,8 +675,20 @@ export default function SpacesPage() {
         </div>
 
         {/* Files Section */}
-        <div style={{ borderBottom: "1px solid var(--border)", padding: "12px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div
+          style={{
+            borderBottom: "1px solid var(--border)",
+            padding: "12px 16px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
             <button
               className="btn-ghost"
               onClick={() => setShowFiles(!showFiles)}
@@ -649,12 +714,13 @@ export default function SpacesPage() {
                   disabled={isUploadingFile}
                   style={{ padding: "8px 12px", fontSize: "var(--font-sm)" }}
                 >
-                  <FaPlus size={14} /> {isUploadingFile ? "Uploading..." : "Upload"}
+                  <FaPlus size={14} />{" "}
+                  {isUploadingFile ? "Uploading..." : "Upload"}
                 </button>
               </>
             )}
           </div>
-          
+
           {showFiles && spaceFiles.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {spaceFiles.map((file) => (
@@ -669,13 +735,25 @@ export default function SpacesPage() {
                     background: "var(--bg-secondary)",
                   }}
                 >
-                  <FaFile size={20} style={{ color: "var(--accent)", flexShrink: 0 }} />
+                  <FaFile
+                    size={20}
+                    style={{ color: "var(--accent)", flexShrink: 0 }}
+                  />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: "var(--font-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div
+                      style={{
+                        fontWeight: 500,
+                        fontSize: "var(--font-sm)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {file.file_name}
                     </div>
                     <div className="sub text-xs">
-                      {(file.file_size / 1024).toFixed(1)} KB • {new Date(file.created_at).toLocaleDateString()}
+                      {(file.file_size / 1024).toFixed(1)} KB •{" "}
+                      {new Date(file.created_at).toLocaleDateString()}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -704,9 +782,12 @@ export default function SpacesPage() {
               ))}
             </div>
           )}
-          
+
           {showFiles && spaceFiles.length === 0 && (
-            <div className="sub text-sm" style={{ textAlign: "center", padding: "12px 0" }}>
+            <div
+              className="sub text-sm"
+              style={{ textAlign: "center", padding: "12px 0" }}
+            >
               No files uploaded yet
             </div>
           )}
@@ -726,9 +807,9 @@ export default function SpacesPage() {
           {messages.map((msg) => (
             <div
               key={msg.id}
-      style={{
-        display: "flex",
-        flexDirection: "column",
+              style={{
+                display: "flex",
+                flexDirection: "column",
                 alignItems: msg.role === "user" ? "flex-end" : "flex-start",
                 gap: 4,
               }}
@@ -738,7 +819,10 @@ export default function SpacesPage() {
                 style={{
                   maxWidth: "80%",
                   padding: "12px 16px",
-                  background: msg.role === "user" ? "var(--accent)" : "var(--bg-secondary)",
+                  background:
+                    msg.role === "user"
+                      ? "var(--accent)"
+                      : "var(--bg-secondary)",
                 }}
               >
                 <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
@@ -747,7 +831,13 @@ export default function SpacesPage() {
           ))}
           {isLoading && (
             <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-              <div className="card" style={{ padding: "12px 16px", background: "var(--bg-secondary)" }}>
+              <div
+                className="card"
+                style={{
+                  padding: "12px 16px",
+                  background: "var(--bg-secondary)",
+                }}
+              >
                 <div>Thinking...</div>
               </div>
             </div>
@@ -766,6 +856,7 @@ export default function SpacesPage() {
           }}
         >
           <textarea
+          className="glass-input"
             ref={inputRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -806,7 +897,15 @@ export default function SpacesPage() {
 
   // Main spaces list view
   return (
-    <div className="container" style={{ display: "flex", flexDirection: "column", gap: 24, minHeight: "100vh" }}>
+    <div
+      className="container"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 24,
+        minHeight: "100vh",
+      }}
+    >
       {/* Header */}
       <div
         className="row"
@@ -831,22 +930,33 @@ export default function SpacesPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, borderBottom: "1px solid var(--border)" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          borderBottom: "1px solid var(--border)",
+        }}
+        className="pb-3"
+      >
         <button
           className={!showCommunity ? "btn" : "btn-ghost"}
           onClick={() => setShowCommunity(false)}
-          style={{ borderBottom: !showCommunity ? "2px solid var(--accent)" : "none" }}
+          style={{
+            borderBottom: !showCommunity ? "2px solid var(--accent)" : "none",
+          }}
         >
           My Spaces
         </button>
         <button
           className={showCommunity ? "btn" : "btn-ghost"}
           onClick={() => setShowCommunity(true)}
-          style={{ borderBottom: showCommunity ? "2px solid var(--accent)" : "none" }}
+          style={{
+            borderBottom: showCommunity ? "2px solid var(--accent)" : "none",
+          }}
         >
           <FaGlobe size={14} /> Community
         </button>
-        </div>
+      </div>
 
       {/* Spaces List */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -870,7 +980,12 @@ export default function SpacesPage() {
                   <img
                     src={space.logo_url}
                     alt={space.title}
-                    style={{ width: 48, height: 48, borderRadius: "8px", objectFit: "cover" }}
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: "8px",
+                      objectFit: "cover",
+                    }}
                   />
                 )}
                 <div style={{ flex: 1 }}>
@@ -879,10 +994,10 @@ export default function SpacesPage() {
                   </div>
                   <div className="sub text-sm" style={{ marginBottom: 4 }}>
                     {space.description}
-              </div>
+                  </div>
                   <div className="sub text-xs" style={{ opacity: 0.7 }}>
                     <FaGlobe size={10} /> Public Space
-                </div>
+                  </div>
                 </div>
               </div>
             ))
@@ -891,95 +1006,112 @@ export default function SpacesPage() {
               <div className="sub">No public spaces available yet</div>
             </div>
           )
-        ) : (
-          // User's spaces
-          isLoggedIn ? (
-            <>
-              {spaces.length > 0 ? (
-                spaces.map((space) => (
+        ) : // User's spaces
+        isLoggedIn ? (
+          <>
+            {spaces.length > 0 ? (
+              spaces.map((space) => (
+                <div
+                  key={space.id}
+                  className="card"
+                  style={{
+                    padding: 16,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  {space.logo_url && (
+                    <img
+                      src={space.logo_url}
+                      alt={space.title}
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: "8px",
+                        objectFit: "cover",
+                      }}
+                    />
+                  )}
                   <div
-                    key={space.id}
-                    className="card"
-                    style={{
-                      padding: 16,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
+                    style={{ flex: 1, cursor: "pointer" }}
+                    onClick={() => setSelectedSpace(space)}
                   >
-                    {space.logo_url && (
-                      <img
-                        src={space.logo_url}
-                        alt={space.title}
-                        style={{ width: 48, height: 48, borderRadius: "8px", objectFit: "cover" }}
-                      />
-                    )}
+                    <div className="h3" style={{ margin: 0, marginBottom: 4 }}>
+                      {space.title}
+                    </div>
+                    <div className="sub text-sm" style={{ marginBottom: 4 }}>
+                      {space.description}
+                    </div>
                     <div
-                      style={{ flex: 1, cursor: "pointer" }}
-                      onClick={() => setSelectedSpace(space)}
+                      className="sub text-xs"
+                      style={{
+                        opacity: 0.7,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
                     >
-                      <div className="h3" style={{ margin: 0, marginBottom: 4 }}>
-                        {space.title}
-                      </div>
-                      <div className="sub text-sm" style={{ marginBottom: 4 }}>
-                        {space.description}
-                      </div>
-                      <div className="sub text-xs" style={{ opacity: 0.7, display: "flex", alignItems: "center", gap: 4 }}>
-                        {space.is_public ? (
-                          <>
-                            <FaGlobe size={10} /> Public
-                          </>
-                        ) : (
-                          <>
-                            <FaLock size={10} /> Private
-                          </>
-                        )}
-                      </div>
-        </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-          <button
-                        className="btn-ghost"
-                        onClick={() => handleEditSpace(space)}
-                        style={{ padding: "8px" }}
-                      >
-                        <FaEdit size={16} />
-          </button>
-          <button
-            className="btn-ghost"
-                        onClick={() => handleDeleteSpace(space.id)}
-                        style={{ padding: "8px" }}
-                      >
-                        <FaTrash size={16} />
-                      </button>
+                      {space.is_public ? (
+                        <>
+                          <FaGlobe size={10} /> Public
+                        </>
+                      ) : (
+                        <>
+                          <FaLock size={10} /> Private
+                        </>
+                      )}
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="card" style={{ padding: 24, textAlign: "center" }}>
-                  <div className="sub" style={{ marginBottom: 16 }}>
-                    You haven't created any spaces yet
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      className="btn-ghost"
+                      onClick={() => handleEditSpace(space)}
+                      style={{ padding: "8px" }}
+                    >
+                      <FaEdit size={16} />
+                    </button>
+                    <button
+                      className="btn-ghost"
+                      onClick={() => handleDeleteSpace(space.id)}
+                      style={{ padding: "8px" }}
+                    >
+                      <FaTrash size={16} />
+                    </button>
                   </div>
-                  <button className="btn btn-strong" onClick={handleCreateSpace}>
-                    <FaPlus size={16} /> Create Your First Space
-                  </button>
                 </div>
-              )}
-              {spaces.length > 0 && (
+              ))
+            ) : (
+              <div
+                className="card"
+                style={{ padding: 24, textAlign: "center" }}
+              >
+                <div className="sub" style={{ marginBottom: 16 }}>
+                  You haven't created any spaces yet
+                </div>
                 <button className="btn btn-strong" onClick={handleCreateSpace}>
-                  <FaPlus size={16} /> Create New Space
+                  <FaPlus size={16} /> Create Your First Space
                 </button>
-              )}
-            </>
-          ) : (
-            <div className="card" style={{ padding: 24, textAlign: "center" }}>
-              <div className="sub" style={{ marginBottom: 16 }}>
-                Please log in to create and manage your spaces
               </div>
-              <button className="btn btn-strong" onClick={() => navigateTo("/profile")}>
-                Log In
-          </button>
-        </div>
-          )
+            )}
+            {spaces.length > 0 && (
+              <button className="btn btn-strong" onClick={handleCreateSpace}>
+                <FaPlus size={16} /> Create New Space
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="card" style={{ padding: 24, textAlign: "center" }}>
+            <div className="sub" style={{ marginBottom: 16 }}>
+              Please log in to create and manage your spaces
+            </div>
+            <button
+              className="btn btn-strong"
+              onClick={() => navigateTo("/profile")}
+            >
+              Log In
+            </button>
+          </div>
         )}
       </div>
 
@@ -1000,9 +1132,9 @@ export default function SpacesPage() {
             if (e.target === e.currentTarget) setShowSpaceModal(false);
           }}
         >
-      <div
-        className="card"
-        style={{
+          <div
+            className="card"
+            style={{
               maxWidth: 500,
               width: "100%",
               maxHeight: "90vh",
@@ -1011,16 +1143,31 @@ export default function SpacesPage() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <div className="h2">{editingSpace ? "Edit Space" : "Create Space"}</div>
-              <button className="btn-ghost" onClick={() => setShowSpaceModal(false)}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 20,
+              }}
+            >
+              <div className="h2">
+                {editingSpace ? "Edit Space" : "Create Space"}
+              </div>
+              <button
+                className="btn-ghost"
+                onClick={() => setShowSpaceModal(false)}
+              >
                 <FaTimes size={20} />
               </button>
-        </div>
+            </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
-                <label className="sub" style={{ marginBottom: 8, display: "block" }}>
+                <label
+                  className="sub"
+                  style={{ marginBottom: 8, display: "block" }}
+                >
                   Title *
                 </label>
                 <input
@@ -1037,10 +1184,13 @@ export default function SpacesPage() {
                     color: "var(--text)",
                   }}
                 />
-        </div>
+              </div>
 
               <div>
-                <label className="sub" style={{ marginBottom: 8, display: "block" }}>
+                <label
+                  className="sub"
+                  style={{ marginBottom: 8, display: "block" }}
+                >
                   Description *
                 </label>
                 <textarea
@@ -1059,24 +1209,40 @@ export default function SpacesPage() {
                     resize: "vertical",
                   }}
                 />
-      </div>
+              </div>
 
               <div>
-                <label className="sub" style={{ marginBottom: 8, display: "block" }}>
+                <label
+                  className="sub"
+                  style={{ marginBottom: 8, display: "block" }}
+                >
                   Logo
                 </label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    marginBottom: 12,
+                  }}
+                >
                   {defaultLogos.map((logo) => (
                     <button
                       key={logo.id}
-                      className={selectedDefaultLogo === logo.id ? "btn" : "btn-ghost"}
+                      className={
+                        selectedDefaultLogo === logo.id ? "btn" : "btn-ghost"
+                      }
                       onClick={() => {
                         setSelectedDefaultLogo(logo.id);
                         setSpaceLogoUrl("");
                       }}
                       style={{ padding: 8 }}
                     >
-                      <img src={logo.url} alt={logo.name} style={{ width: 40, height: 40, borderRadius: "50%" }} />
+                      <img
+                        src={logo.url}
+                        alt={logo.name}
+                        style={{ width: 40, height: 40, borderRadius: "50%" }}
+                      />
                     </button>
                   ))}
                 </div>
@@ -1093,11 +1259,15 @@ export default function SpacesPage() {
                   style={{ display: "none" }}
                   ref={fileInputRef}
                 />
-        <button
-          className="btn-ghost"
+                <button
+                  className="btn-ghost"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploadingLogo}
-                  style={{ width: "100%", padding: "12px", border: "1px dashed var(--border)" }}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    border: "1px dashed var(--border)",
+                  }}
                 >
                   {isUploadingLogo ? "Uploading..." : "Upload Custom Logo"}
                 </button>
@@ -1105,7 +1275,13 @@ export default function SpacesPage() {
                   <img
                     src={spaceLogoUrl}
                     alt="Custom logo"
-                    style={{ width: 80, height: 80, borderRadius: "8px", marginTop: 8, objectFit: "cover" }}
+                    style={{
+                      width: 80,
+                      height: 80,
+                      borderRadius: "8px",
+                      marginTop: 8,
+                      objectFit: "cover",
+                    }}
                   />
                 )}
               </div>
@@ -1117,18 +1293,29 @@ export default function SpacesPage() {
                   checked={isPublic}
                   onChange={(e) => setIsPublic(e.target.checked)}
                 />
-                <label htmlFor="isPublic" className="sub" style={{ cursor: "pointer" }}>
+                <label
+                  htmlFor="isPublic"
+                  className="sub"
+                  style={{ cursor: "pointer" }}
+                >
                   <FaGlobe size={14} /> Share with community (make public)
                 </label>
               </div>
 
               <div style={{ display: "flex", gap: 12 }}>
-                <button className="btn btn-strong" onClick={handleSaveSpace} style={{ flex: 1 }}>
+                <button
+                  className="btn btn-strong"
+                  onClick={handleSaveSpace}
+                  style={{ flex: 1 }}
+                >
                   {editingSpace ? "Update" : "Create"} Space
-        </button>
-                <button className="btn-ghost" onClick={() => setShowSpaceModal(false)}>
+                </button>
+                <button
+                  className="btn-ghost"
+                  onClick={() => setShowSpaceModal(false)}
+                >
                   Cancel
-        </button>
+                </button>
               </div>
             </div>
           </div>

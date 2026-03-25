@@ -1360,7 +1360,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             {suggestedQuestions.slice(0, 3).map((question) => (
               <button
                 key={question}
-                className="chip"
+                className="glass-button !px-2 !py-0.5 rounded-sm"
                 style={{ cursor: "pointer" }}
                 onClick={() => _onSearch?.(question, _mode)}
               >

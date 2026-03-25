@@ -156,14 +156,14 @@ export default function LibraryPage() {
         >
           <div className="h1">Library</div>
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => navigateTo("/profile")}
             style={{ fontSize: "var(--font-md)" }}
           >
             <IoIosArrowBack size={24} /> Back
           </button>
         </div>
-        <div className="card" style={{ padding: 40, textAlign: "center" }}>
+        <div className="glass-card" style={{ padding: 40, textAlign: "center" }}>
           <div className="sub">Loading library...</div>
         </div>
       </div>
@@ -183,21 +183,21 @@ export default function LibraryPage() {
         >
           <div className="h1">Library</div>
           <button
-            className="btn-ghost"
+            className="btn-ghost glass-button"
             onClick={() => navigateTo("/profile")}
             style={{ fontSize: "var(--font-md)" }}
           >
             <IoIosArrowBack size={24} /> Back
           </button>
         </div>
-        <div className="card" style={{ padding: 40, textAlign: "center" }}>
+        <div className="glass-card" style={{ padding: 40, textAlign: "center" }}>
           <div className="h3" style={{ marginBottom: 8 }}>
             Sign in required
           </div>
           <div className="sub" style={{ marginBottom: 20 }}>
             Please sign in to view your library
           </div>
-          <button className="btn" onClick={() => navigateTo("/profile")}>
+          <button className="btn glass-button" onClick={() => navigateTo("/profile")}>
             Go to Profile
           </button>
         </div>
@@ -218,7 +218,7 @@ export default function LibraryPage() {
       >
         <div className="h1">Library</div>
         <button
-          className="btn-ghost"
+          className="btn-ghost glass-button"
           onClick={() => navigateTo("/profile")}
           style={{ fontSize: "var(--font-md)" }}
         >
@@ -229,7 +229,7 @@ export default function LibraryPage() {
       {/* Stats */}
       <div className="row" style={{ marginBottom: 20, flexWrap: "wrap" }}>
         <div
-          className="card"
+          className="glass-card"
           style={{
             padding: 16,
             flex: 1,
@@ -244,7 +244,7 @@ export default function LibraryPage() {
           <div className="sub text-sm">Total Items</div>
         </div>
         <div
-          className="card"
+          className="glass-card"
           style={{
             padding: 16,
             flex: 1,
@@ -259,7 +259,7 @@ export default function LibraryPage() {
           <div className="sub text-sm">Bookmarked</div>
         </div>
         <div
-          className="card"
+          className="glass-card"
           style={{ padding: 16, flex: 1, minWidth: 120, marginBottom: 8 }}
         >
           <div className="h3" style={{ marginBottom: 4 }}>
@@ -270,7 +270,7 @@ export default function LibraryPage() {
       </div>
 
       {/* Search and Filters */}
-      <div className="card" style={{ padding: 16, marginBottom: 20 }}>
+      <div className="glass-card" style={{ padding: 16, marginBottom: 20 }}>
         <input
           className="input"
           placeholder="Search your library..."
@@ -312,14 +312,14 @@ export default function LibraryPage() {
               Sort by:
             </span>
             <button
-              className={`pill ${sortBy === "date" ? "active" : ""}`}
+              className={`pill ${sortBy === "date" ? "active" : "glass-button"}`}
               onClick={() => setSortBy("date")}
               style={{ fontSize: "var(--font-sm)", padding: "6px 12px" }}
             >
               Date
             </button>
             <button
-              className={`pill ${sortBy === "title" ? "active" : ""}`}
+              className={`pill ${sortBy === "title" ? "active" : "glass-button"}`}
               onClick={() => setSortBy("title")}
               style={{ fontSize: "var(--font-sm)", padding: "6px 12px" }}
             >
@@ -337,7 +337,7 @@ export default function LibraryPage() {
       {/* Library Items */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {sortedItems.map((item) => (
-          <div key={item.id} className="card" style={{ padding: 16 }}>
+          <div key={item.id} className="glass-card" style={{ padding: 16 }}>
             <div
               className="row"
               style={{
@@ -389,7 +389,7 @@ export default function LibraryPage() {
 
               <div className="row" style={{ gap: 8, flexShrink: 0 }}>
                 <button
-                  className="btn-ghost"
+                  className="btn-ghost glass-button"
                   onClick={() => toggleBookmark(item.id)}
                   style={{ padding: 8 }}
                   aria-label={
@@ -399,7 +399,7 @@ export default function LibraryPage() {
                   {item.isBookmarked ? "🔖" : "📖"}
                 </button>
                 <button
-                  className="btn-ghost"
+                  className="btn-ghost glass-button"
                   onClick={() => deleteItem(item.id)}
                   style={{ padding: 8, color: "#ff4444" }}
                   aria-label="Delete item"
@@ -426,7 +426,7 @@ export default function LibraryPage() {
       </div>
 
       {sortedItems.length === 0 && !isLoading && (
-        <div className="card" style={{ padding: 40, textAlign: "center" }}>
+        <div className="glass-card" style={{ padding: 40, textAlign: "center" }}>
           <div className="h3" style={{ marginBottom: 8 }}>
             No items found
           </div>
@@ -436,7 +436,7 @@ export default function LibraryPage() {
 
       {/* Quick Actions */}
       <div className="spacer-16" />
-      <div className="card" style={{ padding: 16 }}>
+      <div className="glass-card" style={{ padding: 16 }}>
         <div className="h3" style={{ marginBottom: 12 }}>
           Quick Actions
         </div>
@@ -449,7 +449,7 @@ export default function LibraryPage() {
           ].map((action) => (
             <button
               key={action}
-              className="btn-ghost"
+              className="btn-ghost glass-button"
               style={{ fontSize: "var(--font-sm)", padding: "8px 12px" }}
             >
               {action}

@@ -1,6 +1,6 @@
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { IoIosArrowBack } from "react-icons/io";
-import logo from "../assets/images/logo.png";
+import logo from "../assets/images/logo-1.png";
 
 export default function AboutPage() {
   const { navigateTo } = useRouterNavigation();
@@ -17,7 +17,7 @@ export default function AboutPage() {
       >
         <div className="h1">About</div>
         <button
-          className="btn-ghost"
+          className="btn-ghost glass-button"
           onClick={() => navigateTo("/profile")}
           style={{ fontSize: "var(--font-md)" }}
         >
@@ -25,7 +25,7 @@ export default function AboutPage() {
         </button>
       </div>
 
-      <div className="card" style={{ padding: 32, textAlign: "center", marginBottom: 20 }}>
+      <div className="glass-card" style={{ padding: 32, textAlign: "center", marginBottom: 20 }}>
         <img 
           src={logo} 
           alt="SyntraIQ Logo" 
@@ -44,16 +44,16 @@ export default function AboutPage() {
         </p>
       </div>
 
-      <div className="card" style={{ padding: 20 }}>
+      <div className="glass-card" style={{ padding: 20 }}>
         <h3 className="h3" style={{ marginBottom: 16 }}>Connect With Us</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <a href="https://twitter.com/syntraiq" target="_blank" rel="noopener noreferrer" className="btn-ghost" style={{ justifyContent: "flex-start" }}>
+          <a href="https://twitter.com/syntraiq" target="_blank" rel="noopener noreferrer" className="btn-ghost glass-button" style={{ justifyContent: "flex-start" }}>
             Follow on Twitter
           </a>
-          <a href="https://instagram.com/syntraiq" target="_blank" rel="noopener noreferrer" className="btn-ghost" style={{ justifyContent: "flex-start" }}>
+          <a href="https://instagram.com/syntraiq" target="_blank" rel="noopener noreferrer" className="btn-ghost glass-button" style={{ justifyContent: "flex-start" }}>
             Follow on Instagram
           </a>
-          <a href="mailto:contact@syntraiq.com" className="btn-ghost" style={{ justifyContent: "flex-start" }}>
+          <a href="mailto:contact@syntraiq.com" className="btn-ghost glass-button" style={{ justifyContent: "flex-start" }}>
             Contact Support
           </a>
         </div>

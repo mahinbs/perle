@@ -61,6 +61,13 @@ export function getUserData(): User | null {
 export function setUserData(user: User): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+  if (user && typeof user.darkMode === 'boolean') {
+    if (user.darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }
 }
 
 export function getAuthHeaders(): HeadersInit {
