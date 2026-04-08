@@ -1410,25 +1410,26 @@ export async function generateGrokAnswer(
   messages.push({ role: 'user', content: prompt });
 
   // Map model names to actual Grok API model identifiers
-  // NOTE: grok-beta was deprecated on 2025-09-15, use grok-3 instead
-  // Check https://docs.x.ai/docs/models for latest available models
-  // Current available models: grok-3, grok-3-mini, grok-4 (verify availability)
-  let grokModel = 'grok-3'; // Default fallback (grok-beta is deprecated)
+  // Available as of April 2026: grok-3, grok-3-mini (reasoning), grok-4-1-fast-non-reasoning
+  // grok-3-mini is a REASONING model: does NOT support frequency_penalty, presence_penalty, stop
+  // grok-beta was deprecated on 2025-09-15
+  let grokModel = 'grok-3'; // Default fallback
   if (model === 'grok-3') {
     grokModel = 'grok-3';
   } else if (model === 'grok-3-mini') {
     grokModel = 'grok-3-mini';
-  // } else if (model === 'grok-4') {
-  //   grokModel = 'grok-4'; // COMMENTED OUT - Grok 4 temporarily disabled
   } else if (model === 'grok-4-heavy') {
-    grokModel = 'grok-3'; // Use grok-3 until grok-4-heavy is available in API
+    grokModel = 'grok-3'; // Map to grok-3 as closest available
   } else if (model === 'grok-4-fast') {
-    grokModel = 'grok-3'; // Use grok-3 until grok-4-fast is available in API
+    grokModel = 'grok-3'; // Map to grok-3 as closest available
   } else if (model === 'grok-code-fast-1') {
-    grokModel = 'grok-code-fast-1'; // Verify if this model exists in API
+    grokModel = 'grok-3'; // grok-code-fast-1 not confirmed in API, fallback to grok-3
   } else if (model === 'grok-beta') {
-    grokModel = 'grok-3'; // grok-beta deprecated, use grok-3 instead
+    grokModel = 'grok-3'; // grok-beta deprecated
   }
+
+  // grok-3-mini is a reasoning model — it does NOT support frequency_penalty, presence_penalty, or top_p
+  const isReasoningModel = grokModel === 'grok-3-mini';
 
   const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0);
   
@@ -1438,31 +1439,33 @@ export async function generateGrokAnswer(
       client.chat.completions.create({
         model: grokModel,
         messages: messages,
-        temperature: 0.4, // Slightly higher for speed
+        temperature: isReasoningModel ? undefined : 0.4,
         max_tokens: tokenLimit,
-        // SPEED OPTIMIZATIONS:
-        top_p: 0.9,
-        frequency_penalty: 0.5
+        ...(isReasoningModel ? {} : {
+          top_p: 0.9,
+          frequency_penalty: 0.5
+        })
       }),
-      25_000 // 25s timeout - reduced for faster responses
+      25_000 // 25s timeout
     );
   } catch (error: any) {
-    // If grok-4 fails (not available yet), fallback to grok-3
-    // COMMENTED OUT - Grok 4 temporarily disabled
-    // if (grokModel === 'grok-4' && (error?.status === 404 || error?.message?.includes('not found') || error?.message?.includes('deprecated'))) {
-    //   console.warn('grok-4 not available, falling back to grok-3');
-    //   response = await withTimeout(
-    //     client.chat.completions.create({
-    //       model: 'grok-3',
-    //       messages: messages,
-    //       temperature: 0.3,
-    //       max_tokens: tokenLimit
-    //     }),
-    //     15_000 // 15s timeout
-    //   );
-    // } else {
+    // If the model is not available, fall back to grok-3
+    if (grokModel !== 'grok-3' && (error?.status === 404 || error?.message?.includes('not found') || error?.message?.includes('not support'))) {
+      console.warn(`${grokModel} not available, falling back to grok-3`);
+      response = await withTimeout(
+        client.chat.completions.create({
+          model: 'grok-3',
+          messages: messages,
+          temperature: 0.4,
+          max_tokens: tokenLimit,
+          top_p: 0.9,
+          frequency_penalty: 0.5
+        }),
+        25_000
+      );
+    } else {
       throw error;
-    // }
+    }
   }
 
   const choice = response.choices?.[0];
