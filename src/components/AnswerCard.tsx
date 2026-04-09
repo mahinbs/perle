@@ -321,20 +321,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   // Auto-scroll to follow typewriter effect — disabled
   // (Previously scrolled to last chunk during typing and to bottom when complete)
 
-  // Auto-speak the next answer when triggered from voice overlay
-  useEffect(() => {
-    const shouldSpeak = localStorage.getItem("perle-speak-next-answer");
-    if (!shouldSpeak) return;
-    if (chunks.length === 0 || isLoading) return;
-
-    console.log('🎤 Auto-speak triggered, chunks:', chunks.length, 'isLoading:', isLoading);
-
-    // consume the flag
-    localStorage.removeItem("perle-speak-next-answer");
-
-    // Set a flag for startVoiceOutput to pick up
-    localStorage.setItem("perle-trigger-voice-output", "1");
-  }, [chunks, isLoading]);
+  // Auto-speak is now handled by SearchBar directly to avoid multi-card race conditions.
+  // AnswerCard no longer consumes perle-speak-next-answer.
 
   // Helper function to render LaTeX formulas with full mathematical symbol support
   const renderWithMath = (text: string): React.ReactNode[] => {
@@ -724,6 +712,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     let speechStartTime = 0;
     let fallbackInterval: number | null = null;
     let lastBoundaryUpdate = 0;
+    let resumeKeepAlive: number | null = null;
 
     // Initialize with empty text
     localStorage.setItem("perle-current-answer-text", "");
@@ -747,6 +736,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         localStorage.setItem("perle-current-answer-text", displayedText);
         localStorage.setItem("perle-current-word-index", "0");
       }
+
+      // Chrome pauses speechSynthesis silently after ~15s. Resume every 10s to prevent this.
+      resumeKeepAlive = window.setInterval(() => {
+        try {
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
+        } catch { /* ignore */ }
+      }, 10000);
 
       // Fallback timer for mobile devices where onboundary may not fire reliably
       // Estimate words per second: average English is ~150 words/min = 2.5 words/sec
@@ -831,6 +829,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         clearInterval(fallbackInterval);
         fallbackInterval = null;
       }
+      if (resumeKeepAlive) {
+        clearInterval(resumeKeepAlive);
+        resumeKeepAlive = null;
+      }
       // Show full text when speech ends
       localStorage.setItem("perle-current-answer-text", answerText);
       // Keep full answer text visible while voice session is active.
@@ -861,14 +863,20 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         clearInterval(fallbackInterval);
         fallbackInterval = null;
       }
+      if (resumeKeepAlive) {
+        clearInterval(resumeKeepAlive);
+        resumeKeepAlive = null;
+      }
       // Show full text on error
       localStorage.setItem("perle-current-answer-text", answerText);
     };
 
     synthesisRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-
-    console.log('🎤 Speech synthesis started');
+    // Small delay after cancel() so Chrome doesn't silently drop the new utterance
+    window.setTimeout(() => {
+      window.speechSynthesis.speak(utterance);
+      console.log('🎤 Speech synthesis started');
+    }, 100);
   }, [chunks, speechSupported, isSpeaking, showToast]);
 
   const stopVoiceOutput = () => {
@@ -1669,9 +1677,11 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 bottom: 0,
                 backgroundColor: isClosing
                   ? "rgba(0, 0, 0, 0)"
-                  : "rgba(0, 0, 0, 0.5)",
+                  : "rgba(0, 0, 0, 0.38)",
+                backdropFilter: isClosing ? "blur(0px)" : "blur(8px)",
+                WebkitBackdropFilter: isClosing ? "blur(0px)" : "blur(8px)",
                 zIndex: 9999,
-                transition: "background-color 0.2s ease",
+                transition: "background-color 0.2s ease, backdrop-filter 0.2s ease",
               }}
               onClick={handleCloseModal}
             />
@@ -1679,7 +1689,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             {/* Offcanvas */}
             <div
               ref={offcanvasRef}
-              className="card"
+              className="glass-card"
               data-offcanvas-handle
               onClick={(e) => e.stopPropagation()}
               style={{
@@ -1702,6 +1712,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
+                backdropFilter: "blur(20px) saturate(180%)",
+                WebkitBackdropFilter: "blur(20px) saturate(180%)",
               }}
             >
               {/* Drag Handle */}
@@ -1752,7 +1764,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
                 <textarea
                   ref={editInputRef}
-                  className="input"
+                  className="glass-input dark:text-black"
                   value={editedQuery}
                   onChange={(e) => {
                     setEditedQuery(e.target.value);
@@ -1773,8 +1785,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     padding: "12px",
                     borderRadius: "8px",
                     border: "1px solid var(--border)",
-                    background: "var(--card)",
-                    color: "var(--text)",
                     resize: "vertical",
                     fontFamily: "inherit",
                     marginBottom: 16,

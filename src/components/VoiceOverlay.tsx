@@ -10,6 +10,8 @@ import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
 
+const FIXED_GLOBE_ROTATION_SPEED = 24;
+
 interface VoiceOverlayProps {
   isOpen: boolean;
   isListening: boolean;
@@ -17,6 +19,38 @@ interface VoiceOverlayProps {
   onClose: () => void;
   responseText?: string;
 }
+
+const GlobeView = React.memo(function GlobeView({
+  baseGlobeSize,
+  globeConfig,
+  globeData,
+}: {
+  baseGlobeSize: string;
+  globeConfig: GlobeConfig;
+  globeData: Position[];
+}) {
+  return (
+    <div
+      className="globe-wrapper"
+      style={{
+        position: "relative",
+        width: baseGlobeSize,
+        height: baseGlobeSize,
+        maxWidth: "480px",
+        maxHeight: "480px",
+        aspectRatio: "1 / 1",
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: 1,
+        transition: "opacity 0.3s ease-in-out",
+      }}
+    >
+      <World globeConfig={globeConfig} data={globeData} />
+    </div>
+  );
+});
 
 // Fullscreen overlay for voice interaction with a dotted sphere animation
 export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
@@ -267,7 +301,7 @@ const SpeakingGradientCircle: React.FC<{
         if (storedText) {
           const cleaned = storedText
             .replace(/\bundefined\b/gi, "")
-            .replace(/\s{2,}/g, " ")
+            .replace(/[ \t]{2,}/g, " ")
             .trim();
           setDisplayText((prev) => (cleaned && cleaned !== prev ? cleaned : prev));
         } else {
@@ -558,7 +592,7 @@ const SpeakingGradientCircle: React.FC<{
     []
   );
 
-  // Theme-aware globe configuration - colors change when speaking
+  // Theme-aware globe configuration with fixed rotation speed
   const globeConfig: GlobeConfig = useMemo(() => {
     const baseGlobeColor = isDarkMode ? "#2d1f4e" : "#0f4c75";
     const baseEmissive = isDarkMode ? "#3d2f5e" : "#1a5490";
@@ -585,7 +619,7 @@ const SpeakingGradientCircle: React.FC<{
       maxRings: 3,
       initialPosition: { lat: 0, lng: 0 },
       autoRotate: true,
-      autoRotateSpeed: 24,
+      autoRotateSpeed: FIXED_GLOBE_ROTATION_SPEED,
       polygonColor: basePolygonColor,
       ambientLight: baseAmbientLight,
       directionalLeftLight: "#ffffff",
@@ -608,26 +642,12 @@ const SpeakingGradientCircle: React.FC<{
         maxHeight: "100%",
       }}
     >
-      {/* Globe Container - Responsive sizing with 1:1 aspect ratio */}
-      <div
-        className="globe-wrapper"
-        style={{
-          position: "relative",
-          width: baseGlobeSize,
-          height: baseGlobeSize,
-          maxWidth: "480px",
-          maxHeight: "480px",
-          aspectRatio: "1 / 1",
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: 1,
-          transition: "opacity 0.3s ease-in-out",
-        }}
-      >
-        <World globeConfig={globeConfig} data={globeData} />
-      </div>
+      {/* Keep globe rendering isolated from live text/speaking updates */}
+      <GlobeView
+        baseGlobeSize={baseGlobeSize}
+        globeConfig={globeConfig}
+        globeData={globeData}
+      />
 
       {/* AI Response Text Display - Responsive height for mobile and desktop */}
       <VoiceResponseText text={displayText} speaking={speaking} />

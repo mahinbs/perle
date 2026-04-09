@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel, AnswerResult, ExperienceMode } from "../types";
 import {
@@ -71,7 +72,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   setSelectedModel,
   onModelChange,
   answer = null,
-  currentAnswerText = "",
   onScrollToBottom,
   experienceMode = "normal",
   onExperienceModeChange,
@@ -143,6 +143,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const hasClearedForAnswerRef = useRef<boolean>(false);
   const voiceSilenceTimerRef = useRef<number | null>(null);
   const uploadBtnRef = useRef<HTMLButtonElement>(null);
+  const toolsBtnRef = useRef<HTMLButtonElement>(null);
 
   // Check for speech support
   useEffect(() => {
@@ -402,7 +403,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     setIsListening(false);
   };
 
-  // Voice output helper (currently unused here; AnswerCard handles TTS)
+  // Voice output helpers
 
   const stopVoiceOutput = () => {
     window.speechSynthesis.cancel();
@@ -412,7 +413,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const speakTextImmediately = (text: string) => {
     const content = (text || "")
       .replace(/\bundefined\b/gi, "")
-      .replace(/\s{2,}/g, " ")
+      .replace(/[ \t]{2,}/g, " ")
       .trim();
     if (!content) return;
     try {
@@ -424,12 +425,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       utterance.rate = 0.9;
       utterance.pitch = 1;
       utterance.volume = 0.9;
+      let resumeKeepAlive: number | null = null;
       utterance.onstart = () => {
         setIsSpeaking(true);
         localStorage.setItem("perle-current-answer-text", content);
+        // Chrome pauses speechSynthesis silently after ~15s — keep it alive
+        resumeKeepAlive = window.setInterval(() => {
+          try {
+            if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+          } catch { /* ignore */ }
+        }, 10000);
       };
       utterance.onend = () => {
         setIsSpeaking(false);
+        if (resumeKeepAlive) { clearInterval(resumeKeepAlive); resumeKeepAlive = null; }
         const voiceSessionActive =
           localStorage.getItem("perle-voice-session-active") === "1";
         if (voiceSessionActive) {
@@ -438,12 +447,34 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       };
       utterance.onerror = () => {
         setIsSpeaking(false);
+        if (resumeKeepAlive) { clearInterval(resumeKeepAlive); resumeKeepAlive = null; }
       };
-      window.speechSynthesis.speak(utterance);
+      // Small delay after cancel() so Chrome doesn't silently drop the utterance
+      window.setTimeout(() => window.speechSynthesis.speak(utterance), 100);
     } catch {
       setIsSpeaking(false);
     }
   };
+
+  // When a voice query answer arrives, speak it directly from SearchBar.
+  // This avoids the multi-AnswerCard race where an old card consumes the flag first.
+  const pendingVoiceSpeakRef = useRef(false);
+  useEffect(() => {
+    // Pick up the flag when it's set (while loading)
+    if (localStorage.getItem("perle-speak-next-answer") === "1") {
+      pendingVoiceSpeakRef.current = true;
+    }
+    if (!pendingVoiceSpeakRef.current) return;
+    // Wait until loading finishes and answer has content
+    if (isLoading) return;
+    const chunks = answer?.chunks;
+    if (!chunks || chunks.length === 0) return;
+    // Consume
+    localStorage.removeItem("perle-speak-next-answer");
+    pendingVoiceSpeakRef.current = false;
+    const answerText = chunks.map((c) => c.text).join("\n\n");
+    speakTextImmediately(answerText);
+  }, [answer, isLoading]);
 
   // When an answer finishes in active voice session, start listening again automatically.
   useEffect(() => {
@@ -1271,6 +1302,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           {/* Desktop dropdown container */}
           <div className="hidden md:flex relative mb-2" data-tools-menu>
             <button
+              ref={toolsBtnRef}
               className={`btn-ghost  glass-button btn-shadow !font-normal ${toolMode ? "!text-black" : ""
                 }`}
               onClick={() => {
@@ -1304,15 +1336,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <span style={{ fontSize: "var(--font-md)" }}>Tools</span>
             </button>
 
-            {showToolsMenu && (
+            {showToolsMenu && (() => {
+              const rect = toolsBtnRef.current?.getBoundingClientRect();
+              return (
               <div
                 className="glass-panel !font-normal"
                 data-tools-menu
                 style={{
-                  position: "absolute",
-                  bottom: "100%",
-                  left: 0,
-                  marginBottom: 8,
+                  position: "fixed",
+                  bottom: rect ? window.innerHeight - rect.top + 8 : 0,
+                  left: rect ? rect.left : 0,
                   padding: 8,
                   zIndex: 9999,
                   minWidth: 200,
@@ -1449,12 +1482,13 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   </span>
                 </button>
               </div>
-            )}
+              );
+            })()}
           </div>
         </>
       )}
       <div
-        className="glass-card font-ubuntu !px-3 !pt-1 !pb-2 no-scrollbar"
+        className="glass-card font-ubuntu !px-3 !pt-1 !pb-2 no-scrollbar !overflow-x-hidden"
         style={{
           position: "relative",
           overflow: "visible",
@@ -1661,10 +1695,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           }}
           onClose={() => {
             setShowVoiceOverlay(false);
-            // Clear the flag when manually closing
+            // Reset all voice state on close so re-opening is always fresh
+            try {
+              if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+            } catch { }
+            setIsSpeaking(false);
+            pendingVoiceSpeakRef.current = false;
             localStorage.removeItem("perle-keep-voice-overlay-open");
             localStorage.removeItem("perle-voice-session-active");
             localStorage.removeItem("perle-auto-listen-next");
+            localStorage.removeItem("perle-speak-next-answer");
+            localStorage.removeItem("perle-current-answer-text");
           }}
         />
 
@@ -2026,7 +2067,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 {showUploadMenu && (() => {
                   const rect = uploadBtnRef.current?.getBoundingClientRect();
                   return (
-                  <div
+                  createPortal(<div
                     className="glass-panel"
                     data-upload-menu
                     style={{
@@ -2114,14 +2155,15 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                         <FaCamera size={16} /> Take Photo
                       </span>
                     </button>
-                  </div>
+                  </div>, document.body
+                  )
                   );
                 })()}
               </div>
             )}
 
             {/* Model Selector - Only show for premium users after user has selected a mode, disabled during tool mode */}
-            {!toolMode && showModelSelector && (
+            {!toolMode && (showModelSelector || !isAuthenticated()) && (
               <div>
                 <LLMModelSelector
                   selectedModel={selectedModel}
@@ -2278,24 +2320,25 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <button
                 className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                 onClick={() => {
+                  // Cancel any ongoing speech and reset all voice state for a fresh session
+                  try {
+                    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+                  } catch { }
+                  setIsSpeaking(false);
+                  pendingVoiceSpeakRef.current = false;
+                  localStorage.removeItem("perle-speak-next-answer");
+                  localStorage.removeItem("perle-voice-open-speak-first");
+                  localStorage.removeItem("perle-current-answer-text");
+                  localStorage.removeItem("perle-auto-listen-next");
                   localStorage.setItem("perle-voice-session-active", "1");
-                  // If we already have an answer on screen, speak it first when opening voice mode.
-                  const textToSpeak = (currentAnswerText || "").trim();
-                  if (textToSpeak) {
-                    localStorage.setItem("perle-voice-open-speak-first", "1");
-                    localStorage.setItem("perle-keep-voice-overlay-open", "1");
-                  }
                   setShowVoiceOverlay(true);
-                  if (textToSpeak) {
-                    speakTextImmediately(textToSpeak);
-                  }
                 }}
-                disabled={isListening}
+                disabled={isListening || isLoading}
                 style={{
                   padding: hasAnswer ? 6 : 8,
                   color: "",
-                  opacity: isListening ? 0.5 : 1,
-                  cursor: isListening ? "not-allowed" : "pointer",
+                  opacity: isListening || isLoading ? 0.5 : 1,
+                  cursor: isListening || isLoading ? "not-allowed" : "pointer",
                 }}
               >
                 <HeadsetWaveIcon size={hasAnswer ? 22 : 27} />

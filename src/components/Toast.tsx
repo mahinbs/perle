@@ -17,6 +17,15 @@ export const Toast: React.FC<ToastProps> = ({
   onClose 
 }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const updateTheme = () => setIsDarkMode(mediaQuery.matches);
+    updateTheme();
+    mediaQuery.addEventListener('change', updateTheme);
+    return () => mediaQuery.removeEventListener('change', updateTheme);
+  }, []);
 
   useEffect(() => {
     // Trigger animation
@@ -32,8 +41,9 @@ export const Toast: React.FC<ToastProps> = ({
   }, [duration, onClose]);
 
   const getToastStyles = (): React.CSSProperties => {
+    const toastBackground = isDarkMode ? 'var(--background, #1a1a1a)' : '#ffffff';
     const baseStyles: React.CSSProperties = {
-      background: 'var(--background, #1a1a1a)',
+      background: toastBackground,
       border: '1px solid var(--border, #333333)',
       borderRadius: 8,
       padding: '12px 16px',
@@ -56,19 +66,19 @@ export const Toast: React.FC<ToastProps> = ({
       return {
         ...baseStyles,
         borderLeft: '3px solid #4CAF50',
-        background: 'var(--background, #1a1a1a)'
+        background: toastBackground
       };
     } else if (type === 'error') {
       return {
         ...baseStyles,
         borderLeft: '3px solid #F44336',
-        background: 'var(--background, #1a1a1a)'
+        background: toastBackground
       };
     } else {
       return {
         ...baseStyles,
         borderLeft: '3px solid var(--accent, #007AFF)',
-        background: 'var(--background, #1a1a1a)'
+        background: toastBackground
       };
     }
   };

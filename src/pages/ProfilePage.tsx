@@ -353,11 +353,6 @@ export default function ProfilePage() {
           typeof value === "boolean"
             ? `${fieldName} ${value ? "enabled" : "disabled"}`
             : `${fieldName} updated`;
-        showToast({
-          message,
-          type: "success",
-          duration: 2000,
-        });
         // Refresh profile to ensure all data is synced
         await fetchProfile();
       } else {

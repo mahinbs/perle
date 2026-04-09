@@ -299,15 +299,11 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   experienceMode = 'normal',
   onExperienceModeChange,
 }) => {
-  // Hide the selector if user is not logged in
-  if (!isAuthenticated()) {
-    return null;
-  }
-
   const [isOpen, setIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileDropdownRef = useRef<HTMLDivElement>(null);
+  const desktopDropdownRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const scrollStartYRef = useRef<number | null>(null);
   const hasScrolledRef = useRef(false);
@@ -402,7 +398,12 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
 
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target) &&
+        (!desktopDropdownRef.current ||
+          !desktopDropdownRef.current.contains(target))
+      ) {
         setIsOpen(false);
       }
     };
@@ -638,6 +639,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     </button>
   );
 
+  const dropdownRect = dropdownRef.current?.getBoundingClientRect();
+
   return (
     <>
       {isOpen && isMobile && (
@@ -752,7 +755,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                   <button
                     onClick={() => {
                       setIsOpen(false);
-                      navigateTo("/subscription");
+                      navigateTo(isAuthenticated() ? "/subscription" : "/login");
                     }}
                     style={{
                       width: "100%",
@@ -804,18 +807,20 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               document.body
             )
           ) : (
+            createPortal(
             <div
+              ref={desktopDropdownRef}
               className="glass-panel no-scrollbar"
               style={{
-                position: "absolute",
-                bottom: "100%",
-                left: 0,
-                right: 0,
+                position: "fixed",
+                left: dropdownRect ? dropdownRect.left : 0,
+                bottom: dropdownRect
+                  ? window.innerHeight - dropdownRect.top + 4
+                  : 0,
                 zIndex: 99999,
                 maxHeight: 300,
                 overflowY: "auto",
-                marginBottom: 4,
-                minWidth: 300,
+                minWidth: Math.max(dropdownRect?.width ?? 300, 300),
               }}
             >
               {/* Mode Selector Section (Desktop) */}
@@ -854,7 +859,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                 <button
                   onClick={() => {
                     setIsOpen(false);
-                    navigateTo("/subscription");
+                    navigateTo(isAuthenticated() ? "/subscription" : "/login");
                   }}
                   style={{
                     width: "100%",
@@ -904,7 +909,9 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                 </button>
               )}
               {availableModels.map((model) => renderModelButton(model, false))}
-            </div>
+            </div>,
+            document.body
+            )
           ))}
       </div>
     </>
