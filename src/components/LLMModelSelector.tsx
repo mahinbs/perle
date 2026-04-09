@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import type { LLMModel, LLMModelInfo, ExperienceMode } from "../types";
-import { isAuthenticated } from "../utils/auth";
+import { getAuthToken, getUserData } from "../utils/auth";
 
 // Premium models available to premium users
 const premiumModels: LLMModelInfo[] = [
@@ -299,6 +299,9 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   experienceMode = 'normal',
   onExperienceModeChange,
 }) => {
+  const hasActiveAuthSession = (): boolean =>
+    Boolean(getAuthToken() && getUserData());
+
   const [isOpen, setIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -755,7 +758,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                   <button
                     onClick={() => {
                       setIsOpen(false);
-                      navigateTo(isAuthenticated() ? "/subscription" : "/login");
+                      navigateTo(hasActiveAuthSession() ? "/subscription" : "/profile");
                     }}
                     style={{
                       width: "100%",
@@ -859,7 +862,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                 <button
                   onClick={() => {
                     setIsOpen(false);
-                    navigateTo(isAuthenticated() ? "/subscription" : "/login");
+                    navigateTo(hasActiveAuthSession() ? "/subscription" : "/profile");
                   }}
                   style={{
                     width: "100%",
