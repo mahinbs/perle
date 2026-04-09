@@ -220,7 +220,7 @@ The build process creates:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## 🙏 Acknowledgments 
 
 - Inspired by Perplexity's elegant design
 - Built with React, TypeScript, and Vite
