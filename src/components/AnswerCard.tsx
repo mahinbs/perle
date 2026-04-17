@@ -63,7 +63,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const editInputRef = useRef<HTMLTextAreaElement>(null);
   const offcanvasRef = useRef<HTMLDivElement>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const typewriterTimeoutRef = useRef<number | null>(null);
+  const typewriterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const answerContentRef = useRef<HTMLDivElement>(null);
   const loadingVideoRef = useRef<HTMLVideoElement>(null);
   const [showVideoFallback, setShowVideoFallback] = useState(true); // Start with gif, switch to video when ready
@@ -710,9 +710,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     const words = answerText.split(/(\s+)/).filter((w) => w.length > 0);
     let currentWordIndex = 0;
     let speechStartTime = 0;
-    let fallbackInterval: number | null = null;
+    let fallbackInterval: ReturnType<typeof setInterval> | null = null;
     let lastBoundaryUpdate = 0;
-    let resumeKeepAlive: number | null = null;
+    let resumeKeepAlive: ReturnType<typeof setInterval> | null = null;
 
     // Initialize with empty text
     localStorage.setItem("perle-current-answer-text", "");
@@ -738,7 +738,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       }
 
       // Chrome pauses speechSynthesis silently after ~15s. Resume every 10s to prevent this.
-      resumeKeepAlive = window.setInterval(() => {
+      resumeKeepAlive = setInterval(() => {
         try {
           if (window.speechSynthesis.paused) {
             window.speechSynthesis.resume();
