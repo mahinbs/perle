@@ -7,6 +7,7 @@ import authRouter from './routes/auth.js';
 import profileRouter from './routes/profile.js';
 import libraryRouter from './routes/library.js';
 import paymentRouter from './routes/payment.js';
+import stripeRouter from './routes/stripe.js';
 import adminRouter from './routes/admin.js';
 import chatRouter from './routes/chat.js';
 import mediaRouter from './routes/media.js';
@@ -40,6 +41,11 @@ app.use(cors({
   },
   credentials: true
 }));
+
+// Stripe webhook needs raw body for signature verification
+// This MUST be before express.json()
+app.use('/api/payment/stripe/webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json({ limit: '2mb' }));
 
 // Health check endpoint
@@ -54,6 +60,7 @@ app.use('/api', authRouter);
 app.use('/api', profileRouter);
 app.use('/api', libraryRouter);
 app.use('/api', paymentRouter);
+app.use('/api', stripeRouter);
 app.use('/api', adminRouter);
 app.use('/api', chatRouter);
 app.use('/api/media', mediaRouter);

@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { IoClose } from "react-icons/io5";
 import { FaCheck, FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
+import { authenticatedFetch, getAuthHeaders } from "../utils/auth";
 
 const plans = [
   // {
@@ -71,8 +72,37 @@ export default function SubscriptionPage() {
   const [searchParams] = useSearchParams();
   const initialPlanId = searchParams.get("plan") || plans[0].id;
   const [selectedPlanId, setSelectedPlanId] = useState(initialPlanId);
+  const [isLoading, setIsLoading] = useState(false);
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[1];
+
+  const handleUpgrade = async () => {
+    try {
+      setIsLoading(true);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
+      
+      const response = await authenticatedFetch(`${API_URL}/api/payment/stripe/create-checkout-session`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ plan: selectedPlanId }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create checkout session');
+      }
+
+      const { url } = await response.json();
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error: any) {
+      console.error('Upgrade error:', error);
+      alert(error.message || 'An error occurred during upgrade. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-[var(--bg)] text-[var(--text)] z-50 flex flex-col p-4 pt-[calc(16px+var(--safe-area-top))] pb-[calc(16px+var(--safe-area-bottom))]">
@@ -156,13 +186,16 @@ export default function SubscriptionPage() {
         {/* CTA Button */}
         <button
           className="btn w-full rounded-full h-14 text-[var(--font-lg)] shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
+          onClick={handleUpgrade}
+          disabled={isLoading}
           style={{
             background: "var(--text)",
             color: "var(--bg)",
-            cursor: "pointer",
+            cursor: isLoading ? "not-allowed" : "pointer",
+            opacity: isLoading ? 0.7 : 1,
           }}
         >
-          {selectedPlan.cta}
+          {isLoading ? "Processing..." : selectedPlan.cta}
         </button>
 
         {/* Restore link */}
