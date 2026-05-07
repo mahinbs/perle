@@ -1,29 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { IoClose } from "react-icons/io5";
 import { FaCheck, FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
+import { authenticatedFetch, getAuthHeaders, getUserData, verifyToken } from "../utils/auth";
+import { useToast } from "../contexts/ToastContext";
 
 const plans = [
-  // {
-  //   id: "free",
-  //   name: "Free",
-  //   shortName: "Free",
-  //   price: "₹0/mo",
-  //   description: "Get started with SyntraIQ at no cost.",
-  //   perks: [
-  //     { text: "Gemini Lite model only", included: true },
-  //     { text: "5 messages of conversation memory", included: true },
-  //     { text: "3 image generations/day", included: true },
-  //     { text: "Video generation", included: false },
-  //     { text: "Spaces & prompts", included: true },
-  //     { text: "10 MB file uploads (images, PDFs, docs)", included: true },
-  //     { text: "Search conversation history (10 messages)", included: true },
-  //     { text: "All AI models (GPT-4o, Claude, Grok, etc.)", included: false },
-  //   ],
-  //   cta: "Current Plan",
-  //   disabled: true,
-  // },
   {
     id: "pro",
     name: "Upgrade to IQ Pro",
@@ -43,6 +26,7 @@ const plans = [
     ],
     cta: "Get IQ Pro",
     highlighted: false,
+    tier: 'pro'
   },
   {
     id: "max",
@@ -63,16 +47,81 @@ const plans = [
     ],
     cta: "Get IQ Max",
     highlighted: true,
+    tier: 'max'
   },
 ];
 
 export default function SubscriptionPage() {
   const { goBack } = useRouterNavigation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialPlanId = searchParams.get("plan") || plans[0].id;
   const [selectedPlanId, setSelectedPlanId] = useState(initialPlanId);
+  const [isLoading, setIsLoading] = useState(false);
+  const { showToast } = useToast();
+  const user = getUserData();
 
-  const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[1];
+  const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
+  const isCurrentPlan = user?.premiumTier === selectedPlan.tier;
+
+  useEffect(() => {
+    const success = searchParams.get("success");
+    const canceled = searchParams.get("canceled");
+
+    if (success) {
+      showToast({
+        message: "Subscription successful! Welcome to premium.",
+        type: "success",
+        duration: 5000
+      });
+      // Refresh user data to get the new premium status
+      verifyToken();
+      // Clear query params
+      setSearchParams({}, { replace: true });
+    }
+
+    if (canceled) {
+      showToast({
+        message: "Subscription canceled. No charges were made.",
+        type: "info",
+        duration: 5000
+      });
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, showToast, setSearchParams]);
+
+  const handleUpgrade = async () => {
+    if (isCurrentPlan) return;
+
+    try {
+      setIsLoading(true);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
+      
+      const response = await authenticatedFetch(`${API_URL}/api/payment/stripe/create-checkout-session`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ plan: selectedPlanId }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create checkout session');
+      }
+
+      const { url } = await response.json();
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error: any) {
+      console.error('Upgrade error:', error);
+      showToast({
+        message: error.message || 'An error occurred during upgrade. Please try again.',
+        type: "error",
+        duration: 5000
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-[var(--bg)] text-[var(--text)] z-50 flex flex-col p-4 pt-[calc(16px+var(--safe-area-top))] pb-[calc(16px+var(--safe-area-bottom))]">
@@ -133,6 +182,8 @@ export default function SubscriptionPage() {
         <div className="grid grid-cols-2 gap-2">
           {plans.map((plan) => {
             const isSelected = selectedPlanId === plan.id;
+            const isUserPlan = user?.premiumTier === plan.tier;
+            
             return (
               <div
                 key={plan.id}
@@ -142,8 +193,15 @@ export default function SubscriptionPage() {
                   : "border border-[var(--border)] backdrop-blur-[1.5px]"
                   }`}
               >
-                <div className="font-bold text-[var(--font-lg)] leading-[1.2]">
-                  {plan.shortName}
+                <div className="flex flex-col">
+                  <div className="font-bold text-[var(--font-lg)] leading-[1.2]">
+                    {plan.shortName}
+                  </div>
+                  {isUserPlan && (
+                    <span className="text-[10px] text-gold font-bold uppercase tracking-wider mt-1">
+                      Current Plan
+                    </span>
+                  )}
                 </div>
                 <div className="text-[var(--font-md)] opacity-80 font-medium">
                   {plan.price}
@@ -156,19 +214,32 @@ export default function SubscriptionPage() {
         {/* CTA Button */}
         <button
           className="btn w-full rounded-full h-14 text-[var(--font-lg)] shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
+          onClick={handleUpgrade}
+          disabled={isLoading || isCurrentPlan}
           style={{
-            background: "var(--text)",
-            color: "var(--bg)",
-            cursor: "pointer",
+            background: isCurrentPlan ? "var(--card)" : "var(--text)",
+            color: isCurrentPlan ? "var(--sub)" : "var(--bg)",
+            cursor: (isLoading || isCurrentPlan) ? "not-allowed" : "pointer",
+            opacity: isLoading ? 0.7 : 1,
+            border: isCurrentPlan ? "1px solid var(--border)" : "none",
           }}
         >
-          {selectedPlan.cta}
+          {isLoading ? "Processing..." : isCurrentPlan ? "Current Plan" : selectedPlan.cta}
         </button>
 
         {/* Restore link */}
         <button
           className="text-center text-[var(--sub)] underline text-[var(--font-sm)] bg-transparent border-none cursor-pointer"
-          onClick={() => console.log("Restore subscription clicked")}
+          onClick={() => {
+            showToast({ message: "Checking for active subscriptions...", type: "info" });
+            verifyToken().then(updatedUser => {
+              if (updatedUser?.isPremium) {
+                showToast({ message: "Subscription restored!", type: "success" });
+              } else {
+                showToast({ message: "No active subscription found.", type: "info" });
+              }
+            });
+          }}
         >
           Restore subscription
         </button>
