@@ -5,9 +5,7 @@ import { supabase } from '../lib/supabase.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-01-27' as any,
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const PLANS = {
   pro: {
@@ -39,12 +37,20 @@ router.post('/payment/stripe/create-checkout-session', authenticateToken, async 
       return res.status(401).json({ error: 'User ID not found in request' });
     }
 
-    // Get user profile to check for existing customer ID
+    // Get user profile to check for existing customer ID and subscription status
     const { data: profile } = await supabase
       .from('user_profiles')
-      .select('stripe_customer_id')
+      .select('stripe_customer_id, premium_tier, subscription_status')
       .eq('user_id', req.userId)
       .single();
+
+    // Prevent duplicate subscriptions if they are already on this plan or higher
+    const currentTier = (profile as any)?.premium_tier;
+    const currentStatus = (profile as any)?.subscription_status;
+    
+    if (currentStatus === 'active' && (currentTier === plan || (currentTier === 'max' && plan === 'pro'))) {
+      return res.status(400).json({ error: `You already have an active ${currentTier} subscription.` });
+    }
 
     let customerId = (profile as any)?.stripe_customer_id;
 
@@ -65,6 +71,8 @@ router.post('/payment/stripe/create-checkout-session', authenticateToken, async 
         .eq('user_id', req.userId);
     }
 
+    const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
     // Create checkout session
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -76,8 +84,8 @@ router.post('/payment/stripe/create-checkout-session', authenticateToken, async 
         },
       ],
       mode: 'subscription',
-      success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subscription?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subscription?canceled=true`,
+      success_url: `${FRONTEND_URL}/subscription?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${FRONTEND_URL}/subscription?canceled=true`,
       metadata: {
         userId: req.userId,
         plan: plan,
@@ -92,6 +100,7 @@ router.post('/payment/stripe/create-checkout-session', authenticateToken, async 
       },
     });
 
+    console.log(`🎟️ Checkout session created for user ${req.userId}: ${session.id}`);
     res.json({ url: session.url });
   } catch (error: any) {
     console.error('Stripe session creation error:', error);
@@ -114,6 +123,8 @@ router.post('/payment/stripe/webhook', async (req, res) => {
     console.error(`Webhook signature verification failed: ${err.message}`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
+
+  console.log(`🔔 Received Stripe webhook event: ${event.type}`);
 
   try {
     switch (event.type) {
@@ -148,7 +159,6 @@ router.post('/payment/stripe/webhook', async (req, res) => {
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
         const userId = subscription.metadata?.userId;
-        const tier = subscription.metadata?.tier;
 
         if (userId) {
           await supabase
@@ -160,7 +170,7 @@ router.post('/payment/stripe/webhook', async (req, res) => {
             } as any)
             .eq('user_id', userId);
             
-          console.log(`🔄 Subscription updated for user ${userId}`);
+          console.log(`🔄 Subscription updated for user ${userId} (Status: ${subscription.status})`);
         }
         break;
       }
@@ -186,7 +196,7 @@ router.post('/payment/stripe/webhook', async (req, res) => {
       }
 
       default:
-        console.log(`Unhandled event type ${event.type}`);
+        console.log(`ℹ️ Unhandled event type ${event.type}`);
     }
 
     res.json({ received: true });
