@@ -16,6 +16,8 @@ import PrivacyPage from '../pages/PrivacyPage';
 import GalleryPage from '../pages/GalleryPage';
 import AboutPage from '../pages/AboutPage';
 import HelpPage from '../pages/HelpPage';
+import ContactPage from '../pages/ContactPage';
+import SupportPage from '../pages/SupportPage';
 
 // Set this to true to enable maintenance mode
 const MAINTENANCE_MODE = false;
@@ -48,6 +50,8 @@ export function AppRouter() {
       <Route path="/gallery" element={<GalleryPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/help" element={<HelpPage />} />
+      <Route path="/contact" element={<ContactPage />} />
+      <Route path="/support" element={<SupportPage />} />
       <Route path="/maintenance" element={<MaintenancePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

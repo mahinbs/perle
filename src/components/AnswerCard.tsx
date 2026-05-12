@@ -63,7 +63,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const editInputRef = useRef<HTMLTextAreaElement>(null);
   const offcanvasRef = useRef<HTMLDivElement>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const typewriterTimeoutRef = useRef<number | null>(null);
+  const typewriterTimeoutRef = useRef<any>(null);
   const answerContentRef = useRef<HTMLDivElement>(null);
   const loadingVideoRef = useRef<HTMLVideoElement>(null);
   const [showVideoFallback, setShowVideoFallback] = useState(true); // Start with gif, switch to video when ready
@@ -298,17 +298,17 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           [currentChunkIndex]: currentText.substring(0, currentCharIndex + 1),
         }));
         currentCharIndex++;
-        typewriterTimeoutRef.current = setTimeout(typeNextChar, typingSpeed);
+        typewriterTimeoutRef.current = window.setTimeout(typeNextChar, typingSpeed);
       } else {
         // Move to next chunk
         currentChunkIndex++;
         currentCharIndex = 0;
-        typewriterTimeoutRef.current = setTimeout(typeNextChar, typingSpeed);
+        typewriterTimeoutRef.current = window.setTimeout(typeNextChar, typingSpeed);
       }
     };
 
     // Start typing after a brief delay
-    typewriterTimeoutRef.current = setTimeout(typeNextChar, 100);
+    typewriterTimeoutRef.current = window.setTimeout(typeNextChar, 100);
 
     return () => {
       if (typewriterTimeoutRef.current) {
@@ -710,7 +710,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     const words = answerText.split(/(\s+)/).filter((w) => w.length > 0);
     let currentWordIndex = 0;
     let speechStartTime = 0;
-    let fallbackInterval: number | null = null;
+    let fallbackInterval: any = null;
     let lastBoundaryUpdate = 0;
     let resumeKeepAlive: number | null = null;
 
@@ -751,7 +751,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       // With rate 0.9, that's ~2.25 words/sec, so ~444ms per word
       const estimatedMsPerWord = 450 / utterance.rate;
 
-      fallbackInterval = setInterval(() => {
+      fallbackInterval = window.setInterval(() => {
         if (!window.speechSynthesis.speaking) {
           if (fallbackInterval) {
             clearInterval(fallbackInterval);

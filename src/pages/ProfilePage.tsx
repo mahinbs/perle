@@ -30,6 +30,8 @@ import {
   FaFileExport,
   FaBook,
   FaSignOutAlt,
+  FaEnvelope,
+  FaLifeRing,
   } from "react-icons/fa";
 import earthVideo from "../assets/earth.mp4";
 
@@ -1394,12 +1396,28 @@ export default function ProfilePage() {
             <FaFileAlt size={18} />
             Terms of Service
           </button>
+          <button
+            className="btn-ghost glass-button"
+            onClick={() => navigateTo("/support")}
+            style={{
+              width: "100%",
+              marginBottom: 12,
+              justifyContent: "flex-start",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <FaLifeRing size={18} />
+            Support Center
+          </button>
 
           <button
             className="btn-ghost glass-button"
             onClick={() => navigateTo("/help")}
             style={{
               width: "100%",
+              marginBottom: 12,
               justifyContent: "flex-start",
               display: "flex",
               alignItems: "center",
@@ -1408,6 +1426,21 @@ export default function ProfilePage() {
           >
             <FaQuestionCircle size={18} />
             Help & FAQ
+          </button>
+          <button
+            className="btn-ghost glass-button"
+            onClick={() => navigateTo("/contact")}
+            style={{
+              width: "100%",
+              marginTop: 12,
+              justifyContent: "flex-start",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <FaEnvelope size={18} />
+            Contact Us
           </button>
         </div>
       )}
