@@ -712,7 +712,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     let speechStartTime = 0;
     let fallbackInterval: any = null;
     let lastBoundaryUpdate = 0;
-    let resumeKeepAlive: number | null = null;
+    let resumeKeepAlive: ReturnType<typeof setInterval> | null = null;
 
     // Initialize with empty text
     localStorage.setItem("perle-current-answer-text", "");
@@ -738,7 +738,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       }
 
       // Chrome pauses speechSynthesis silently after ~15s. Resume every 10s to prevent this.
-      resumeKeepAlive = window.setInterval(() => {
+      resumeKeepAlive = setInterval(() => {
         try {
           if (window.speechSynthesis.paused) {
             window.speechSynthesis.resume();
