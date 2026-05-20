@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { IoClose } from "react-icons/io5";
 import { FaCheck, FaTimes } from "react-icons/fa";
+import { Capacitor } from "@capacitor/core";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { authenticatedFetch, getAuthHeaders, getUserData, verifyToken } from "../utils/auth";
 import { useToast } from "../contexts/ToastContext";
+import { IAPService } from "../services/iapService";
 
 const plans = [
   {
@@ -63,6 +65,38 @@ export default function SubscriptionPage() {
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
   const isCurrentPlan = user?.premiumTier === selectedPlan.tier;
 
+  const [displayPrices, setDisplayPrices] = useState<Record<string, string>>({
+    pro: "₹399/mo",
+    max: "₹899/mo"
+  });
+
+  // Load App Store prices if on iOS native platform
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'ios') {
+      const iapService = IAPService.getInstance();
+      iapService.initialize().then(canPay => {
+        if (canPay) {
+          iapService.loadProducts(['com.syntraiq.com.pro_v1', 'com.syntraiq.com.max_v1'])
+            .then(products => {
+              const prices: Record<string, string> = {};
+              products.forEach(p => {
+                const planId = p.id.split('.').pop() || '';
+                if (planId === 'pro' || planId === 'max') {
+                  prices[planId] = `${p.displayPrice}/mo`;
+                }
+              });
+              if (Object.keys(prices).length > 0) {
+                setDisplayPrices(prev => ({ ...prev, ...prices }));
+              }
+            })
+            .catch(err => {
+              console.error('Error loading App Store products:', err);
+            });
+        }
+      });
+    }
+  }, []);
+
   useEffect(() => {
     const success = searchParams.get("success");
     const canceled = searchParams.get("canceled");
@@ -95,21 +129,71 @@ export default function SubscriptionPage() {
     try {
       setIsLoading(true);
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
-      
-      const response = await authenticatedFetch(`${API_URL}/api/payment/stripe/create-checkout-session`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ plan: selectedPlanId }),
-      });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create checkout session');
-      }
+      // If iOS, route through App Store In-App Purchases
+      if (Capacitor.getPlatform() === 'ios') {
+        const iapService = IAPService.getInstance();
+        const productId = selectedPlanId === 'pro'
+          ? 'com.syntraiq.com.pro_v1'
+          : 'com.syntraiq.com.max_v1';
 
-      const { url } = await response.json();
-      if (url) {
-        window.location.href = url;
+        showToast({ message: "Initiating App Store purchase...", type: "info" });
+        const result = await iapService.purchase(productId);
+
+        if (result.success && result.transaction) {
+          showToast({ message: "Verifying purchase with App Store...", type: "info" });
+
+          const response = await authenticatedFetch(`${API_URL}/api/payment/iap/verify`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              receipt: result.transaction.receipt,
+              productId: result.transaction.productId,
+              plan: selectedPlanId,
+              transactionId: result.transaction.transactionId
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Server receipt verification failed');
+          }
+
+          const data = await response.json();
+          if (data.success) {
+            showToast({
+              message: "Subscription successful! Welcome to premium.",
+              type: "success",
+              duration: 5000
+            });
+            await verifyToken();
+          } else {
+            throw new Error(data.error || 'Verification failed');
+          }
+        } else if (result.userCancelled) {
+          showToast({ message: "Purchase cancelled.", type: "info" });
+        } else if (result.pending) {
+          showToast({ message: "Purchase is pending approval.", type: "info" });
+        } else {
+          throw new Error(result.error?.message || 'Purchase failed');
+        }
+      } else {
+        // Stripe checkout session for Android and Web
+        const response = await authenticatedFetch(`${API_URL}/api/payment/stripe/create-checkout-session`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ plan: selectedPlanId }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to create checkout session');
+        }
+
+        const { url } = await response.json();
+        if (url) {
+          window.location.href = url;
+        }
       }
     } catch (error: any) {
       console.error('Upgrade error:', error);
@@ -183,7 +267,7 @@ export default function SubscriptionPage() {
           {plans.map((plan) => {
             const isSelected = selectedPlanId === plan.id;
             const isUserPlan = user?.premiumTier === plan.tier;
-            
+
             return (
               <div
                 key={plan.id}
@@ -204,7 +288,7 @@ export default function SubscriptionPage() {
                   )}
                 </div>
                 <div className="text-[var(--font-md)] opacity-80 font-medium">
-                  {plan.price}
+                  {displayPrices[plan.id] || plan.price}
                 </div>
               </div>
             );
@@ -230,15 +314,56 @@ export default function SubscriptionPage() {
         {/* Restore link */}
         <button
           className="text-center text-[var(--sub)] underline text-[var(--font-sm)] bg-transparent border-none cursor-pointer"
-          onClick={() => {
+          onClick={async () => {
             showToast({ message: "Checking for active subscriptions...", type: "info" });
-            verifyToken().then(updatedUser => {
-              if (updatedUser?.isPremium) {
-                showToast({ message: "Subscription restored!", type: "success" });
-              } else {
-                showToast({ message: "No active subscription found.", type: "info" });
+
+            if (Capacitor.getPlatform() === 'ios') {
+              try {
+                const iapService = IAPService.getInstance();
+                const transactions = await iapService.restorePurchases();
+
+                if (transactions && transactions.length > 0) {
+                  // Sort by purchaseDate descending to find the latest transaction
+                  const latestTx = transactions.sort((a, b) => b.purchaseDate - a.purchaseDate)[0];
+                  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
+                  const plan = latestTx.productId.includes('max') ? 'max' : 'pro';
+
+                  showToast({ message: "Syncing purchase with server...", type: "info" });
+
+                  const response = await authenticatedFetch(`${API_URL}/api/payment/iap/verify`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                      receipt: latestTx.receipt,
+                      productId: latestTx.productId,
+                      plan: plan,
+                      transactionId: latestTx.transactionId
+                    }),
+                  });
+
+                  if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                      showToast({ message: "Subscription restored successfully!", type: "success" });
+                      await verifyToken();
+                      return;
+                    }
+                  }
+                }
+                showToast({ message: "No active App Store subscription found.", type: "info" });
+              } catch (e: any) {
+                console.error('Restore error:', e);
+                showToast({ message: `Restore failed: ${e.message}`, type: "error" });
               }
-            });
+            } else {
+              verifyToken().then(updatedUser => {
+                if (updatedUser?.isPremium) {
+                  showToast({ message: "Subscription restored!", type: "success" });
+                } else {
+                  showToast({ message: "No active subscription found.", type: "info" });
+                }
+              });
+            }
           }}
         >
           Restore subscription

@@ -104,7 +104,7 @@ export default function DetailsPage() {
 
   if (isLoading) {
     return (
-      <div className="container" style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+      <div className="container" style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, paddingTop: "calc(16px + var(--safe-area-top))" }}>
         <div style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid var(--accent)", borderTopColor: "transparent", animation: "spin 0.8s linear infinite" }} />
         <div className="sub">Loading article…</div>
       </div>
@@ -115,7 +115,7 @@ export default function DetailsPage() {
 
   if (articleError) {
     return (
-      <div className="container" style={{ paddingTop: 40 }}>
+      <div className="container" style={{ paddingTop: "calc(40px + var(--safe-area-top))" }}>
         <div className="glass-card" style={{ padding: 24, textAlign: "center", borderLeft: "3px solid #ff6b6b" }}>
           <div style={{ color: "#ff6b6b", fontSize: "var(--font-md)", marginBottom: 8 }}>⚠ {articleError}</div>
           <div className="sub" style={{ marginBottom: 16 }}>Start the backend with: npm run server:dev</div>

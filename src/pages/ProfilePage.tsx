@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
+import { Capacitor } from "@capacitor/core";
 import { useToast } from "../contexts/ToastContext";
 import { LoginForm } from "../components/LoginForm";
 import { SignupForm } from "../components/SignupForm";
@@ -531,7 +532,7 @@ export default function ProfilePage() {
             setShowSignup(true);
             setAuthError("");
           }}
-          onGoogleSignIn={() => handleGoogleAuth("login")}
+          onGoogleSignIn={Capacitor.getPlatform() !== "ios" ? () => handleGoogleAuth("login") : undefined}
           isLoading={isLoading}
           error={authError}
         />
@@ -570,7 +571,7 @@ export default function ProfilePage() {
             setShowLogin(true);
             setAuthError("");
           }}
-          onGoogleSignup={() => handleGoogleAuth("signup")}
+          onGoogleSignup={Capacitor.getPlatform() !== "ios" ? () => handleGoogleAuth("signup") : undefined}
           isLoading={isLoading}
           error={authError}
         />
@@ -655,25 +656,27 @@ export default function ProfilePage() {
               experience…
             </p>
           </div>
-          <button
-            className="btn-ghost glass-button"
-            onClick={() => handleGoogleAuth("signup")}
-            disabled={isLoading}
-            style={{
-              width: "100%",
-              marginTop: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10,
-              fontWeight: 600,
-              opacity: isLoading ? 0.6 : 1,
-              cursor: isLoading ? "not-allowed" : "pointer",
-            }}
-          >
-            <GoogleIcon width={22} height={22} />
-            Continue with Google
-          </button>
+          {Capacitor.getPlatform() !== "ios" && (
+            <button
+              className="btn-ghost glass-button"
+              onClick={() => handleGoogleAuth("signup")}
+              disabled={isLoading}
+              style={{
+                width: "100%",
+                marginTop: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                fontWeight: 600,
+                opacity: isLoading ? 0.6 : 1,
+                cursor: isLoading ? "not-allowed" : "pointer",
+              }}
+            >
+              <GoogleIcon width={22} height={22} />
+              Continue with Google
+            </button>
+          )}
           <button
             className="btn-ghost glass-button"
             onClick={() => setShowSignup(true)}

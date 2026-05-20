@@ -124,7 +124,7 @@ export default function GalleryPage() {
   const canGoNext = currentPage < totalPages;
 
   return (
-    <div className="container" style={{ minHeight: "100vh", padding: "16px" }}>
+    <div className="container" style={{ minHeight: "100vh", padding: "16px", paddingTop: "calc(16px + var(--safe-area-top))" }}>
       {/* Header */}
       <div
         className="row"

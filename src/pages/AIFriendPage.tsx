@@ -1196,7 +1196,7 @@ export default function AIFriendPage() {
   return (
     <div className="container h-screen flex flex-col !p-0 gold-gradient-bg">
       {/* Header */}
-      <div className="border-b border-[var(--border)] sticky top-0 z-[100]">
+      <div className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]" style={{ paddingTop: "var(--safe-area-top)" }}>
         <div className="row flex-nowrap! flex justify-between items-center p-4">
             <div className="row flex items-center gap-3">
             <button

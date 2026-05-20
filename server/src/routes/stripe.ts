@@ -111,7 +111,7 @@ router.post('/payment/stripe/create-checkout-session', authenticateToken, async 
 // Stripe Webhook handler
 router.post('/payment/stripe/webhook', async (req, res) => {
   const sig = req.headers['stripe-signature'] as string;
-  let event: Stripe.Event;
+  let event: any;
 
   try {
     event = stripe.webhooks.constructEvent(
@@ -129,13 +129,13 @@ router.post('/payment/stripe/webhook', async (req, res) => {
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
+        const session = event.data.object as any;
         const userId = session.metadata?.userId;
         const tier = session.metadata?.tier;
         const subscriptionId = session.subscription as string;
 
         if (userId && tier) {
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any;
           
           await supabase
             .from('user_profiles')
@@ -157,7 +157,7 @@ router.post('/payment/stripe/webhook', async (req, res) => {
       }
 
       case 'customer.subscription.updated': {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as any;
         const userId = subscription.metadata?.userId;
 
         if (userId) {
@@ -176,7 +176,7 @@ router.post('/payment/stripe/webhook', async (req, res) => {
       }
 
       case 'customer.subscription.deleted': {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as any;
         const userId = subscription.metadata?.userId;
 
         if (userId) {
