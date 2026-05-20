@@ -152,7 +152,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         }}
       >
         {/* Header */}
-        <div className="p-4 border-b border-[var(--border)] bg-[var(--card)] bg-opacity-80 backdrop-blur-sm">
+        <div className="p-4 border-b border-[var(--border)] bg-[var(--card)] bg-opacity-80 backdrop-blur-sm" style={{ paddingTop: "calc(16px + var(--safe-area-top))" }}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="text-lg font-semibold text-[var(--text)]">Conversations</h2>
             {/* Mobile Close Button */}

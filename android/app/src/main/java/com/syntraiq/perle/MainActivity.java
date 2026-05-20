@@ -1,5 +1,6 @@
-package com.syntraiq.perle;
+package com.syntraiq.com;
 
 import com.getcapacitor.BridgeActivity;
 
-public class MainActivity extends BridgeActivity {}
+public class MainActivity extends BridgeActivity {
+}

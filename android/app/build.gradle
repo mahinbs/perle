@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.syntraiq.perle"
-    compileSdk = rootProject.ext.compileSdkVersion
+    namespace "com.syntraiq.com"
+    compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.syntraiq.perle"
+        applicationId "com.syntraiq.com"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -16,8 +16,17 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            storeFile file('release-key.keystore')
+            storePassword 'password123'
+            keyAlias 'release-key'
+            keyPassword 'password123'
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
