@@ -57,7 +57,7 @@ export class IAPService {
    * Initialize the IAP system
    */
   public async initialize(): Promise<boolean> {
-    if (this.isInitialized) return this.canMakePayments;
+    if (this.isInitialized) return true;
 
     if (!this.isNativeIOS()) {
       console.warn('IAP is only supported on native iOS. Initializing mock system.');
@@ -71,7 +71,7 @@ export class IAPService {
       this.canMakePayments = result.canMakePayments;
       this.isInitialized = true;
       console.log(`IAP initialized. Payments allowed on device: ${this.canMakePayments}`);
-      return this.canMakePayments;
+      return true;
     } catch (error) {
       console.error('Failed to initialize IAP plugin:', error);
       this.isInitialized = false;
@@ -137,10 +137,7 @@ export class IAPService {
     }
 
     if (!this.canMakePayments) {
-      return {
-        success: false,
-        error: new Error('In-App Purchases are disabled on this device.')
-      };
+      console.warn('In-App Purchases capability check returned false. Attempting purchase anyway...');
     }
 
     try {
