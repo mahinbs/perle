@@ -1,6 +1,7 @@
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { IoIosSearch, IoMdCheckmark, IoMdRocket, IoMdChatbubbles, IoMdFlame } from "react-icons/io";
-import logo from "../assets/images/logo-1.png";
+import logo from "../assets/syntra-icon.png";
+import bgVideo from "../assets/syntra-bg-video.mp4";
 import { getUserData } from "../utils/auth";
 
 export default function LandingPage() {
@@ -50,20 +51,26 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen flex flex-col justify-between" style={{ background: "var(--bg)", color: "var(--text)" }}>
-      {/* Background glow matching the app style */}
-      <div className="fixed inset-0 flex items-center justify-center pointer-events-none -translate-y-[10%] z-0 opacity-[0.04] select-none dark:invert">
-        <img
-          src={logo}
-          alt=""
-          className="w-[80%] max-w-[600px] h-auto object-contain grayscale"
+      {/* Background Video - full opacity, dark overlay for readability */}
+      <div className="fixed inset-0 pointer-events-none z-0 select-none">
+        <video
+          src={bgVideo}
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="w-full h-full object-cover opacity-30"
         />
+        {/* Dark overlay so content stays legible */}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.75) 100%)" }} />
       </div>
       
       {/* Navigation Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md border-b" style={{ borderColor: "var(--border)", background: "rgba(14, 14, 14, 0.7)" }}>
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-50 border-b" style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(10,10,10,0.6)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}>
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateTo("/home")}>
-            <img src={logo} alt="SyntraIQ Logo" className="w-9 h-9 object-contain dark:invert" />
+            {/* filter:invert turns the black icon white, removing the white bg appearance on dark pages */}
+            <img src={logo} alt="SyntraIQ Logo" className="w-14 h-14 object-contain" style={{ filter: "invert(1)", background: "none" }} />
             <span className="text-xl font-bold tracking-wider font-ubuntu">
               Syntra<span style={{ color: "var(--accent)" }}>IQ</span>
             </span>
@@ -212,7 +219,7 @@ export default function LandingPage() {
       <footer className="w-full py-12 border-t z-10" style={{ borderColor: "var(--border)", background: "rgba(10, 10, 10, 0.8)" }}>
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <img src={logo} alt="SyntraIQ Logo" className="w-7 h-7 object-contain dark:invert" />
+            <img src={logo} alt="SyntraIQ Logo" className="w-11 h-11 object-contain" style={{ filter: "invert(1)", background: "none" }} />
             <span className="text-lg font-bold tracking-wider font-ubuntu">
               Syntra<span style={{ color: "var(--accent)" }}>IQ</span>
             </span>
