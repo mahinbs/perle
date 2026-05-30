@@ -39,7 +39,7 @@ import earthVideo from "../assets/earth.mp4";
 const API_URL = import.meta.env.VITE_API_URL as string | undefined;
 
 export default function ProfilePage() {
-  const { navigateTo } = useRouterNavigation();
+  const { navigateTo, state } = useRouterNavigation();
   const { showToast } = useToast();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -132,6 +132,19 @@ export default function ProfilePage() {
     checkAuth();
   }, []);
 
+  // Handle redirect modes (like state.mode from landing page)
+  useEffect(() => {
+    if (!isAuthenticated) {
+      if (state?.mode === "signup") {
+        setShowSignup(true);
+        setShowLogin(false);
+      } else if (state?.mode === "login") {
+        setShowLogin(true);
+        setShowSignup(false);
+      }
+    }
+  }, [state, isAuthenticated]);
+
   // Fetch search history from backend
   const fetchSearchHistory = async () => {
     if (!API_URL || !isAuthenticated) return;
@@ -205,6 +218,9 @@ export default function ProfilePage() {
       }
       setShowLogin(false);
       setShowSignup(false);
+      if (state?.plan) {
+        navigateTo(`/subscription?plan=${state.plan}`);
+      }
     } catch (error: any) {
       const errorMessage = error.message || "Invalid email or password";
       setAuthError(errorMessage);
@@ -242,7 +258,7 @@ export default function ProfilePage() {
           duration: 5000,
         });
         // Navigate to verification page
-        navigateTo("/verify", { email: response.email || "" });
+        navigateTo("/verify", { email: response.email || "", plan: state?.plan });
         return;
       }
 
@@ -257,6 +273,9 @@ export default function ProfilePage() {
         message: "Account created successfully!",
         type: "success",
       });
+      if (state?.plan) {
+        navigateTo(`/subscription?plan=${state.plan}`);
+      }
     } catch (error: any) {
       // Show validation errors in toast if present (don't show form error)
       if (error.validationErrors && Array.isArray(error.validationErrors)) {

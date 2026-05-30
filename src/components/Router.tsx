@@ -18,6 +18,8 @@ import AboutPage from '../pages/AboutPage';
 import HelpPage from '../pages/HelpPage';
 import ContactPage from '../pages/ContactPage';
 import SupportPage from '../pages/SupportPage';
+import LandingPage from '../pages/LandingPage';
+import RefundCancellationPage from '../pages/RefundCancellationPage';
 
 // Set this to true to enable maintenance mode
 const MAINTENANCE_MODE = false;
@@ -35,6 +37,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/home" element={<LandingPage />} />
       <Route path="/discover" element={<DiscoverPage />} />
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/library" element={<LibraryPage />} />
@@ -46,14 +49,19 @@ export function AppRouter() {
       <Route path="/details/:id" element={<DetailsPage />} />
       <Route path="/verify" element={<VerificationPage />} />
       <Route path="/terms" element={<TermsPage />} />
+      <Route path="/terms-conditions" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/privacy-policy" element={<PrivacyPage />} />
       <Route path="/gallery" element={<GalleryPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/help" element={<HelpPage />} />
       <Route path="/contact" element={<ContactPage />} />
+      <Route path="/contact-us" element={<ContactPage />} />
       <Route path="/support" element={<SupportPage />} />
+      <Route path="/refund-cancellation" element={<RefundCancellationPage />} />
       <Route path="/maintenance" element={<MaintenancePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
+

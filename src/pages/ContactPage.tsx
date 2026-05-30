@@ -4,7 +4,7 @@ import { IoIosArrowBack, IoIosSend, IoMdMail, IoMdCall, IoMdPin } from "react-ic
 import { useToast } from "../contexts/ToastContext";
 
 export default function ContactPage() {
-  const { navigateTo } = useRouterNavigation();
+  const { goBack, navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -53,7 +53,7 @@ export default function ContactPage() {
         <div className="h1">Contact Us</div>
         <button
           className="btn-ghost glass-button"
-          onClick={() => navigateTo("/profile")}
+          onClick={() => goBack()}
           style={{ fontSize: "var(--font-md)" }}
         >
           <IoIosArrowBack size={24} /> Back

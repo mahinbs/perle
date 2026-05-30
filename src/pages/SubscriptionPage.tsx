@@ -81,8 +81,9 @@ export default function SubscriptionPage() {
               const prices: Record<string, string> = {};
               products.forEach(p => {
                 const planId = p.id.split('.').pop() || '';
-                if (planId === 'pro' || planId === 'max') {
-                  prices[planId] = `${p.displayPrice}/mo`;
+                if (planId.includes('pro') || planId.includes('max')) {
+                  const key = planId.includes('pro') ? 'pro' : 'max';
+                  prices[key] = `${p.displayPrice}/mo`;
                 }
               });
               if (Object.keys(prices).length > 0) {
