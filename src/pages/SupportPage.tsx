@@ -12,7 +12,7 @@ import {
 } from "react-icons/io";
 
 export default function SupportPage() {
-  const { navigateTo } = useRouterNavigation();
+  const { goBack, navigateTo } = useRouterNavigation();
   const [searchQuery, setSearchQuery] = useState("");
 
   const categories = [
@@ -61,7 +61,7 @@ export default function SupportPage() {
         <div className="h1">Support Center</div>
         <button
           className="btn-ghost glass-button"
-          onClick={() => navigateTo("/profile")}
+          onClick={() => goBack()}
           style={{ fontSize: "var(--font-md)" }}
         >
           <IoIosArrowBack size={24} /> Back

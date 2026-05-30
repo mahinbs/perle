@@ -2,7 +2,7 @@ import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { IoIosArrowBack } from "react-icons/io";
 
 export default function TermsPage() {
-  const { navigateTo } = useRouterNavigation();
+  const { goBack, navigateTo } = useRouterNavigation();
 
   return (
     <div className="container" style={{ paddingBottom: '40px' }}>
@@ -18,7 +18,7 @@ export default function TermsPage() {
       >
         <button
           className="btn-ghost"
-          onClick={() => navigateTo('/profile')}
+          onClick={() => goBack()}
           style={{
             display: "flex",
             alignItems: "center",

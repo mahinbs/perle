@@ -32,6 +32,11 @@ export default function VerificationPage() {
       navigateTo('/profile');
     }
 
+    // Save plan to localStorage if present in state
+    if (state?.plan) {
+      localStorage.setItem('perle-verification-plan', state.plan);
+    }
+
     // Focus first input
     inputRefs.current[0]?.focus();
 
@@ -126,8 +131,14 @@ export default function VerificationPage() {
       // Clear verification email
       localStorage.removeItem('perle-verification-email');
 
-      // Redirect to home
-      navigateTo('/');
+      // Redirect to subscription page if plan is pending
+      const redirectPlan = state?.plan || localStorage.getItem('perle-verification-plan');
+      if (redirectPlan) {
+        localStorage.removeItem('perle-verification-plan');
+        navigateTo(`/subscription?plan=${redirectPlan}`);
+      } else {
+        navigateTo('/');
+      }
     } catch (error: any) {
       setError('Verification failed. Please try again.');
       setOtp(['', '', '', '', '', '', '', '']);

@@ -2,7 +2,7 @@ import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { IoIosArrowBack } from "react-icons/io";
 
 export default function PrivacyPage() {
-  const { navigateTo } = useRouterNavigation();
+  const { goBack } = useRouterNavigation();
 
   return (
     <div className="container" style={{ paddingBottom: '40px' }}>
@@ -18,7 +18,7 @@ export default function PrivacyPage() {
       >
         <button
           className="btn-ghost"
-          onClick={() => navigateTo('/profile')}
+          onClick={() => goBack()}
           style={{
             display: "flex",
             alignItems: "center",
