@@ -9,6 +9,7 @@ import { formatQuery } from "../utils/helpers";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getUserData } from "../utils/auth";
 import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode } from "../types";
+import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 
 export default function HomePage() {
   const { state: currentData } = useRouterNavigation();
@@ -38,6 +39,7 @@ export default function HomePage() {
   const lastSearchedQueryRef = useRef<string>("");
   const isSearchingRef = useRef<boolean>(false);
   const queryRef = useRef<string>(""); // Keep query in ref to avoid stale closures
+  const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
 
   // Load user premium status on mount and when user data changes
   useEffect(() => {
@@ -620,6 +622,10 @@ export default function HomePage() {
 
   return (
     <>
+      {/* AI Data Consent Modal — shown once before first AI interaction */}
+      {showConsentModal && (
+        <AIDataConsentModal onAccept={() => setShowConsentModal(false)} />
+      )}
       {/* Conversation Sidebar */}
       <ConversationSidebar
         activeConversationId={activeConversationId}

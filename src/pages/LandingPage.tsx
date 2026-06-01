@@ -160,6 +160,20 @@ export default function LandingPage() {
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-5xl font-bold font-ubuntu mb-4">Choose Your Speed</h2>
             <p className="max-w-xl mx-auto" style={{ color: "var(--sub)" }}>Flexible monthly pricing options to fuel your learning pace. Upgrade, downgrade, or cancel anytime.</p>
+            {/* Apple 2.3.2 — paid content disclosure */}
+            <p
+              className="max-w-xl mx-auto mt-3 text-xs"
+              style={{
+                color: "var(--sub)",
+                background: "rgba(199,168,105,0.07)",
+                border: "1px solid rgba(199,168,105,0.2)",
+                borderRadius: "8px",
+                padding: "10px 16px",
+                display: "inline-block",
+              }}
+            >
+              💳 <strong>IQ Pro</strong> and <strong>IQ Max</strong> are paid subscriptions and require an <strong>In-App Purchase</strong>. Prices shown in USD/month. Billed monthly. Cancel anytime. Subscription auto-renews unless cancelled at least 24 hours before the renewal date.
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {plans.map((plan) => (
@@ -183,9 +197,14 @@ export default function LandingPage() {
                 )}
                 <div>
                   <h3 className="text-2xl font-bold font-ubuntu mb-2">{plan.name}</h3>
-                  <div className="flex items-baseline gap-2 mb-4">
+                  <div className="flex items-baseline gap-2 mb-1">
                     <span className="text-4xl font-extrabold tracking-tight">{plan.price}</span>
+                    <span className="text-sm" style={{ color: "var(--sub)" }}>/month</span>
                   </div>
+                  {/* In-App Purchase label — Apple 2.3.2 */}
+                  <p className="text-xs mb-4" style={{ color: "var(--sub)", opacity: 0.7 }}>
+                    In-App Purchase · Auto-renews monthly
+                  </p>
                   <p className="text-sm mb-6" style={{ color: "var(--sub)", lineHeight: "1.5" }}>{plan.description}</p>
                   
                   <ul className="flex flex-col gap-3">
@@ -197,21 +216,27 @@ export default function LandingPage() {
                     ))}
                   </ul>
                 </div>
-                <button 
-                  className="btn w-full font-bold py-3 rounded-xl cursor-pointer"
-                  style={{
-                    background: plan.highlighted ? "var(--accent)" : "#1a1a1a",
-                    color: plan.highlighted ? "#111" : "#fff",
-                    border: plan.highlighted ? "none" : "1px solid var(--border)"
-                  }}
-                  onClick={() => handlePlanClick(plan.id)}
-                >
-                  {plan.cta}
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button 
+                    className="btn w-full font-bold py-3 rounded-xl cursor-pointer"
+                    style={{
+                      background: plan.highlighted ? "var(--accent)" : "#1a1a1a",
+                      color: plan.highlighted ? "#111" : "#fff",
+                      border: plan.highlighted ? "none" : "1px solid var(--border)"
+                    }}
+                    onClick={() => handlePlanClick(plan.id)}
+                  >
+                    {plan.cta}
+                  </button>
+                  <p className="text-center text-xs" style={{ color: "var(--sub)", opacity: 0.6 }}>
+                    Requires In-App Purchase
+                  </p>
+                </div>
               </div>
             ))}
           </div>
         </section>
+
 
       </main>
 

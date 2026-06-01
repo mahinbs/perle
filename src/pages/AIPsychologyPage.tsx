@@ -18,6 +18,7 @@ import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
 import { getUserLocalContext } from "../utils/userLocalContext";
+import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 
 interface Message {
   id: string;
@@ -62,6 +63,7 @@ export default function AIPsychologyPage() {
   const [isPremium, setIsPremium] = useState(false);
   const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite");
   const [newConversation, setNewConversation] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
   const [suggestions, setSuggestions] = useState<string[]>([
     "I've been feeling stressed lately and could use some guidance.",
     "Can you help me understand my emotions better?",
@@ -412,7 +414,11 @@ export default function AIPsychologyPage() {
   };
 
   return (
-    <div className="container h-screen flex flex-col !p-0">
+    <div className="container h-screen flex flex-col !p-0" style={{ position: "relative" }}>
+      {/* AI Data Consent Modal — shown once before first AI interaction */}
+      {showConsentModal && (
+        <AIDataConsentModal onAccept={() => setShowConsentModal(false)} />
+      )}
       {/* Header */}
       <div className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]" style={{ paddingTop: "var(--safe-area-top)" }}>
         <div className="row flex-nowrap! flex justify-between items-center p-4">

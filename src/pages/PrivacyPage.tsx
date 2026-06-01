@@ -334,18 +334,80 @@ export default function PrivacyPage() {
 
           <section style={{ marginBottom: "32px" }}>
             <h2 style={{ fontSize: "var(--font-xl)", fontWeight: 600, marginBottom: "16px" }}>
-              10. AI and Machine Learning
+              10. AI Services &amp; Data Sharing
             </h2>
             <p style={{ marginBottom: "12px" }}>
-              Your conversations and queries may be processed by third-party AI providers (OpenAI, Anthropic, 
-              Google, xAI) to generate responses. Each provider has its own data processing policies:
+              SyntraIQ uses third-party AI services to generate responses to your queries, conversations,
+              and file analysis requests. <strong>Before any data is transmitted, you are explicitly
+              asked for your consent through an in-app consent dialog.</strong>
+            </p>
+
+            <h3 style={{ fontSize: "var(--font-lg)", fontWeight: 600, marginTop: "20px", marginBottom: "12px" }}>
+              10.1 What Data Is Sent to AI Providers
+            </h3>
+            <p style={{ marginBottom: "8px" }}>The following data may be transmitted to third-party AI providers when you use AI features:</p>
+            <ul style={{ marginLeft: "24px", marginBottom: "12px" }}>
+              <li style={{ marginBottom: "8px" }}><strong>Your messages and queries</strong> — the text you type or dictate</li>
+              <li style={{ marginBottom: "8px" }}><strong>Conversation history</strong> — recent messages for contextual responses (up to 5 messages for free users, up to 20 for premium)</li>
+              <li style={{ marginBottom: "8px" }}><strong>Uploaded files</strong> — images, PDFs, or documents you attach for analysis</li>
+              <li style={{ marginBottom: "8px" }}><strong>User context preferences</strong> — optional context you have set (e.g., your profession, location preferences) to personalise responses</li>
+            </ul>
+            <p style={{ marginBottom: "12px" }}>
+              We do <strong>not</strong> send your name, email address, payment information, or device identifiers
+              to AI providers.
+            </p>
+
+            <h3 style={{ fontSize: "var(--font-lg)", fontWeight: 600, marginTop: "20px", marginBottom: "12px" }}>
+              10.2 Third-Party AI Providers
+            </h3>
+            <p style={{ marginBottom: "12px" }}>
+              Depending on the AI model you select, your data may be processed by one or more of the following providers:
             </p>
             <ul style={{ marginLeft: "24px", marginBottom: "12px" }}>
-              <li style={{ marginBottom: "8px" }}>We do not use your data to train AI models</li>
-              <li style={{ marginBottom: "8px" }}>AI providers may use data according to their policies</li>
-              <li style={{ marginBottom: "8px" }}>Conversations in AI Friend and AI Psychologist modes are processed the same way</li>
+              <li style={{ marginBottom: "12px" }}>
+                <strong>OpenAI (GPT-4o, GPT-4 Turbo)</strong><br />
+                Data processing: United States<br />
+                Privacy Policy: <a href="https://openai.com/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>openai.com/privacy</a>
+              </li>
+              <li style={{ marginBottom: "12px" }}>
+                <strong>Anthropic (Claude 3.5 Sonnet, Claude 3 Haiku)</strong><br />
+                Data processing: United States<br />
+                Privacy Policy: <a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>anthropic.com/privacy</a>
+              </li>
+              <li style={{ marginBottom: "12px" }}>
+                <strong>Google DeepMind (Gemini 1.5 Pro, Gemini 1.5 Flash)</strong><br />
+                Data processing: United States / Global<br />
+                Privacy Policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>policies.google.com/privacy</a>
+              </li>
+              <li style={{ marginBottom: "12px" }}>
+                <strong>xAI (Grok)</strong><br />
+                Data processing: United States<br />
+                Privacy Policy: <a href="https://x.ai/legal/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>x.ai/legal/privacy-policy</a>
+              </li>
+            </ul>
+
+            <h3 style={{ fontSize: "var(--font-lg)", fontWeight: 600, marginTop: "20px", marginBottom: "12px" }}>
+              10.3 How We Obtain Your Consent
+            </h3>
+            <p style={{ marginBottom: "12px" }}>
+              The first time you use any AI feature in SyntraIQ, an in-app consent dialog is displayed
+              that clearly identifies: (a) what data will be sent, (b) which third-party providers will
+              receive your data, and (c) links to each provider's privacy policy. You must explicitly tap
+              <em> "I Understand &amp; Agree to Continue"</em> before any data is transmitted. This
+              preference is saved locally and the dialog does not appear again after you have consented.
+            </p>
+
+            <h3 style={{ fontSize: "var(--font-lg)", fontWeight: 600, marginTop: "20px", marginBottom: "12px" }}>
+              10.4 SyntraIQ's Commitments
+            </h3>
+            <ul style={{ marginLeft: "24px", marginBottom: "12px" }}>
+              <li style={{ marginBottom: "8px" }}>SyntraIQ does <strong>not</strong> use your conversations or queries to train any AI model.</li>
+              <li style={{ marginBottom: "8px" }}>SyntraIQ does <strong>not</strong> sell your data to AI providers or any third party.</li>
+              <li style={{ marginBottom: "8px" }}>Each AI provider processes your data under their own privacy policies, which are linked above.</li>
+              <li style={{ marginBottom: "8px" }}>You may withdraw consent at any time by contacting us — this will disable AI features for your account.</li>
             </ul>
           </section>
+
 
           <section style={{ marginBottom: "32px" }}>
             <h2 style={{ fontSize: "var(--font-xl)", fontWeight: 600, marginBottom: "16px" }}>
