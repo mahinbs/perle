@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.syntraiq.perle',
-  appName: 'Perle',
+  appId: 'com.syntraiq.com',
+  appName: 'SyntraIQ',
   webDir: 'dist'
 };
 
