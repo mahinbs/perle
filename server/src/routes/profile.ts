@@ -10,7 +10,7 @@ const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
@@ -356,8 +356,8 @@ router.post('/profile/upload-picture', authenticateToken, upload.single('picture
     }
 
     // Check file size (2MB limit)
-    if (req.file.size > 2 * 1024 * 1024) {
-      return res.status(400).json({ error: 'File size exceeds 2MB limit' });
+    if (req.file.size > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: 'File size exceeds 10MB limit' });
     }
 
     // Generate unique filename: {userId}/{timestamp}-{random}.{ext}

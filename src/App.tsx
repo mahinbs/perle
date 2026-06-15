@@ -4,24 +4,14 @@ import { RouterNavigationProvider } from './contexts/RouterNavigationContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AppRouter } from './components/Router';
 import { SplashScreen } from './components/SplashScreen';
-import { getUserData } from './utils/auth';
+import { initializeTheme } from './utils/auth';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    // Check initial dark mode state
-    const userData = getUserData();
-    if (userData && typeof userData.darkMode === 'boolean') {
-      if (userData.darkMode) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    } else {
-      // Default to dark mode if no user data
-      document.documentElement.classList.add('dark');
-    }
+    // Light theme by default; dark only when user enabled it in profile
+    initializeTheme();
 
     const timer = window.setTimeout(() => setShowSplash(false), 1800);
     return () => window.clearTimeout(timer);

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel, AnswerResult, ExperienceMode } from "../types";
+import { Capacitor } from "@capacitor/core";
 import {
   FaPaperclip,
   FaFolderOpen,
@@ -15,7 +16,6 @@ import {
   FaSpinner,
   FaDownload,
   FaImages,
-  FaRobot,
   FaTools,
 } from "react-icons/fa";
 import MicWaveIcon from "./MicWaveIcon";
@@ -24,7 +24,9 @@ import VoiceOverlay from "./VoiceOverlay";
 import { LLMModelSelector } from "./LLMModelSelector";
 import { getAuthHeaders, getAuthToken, isAuthenticated } from "../utils/auth";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import loadingGif from "../assets/gif/loading-video.gif";
+import syntraIcon from "../assets/syntra-icon.png";
+import { ExperienceModeButtons } from "./ExperienceModeButtons";
+import { getUserData } from "../utils/auth";
 
 import { UploadedFile } from "../types";
 
@@ -78,6 +80,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   showModelSelector = true,
 }) => {
   const [showUploadMenu, setShowUploadMenu] = useState(false);
+  const [showAttachModal, setShowAttachModal] = useState<"menu" | "camera" | null>(null);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [toolMode, setToolMode] = useState<"image" | "video" | null>(null);
   const [toolDescription, setToolDescription] = useState("");
@@ -142,8 +145,42 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const hasClearedForAnswerRef = useRef<boolean>(false);
   const voiceSilenceTimerRef = useRef<number | null>(null);
+  const voiceInputModeRef = useRef<"dictation" | "session">("dictation");
   const uploadBtnRef = useRef<HTMLButtonElement>(null);
   const toolsBtnRef = useRef<HTMLButtonElement>(null);
+  const attachBackdropRef = useRef<HTMLDivElement>(null);
+
+  const closeAttachModal = () => setShowAttachModal(null);
+
+  const openAttachMenu = (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowAttachModal("menu");
+  };
+
+  const pickAttachment = (kind: "files" | "image" | "camera") => {
+    if (kind === "camera") {
+      setShowAttachModal("camera");
+      void startCameraCapture();
+      return;
+    }
+
+    closeAttachModal();
+
+    window.setTimeout(() => {
+      const input = fileInputRef.current;
+      if (!input) return;
+      input.removeAttribute("capture");
+      input.multiple = true;
+      if (kind === "image") {
+        input.accept = "image/*";
+      } else {
+        input.accept =
+          "image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      }
+      input.click();
+    }, 120);
+  };
 
   // Check for speech support
   useEffect(() => {
@@ -208,19 +245,32 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [hasAnswer, searchedQuery, query]);
 
+  const handleTryMaxClick = () => {
+    const user = getUserData();
+    if (user?.isPremium) {
+      const maxModel = "gpt-4o" as LLMModel;
+      (setSelectedModel ?? onModelChange)(maxModel);
+      localStorage.setItem("perle-selected-model", maxModel);
+      showToast({ message: "SyntraIQ Max model selected", type: "success", duration: 2500 });
+      return;
+    }
+    navigateTo("/subscription");
+  };
+
   const triggerSearchWithScroll = () => {
-    if (!query.trim()) return;
+    const trimmed = query.trim();
+    if (!trimmed || isLoading) return;
     inputRef.current?.blur();
-    onSearch();
+    onSearch(trimmed);
     setQuery("");
-    // Scroll to bottom once on submit (not during answer typing)
     if (onScrollToBottom) {
       requestAnimationFrame(() => onScrollToBottom());
     } else {
       requestAnimationFrame(() => {
-        const doc = document.documentElement;
-        const scrollTop = doc.scrollHeight - window.innerHeight;
-        window.scrollTo({ top: Math.max(0, scrollTop), behavior: "smooth" });
+        const scrollContainer = document.querySelector(".flex-1.min-h-0.overflow-y-auto");
+        if (scrollContainer) {
+          scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: "smooth" });
+        }
       });
     }
   };
@@ -236,15 +286,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // NOTE: query copy UX is currently disabled in the UI (button commented out).
 
-  const startVoiceInput = () => {
+  const startVoiceInput = (mode: "dictation" | "session" = "session") => {
     if (!speechSupported) {
       alert("Voice input is not supported in this browser");
       return;
     }
 
-    // Always open voice globe overlay when mic flow starts.
-    setShowVoiceOverlay(true);
-    localStorage.setItem("perle-voice-session-active", "1");
+    voiceInputModeRef.current = mode;
+
+    if (mode === "session") {
+      setShowVoiceOverlay(true);
+      localStorage.setItem("perle-voice-session-active", "1");
+    }
 
     // Stop any ongoing TTS playback before starting a new recording
     try {
@@ -279,6 +332,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     };
 
     const startSilenceTimer = () => {
+      if (mode === "dictation") return;
       clearSilenceTimer();
       voiceSilenceTimerRef.current = window.setTimeout(() => {
         // If user hasn't spoken in 10s, prompt and continue listening cycle.
@@ -310,16 +364,23 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     };
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      transcript = transcript.trim();
       // If user starts speaking while TTS is in progress, barge-in and stop TTS.
-      try {
-        if ("speechSynthesis" in window && window.speechSynthesis.speaking) {
-          window.speechSynthesis.cancel();
-        }
-      } catch { }
-      setQuery(transcript);
-      finalTranscript = transcript; // Store the latest transcript
-      // User provided input, so no silence nudge needed for this turn.
+      if (mode === "session") {
+        try {
+          if ("speechSynthesis" in window && window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+          }
+        } catch { }
+      }
+      if (transcript) {
+        setQuery(transcript);
+        finalTranscript = transcript;
+      }
       clearSilenceTimer();
     };
 
@@ -334,9 +395,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           const voiceSessionActive =
             localStorage.getItem("perle-voice-session-active") === "1";
           if (voiceSessionActive && showVoiceOverlay) {
-            startVoiceInput();
+            startVoiceInput("session");
           }
         }, 1800);
+        return;
+      }
+
+      if (mode === "dictation") {
+        if (finalTranscript.trim()) {
+          setQuery(finalTranscript);
+        }
+        inputRef.current?.focus();
         return;
       }
 
@@ -366,9 +435,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       clearSilenceTimer();
       setIsListening(false);
       if (event.error === "not-allowed") {
+        const isNative = Capacitor.isNativePlatform();
         showToast({
-          message:
-            "Microphone access denied. Please allow microphone access in your browser settings and try again.",
+          message: isNative
+            ? "Microphone access denied. Please allow microphone access in your device settings and try again."
+            : "Microphone access denied. Please allow microphone access in your browser settings and try again.",
           type: "error",
           duration: 4000,
         });
@@ -485,7 +556,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         localStorage.getItem("perle-voice-session-active") === "1";
       if (shouldAutoListen && voiceSessionActive && showVoiceOverlay && !isListening) {
         localStorage.removeItem("perle-auto-listen-next");
-        startVoiceInput();
+        startVoiceInput("session");
       }
     }, 250);
     return () => window.clearInterval(interval);
@@ -1052,6 +1123,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     } catch (error) {
       console.error("Error accessing camera:", error);
       setIsCapturing(false);
+      setShowAttachModal(null);
+      showToast({
+        message: "Could not access camera. Please allow camera permission and try again.",
+        type: "error",
+        duration: 4000,
+      });
     }
   };
 
@@ -1061,6 +1138,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       streamRef.current = null;
     }
     setIsCapturing(false);
+    setShowAttachModal(null);
   };
 
   const capturePhoto = () => {
@@ -1149,7 +1227,25 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [showToolsMenu]);
 
-
+  useEffect(() => {
+    if (!showAttachModal) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (showAttachModal === "camera") {
+          stopCameraCapture();
+        } else {
+          closeAttachModal();
+        }
+      }
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showAttachModal]);
 
   return (
     <>
@@ -1174,7 +1270,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             {!isPremium && (
               <button
                 className="btn-ghost glass-button btn-shadow !border-yellow-600 !text-yellow-600"
-                onClick={() => navigateTo("/pricing")}
+                onClick={handleTryMaxClick}
                 style={{
                   padding: "6px 10px",
                   display: "flex",
@@ -1186,13 +1282,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   fontWeight: 500,
                 }}
               >
-                {/* <FaRobot size={14} /> */}
                 <img
-                  src={loadingGif}
+                  src={syntraIcon}
                   loading="eager"
-                  alt="loading"
-                  className="rounded-full w-6 h-6 dark:invert"
-                  style={{ display: 'block' }}
+                  alt="SyntraIQ"
+                  className="rounded-full w-6 h-6 object-cover"
+                  style={{ display: "block" }}
                 />
                 <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
                   Try SyntraIQ Max
@@ -1201,16 +1296,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             )}
             <button
               className="btn-ghost glass-button btn-shadow !font-normal"
-              onClick={() => {
-                setToolMode("video");
-                setToolDescription("");
-                setToolAttachedImages([]);
-                setGeneratedMedia(null);
-                setLastToolsMedia(null);
-                if (onNewConversation) {
-                  onNewConversation();
-                }
-              }}
+              onClick={() => navigateTo("/create-video")}
               disabled={isListening || isGenerating}
               style={{
                 padding: "6px 10px",
@@ -1231,16 +1317,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </button>
             <button
               className="btn-ghost glass-button btn-shadow !font-normal"
-              onClick={() => {
-                setToolMode("image");
-                setToolDescription("");
-                setToolAttachedImages([]);
-                setGeneratedMedia(null);
-                setLastToolsMedia(null);
-                if (onNewConversation) {
-                  onNewConversation();
-                }
-              }}
+              onClick={() => navigateTo("/edit-images")}
               disabled={isListening || isGenerating}
               style={{
                 padding: "6px 10px",
@@ -1295,6 +1372,26 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <FaImages size={14} />
               <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
                 View Gallery
+              </span>
+            </button>
+            <button
+              className="btn-ghost glass-button btn-shadow !font-normal"
+              onClick={() => navigateTo("/sleep-disorders")}
+              disabled={isListening || isGenerating}
+              style={{
+                padding: "6px 10px",
+                opacity: isListening || isGenerating ? 0.5 : 1,
+                cursor: isListening || isGenerating ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                flexShrink: 0,
+                borderRadius: "20px",
+                background: "var(--card)",
+              }}
+            >
+              <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
+                Sleep Disorders
               </span>
             </button>
           </div>
@@ -1357,7 +1454,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     className="btn-ghost glass-button btn-shadow"
                     onClick={() => {
                       setShowToolsMenu(false);
-                      navigateTo("/pricing");
+                      handleTryMaxClick();
                     }}
                     style={{
                       width: "100%",
@@ -1368,7 +1465,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     }}
                   >
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      <FaRobot size={16} /> Try SyntraIQ Max
+                      <img src={syntraIcon} alt="" className="w-4 h-4 rounded-full object-cover" />
+                      Try SyntraIQ Max
                     </span>
                   </button>
                 )}
@@ -1376,15 +1474,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <button
                   className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
-                    setToolMode("video");
                     setShowToolsMenu(false);
-                    setToolDescription("");
-                    setToolAttachedImages([]);
-                    setGeneratedMedia(null);
-                    setLastToolsMedia(null); // Reset for new session
-                    if (onNewConversation) {
-                      onNewConversation();
-                    }
+                    navigateTo("/create-video");
                   }}
                   disabled={isListening || isGenerating}
                   style={{
@@ -1410,15 +1501,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <button
                   className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
-                    setToolMode("image");
                     setShowToolsMenu(false);
-                    setToolDescription("");
-                    setToolAttachedImages([]);
-                    setGeneratedMedia(null);
-                    setLastToolsMedia(null); // Reset for new session
-                    if (onNewConversation) {
-                      onNewConversation();
-                    }
+                    navigateTo("/edit-images");
                   }}
                   disabled={isListening || isGenerating}
                   style={{
@@ -1436,7 +1520,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       gap: 8,
                     }}
                   >
-                    <FaImage size={16} /> Generate Image
+                    <FaImage size={16} /> Edit Images
                   </span>
                 </button>
 
@@ -1481,11 +1565,42 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     <FaImages size={16} /> View Gallery
                   </span>
                 </button>
+
+                <button
+                  className="btn-ghost glass-button btn-shadow"
+                  onClick={() => {
+                    setShowToolsMenu(false);
+                    navigateTo("/sleep-disorders");
+                  }}
+                  disabled={isListening || isGenerating}
+                  style={{
+                    width: "100%",
+                    justifyContent: "flex-start",
+                    marginTop: 4,
+                    opacity: isListening || isGenerating ? 0.5 : 1,
+                    cursor:
+                      isListening || isGenerating ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    Sleep Disorders
+                  </span>
+                </button>
               </div>
               );
             })()}
           </div>
         </>
+      )}
+      {!toolMode && onExperienceModeChange && (
+        <div className="mb-2 px-1">
+          <ExperienceModeButtons
+            experienceMode={experienceMode}
+            onExperienceModeChange={onExperienceModeChange}
+            disabled={isLoading || isListening}
+            size="small"
+          />
+        </div>
       )}
       <div
         className="glass-card font-ubuntu !px-3 !pt-1 !pb-2 no-scrollbar !overflow-x-hidden"
@@ -1686,11 +1801,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           isOpen={showVoiceOverlay}
           isListening={isListening}
           responseText={answer?.chunks.map(c => c.text).join(" ") || ""}
+          sources={answer?.sources || []}
           onToggleListening={() => {
             if (isListening) {
               stopVoiceInput();
             } else {
-              startVoiceInput();
+              startVoiceInput("session");
             }
           }}
           onClose={() => {
@@ -1710,85 +1826,42 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         />
 
 
-        {/* Uploaded Files Preview */}
-        {uploadedFiles.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div className="sub text-sm" style={{ marginBottom: 8 }}>
-              Attached files ({uploadedFiles.length})
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {uploadedFiles.map((file) => (
-                <div
-                  key={file.id}
-                  className="glass-card"
-                  style={{
-                    padding: 8,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    maxWidth: 200,
-                  }}
-                >
-                  {file.preview ? (
-                    <img
-                      src={file.preview}
-                      alt={file.file.name}
-                      style={{
-                        width: 40,
-                        height: 40,
-                        objectFit: "cover",
-                        borderRadius: 4,
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: 40,
-                        height: 40,
-                        background: "var(--accent)",
-                        borderRadius: 4,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "var(--font-md)",
-                      }}
-                    >
-                      {file.type === "document" ? "📄" : "📁"}
-                    </div>
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      className="text-sm"
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {file.file.name}
-                    </div>
-                    <div className="sub text-xs">
-                      {(file.file.size / 1024).toFixed(1)} KB
-                    </div>
-                  </div>
-                  <button
-                    className="btn-ghost glass-button btn-shadow"
-                    onClick={() => removeFile(file.id)}
-                    style={{ padding: 4 }}
-                    aria-label="Remove file"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="row search-container !gap-0">
           {/* Tools Dropdown */}
 
           <div style={{ display: "flex", flexDirection: "column", maxWidth: "100%", minWidth: 0}}>
+            {/* Attached files/images above message input */}
+            {!toolMode && uploadedFiles.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8, paddingTop: 4 }}>
+                {uploadedFiles.map((file) => (
+                  <div key={file.id} style={{ position: "relative" }}>
+                    {file.preview ? (
+                      <img
+                        src={file.preview}
+                        alt={file.file.name}
+                        style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 10, border: "1px solid var(--border)" }}
+                      />
+                    ) : (
+                      <div
+                        className="glass-card"
+                        style={{ width: 72, height: 72, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 10, fontSize: 24 }}
+                      >
+                        {file.type === "document" ? "📄" : "📁"}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-ghost glass-button"
+                      onClick={() => removeFile(file.id)}
+                      style={{ position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: "50%", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+                      aria-label="Remove file"
+                    >
+                      <FaTimes size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Attached Images Display - Above textarea */}
             {toolAttachedImages.length > 0 && (
               <div
@@ -2051,114 +2124,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               >
                 <button
                   ref={uploadBtnRef}
+                  type="button"
                   className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
-                  onClick={() => setShowUploadMenu(!showUploadMenu)}
+                  onClick={openAttachMenu}
                   aria-label="Upload files"
                   disabled={isListening}
                   style={{
                     padding: hasAnswer ? 6 : 8,
                     opacity: isListening ? 0.5 : 1,
                     cursor: isListening ? "not-allowed" : "pointer",
+                    touchAction: "manipulation",
                   }}
                 >
                   <FaPaperclip size={hasAnswer ? 14 : 18} />
                 </button>
-
-                {showUploadMenu && (() => {
-                  const rect = uploadBtnRef.current?.getBoundingClientRect();
-                  return (
-                  createPortal(<div
-                    className="glass-panel"
-                    data-upload-menu
-                    style={{
-                      position: "fixed",
-                      bottom: rect ? window.innerHeight - rect.top + 8 : 0,
-                      left: rect ? rect.left : 0,
-                      padding: 8,
-                      zIndex: 9999,
-                      minWidth: 220,
-                      color: "var(--text)",
-                    }}
-                  >
-                    <button
-                      className="btn-ghost !backdrop-blur-lg glass-button btn-shadow"
-                      onClick={() => {
-                        fileInputRef.current?.click();
-                        setShowUploadMenu(false);
-                      }}
-                      disabled={isListening}
-                      style={{
-                        width: "100%",
-                        justifyContent: "flex-start",
-                        marginBottom: 4,
-                        opacity: isListening ? 0.5 : 1,
-                        cursor: isListening ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <FaFolderOpen size={16} /> Upload Files
-                      </span>
-                    </button>
-
-                    <button
-                      className="btn-ghost glass-button btn-shadow"
-                      onClick={() => {
-                        fileInputRef.current?.click();
-                        setShowUploadMenu(false);
-                      }}
-                      disabled={isListening}
-                      style={{
-                        width: "100%",
-                        justifyContent: "flex-start",
-                        marginBottom: 4,
-                        opacity: isListening ? 0.5 : 1,
-                        cursor: isListening ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <FaImage size={16} /> Upload Images
-                      </span>
-                    </button>
-                    <button
-                      className="btn-ghost glass-button btn-shadow"
-                      onClick={() => {
-                        startCameraCapture();
-                        setShowUploadMenu(false);
-                      }}
-                      disabled={isListening}
-                      style={{
-                        width: "100%",
-                        justifyContent: "flex-start",
-                        opacity: isListening ? 0.5 : 1,
-                        cursor: isListening ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <FaCamera size={16} /> Take Photo
-                      </span>
-                    </button>
-                  </div>, document.body
-                  )
-                  );
-                })()}
               </div>
             )}
 
@@ -2248,23 +2227,32 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <button
                   className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                   onClick={() => {
-                    if (isListening) {
+                    if (isListening && voiceInputModeRef.current === "dictation") {
                       stopVoiceInput();
-                    } else {
-                      startVoiceInput();
+                    } else if (!isListening) {
+                      startVoiceInput("dictation");
                     }
                   }}
                   aria-label={
-                    isListening ? "Stop voice input" : "Start voice input"
+                    isListening ? "Stop dictation" : "Dictate message"
                   }
                   style={{
                     padding: hasAnswer ? "4px 6px" : "4px 8px",
                     fontSize: "var(--font-md)",
-                    background: isListening ? "var(--accent)" : "transparent",
-                    color: isListening ? "white" : "inherit",
+                    background:
+                      isListening && voiceInputModeRef.current === "dictation"
+                        ? "var(--accent)"
+                        : "transparent",
+                    color:
+                      isListening && voiceInputModeRef.current === "dictation"
+                        ? "white"
+                        : "inherit",
                   }}
                 >
-                  <MicWaveIcon size={hasAnswer ? 20 : 25} active={isListening} />
+                  <MicWaveIcon
+                    size={hasAnswer ? 20 : 25}
+                    active={isListening && voiceInputModeRef.current === "dictation"}
+                  />
                 </button>
               ) : null}
             </div>
@@ -2302,16 +2290,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
             {query.trim() ? (
               <button
+                type="button"
                 className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
                 onClick={triggerSearchWithScroll}
-                disabled={isLoading}
+                disabled={isLoading || !query.trim()}
                 aria-label="Search"
                 style={{
                   padding: hasAnswer ? 6 : 8,
                   color: "",
-                  opacity: isLoading ? 0.5 : 1,
-                  cursor: isLoading ? "not-allowed" : "pointer",
+                  opacity: isLoading || !query.trim() ? 0.5 : 1,
+                  cursor: isLoading || !query.trim() ? "not-allowed" : "pointer",
                   marginRight: 8,
+                  touchAction: "manipulation",
+                  WebkitTapHighlightColor: "transparent",
                 }}
               >
                 {isLoading ? "…" : <FaSearch size={hasAnswer ? 16 : 20} />}
@@ -2367,51 +2358,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           style={{ display: "none" }}
         />
 
-        {/* Camera Modal */}
-        {isCapturing && (
-          <div
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: "rgba(0,0,0,0.8)",
-              zIndex: 10000,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              style={{
-                maxWidth: "90vw",
-                maxHeight: "60vh",
-                borderRadius: 8,
-              }}
-            />
-            <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
-              <button
-                className="btn"
-                onClick={capturePhoto}
-                style={{ padding: "12px 24px" }}
-              >
-                📸 Capture
-              </button>
-              <button
-                className="btn-ghost glass-button btn-shadow"
-                onClick={stopCameraCapture}
-                style={{ padding: "12px 24px" }}
-              >
-                ❌ Cancel
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Search History Dropdown */}
         {/* {showHistory && searchHistory.length > 0 && (
@@ -2485,6 +2431,184 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         </div>
       )} */}
       </div>
+
+      {showAttachModal === "menu" &&
+        createPortal(
+          <>
+            <div
+              ref={attachBackdropRef}
+              onMouseDown={(e) => {
+                if (e.target === attachBackdropRef.current) {
+                  closeAttachModal();
+                }
+              }}
+              style={{
+                position: "fixed",
+                inset: 0,
+                backgroundColor: "rgba(0, 0, 0, 0.45)",
+                zIndex: 100001,
+              }}
+            />
+            <div
+              role="dialog"
+              aria-label="Attach to message"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "fixed",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 100002,
+                background: "var(--bg)",
+                color: "var(--text)",
+                borderTop: "1px solid var(--border)",
+                borderRadius: "16px 16px 0 0",
+                padding: "12px 16px",
+                paddingBottom: "max(20px, env(safe-area-inset-bottom))",
+                boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.25)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 12,
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: "var(--font-sm)" }}>
+                  Attach to message
+                </div>
+                <button
+                  type="button"
+                  className="btn-ghost glass-button"
+                  onClick={closeAttachModal}
+                  aria-label="Close attach menu"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <FaTimes size={14} />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="btn-ghost glass-button w-full mb-2 flex items-center justify-start gap-3"
+                style={{ padding: "12px 14px", minHeight: 48 }}
+                onClick={() => pickAttachment("files")}
+                disabled={isListening}
+              >
+                <FaFolderOpen size={18} />
+                <span>Upload from files</span>
+              </button>
+              <button
+                type="button"
+                className="btn-ghost glass-button w-full mb-2 flex items-center justify-start gap-3"
+                style={{ padding: "12px 14px", minHeight: 48 }}
+                onClick={() => pickAttachment("image")}
+                disabled={isListening}
+              >
+                <FaImage size={18} />
+                <span>Choose image</span>
+              </button>
+              <button
+                type="button"
+                className="btn-ghost glass-button w-full flex items-center justify-start gap-3"
+                style={{ padding: "12px 14px", minHeight: 48 }}
+                onClick={() => pickAttachment("camera")}
+                disabled={isListening}
+              >
+                <FaCamera size={18} />
+                <span>Take photo</span>
+              </button>
+            </div>
+          </>,
+          document.body
+        )}
+
+      {(isCapturing || showAttachModal === "camera") &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.92)",
+              zIndex: 100003,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+            }}
+          >
+            <div
+              style={{
+                color: "#fff",
+                fontSize: "var(--font-lg)",
+                fontWeight: 600,
+                marginBottom: 16,
+              }}
+            >
+              Take a photo
+            </div>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                width: "100%",
+                maxWidth: 480,
+                maxHeight: "65vh",
+                borderRadius: 16,
+                objectFit: "cover",
+                background: "#000",
+              }}
+            />
+            <div
+              style={{
+                marginTop: 24,
+                display: "flex",
+                gap: 16,
+                width: "100%",
+                maxWidth: 480,
+              }}
+            >
+              <button
+                type="button"
+                className="btn flex-1"
+                onClick={capturePhoto}
+                style={{
+                  padding: "14px 24px",
+                  background: "var(--accent)",
+                  color: "#111",
+                }}
+              >
+                Capture
+              </button>
+              <button
+                type="button"
+                className="btn-ghost glass-button flex-1"
+                onClick={stopCameraCapture}
+                style={{
+                  padding: "14px 24px",
+                  color: "white",
+                  borderColor: "rgba(255,255,255,0.3)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 };

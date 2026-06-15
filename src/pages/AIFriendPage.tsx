@@ -1,6 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
+import { Capacitor } from "@capacitor/core";
 import {
   FaPen,
   FaStop,
@@ -12,8 +14,10 @@ import {
   FaPlus,
   FaEdit,
   FaTrash,
-  FaChevronDown,
 } from "react-icons/fa";
+import { ExperienceModeButtons } from "../components/ExperienceModeButtons";
+import { isImageFile } from "../utils/imagePicker";
+import type { ExperienceMode } from "../types";
 import { useToast } from "../contexts/ToastContext";
 import {
   getUserData,
@@ -26,6 +30,8 @@ import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
+import { getChatDateLabel, isDifferentChatDay } from "../utils/chatDates";
+import { ChatDateDivider } from "../components/ChatDateDivider";
 import { getUserLocalContext } from "../utils/userLocalContext";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 
@@ -36,7 +42,8 @@ interface Message {
   timestamp: Date;
   friendId?: string; // For group chat: which friend sent this
   friendName?: string; // For group chat: friend's name
-  imageUrl?: string; // Optional image attachment
+  imageUrl?: string; // Optional image/video attachment preview
+  attachmentType?: "image" | "video";
 }
 
 interface AIFriend {
@@ -93,14 +100,30 @@ export default function AIFriendPage() {
     )}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
   };
 
-  // Use selected friend's info or default
-  const aiProfile = selectedFriend
+  // Use selected friend's info, group chat label, or default
+  const aiProfile = isGroupChat
     ? {
-      name: selectedFriend.name,
-      handle: `@${selectedFriend.name.toLowerCase().replace(/\s+/g, "")}`,
-      avatar: selectedFriend.logo_url || defaultAiProfile.avatar,
+        name: "Group Chat",
+        handle: `${aiFriends.length} friend${aiFriends.length === 1 ? "" : "s"}`,
+        avatar: defaultAiProfile.avatar,
+      }
+    : selectedFriend
+      ? {
+          name: selectedFriend.name,
+          handle: `@${selectedFriend.username || selectedFriend.name.toLowerCase().replace(/\s+/g, "")}`,
+          avatar: selectedFriend.logo_url || defaultAiProfile.avatar,
+        }
+      : defaultAiProfile;
+
+  const handleHeaderProfileClick = () => {
+    if (aiFriends.length === 0) {
+      openCreateFriendModal();
+      return;
     }
-    : defaultAiProfile;
+    setShowFriendSelector(true);
+  };
+  const genericUserAvatar =
+    "https://ui-avatars.com/api/?name=+&background=444&color=ddd&size=120&bold=true";
   const userProfile = {
     name: userName,
     avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(
@@ -143,6 +166,7 @@ export default function AIFriendPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite");
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
   const [newConversation, setNewConversation] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([
     "I'll heat up the dal if you promise to share how your day's been going.",
@@ -159,18 +183,27 @@ export default function AIFriendPage() {
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const friendSelectorRef = useRef<HTMLDivElement>(null);
   const friendSelectorContainerRef = useRef<HTMLDivElement>(null);
+  const friendSelectorSheetRef = useRef<HTMLDivElement>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
 
-  // Auto-scroll to bottom when new messages arrive
+  const scrollToLatestMessage = () => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }, 80);
+    });
+  };
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    scrollToLatestMessage();
+  }, [messages, isLoading]);
 
   // Focus input on mount
   useEffect(() => {
@@ -185,24 +218,17 @@ export default function AIFriendPage() {
     }
   }, [isLoggedIn]);
 
-  // Close friend selector when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        showFriendSelector &&
-        friendSelectorContainerRef.current &&
-        !friendSelectorContainerRef.current.contains(event.target as Node)
-      ) {
-        setShowFriendSelector(false);
-      }
+    if (!showFriendSelector) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowFriendSelector(false);
     };
-
-    if (showFriendSelector) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
+    document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKeyDown);
     };
   }, [showFriendSelector]);
 
@@ -455,8 +481,11 @@ export default function AIFriendPage() {
       console.error("Speech recognition error:", event.error);
       setIsListening(false);
       if (event.error === "not-allowed") {
+        const isNative = Capacitor.isNativePlatform();
         showToast({
-          message: "Microphone access denied. Please allow microphone access.",
+          message: isNative
+            ? "Microphone access denied. Please allow microphone access in your device settings."
+            : "Microphone access denied. Please allow microphone access in your browser settings.",
           type: "error",
           duration: 3000,
         });
@@ -475,39 +504,61 @@ export default function AIFriendPage() {
     setIsListening(false);
   };
 
-  // Parse @ mentions from message text (using usernames)
+  const escapeRegExp = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  // Parse @mentions by username or display name (supports spaces e.g. @Gokhale Chirala)
   const parseMentions = (text: string): string[] => {
-    const mentionRegex = /@(\w+)/g;
-    const matches = text.match(mentionRegex);
-    if (!matches) return [];
+    const mentionedIds = new Set<string>();
 
-    // Extract usernames (remove @)
-    const mentionedUsernames = matches.map((m) => m.substring(1).toLowerCase());
-
-    // Find friend IDs by matching usernames
-    const mentionedIds: string[] = [];
-    aiFriends.forEach((friend) => {
-      if (mentionedUsernames.includes(friend.username.toLowerCase())) {
-        mentionedIds.push(friend.id);
+    for (const friend of aiFriends) {
+      const usernamePattern = new RegExp(
+        `@${escapeRegExp(friend.username)}\\b`,
+        "i"
+      );
+      const namePattern = new RegExp(
+        `@\\s*${escapeRegExp(friend.name)}(?=\\s|[,.!?]|$)`,
+        "i"
+      );
+      if (usernamePattern.test(text) || namePattern.test(text)) {
+        mentionedIds.add(friend.id);
       }
-    });
+    }
 
-    return mentionedIds;
+    // Fallback: @word tokens matched to username
+    const tokenMatches = text.matchAll(/@(\w+)/g);
+    for (const match of tokenMatches) {
+      const token = match[1].toLowerCase();
+      const friend = aiFriends.find(
+        (f) =>
+          f.username.toLowerCase() === token ||
+          f.name.toLowerCase().replace(/\s+/g, "") === token
+      );
+      if (friend) mentionedIds.add(friend.id);
+    }
+
+    return Array.from(mentionedIds);
   };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
+    const fileToSend = attachedFile;
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
       content: inputValue.trim(),
       timestamp: new Date(),
+      imageUrl: fileToSend ? URL.createObjectURL(fileToSend) : undefined,
+      attachmentType: fileToSend
+        ? fileToSend.type.startsWith("video/")
+          ? "video"
+          : "image"
+        : undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     const messageText = inputValue.trim();
-    const fileToSend = attachedFile; // Save reference before clearing
     setInputValue("");
     setAttachedFile(null);
     if (attachedFileName) {
@@ -532,12 +583,19 @@ export default function AIFriendPage() {
 
     try {
       const contextMessageLimit = !isLoggedIn ? 5 : isPremium ? 20 : 10;
-      const conversationHistoryPayload = messages
-        .slice(-contextMessageLimit)
-        .map((m) => ({
-          role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
-          content: m.content,
-        }));
+      const buildHistoryForFriend = (friendId?: string) =>
+        messages
+          .slice(-contextMessageLimit)
+          .filter(
+            (m) =>
+              m.role === "user" ||
+              !m.friendId ||
+              (friendId && m.friendId === friendId)
+          )
+          .map((m) => ({
+            role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
+            content: m.content,
+          }));
       const userContextPayload = getUserLocalContext();
 
       // Handle group chat vs individual chat
@@ -575,7 +633,7 @@ export default function AIFriendPage() {
               formData.append('newConversation', 'false');
               formData.append('chatMode', 'ai_friend');
               formData.append('aiFriendId', friend.id);
-              formData.append('conversationHistory', JSON.stringify(conversationHistoryPayload));
+              formData.append('conversationHistory', JSON.stringify(buildHistoryForFriend(friend.id)));
               formData.append('userContext', JSON.stringify(userContextPayload));
               formData.append('image', fileToSend);
               body = formData;
@@ -589,12 +647,12 @@ export default function AIFriendPage() {
                 newConversation: false,
                 chatMode: "ai_friend",
                 aiFriendId: friend.id,
-                conversationHistory: conversationHistoryPayload,
+                conversationHistory: buildHistoryForFriend(friend.id),
                 userContext: userContextPayload,
               });
             }
-            
-      const response = await fetch(`${API_URL}/api/chat`, {
+
+            const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
               headers: headers,
               body: body,
@@ -681,7 +739,7 @@ export default function AIFriendPage() {
           if (selectedFriendId) {
             formData.append('aiFriendId', selectedFriendId);
           }
-          formData.append('conversationHistory', JSON.stringify(conversationHistoryPayload));
+          formData.append('conversationHistory', JSON.stringify(buildHistoryForFriend(selectedFriendId || undefined)));
           formData.append('userContext', JSON.stringify(userContextPayload));
           formData.append('image', fileToSend);
           body = formData;
@@ -695,7 +753,7 @@ export default function AIFriendPage() {
           newConversation: newConversation,
             chatMode: "ai_friend",
             aiFriendId: selectedFriendId || undefined,
-            conversationHistory: conversationHistoryPayload,
+            conversationHistory: buildHistoryForFriend(selectedFriendId || undefined),
             userContext: userContextPayload,
           });
         }
@@ -942,18 +1000,18 @@ export default function AIFriendPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
       showToast({
-        message: "Logo file must be less than 2MB",
+        message: "Logo file must be less than 10MB",
         type: "error",
         duration: 3000,
       });
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
+    if (!isImageFile(file)) {
       showToast({
-        message: "Please select an image file",
+        message: "Please select an image file (JPG, PNG, WebP, HEIC)",
         type: "error",
         duration: 3000,
       });
@@ -992,11 +1050,11 @@ export default function AIFriendPage() {
           duration: 2000,
         });
       } else {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({}));
         showToast({
-          message: error.error || "Failed to upload logo",
+          message: error.details || error.error || "Failed to upload logo",
           type: "error",
-          duration: 3000,
+          duration: 4000,
         });
       }
     } catch (error: any) {
@@ -1206,121 +1264,39 @@ export default function AIFriendPage() {
       )}
       {/* Header */}
       <div className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]" style={{ paddingTop: "var(--safe-area-top)" }}>
-        <div className="row flex-nowrap! flex justify-between items-center p-4">
-            <div className="row flex items-center gap-3">
+        <div className="flex flex-nowrap justify-between items-center gap-2 p-3 px-4 min-h-[60px]">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
-              className="btn-ghost glass-button p-2! text-[length:var(--font-md)]"
+              className="btn-ghost glass-button p-2! shrink-0 text-[length:var(--font-md)]"
               onClick={() => navigateTo("/")}
               aria-label="Back"
             >
               <IoIosArrowBack size={24} />
             </button>
-            <div className="row flex items-center gap-3">
+            <div className="flex items-center gap-2 min-w-0">
               {isLoggedIn && (
-                <div ref={friendSelectorContainerRef} className="relative">
+                <div ref={friendSelectorContainerRef} className="min-w-0">
                   <button
-                    onClick={() => setShowFriendSelector(!showFriendSelector)}
-                    className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[var(--input-bg)] transition-colors"
+                    type="button"
+                    onClick={handleHeaderProfileClick}
+                    className="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-[var(--input-bg)] transition-colors min-w-0 max-w-full"
+                    aria-label="Switch character"
                   >
-                    <div className="relative">
+                    <div className="relative shrink-0">
                       <img
                         src={aiProfile.avatar}
                         alt={`${aiProfile.name} avatar`}
-                        className="w-11 h-11 min-w-11 rounded-full object-cover border-2 border-[var(--accent)]"
+                        className="w-10 h-10 min-w-10 rounded-full object-cover border-2 border-[var(--accent)]"
                       />
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
+                      <div className="w-2 h-2 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
                     </div>
-                    <div className="text-left">
-                      <div className="h3 mb-0.5">{aiProfile.name}</div>
-                      <div className="sub text-sm text-[length:var(--font-sm)] opacity-80">
+                    <div className="text-left min-w-0">
+                      <div className="h3 mb-0.5 truncate text-base">{aiProfile.name}</div>
+                      <div className="sub text-xs opacity-80 truncate">
                         {aiProfile.handle}
                       </div>
                     </div>
-                    <FaChevronDown
-                      size={14}
-                      className={`transition-transform ${showFriendSelector ? "rotate-180" : ""
-                        }`}
-                    />
                   </button>
-                  {showFriendSelector && !showFriendModal && (
-                    <div
-                      ref={friendSelectorRef}
-                      className="absolute top-full left-0 mt-2 glass-panel border border-[var(--border)] rounded-lg shadow-lg z-50 min-w-[280px] max-h-[400px] overflow-y-auto"
-                    >
-                      <div className="p-2">
-                        <button
-                          onClick={openCreateFriendModal}
-                          disabled={aiFriends.length >= 5}
-                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--input-bg)] transition-colors text-left mb-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <FaPlus size={14} />
-                          <span className="text-sm font-semibold">
-                            {aiFriends.length >= 5
-                              ? "Maximum 5 friends reached"
-                              : "Create Character"}
-                          </span>
-                        </button>
-                        {aiFriends.map((friend) => (
-                          <div
-                            key={friend.id}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--input-bg)] transition-colors cursor-pointer mb-1 ${selectedFriendId === friend.id
-                              ? "bg-[rgba(199,168,105,0.15)]"
-                              : ""
-                              }`}
-                            onClick={() => {
-                              setSelectedFriendId(friend.id);
-                              setIsGroupChat(false); // Switch to individual chat when friend is selected
-                              setShowFriendSelector(false);
-                            }}
-                          >
-                            <img
-                              src={
-                                friend.logo_url ||
-                                `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                                  friend.name
-                                )}&background=C7A869&color=111&size=40&bold=true`
-                              }
-                              alt={friend.name}
-                              className="w-10 h-10 rounded-full object-cover border border-[var(--border)]"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <div className="text-sm font-semibold truncate">
-                                  {friend.name}
-                                </div>
-                                <div className="text-xs opacity-50 text-[var(--accent)]">
-                                  @{friend.username}
-                                </div>
-                              </div>
-                              <div className="text-xs opacity-70 truncate">
-                                {friend.description.substring(0, 40)}...
-                              </div>
-                            </div>
-                            <div className="flex gap-1">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openEditFriendModal(friend);
-                                }}
-                                className="p-1.5 rounded hover:bg-[var(--input-bg)]"
-                              >
-                                <FaEdit size={12} />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteFriend(friend.id);
-                                }}
-                                className="p-1.5 rounded hover:bg-[var(--input-bg)] text-red-500"
-                              >
-                                <FaTrash size={12} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
               {!isLoggedIn && (
@@ -1343,63 +1319,31 @@ export default function AIFriendPage() {
               )}
             </div>
           </div>
-            {/* Group chat avatars row */}
-            {isLoggedIn && isGroupChat && aiFriends.length > 0 && (
-              <div className="mt-2 flex -space-x-2">
-                {aiFriends.slice(0, 5).map((friend) => (
-                  <img
-                    key={friend.id}
-                    src={
-                      friend.logo_url ||
-                      `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                        friend.name
-                      )}&background=C7A869&color=111&size=40&bold=true`
-                    }
-                    alt={friend.name}
-                    className="w-7 h-7 rounded-full object-cover border border-[var(--card)] shadow-sm"
-                  />
-                ))}
-                {aiFriends.length > 5 && (
-                  <div className="w-7 h-7 rounded-full bg-[var(--input-bg)] border border-[var(--card)] flex items-center justify-center text-[length:var(--font-xs)] text-[var(--text)]">
-                    +{aiFriends.length - 5}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="row flex items-center gap-2.5">
+            <div className="flex items-center gap-1.5 shrink-0">
             {isLoggedIn && aiFriends.length > 0 && (
             <button
-                className={`btn-ghost glass-button !p-2 flex gap-2 rounded-lg transition-colors ${isGroupChat ? "bg-[rgba(199,168,105,0.15)] glass-panel" : ""
+                className={`btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors text-xs whitespace-nowrap ${isGroupChat ? "bg-[rgba(199,168,105,0.15)] glass-panel" : ""
                   }`}
                 onClick={() => {
                   setIsGroupChat(!isGroupChat);
-                  setSelectedFriendId(null); // Clear selection when switching modes
-                  setNewConversation(true); // Start fresh when switching
+                  setSelectedFriendId(null);
+                  setNewConversation(true);
                 }}
-                aria-label={
-                  isGroupChat
-                    ? "Switch to individual chat"
-                    : "Switch to group chat"
-                }
+                aria-label={isGroupChat ? "Switch to individual chat" : "Switch to group chat"}
                 title={isGroupChat ? "Individual Chat" : "Group Chat"}
               >
-                {/* <FaComments
-                  size={18}
-                  color={isGroupChat ? "var(--accent)" : "var(--text)"}
-                />{" "} */}
-                <span className={`text-sm ${isGroupChat ? "var(--accent)" : "var(--text)"}`}>Group Chat</span>
+                <span className={isGroupChat ? "text-[var(--accent)]" : "text-[var(--text)]"}>Group</span>
               </button>
             )}
             {isLoggedIn && (
               <button
-                className="btn-ghost glass-button !p-2 flex gap-2 rounded-lg transition-colors hover:bg-[var(--input-bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors hover:bg-[var(--input-bg)] disabled:opacity-50 disabled:cursor-not-allowed text-xs whitespace-nowrap"
                 onClick={openCreateFriendModal}
                 disabled={aiFriends.length >= 5}
                 title={aiFriends.length >= 5 ? "Maximum 5 characters reached" : "Create Character"}
               >
-                <FaPlus size={14} />
-                <span className="text-sm">Create Character</span>
+                <FaPlus size={12} />
+                <span>Create</span>
               </button>
             )}
             {/* <button
@@ -1413,13 +1357,28 @@ export default function AIFriendPage() {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-5">
-        {messages.map((message) => {
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-5">
+        {messages.map((message, index) => {
+          const showDateDivider =
+            index === 0 ||
+            isDifferentChatDay(
+              messages[index - 1].timestamp,
+              message.timestamp
+            );
           // For group chat AI messages, get friend avatar and name
+          const isUserInGroup = message.role === "user" && isGroupChat;
           let messageAvatar =
-            message.role === "user" ? userProfile.avatar : aiProfile.avatar;
+            message.role === "user"
+              ? isUserInGroup
+                ? genericUserAvatar
+                : userProfile.avatar
+              : aiProfile.avatar;
           let messageName =
-            message.role === "user" ? userProfile.name : aiProfile.name;
+            message.role === "user"
+              ? isUserInGroup
+                ? "You"
+                : userProfile.name
+              : aiProfile.name;
 
           if (message.role === "ai" && message.friendId && isGroupChat) {
             const friend = aiFriends.find((f) => f.id === message.friendId);
@@ -1430,8 +1389,11 @@ export default function AIFriendPage() {
           }
 
           return (
+          <Fragment key={message.id}>
+            {showDateDivider && (
+              <ChatDateDivider label={getChatDateLabel(message.timestamp)} />
+            )}
           <div
-            key={message.id}
               className={`flex items-end gap-3 mb-4 ${message.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
           >
@@ -1445,26 +1407,32 @@ export default function AIFriendPage() {
             />
             <div
                 className={`max-w-[72%] px-4 py-3 rounded-[var(--radius-sm)] shadow-[var(--shadow)] leading-relaxed break-words ${message.role === "user"
-                  ? "bg-[rgba(199,168,105,0.15)] text-(--accent) border border-[rgba(199,168,105,0.3)] glass-panel"
+                  ? "bg-[rgba(199,168,105,0.15)] text-(--accent) border border-[rgba(199,168,105,0.3)] glass-panel flex flex-col items-end"
                   : "glass-panel text-[var(--text)] border border-[rgba(255,255,255,0.1)]"
               }`}
             >
                 {/* Show friend name in group chat */}
                 {message.role === "ai" && message.friendName && isGroupChat && (
-                  <div className="text-[length:var(--font-xs)] font-semibold mb-1 opacity-80">
+                  <div className="text-[length:var(--font-xs)] font-semibold mb-1 opacity-80 self-start">
                     {message.friendName}
                   </div>
                 )}
-              <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
+                {message.imageUrl && message.attachmentType === "video" ? (
+                  <video
+                    src={message.imageUrl}
+                    controls
+                    className="mb-2 rounded-lg max-w-full max-h-[300px] object-contain"
+                  />
+                ) : message.imageUrl ? (
+                  <img
+                    src={message.imageUrl}
+                    alt="Attached"
+                    className="mb-2 rounded-lg max-w-full max-h-[300px] object-contain"
+                  />
+                ) : null}
+              <div className={`text-[length:var(--font-md)] whitespace-pre-wrap w-full ${message.role === "user" ? "text-right" : ""}`}>
                 {message.content}
               </div>
-                {message.imageUrl && (
-                  <img 
-                    src={message.imageUrl} 
-                    alt="Attached" 
-                    className="mt-2 rounded-lg max-w-full max-h-[300px] object-contain"
-                  />
-                )}
                 <div
                   className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${message.role === "user" ? "text-right" : "text-left"
                     }`}
@@ -1473,6 +1441,7 @@ export default function AIFriendPage() {
               </div>
             </div>
           </div>
+          </Fragment>
           );
         })}
 
@@ -1497,7 +1466,15 @@ export default function AIFriendPage() {
       </div>
 
       {/* Input Area */}
-      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0">
+      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+        <div className="mb-2">
+          <ExperienceModeButtons
+            experienceMode={experienceMode}
+            onExperienceModeChange={setExperienceMode}
+            disabled={isLoading}
+            size="small"
+          />
+        </div>
         {/* Model Selector and New Chat Button (Premium Users) - Moved to bottom */}
         {/* <div className="flex-1">
           <LLMModelSelector
@@ -1533,32 +1510,33 @@ export default function AIFriendPage() {
           </div>
         )} */}
 
-        {attachedFileName && (
-          <div className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] glass-panel flex justify-between items-center gap-3">
-            <div className="flex items-center gap-2.5 text-[length:var(--font-sm)] text-[var(--text)] flex-1 min-w-0">
-              <FaPaperclip size={14} color="var(--accent)" />
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap">
-                {attachedFileName}
-              </span>
-              {isUploading && (
-                <span className="text-[length:var(--font-xs)] text-[var(--accent)] font-semibold">
-                  Uploading…
-                </span>
-              )}
+        {attachedFile && (
+          <div className="mb-2 flex items-start justify-end gap-2">
+            <div className="relative inline-block">
+              <img
+                src={URL.createObjectURL(attachedFile)}
+                alt={attachedFileName || "Attached"}
+                className="h-20 w-20 rounded-lg object-cover border border-[var(--border)]"
+              />
+              <button
+                type="button"
+                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center"
+                onClick={() => {
+                  setAttachedFileName(null);
+                  setAttachedFile(null);
+                  setIsUploading(false);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+                aria-label="Remove attached image"
+              >
+                <FaTimes size={10} />
+              </button>
             </div>
-            <button
-              className="btn-ghost glass-button flex items-center gap-1.5 text-[length:var(--font-xs)]"
-              onClick={() => {
-                setAttachedFileName(null);
-                setAttachedFile(null);
-                setIsUploading(false);
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
-              aria-label="Remove attached file"
-            >
-              <FaTimes size={12} />
-              Remove
-            </button>
+            {isUploading && (
+              <span className="text-[length:var(--font-xs)] text-[var(--accent)] font-semibold self-center">
+                Uploading…
+              </span>
+            )}
           </div>
         )}
 
@@ -1722,6 +1700,8 @@ export default function AIFriendPage() {
                 }}
                 isPremium={isPremium}
                 size="small"
+                experienceMode={experienceMode}
+                onExperienceModeChange={setExperienceMode}
               />
             </div>
           </div>
@@ -1873,15 +1853,24 @@ export default function AIFriendPage() {
                   {/* Custom Upload */}
                   <div className="border-t border-[var(--border)] pt-4">
                     <div className="text-xs opacity-70 mb-2">
-                      Or upload your own (Max 2MB):
+                      Or upload your own (Max 10MB):
                     </div>
                     <input
+                      ref={logoFileInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/*,.heic,.heif"
                       onChange={handleLogoFileChange}
                       disabled={isUploadingLogo}
-                      className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--text)] disabled:opacity-50"
+                      className="hidden"
                     />
+                    <button
+                      type="button"
+                      onClick={() => logoFileInputRef.current?.click()}
+                      disabled={isUploadingLogo}
+                      className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--text)] disabled:opacity-50 text-sm font-medium"
+                    >
+                      {isUploadingLogo ? "Uploading..." : "Choose image from device"}
+                    </button>
                     {isUploadingLogo && (
                       <div className="text-xs text-[var(--accent)] mt-1">
                         Uploading...
@@ -1952,6 +1941,160 @@ export default function AIFriendPage() {
           </div>
         </div>
       )}
+
+      {showFriendSelector &&
+        !showFriendModal &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[100001]"
+              style={{ backgroundColor: "rgba(0, 0, 0, 0.45)" }}
+              onMouseDown={() => setShowFriendSelector(false)}
+            />
+            <div
+              ref={friendSelectorSheetRef}
+              role="dialog"
+              aria-label="Switch character"
+              className="fixed left-0 right-0 bottom-0 z-[100002]"
+              style={{
+                background: "var(--bg)",
+                color: "var(--text)",
+                borderTop: "1px solid var(--border)",
+                borderRadius: "16px 16px 0 0",
+                padding: "12px 16px",
+                paddingBottom: "max(20px, env(safe-area-inset-bottom))",
+                maxHeight: "70vh",
+                overflowY: "auto",
+                boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.25)",
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-center mb-3">
+                <div className="w-10 h-1 rounded-full bg-[var(--border)]" />
+              </div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-semibold text-[length:var(--font-md)]">
+                  Switch character
+                </div>
+                <button
+                  type="button"
+                  className="btn-ghost glass-button w-8 h-8 rounded-full flex items-center justify-center"
+                  onClick={() => setShowFriendSelector(false)}
+                  aria-label="Close"
+                >
+                  <FaTimes size={14} />
+                </button>
+              </div>
+
+              {aiFriends.length > 0 && (
+                <button
+                  type="button"
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg mb-2 text-left ${
+                    isGroupChat
+                      ? "bg-[rgba(199,168,105,0.15)] border border-[rgba(199,168,105,0.3)]"
+                      : "glass-button border border-[var(--border)]"
+                  }`}
+                  onClick={() => {
+                    setIsGroupChat(true);
+                    setSelectedFriendId(null);
+                    setShowFriendSelector(false);
+                  }}
+                >
+                  <FaComments size={18} className="text-[var(--accent)] shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm">Group Chat</div>
+                    <div className="text-xs opacity-70">
+                      Chat with all {aiFriends.length} friends
+                    </div>
+                  </div>
+                </button>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {aiFriends.map((friend) => (
+                  <div
+                    key={friend.id}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-lg border ${
+                      !isGroupChat && selectedFriendId === friend.id
+                        ? "bg-[rgba(199,168,105,0.15)] border-[rgba(199,168,105,0.3)]"
+                        : "border-[var(--border)] glass-button"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                      onClick={() => {
+                        setSelectedFriendId(friend.id);
+                        setIsGroupChat(false);
+                        setShowFriendSelector(false);
+                      }}
+                    >
+                      <img
+                        src={
+                          friend.logo_url ||
+                          `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                            friend.name
+                          )}&background=C7A869&color=111&size=40&bold=true`
+                        }
+                        alt={friend.name}
+                        className="w-10 h-10 rounded-full object-cover border border-[var(--border)] shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="text-sm font-semibold truncate">
+                            {friend.name}
+                          </div>
+                          <div className="text-xs opacity-50 text-[var(--accent)] shrink-0">
+                            @{friend.username}
+                          </div>
+                        </div>
+                        <div className="text-xs opacity-70 truncate">
+                          {(friend.description || "").slice(0, 48)}
+                          {(friend.description || "").length > 48 ? "…" : ""}
+                        </div>
+                      </div>
+                    </button>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowFriendSelector(false);
+                          openEditFriendModal(friend);
+                        }}
+                        className="p-2 rounded-lg hover:bg-[var(--input-bg)]"
+                        aria-label={`Edit ${friend.name}`}
+                      >
+                        <FaEdit size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFriend(friend.id)}
+                        className="p-2 rounded-lg hover:bg-[var(--input-bg)] text-red-400"
+                        aria-label={`Delete ${friend.name}`}
+                      >
+                        <FaTrash size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="w-full mt-3 glass-button border border-[var(--border)] rounded-lg py-3 flex items-center justify-center gap-2 font-semibold text-sm"
+                onClick={() => {
+                  setShowFriendSelector(false);
+                  openCreateFriendModal();
+                }}
+                disabled={aiFriends.length >= 5}
+              >
+                <FaPlus size={14} />
+                Create Character
+              </button>
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 }

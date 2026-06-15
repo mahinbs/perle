@@ -9,6 +9,8 @@ import { createPortal } from "react-dom";
 import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
+import syntraIcon from "../assets/syntra-icon.png";
+import type { Source } from "../types";
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
 
@@ -18,6 +20,7 @@ interface VoiceOverlayProps {
   onToggleListening: () => void;
   onClose: () => void;
   responseText?: string;
+  sources?: Source[];
 }
 
 const GlobeView = React.memo(function GlobeView({
@@ -59,6 +62,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
   onToggleListening,
   onClose,
   responseText,
+  sources = [],
 }) => {
   const [os, setOs] = useState("");
   const hasAutoStartedRef = useRef(false);
@@ -231,16 +235,48 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 24,
+          alignItems: "stretch",
+          justifyContent: "flex-start",
+          gap: 16,
+          overflow: "hidden",
+          paddingTop: 8,
         }}
       >
-        {/* Watercolor gradient circle animation on voice output */}
+        {sources.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 8, padding: "0 8px" }}>
+            {sources.slice(0, 5).map((source) => (
+              <a
+                key={source.id}
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="glass-button btn-shadow"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  fontSize: "var(--font-xs)",
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  maxWidth: 160,
+                }}
+              >
+                <span style={{ width: 18, height: 18, borderRadius: 4, background: "var(--accent)", color: "#111", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                  {(source.domain || "www").charAt(0).toUpperCase()}
+                </span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {source.domain || source.title}
+                </span>
+              </a>
+            ))}
+          </div>
+        )}
         <SpeakingGradientCircle
           isListening={isListening}
           responseText={responseText}
-          key={isOpen ? "open" : "closed"} // Reset component when overlay opens/closes
+          key={isOpen ? "open" : "closed"}
         />
       </div>
 
@@ -266,10 +302,9 @@ const SpeakingGradientCircle: React.FC<{
   const [speaking, setSpeaking] = useState(false);
   const [displayText, setDisplayText] = useState<string>(propResponseText || "");
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const hasResponse = Boolean(displayText?.trim());
 
-  // Use vmin for fluid sizing that respects both viewport dimensions
-  // This replaces the complex clamp calculations
-  const baseGlobeSize = "45vmin";
+  const baseGlobeSize = hasResponse ? "22vmin" : "40vmin";
 
   // Detect theme (light or dark)
   useEffect(() => {
@@ -635,22 +670,46 @@ const SpeakingGradientCircle: React.FC<{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        gap: "4vh", // Relative gap
+        justifyContent: hasResponse ? "flex-start" : "center",
+        gap: hasResponse ? 16 : "4vh",
         width: "100%",
-        height: "100%",
-        maxHeight: "100%",
+        flex: 1,
+        minHeight: 0,
+        paddingTop: hasResponse ? 8 : 0,
       }}
     >
-      {/* Keep globe rendering isolated from live text/speaking updates */}
-      <GlobeView
-        baseGlobeSize={baseGlobeSize}
-        globeConfig={globeConfig}
-        globeData={globeData}
-      />
+      <div
+        style={{
+          transition: "all 0.5s ease",
+          transform: hasResponse ? "translateY(0)" : "translateY(0)",
+          flexShrink: 0,
+        }}
+      >
+        {hasResponse ? (
+          <img
+            src={syntraIcon}
+            alt="SyntraIQ"
+            style={{
+              width: baseGlobeSize,
+              height: baseGlobeSize,
+              maxWidth: 120,
+              maxHeight: 120,
+              objectFit: "contain",
+              borderRadius: "50%",
+            }}
+          />
+        ) : (
+          <GlobeView
+            baseGlobeSize={baseGlobeSize}
+            globeConfig={globeConfig}
+            globeData={globeData}
+          />
+        )}
+      </div>
 
-      {/* AI Response Text Display - Responsive height for mobile and desktop */}
-      <VoiceResponseText text={displayText} speaking={speaking} />
+      <div style={{ flex: 1, width: "100%", minHeight: 0, overflowY: "auto", display: "flex", justifyContent: "center" }}>
+        <VoiceResponseText text={displayText} speaking={speaking} />
+      </div>
     </div>
   );
 };

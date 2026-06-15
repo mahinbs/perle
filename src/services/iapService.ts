@@ -1,5 +1,12 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
 
+export const IAP_PRODUCT_IDS = {
+  pro: 'com.syntraiq.com.pro_v1',
+  max: 'com.syntraiq.com.max_v1',
+} as const;
+
+export type IAPPlanId = keyof typeof IAP_PRODUCT_IDS;
+
 export interface IAPProduct {
   id: string;
   displayName: string;
@@ -29,7 +36,6 @@ export interface IAPPluginInterface {
   getCurrentSubscriptions(): Promise<{ subscriptions: IAPTransaction[] }>;
 }
 
-// Register the custom Capacitor native plugin
 const IAP = registerPlugin<IAPPluginInterface>('IAP');
 
 export class IAPService {
@@ -46,21 +52,27 @@ export class IAPService {
     return IAPService.instance;
   }
 
-  /**
-   * Helper to check if running on native iOS
-   */
   private isNativeIOS(): boolean {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
   }
 
-  /**
-   * Initialize the IAP system
-   */
+  private isNativeAndroid(): boolean {
+    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  }
+
+  private isNativeIAP(): boolean {
+    return this.isNativeIOS() || this.isNativeAndroid();
+  }
+
+  public getProductIdForPlan(planId: IAPPlanId): string {
+    return IAP_PRODUCT_IDS[planId];
+  }
+
   public async initialize(): Promise<boolean> {
     if (this.isInitialized) return true;
 
-    if (!this.isNativeIOS()) {
-      console.warn('IAP is only supported on native iOS. Initializing mock system.');
+    if (!this.isNativeIAP()) {
+      console.warn('IAP is only supported on native iOS/Android. Initializing mock system.');
       this.isInitialized = true;
       this.canMakePayments = true;
       return true;
@@ -79,20 +91,18 @@ export class IAPService {
     }
   }
 
-  /**
-   * Fetch product details (price, title, etc.) from App Store
-   */
   public async loadProducts(productIds: string[]): Promise<IAPProduct[]> {
     await this.initialize();
 
-    if (!this.isNativeIOS()) {
-      // Mock products for development in browser
+    if (!this.isNativeIAP()) {
       return productIds.map(id => ({
         id,
         displayName: id.includes('max') ? 'IQ Max (Mock)' : 'IQ Pro (Mock)',
-        description: id.includes('max') ? 'Built for teams running mission-critical workflows' : 'Perfect for creators and strategists',
+        description: id.includes('max')
+          ? 'Built for teams running mission-critical workflows'
+          : 'Perfect for creators and strategists',
         price: id.includes('max') ? 899.00 : 399.00,
-        displayPrice: id.includes('max') ? '$10.99' : '$4.99',
+        displayPrice: id.includes('max') ? '₹899' : '₹399',
         type: 'autoRenewable'
       }));
     }
@@ -101,14 +111,11 @@ export class IAPService {
       const result = await IAP.loadProducts({ productIds });
       return result.products;
     } catch (error) {
-      console.error('Failed to load products from App Store:', error);
+      console.error('Failed to load products from store:', error);
       throw error;
     }
   }
 
-  /**
-   * Trigger the App Store purchase sheet for a product
-   */
   public async purchase(productId: string): Promise<{
     success: boolean;
     transaction?: IAPTransaction;
@@ -118,9 +125,8 @@ export class IAPService {
   }> {
     await this.initialize();
 
-    if (!this.isNativeIOS()) {
+    if (!this.isNativeIAP()) {
       console.log(`Simulating mock purchase for product: ${productId}`);
-      // Simulate successful purchase in non-native dev environments
       return new Promise(resolve => {
         setTimeout(() => {
           resolve({
@@ -129,7 +135,7 @@ export class IAPService {
               transactionId: `mock_tx_${Date.now()}`,
               productId,
               purchaseDate: Date.now(),
-              receipt: 'MOCK_BASE64_APPLE_RECEIPT_DATA'
+              receipt: 'MOCK_RECEIPT_DATA'
             }
           });
         }, 1500);
@@ -152,20 +158,17 @@ export class IAPService {
     }
   }
 
-  /**
-   * Restore previous purchases
-   */
   public async restorePurchases(): Promise<IAPTransaction[]> {
     await this.initialize();
 
-    if (!this.isNativeIOS()) {
+    if (!this.isNativeIAP()) {
       console.log('Simulating mock restore purchases');
       return [
         {
           transactionId: 'mock_restore_tx_123',
-          productId: 'com.syntraiq.com.pro_v1_v1',
-          purchaseDate: Date.now() - 86400000 * 5, // 5 days ago
-          receipt: 'MOCK_BASE64_APPLE_RECEIPT_DATA'
+          productId: IAP_PRODUCT_IDS.pro,
+          purchaseDate: Date.now() - 86400000 * 5,
+          receipt: 'MOCK_RECEIPT_DATA'
         }
       ];
     }
@@ -179,13 +182,10 @@ export class IAPService {
     }
   }
 
-  /**
-   * Get active subscription transactions
-   */
   public async getCurrentSubscriptions(): Promise<IAPTransaction[]> {
     await this.initialize();
 
-    if (!this.isNativeIOS()) {
+    if (!this.isNativeIAP()) {
       return [];
     }
 

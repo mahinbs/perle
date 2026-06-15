@@ -34,7 +34,12 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   const fetchConversations = async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL as string;
-      const { getAuthHeaders } = await import('../utils/auth');
+      const { getAuthHeaders, getAuthToken } = await import('../utils/auth');
+
+      if (!getAuthToken()) {
+        setConversations([]);
+        return;
+      }
       
       const response = await fetch(`${baseUrl}/api/conversations?chatMode=normal`, {
         headers: getAuthHeaders()
@@ -43,6 +48,8 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       if (response.ok) {
         const data = await response.json();
         setConversations(data.conversations || []);
+      } else if (response.status === 401) {
+        setConversations([]);
       }
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
@@ -57,9 +64,13 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
   // Refresh conversations when active conversation changes
   useEffect(() => {
-    if (activeConversationId) {
-      fetchConversations();
-    }
+    const refresh = async () => {
+      const { getAuthToken } = await import('../utils/auth');
+      if (activeConversationId && getAuthToken()) {
+        fetchConversations();
+      }
+    };
+    refresh();
   }, [activeConversationId]);
 
   const handleDelete = async (e: React.MouseEvent, conversationId: string) => {

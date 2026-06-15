@@ -6,6 +6,7 @@ import { LoginForm } from "../components/LoginForm";
 import { SignupForm } from "../components/SignupForm";
 import { GoogleIcon } from "../assets/icons/GoogleIcon";
 import { UpgradeCard } from "../components/UpgradeCard";
+import syntraIcon from "../assets/syntra-icon.png";
 import {
   login,
   signup,
@@ -13,6 +14,7 @@ import {
   verifyToken,
   getUserData,
   setUserData,
+  applyTheme,
   getAuthHeaders,
   removeAuthToken,
   type User,
@@ -330,6 +332,7 @@ export default function ProfilePage() {
     const updates: any = {};
     if (key === "darkMode") {
       updates.darkMode = value;
+      applyTheme(value === true);
     } else if (key === "notifications") {
       updates.notifications = value;
     } else if (key === "searchHistory") {
@@ -387,6 +390,9 @@ export default function ProfilePage() {
         if (userSettings) {
           setUserSettings({ ...userSettings, [key]: previousValue });
         }
+        if (key === "darkMode") {
+          applyTheme(previousValue === true);
+        }
         showToast({
           message: "Failed to update setting. Please try again.",
           type: "error",
@@ -397,6 +403,9 @@ export default function ProfilePage() {
       // Revert on error
       if (userSettings) {
         setUserSettings({ ...userSettings, [key]: previousValue });
+      }
+      if (key === "darkMode") {
+        applyTheme(previousValue === true);
       }
       showToast({
         message: "Failed to update setting. Please try again.",
@@ -765,17 +774,30 @@ export default function ProfilePage() {
                 }}
               />
             ) : null}
+            <img
+              src={syntraIcon}
+              alt="SyntraIQ"
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: "50%",
+                objectFit: "cover",
+                marginRight: 16,
+                border: "2px solid var(--border)",
+                display:
+                  (userSettings as any).dp ||
+                  (userSettings as any).displayPictureUrl
+                    ? "none"
+                    : "block",
+              }}
+            />
             <div
               style={{
                 width: 60,
                 height: 60,
                 borderRadius: "50%",
                 background: "var(--accent)",
-                display:
-                  (userSettings as any).dp ||
-                  (userSettings as any).displayPictureUrl
-                    ? "none"
-                    : "flex",
+                display: "none",
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: "var(--font-2xl)",
@@ -1593,9 +1615,9 @@ export default function ProfilePage() {
                     const file = e.target.files?.[0];
                     if (file) {
                       // Check file size (2MB limit)
-                      if (file.size > 2 * 1024 * 1024) {
+                      if (file.size > 10 * 1024 * 1024) {
                         showToast({
-                          message: "File size exceeds 2MB limit",
+                          message: "File size exceeds 10MB limit",
                           type: "error",
                           duration: 3000,
                         });
@@ -1630,7 +1652,7 @@ export default function ProfilePage() {
                   {uploadingPicture ? "Uploading..." : "Upload Image"}
                 </label>
                 <span className="sub" style={{ fontSize: "var(--font-xs)" }}>
-                  Max 2MB (JPG, PNG, WebP, GIF)
+                  Max 10MB (JPG, PNG, WebP, GIF)
                 </span>
               </div>
               <div style={{ marginBottom: 8 }}>

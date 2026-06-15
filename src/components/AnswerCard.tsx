@@ -15,8 +15,160 @@ import {
   FaChevronDown,
   FaDownload,
 } from "react-icons/fa";
-import loadingGif from "../assets/gif/loading-video.gif";
-import loadingVideo from "../assets/loading.mp4";
+import syntraIcon from "../assets/syntra-icon.png";
+
+type ModeType = Mode;
+
+function splitTableCells(line: string): string[] {
+  let trimmed = line.trim();
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function isMarkdownTableRow(line: string): boolean {
+  if (!line.includes("|")) return false;
+  return splitTableCells(line).filter(Boolean).length >= 2;
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  const cells = splitTableCells(line);
+  if (cells.length < 2) return false;
+  return cells.every(
+    (cell) => cell === "" || /^:?-{3,}:?$/.test(cell) || /^-+$/.test(cell)
+  );
+}
+
+function hasMarkdownTable(text: string): boolean {
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!isMarkdownTableRow(lines[i].trim())) continue;
+    if (i + 1 < lines.length) {
+      const next = lines[i + 1].trim();
+      if (isMarkdownTableSeparator(next) || isMarkdownTableRow(next)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isComparisonContext(mode?: ModeType, query?: string): boolean {
+  if (mode === "Compare") return true;
+  const q = (query || "").toLowerCase();
+  return /\b(vs\.?|versus|compare|comparison|difference between|differences between|better than|which is better)\b/.test(
+    q
+  );
+}
+
+function extractComparisonSubjects(query?: string): [string, string] | null {
+  if (!query) return null;
+  const vsMatch = query.match(/(.+?)\s+(?:vs\.?|versus)\s+(.+)/i);
+  if (vsMatch) {
+    return [vsMatch[1].trim(), vsMatch[2].trim()];
+  }
+  const betweenMatch = query.match(
+    /(?:compare|comparison|difference between)\s+(.+?)\s+and\s+(.+)/i
+  );
+  if (betweenMatch) {
+    return [betweenMatch[1].trim(), betweenMatch[2].trim()];
+  }
+  return null;
+}
+
+function tryBuildComparisonTableFromText(text: string, query?: string): string {
+  if (hasMarkdownTable(text)) return text;
+
+  const subjects = extractComparisonSubjects(query);
+  const subjectA = subjects?.[0] ?? "Option 1";
+  const subjectB = subjects?.[1] ?? "Option 2";
+  const rows: string[][] = [];
+
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const withoutBullet = line.replace(/^[•\-*]\s+/, "").replace(/^\d+\.\s+/, "");
+
+    if (isMarkdownTableRow(withoutBullet)) {
+      rows.push(splitTableCells(withoutBullet));
+      continue;
+    }
+
+    const pipeParts = withoutBullet.includes("|")
+      ? splitTableCells(withoutBullet)
+      : null;
+    if (pipeParts && pipeParts.length >= 3) {
+      rows.push(pipeParts);
+      continue;
+    }
+
+    const colonMatch = withoutBullet.match(/^([^:]{2,80}):\s*(.+)$/);
+    if (colonMatch) {
+      const aspect = colonMatch[1].trim();
+      const value = colonMatch[2].trim();
+      const splitBySubjects = value.split(/\s*[;|/]\s*/);
+      if (splitBySubjects.length >= 2) {
+        rows.push([aspect, splitBySubjects[0], splitBySubjects[1]]);
+        continue;
+      }
+      const aMatch = value.match(
+        new RegExp(`${subjectA}[:\\s-]+([^,;|]+)`, "i")
+      );
+      const bMatch = value.match(
+        new RegExp(`${subjectB}[:\\s-]+([^,;|]+)`, "i")
+      );
+      if (aMatch && bMatch) {
+        rows.push([aspect, aMatch[1].trim(), bMatch[1].trim()]);
+      }
+    }
+  }
+
+  if (rows.length < 2) return text;
+
+  const firstRowLooksLikeHeader =
+    rows[0].length >= 2 &&
+    rows[0].every((cell) => cell.length < 40) &&
+    rows[0].some((cell) =>
+      /feature|aspect|criteria|category|point/i.test(cell)
+    );
+
+  let header: string[];
+  let body: string[][];
+  if (firstRowLooksLikeHeader && rows[0].length >= 3) {
+    header = rows[0];
+    body = rows.slice(1);
+  } else if (rows[0].length >= 3) {
+    header = rows[0];
+    body = rows.slice(1);
+  } else {
+    header = ["Aspect", subjectA, subjectB];
+    body = rows.map((row) =>
+      row.length >= 3 ? row : [row[0], row[1] ?? "", row[2] ?? ""]
+    );
+  }
+
+  const tableBlock = [
+    `| ${header.join(" | ")} |`,
+    `| ${header.map(() => "---").join(" | ")} |`,
+    ...body.map((row) => `| ${row.join(" | ")} |`),
+  ].join("\n");
+
+  const intro = text.split("\n").find((l) => l.trim() && !l.trim().startsWith("•")) ?? "";
+  return intro ? `${intro}\n\n${tableBlock}` : tableBlock;
+}
+
+function preprocessAnswerText(
+  text: string,
+  mode?: ModeType,
+  query?: string
+): string {
+  if (!text) return text;
+  if (isComparisonContext(mode, query) && !hasMarkdownTable(text)) {
+    return tryBuildComparisonTableFromText(text, query);
+  }
+  return text;
+}
 
 interface AnswerCardProps {
   chunks: AnswerChunk[];
@@ -37,7 +189,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   chunks,
   sources,
   isLoading,
-  mode: _mode,
+  mode,
   query,
   onQueryEdit,
   onSearch: _onSearch,
@@ -65,9 +217,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const typewriterTimeoutRef = useRef<any>(null);
   const answerContentRef = useRef<HTMLDivElement>(null);
-  const loadingVideoRef = useRef<HTMLVideoElement>(null);
-  const [showVideoFallback, setShowVideoFallback] = useState(true); // Start with gif, switch to video when ready
-  const [videoReady, setVideoReady] = useState(false);
   const { showToast } = useToast();
 
   // Try to import KaTeX dynamically, but make it optional
@@ -427,12 +576,82 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     return parts.length > 0 ? parts : [text];
   };
 
+  const renderMarkdownTable = (
+    headerCells: string[],
+    bodyRows: string[][],
+    key: string
+  ) => (
+    <div
+      key={key}
+      className="answer-table-wrap"
+      style={{
+        marginTop: 16,
+        marginBottom: 16,
+        overflowX: "auto",
+        borderRadius: "var(--radius-sm)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <table
+        className="answer-table"
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "var(--font-sm)",
+        }}
+      >
+        <thead>
+          <tr>
+            {headerCells.map((cell, cellIndex) => (
+              <th
+                key={`th-${cellIndex}`}
+                style={{
+                  padding: "10px 12px",
+                  textAlign: "left",
+                  fontWeight: 600,
+                  borderBottom: "1px solid var(--border)",
+                  background: "var(--input-bg)",
+                  color: "var(--text)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {renderWithMath(cell)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bodyRows.map((row, rowIndex) => (
+            <tr key={`tr-${rowIndex}`}>
+              {headerCells.map((_, cellIndex) => (
+                <td
+                  key={`td-${rowIndex}-${cellIndex}`}
+                  style={{
+                    padding: "10px 12px",
+                    borderBottom:
+                      rowIndex < bodyRows.length - 1
+                        ? "1px solid var(--border)"
+                        : undefined,
+                    verticalAlign: "top",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {renderWithMath(row[cellIndex] ?? "")}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   // Format text with markdown-like formatting
   const formatText = (text: string, appendDot?: boolean): React.ReactNode => {
     if (!text) return null;
 
-    // Process the text line by line to detect structure
-    const lines = text.split('\n');
+    const processedText = preprocessAnswerText(text, mode, query);
+    const lines = processedText.split("\n");
     const result: React.ReactNode[] = [];
     let currentParagraph: string[] = [];
     let currentList: Array<{ bullet: string; content: string }> = [];
@@ -528,8 +747,41 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       }
     };
 
-    lines.forEach((line, _index) => {
-      const trimmed = line.trim();
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const trimmed = lines[lineIndex].trim();
+
+      if (isMarkdownTableRow(trimmed)) {
+        flushParagraph(false);
+        flushList(false);
+
+        const parsedRows: string[][] = [];
+        let scanIndex = lineIndex;
+        while (scanIndex < lines.length) {
+          const rowLine = lines[scanIndex].trim();
+          if (!rowLine) break;
+          if (isMarkdownTableSeparator(rowLine)) {
+            scanIndex += 1;
+            continue;
+          }
+          if (!isMarkdownTableRow(rowLine)) break;
+          parsedRows.push(splitTableCells(rowLine));
+          scanIndex += 1;
+        }
+
+        if (parsedRows.length >= 1) {
+          const headerCells = parsedRows[0];
+          const bodyRows = parsedRows.slice(1);
+          result.push(
+            renderMarkdownTable(
+              headerCells,
+              bodyRows,
+              `table-${result.length}`
+            )
+          );
+          lineIndex = scanIndex - 1;
+          continue;
+        }
+      }
 
       // Empty line - flush current context
       if (!trimmed) {
@@ -538,7 +790,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         } else {
           flushParagraph(false);
         }
-        return;
+        continue;
       }
 
       // Check if it's a heading (ends with colon, single line, reasonable length)
@@ -559,7 +811,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             {trimmed}
           </h3>
         );
-        return;
+        continue;
       }
 
       // Check if it's a bullet point
@@ -585,7 +837,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         if (content) {
           currentList.push({ bullet, content });
         }
-        return;
+        continue;
       }
 
       // Regular text line
@@ -593,7 +845,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         flushList(false);
       }
       currentParagraph.push(trimmed);
-    });
+    }
 
     // Flush any remaining content (these are the last elements)
     if (inList && currentList.length > 0) {
@@ -907,14 +1159,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     return () => clearInterval(interval);
   }, [chunks, isLoading, startVoiceOutput]);
 
-  // Reset video state when loading starts
-  useEffect(() => {
-    if (isLoading) {
-      setShowVideoFallback(true); // Show gif initially
-      setVideoReady(false);
-    }
-  }, [isLoading]);
-
   // In modes where sources are enabled, show source cards by default.
   useEffect(() => {
     if (!hideSources && sources.length > 0) {
@@ -931,67 +1175,82 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           Syntra<span className="text-[var(--accent)]">IQ</span>
         </div> */}
         {query && (
-          // <div className="my-1 text-2xl font-bold text-end">
-          //   {query}
-          // </div>
           <div
-            className="flex justify-end"
-          // onMouseEnter={(e) => {
-          //   if (onQueryEdit) {
-          //     e.currentTarget.style.backgroundColor = "var(--border)";
-          //   }
-          // }}
-          // onMouseLeave={(e) => {
-          //   e.currentTarget.style.backgroundColor = "transparent";
-          // }}
+            className="flex flex-col items-end gap-3"
+            style={{ marginBottom: 24 }}
           >
-            <div style={{
-              fontSize: "var(--font-xl)",
-              fontWeight: 600,
-              lineHeight: "32px",
-              color: "var(--text)",
-              wordBreak: "break-word",
-              borderRadius: "8px",
-            }} className="glass-card !max-w-[calc(90%)] !px-4 !py-2">{query}</div>
+            {attachments && attachments.length > 0 && (
+              <div className="flex gap-2 flex-wrap justify-end max-w-[90%]">
+                {attachments.map((file) => (
+                  <div
+                    key={file.id}
+                    style={{
+                      position: "relative",
+                      width: "clamp(60px, 20vw, 100px)",
+                      height: "clamp(60px, 20vw, 100px)",
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {file.preview ? (
+                      file.file.type.startsWith("video/") ? (
+                        <video
+                          src={file.preview}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          muted
+                          playsInline
+                        />
+                      ) : (
+                        <img
+                          src={file.preview}
+                          alt="Attachment"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      )
+                    ) : (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "var(--input-bg)",
+                          fontSize: "24px",
+                        }}
+                      >
+                        📄
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div
+              style={{
+                fontSize: "var(--font-xl)",
+                fontWeight: 600,
+                lineHeight: "32px",
+                color: "var(--text)",
+                wordBreak: "break-word",
+                borderRadius: "8px",
+              }}
+              className="glass-card !max-w-[calc(90%)] !px-4 !py-2"
+            >
+              {query}
+            </div>
           </div>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" style={{ marginTop: query ? 8 : 0 }}>
           <div className="w-10 h-10" style={{ position: 'relative' }}>
-            {showVideoFallback ? (
-              <img
-                src={loadingGif}
-                loading="eager"
-                alt="loading"
-                className="rounded-full w-full h-full object-cover dark:invert"
-                style={{ display: 'block' }}
-              />
-            ) : (
-              <video
-                ref={loadingVideoRef}
-                src={loadingVideo}
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="rounded-full w-full h-full object-cover"
-                onError={() => setShowVideoFallback(true)}
-                onCanPlay={() => {
-                  if (loadingVideoRef.current) {
-                    loadingVideoRef.current.playbackRate = 4.0;
-                    setVideoReady(true);
-                    setShowVideoFallback(false);
-                  }
-                }}
-                onLoadedData={() => {
-                  if (loadingVideoRef.current && !videoReady) {
-                    loadingVideoRef.current.playbackRate = 4.0;
-                    setVideoReady(true);
-                    setShowVideoFallback(false);
-                  }
-                }}
-                style={{ display: 'block' }}
-              />
-            )}
+            <img
+              src={syntraIcon}
+              loading="eager"
+              alt="IQ"
+              className="rounded-full w-full h-full object-cover"
+              style={{ display: 'block' }}
+            />
           </div>
           <p className="text-base">
             IQ is thinking
@@ -1006,46 +1265,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             </span>
           </p>
         </div>
-        {attachments && attachments.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <div className="sub text-sm" style={{ marginBottom: 8 }}>Attachments</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {attachments.map((file) => (
-                <div
-                  key={file.id}
-                  style={{
-                    position: "relative",
-                    width: 60,
-                    height: 60,
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    border: "1px solid var(--border)"
-                  }}
-                >
-                  {file.preview ? (
-                    <img
-                      src={file.preview}
-                      alt="Attachment"
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <div style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: "var(--input-bg)",
-                      fontSize: "24px"
-                    }}>
-                      📄
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -1086,112 +1305,123 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     <div className="card !bg-transparent !border-none !shadow-none" style={{ padding: 5 }}>
       {/* Display the searched query prominently */}
       {query && (
-        <div className=""
+        <div
           style={{
             marginBottom: 20,
             paddingBottom: 16,
             borderBottom: "1px solid var(--border)",
           }}
         >
-
-          {attachments && attachments.length > 0 && (
-            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 12 }}>
-              {attachments.map((file) => (
+          <div className="flex flex-col items-end gap-3">
+            {attachments && attachments.length > 0 && (
+              <div className="flex gap-2 flex-wrap justify-end max-w-[90%]">
+                {attachments.map((file) => (
+                  <div
+                    key={file.id}
+                    style={{
+                      position: "relative",
+                      width: "clamp(60px, 20vw, 100px)",
+                      height: "clamp(60px, 20vw, 100px)",
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {file.preview ? (
+                      file.file.type.startsWith("video/") ? (
+                        <video
+                          src={file.preview}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          muted
+                          playsInline
+                        />
+                      ) : (
+                        <img
+                          src={file.preview}
+                          alt="Attachment"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      )
+                    ) : (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "var(--input-bg)",
+                          fontSize: "24px",
+                        }}
+                      >
+                        📄
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {generatedMedia && (
+              <div className="max-w-[90%]">
                 <div
-                  key={file.id}
                   style={{
-                    position: "relative",
-                    width: "clamp(60px, 20vw, 100px)",
-                    height: "clamp(60px, 20vw, 100px)",
-                    borderRadius: 8,
+                    borderRadius: 12,
                     overflow: "hidden",
-                    border: "1px solid var(--border)"
+                    maxWidth: generatedMedia.type === "image" ? 400 : 600,
+                    border: "1px solid var(--border)",
                   }}
                 >
-                  {file.preview ? (
+                  {generatedMedia.type === "image" ? (
                     <img
-                      src={file.preview}
-                      alt="Attachment"
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      src={generatedMedia.url}
+                      alt={generatedMedia.prompt}
+                      style={{
+                        width: "100%",
+                        height: "auto",
+                        display: "block",
+                      }}
                     />
                   ) : (
-                    <div style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: "var(--input-bg)",
-                      fontSize: "24px"
-                    }}>
-                      📄
-                    </div>
+                    <video
+                      src={generatedMedia.url}
+                      controls
+                      style={{
+                        width: "100%",
+                        height: "auto",
+                        display: "block",
+                      }}
+                    />
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-          {generatedMedia && (
-            <div style={{ marginTop: 16, paddingLeft: 12 }}>
-              <div style={{
-                borderRadius: 12,
-                overflow: "hidden",
-                maxWidth: generatedMedia.type === "image" ? 400 : 600,
-                border: "1px solid var(--border)"
-              }}>
-                {generatedMedia.type === "image" ? (
-                  <img
-                    src={generatedMedia.url}
-                    alt={generatedMedia.prompt}
-                    style={{
-                      width: "100%",
-                      height: "auto",
-                      display: "block"
-                    }}
-                  />
-                ) : (
-                  <video
-                    src={generatedMedia.url}
-                    controls
-                    style={{
-                      width: "100%",
-                      height: "auto",
-                      display: "block"
-                    }}
-                  />
-                )}
+              </div>
+            )}
+            <div
+              onClick={() => {
+                if (onQueryEdit) {
+                  setShowEditModal(true);
+                }
+              }}
+              style={{
+                cursor: onQueryEdit ? "pointer" : "default",
+                transition: "background-color 0.2s ease",
+              }}
+              className="flex justify-end w-full"
+              title={onQueryEdit ? "Click to edit query" : undefined}
+            >
+              <div
+                style={{
+                  fontSize: "var(--font-xl)",
+                  fontWeight: 600,
+                  lineHeight: "32px",
+                  color: "var(--text)",
+                  wordBreak: "break-word",
+                  borderRadius: "8px",
+                }}
+                className="glass-card !max-w-[calc(90%)] !px-4 !py-2"
+              >
+                {query}
               </div>
             </div>
-          )}
-          <div
-            onClick={() => {
-              if (onQueryEdit) {
-                setShowEditModal(true);
-              }
-            }}
-            style={{
-              cursor: onQueryEdit ? "pointer" : "default",
-              transition: "background-color 0.2s ease",
-            }}
-            className="flex justify-end"
-            // onMouseEnter={(e) => {
-            //   if (onQueryEdit) {
-            //     e.currentTarget.style.backgroundColor = "var(--border)";
-            //   }
-            // }}
-            // onMouseLeave={(e) => {
-            //   e.currentTarget.style.backgroundColor = "transparent";
-            // }}
-            title={onQueryEdit ? "Click to edit query" : undefined}
-          >
-            <div style={{
-              fontSize: "var(--font-xl)",
-              fontWeight: 600,
-              lineHeight: "32px",
-              color: "var(--text)",
-              wordBreak: "break-word",
-              borderRadius: "8px",
-            }} className="glass-card !max-w-[calc(90%)] !px-4 !py-2">{query}</div>
           </div>
         </div>
       )}
@@ -1370,7 +1600,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 key={question}
                 className="glass-button !px-2 !py-0.5 rounded-sm"
                 style={{ cursor: "pointer" }}
-                onClick={() => _onSearch?.(question, _mode)}
+                onClick={() => _onSearch?.(question, mode)}
               >
                 {question}
               </button>

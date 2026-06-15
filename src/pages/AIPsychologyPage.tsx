@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
+import { Capacitor } from "@capacitor/core";
 import {
   FaPen,
   FaStar,
@@ -14,9 +15,12 @@ import {
 import { useToast } from "../contexts/ToastContext";
 import { getUserData, getAuthHeaders, removeAuthToken } from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
-import type { LLMModel } from "../types";
+import { ExperienceModeButtons } from "../components/ExperienceModeButtons";
+import type { LLMModel, ExperienceMode } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
+import { getChatDateLabel, isDifferentChatDay } from "../utils/chatDates";
+import { ChatDateDivider } from "../components/ChatDateDivider";
 import { getUserLocalContext } from "../utils/userLocalContext";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 
@@ -62,6 +66,7 @@ export default function AIPsychologyPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite");
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
   const [newConversation, setNewConversation] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
   const [suggestions, setSuggestions] = useState<string[]>([
@@ -77,10 +82,13 @@ export default function AIPsychologyPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }, 80);
+    });
+  }, [messages, isLoading]);
 
   // Focus input on mount
   useEffect(() => {
@@ -231,8 +239,11 @@ export default function AIPsychologyPage() {
       console.error("Speech recognition error:", event.error);
       setIsListening(false);
       if (event.error === "not-allowed") {
+        const isNative = Capacitor.isNativePlatform();
         showToast({
-          message: "Microphone access denied. Please allow microphone access.",
+          message: isNative
+            ? "Microphone access denied. Please allow microphone access in your device settings."
+            : "Microphone access denied. Please allow microphone access in your browser settings.",
           type: "error",
           duration: 3000,
         });
@@ -460,9 +471,19 @@ export default function AIPsychologyPage() {
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-4 py-5">
-        {messages.map((message) => (
+        {messages.map((message, index) => {
+          const showDateDivider =
+            index === 0 ||
+            isDifferentChatDay(
+              messages[index - 1].timestamp,
+              message.timestamp
+            );
+          return (
+          <Fragment key={message.id}>
+            {showDateDivider && (
+              <ChatDateDivider label={getChatDateLabel(message.timestamp)} />
+            )}
           <div
-            key={message.id}
             className={`flex items-end gap-3 mb-4 ${
               message.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
@@ -516,7 +537,9 @@ export default function AIPsychologyPage() {
               </div>
             </div>
           </div>
-        ))}
+          </Fragment>
+        );
+        })}
 
         {isLoading && (
           <div className="flex items-end gap-3 mb-4">
@@ -539,7 +562,15 @@ export default function AIPsychologyPage() {
       </div>
 
       {/* Input Area */}
-      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0">
+      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+        <div className="mb-2">
+          <ExperienceModeButtons
+            experienceMode={experienceMode}
+            onExperienceModeChange={setExperienceMode}
+            disabled={isLoading}
+            size="small"
+          />
+        </div>
         {attachedFileName && (
           <div className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3">
             <div className="flex items-center gap-2.5 text-[length:var(--font-sm)] text-[var(--text)] flex-1 min-w-0">
@@ -695,6 +726,8 @@ export default function AIPsychologyPage() {
                 }}
                 isPremium={isPremium}
                 size="small"
+                experienceMode={experienceMode}
+                onExperienceModeChange={setExperienceMode}
               />
             </div>
           </div>

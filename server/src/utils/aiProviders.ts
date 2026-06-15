@@ -116,6 +116,23 @@ function getEffectiveTokenLimit(mode: Mode, detailedContinuation: boolean): numb
   return Math.min(Math.round(base * 1.8), 7000);
 }
 
+function buildNormalModePrompt(
+  mode: Mode,
+  query: string,
+  conversationHistory: Array<{ role: string; content: string }>,
+  contextPrefix = ''
+): string {
+  const detailedFollowUp =
+    isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
+  if (detailedFollowUp) {
+    return `${contextPrefix}Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`;
+  }
+  if (mode === 'Compare') {
+    return `${contextPrefix}Mode: Compare\nQuery: ${query}\nProvide a comparison answer. Start with a brief 1-2 sentence overview, then you MUST present the main comparison as a markdown table using pipe syntax, for example:\n| Aspect | Option A | Option B |\n| --- | --- | --- |\n| Speed | ... | ... |\n| Price | ... | ... |\nUse a header row, a |---|---| separator row, and at least 4 comparison rows. Do not use only bullet points for the core comparison. After the table, you may add 2-3 short takeaway bullets.`;
+  }
+  return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+}
+
 // Get current date in a readable format
 function getCurrentDateContext(): string {
   const now = new Date();
@@ -381,6 +398,32 @@ function resolveExaSearchType(mode: Mode, override?: ExaSearchType): ExaSearchTy
   return 'auto';
 }
 
+function shouldPerformWebSearch(
+  query: string,
+  mode: Mode,
+  searchType: ExaSearchType | undefined,
+  chatMode: ChatMode,
+  conversationHistory: ConversationMessage[]
+): boolean {
+  if (chatMode === 'ai_psychologist') return false;
+  // User explicitly chose Web or Deep mode — always run web search
+  if (searchType === 'instant' || searchType === 'deep') return true;
+  if (mode === 'Research') return true;
+  if (isSmallTalkQuery(query)) return false;
+
+  const continuationFollowUp = isContinuationFollowUpQuery(query);
+  const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
+  const continuationMode = continuationFollowUp || contextLinkedFollowUp;
+  const explicitWebSearch = isExplicitWebSearchRequest(query);
+
+  return (
+    explicitWebSearch ||
+    requiresCurrentInfo(query) ||
+    isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
+    continuationMode
+  );
+}
+
 function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
   const cleaned = query.replace(/\s+/g, ' ').trim();
   const shortTopic = cleaned.length > 70 ? `${cleaned.slice(0, 70)}...` : cleaned;
@@ -415,10 +458,29 @@ function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
     ];
   }
 
+  const topicWords = cleaned.split(/\s+/).filter((w) => w.length > 2).slice(0, 4);
+  const topicHint = topicWords.length > 0 ? topicWords.join(' ') : shortTopic;
+
+  if (/\b(ai|artificial intelligence|machine learning|ml)\b/i.test(cleaned)) {
+    return [
+      'What are the main types of machine learning and how do they differ?',
+      'Which industries are seeing the biggest impact from AI right now?',
+      'What skills should someone learn to work with AI tools effectively?',
+    ];
+  }
+
+  if (/\b(sleep|insomnia|sleep disorder)\b/i.test(cleaned)) {
+    return [
+      'What lifestyle habits most improve sleep quality within a few weeks?',
+      'When should someone see a doctor about chronic sleep problems?',
+      'How do stress and screen time affect sleep cycles?',
+    ];
+  }
+
   return [
-    `Do you want a concise summary of "${shortTopic}" first?`,
-    `Should I explain "${shortTopic}" in deeper detail with examples?`,
-    `Want a practical checklist or next steps for "${shortTopic}"?`,
+    `What are the key causes behind ${topicHint}?`,
+    `How does ${topicHint} compare to common alternatives or approaches?`,
+    `What practical steps can someone take to get started with ${topicHint}?`,
   ];
 }
 
@@ -470,6 +532,8 @@ function getSystemPrompt(
         : '';
       if (friendDescription && friendName) {
         return `You are ${friendName}, a friend having a casual conversation. ${friendDescription}
+
+GROUP CHAT IDENTITY (CRITICAL): You are ONLY ${friendName}. Never speak as or on behalf of any other friend. Do not use another friend's name as if you are them. Address the user naturally without guessing or stating their name unless they explicitly shared it.
 
 Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.
 
@@ -604,18 +668,9 @@ export async function generateOpenAIAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
-  const explicitWebSearch = isExplicitWebSearchRequest(query);
-  const shouldWebSearch =
-    chatMode !== 'ai_psychologist' &&
-    !isSmallTalkQuery(query) &&
-    (
-      explicitWebSearch ||
-      requiresCurrentInfo(query) ||
-      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
-      continuationMode
-    );
+  const shouldWebSearch = shouldPerformWebSearch(query, mode, searchType, chatMode, conversationHistory);
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing web search...');
+    console.log('🌐 Performing web search (mode/searchType triggered)...');
     const exaKey = process.env.EXA_API_KEY || '';
     if (exaKey) {
       webSearchResults = await searchWithExa(
@@ -674,11 +729,7 @@ export async function generateOpenAIAnswer(
     // For friend/psychologist mode, just send the message naturally
     prompt = query;
   } else {
-    // For normal mode, include mode context for structured answers
-    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
-    prompt = detailedFollowUp
-      ? `Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
-      : `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    prompt = buildNormalModePrompt(mode, query, conversationHistory);
   }
   
   // Build user message content (text + optional image)
@@ -841,18 +892,9 @@ export async function generateGeminiAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
-  const explicitWebSearch = isExplicitWebSearchRequest(query);
-  const shouldWebSearch =
-    chatMode !== 'ai_psychologist' &&
-    !isSmallTalkQuery(query) &&
-    (
-      explicitWebSearch ||
-      requiresCurrentInfo(query) ||
-      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
-      continuationMode
-    );
+  const shouldWebSearch = shouldPerformWebSearch(query, mode, searchType, chatMode, conversationHistory);
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing web search...');
+    console.log('🌐 Performing web search (mode/searchType triggered)...');
     const exaKey = process.env.EXA_API_KEY || '';
     if (exaKey) {
       webSearchResults = await searchWithExa(
@@ -907,11 +949,7 @@ export async function generateGeminiAnswer(
     // For friend/psychologist mode, just send the message naturally with conversation context
     prompt = `${contextPrompt}${query}`;
   } else {
-    // For normal mode, include mode context for structured answers
-    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
-    prompt = detailedFollowUp
-      ? `${contextPrompt}Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
-      : `${contextPrompt}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    prompt = buildNormalModePrompt(mode, query, conversationHistory, contextPrompt);
   }
 
   const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0);
@@ -1114,18 +1152,9 @@ export async function generateClaudeAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
-  const explicitWebSearch = isExplicitWebSearchRequest(query);
-  const shouldWebSearch =
-    chatMode !== 'ai_psychologist' &&
-    !isSmallTalkQuery(query) &&
-    (
-      explicitWebSearch ||
-      requiresCurrentInfo(query) ||
-      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
-      continuationMode
-    );
+  const shouldWebSearch = shouldPerformWebSearch(query, mode, searchType, chatMode, conversationHistory);
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing web search for Claude...');
+    console.log('🌐 Performing web search for Claude...');
     const exaKey = process.env.EXA_API_KEY || '';
     if (exaKey) {
       webSearchResults = await searchWithExa(
@@ -1187,11 +1216,7 @@ export async function generateClaudeAnswer(
     // For friend/psychologist mode, just send the message naturally
     prompt = query;
   } else {
-    // For normal mode, include mode context for structured answers
-    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
-    prompt = detailedFollowUp
-      ? `Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
-      : `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    prompt = buildNormalModePrompt(mode, query, conversationHistory);
   }
   messages.push({ role: 'user', content: prompt });
 
@@ -1325,18 +1350,9 @@ export async function generateGrokAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
-  const explicitWebSearch = isExplicitWebSearchRequest(query);
-  const shouldWebSearch =
-    chatMode !== 'ai_psychologist' &&
-    !isSmallTalkQuery(query) &&
-    (
-      explicitWebSearch ||
-      requiresCurrentInfo(query) ||
-      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
-      continuationMode
-    );
+  const shouldWebSearch = shouldPerformWebSearch(query, mode, searchType, chatMode, conversationHistory);
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing Grok web search...');
+    console.log('🌐 Performing Grok web search...');
     const exaKey = process.env.EXA_API_KEY || '';
     if (exaKey) {
       webSearchResults = await searchWithExa(
@@ -1401,11 +1417,7 @@ export async function generateGrokAnswer(
     // For friend/psychologist mode, just send the message naturally
     prompt = query;
   } else {
-    // For normal mode, include mode context for structured answers
-    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
-    prompt = detailedFollowUp
-      ? `Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
-      : `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    prompt = buildNormalModePrompt(mode, query, conversationHistory);
   }
   messages.push({ role: 'user', content: prompt });
 

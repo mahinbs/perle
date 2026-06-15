@@ -14,6 +14,9 @@ import VerificationPage from '../pages/VerificationPage';
 import TermsPage from '../pages/TermsPage';
 import PrivacyPage from '../pages/PrivacyPage';
 import GalleryPage from '../pages/GalleryPage';
+import CreateVideoPage from '../pages/CreateVideoPage';
+import EditImagesPage from '../pages/EditImagesPage';
+import SleepDisorderPage from '../pages/SleepDisorderPage';
 import AboutPage from '../pages/AboutPage';
 import HelpPage from '../pages/HelpPage';
 import ContactPage from '../pages/ContactPage';
@@ -53,6 +56,9 @@ export function AppRouter() {
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/privacy-policy" element={<PrivacyPage />} />
       <Route path="/gallery" element={<GalleryPage />} />
+      <Route path="/create-video" element={<CreateVideoPage />} />
+      <Route path="/edit-images" element={<EditImagesPage />} />
+      <Route path="/sleep-disorders" element={<SleepDisorderPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/help" element={<HelpPage />} />
       <Route path="/contact" element={<ContactPage />} />

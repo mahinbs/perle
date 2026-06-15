@@ -6,7 +6,7 @@ import { Capacitor } from "@capacitor/core";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { authenticatedFetch, getAuthHeaders, getUserData, verifyToken } from "../utils/auth";
 import { useToast } from "../contexts/ToastContext";
-import { IAPService } from "../services/iapService";
+import { IAPService, IAP_PRODUCT_IDS, type IAPPlanId } from "../services/iapService";
 
 const plans = [
   {
@@ -53,6 +53,49 @@ const plans = [
   },
 ];
 
+const isNativeIAPPlatform = () => {
+  const platform = Capacitor.getPlatform();
+  return Capacitor.isNativePlatform() && (platform === 'ios' || platform === 'android');
+};
+
+const getStoreLabel = () => {
+  if (Capacitor.getPlatform() === 'android') return 'Google Play';
+  if (Capacitor.getPlatform() === 'ios') return 'App Store';
+  return 'store';
+};
+
+async function verifyIAPPurchase(
+  transaction: { receipt: string; productId: string; transactionId: string },
+  planId: IAPPlanId
+) {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
+  const platform = Capacitor.getPlatform() === 'android' ? 'android' : 'ios';
+
+  const response = await authenticatedFetch(`${API_URL}/api/payment/iap/verify`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      receipt: transaction.receipt,
+      productId: transaction.productId,
+      plan: planId,
+      transactionId: transaction.transactionId,
+      platform,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Server receipt verification failed');
+  }
+
+  const data = await response.json();
+  if (!data.success) {
+    throw new Error(data.error || 'Verification failed');
+  }
+
+  return data;
+}
+
 export default function SubscriptionPage() {
   const { goBack } = useRouterNavigation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -70,28 +113,24 @@ export default function SubscriptionPage() {
     max: "₹899/mo"
   });
 
-  // Load App Store prices if on iOS native platform
   useEffect(() => {
-    if (Capacitor.getPlatform() === 'ios') {
+    if (isNativeIAPPlatform()) {
       const iapService = IAPService.getInstance();
       iapService.initialize().then(canPay => {
         if (canPay) {
-          iapService.loadProducts(['com.syntraiq.com.pro_v1', 'com.syntraiq.com.max_v1'])
+          iapService.loadProducts([IAP_PRODUCT_IDS.pro, IAP_PRODUCT_IDS.max])
             .then(products => {
               const prices: Record<string, string> = {};
               products.forEach(p => {
-                const planId = p.id.split('.').pop() || '';
-                if (planId.includes('pro') || planId.includes('max')) {
-                  const key = planId.includes('pro') ? 'pro' : 'max';
-                  prices[key] = `${p.displayPrice}/mo`;
-                }
+                const key = p.id.includes('max') ? 'max' : 'pro';
+                prices[key] = `${p.displayPrice}/mo`;
               });
               if (Object.keys(prices).length > 0) {
                 setDisplayPrices(prev => ({ ...prev, ...prices }));
               }
             })
             .catch(err => {
-              console.error('Error loading App Store products:', err);
+              console.error('Error loading store products:', err);
             });
         }
       });
@@ -108,9 +147,7 @@ export default function SubscriptionPage() {
         type: "success",
         duration: 5000
       });
-      // Refresh user data to get the new premium status
       verifyToken();
-      // Clear query params
       setSearchParams({}, { replace: true });
     }
 
@@ -131,46 +168,25 @@ export default function SubscriptionPage() {
       setIsLoading(true);
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
 
-      // If iOS, route through App Store In-App Purchases
-      if (Capacitor.getPlatform() === 'ios') {
+      if (isNativeIAPPlatform()) {
         const iapService = IAPService.getInstance();
-        const productId = selectedPlanId === 'pro'
-          ? 'com.syntraiq.com.pro_v1'
-          : 'com.syntraiq.com.max_v1';
+        const planId = selectedPlanId as IAPPlanId;
+        const productId = iapService.getProductIdForPlan(planId);
+        const storeLabel = getStoreLabel();
 
-        showToast({ message: "Initiating App Store purchase...", type: "info" });
+        showToast({ message: `Initiating ${storeLabel} purchase...`, type: "info" });
         const result = await iapService.purchase(productId);
 
         if (result.success && result.transaction) {
-          showToast({ message: "Verifying purchase with App Store...", type: "info" });
+          showToast({ message: `Verifying purchase with ${storeLabel}...`, type: "info" });
+          await verifyIAPPurchase(result.transaction, planId);
 
-          const response = await authenticatedFetch(`${API_URL}/api/payment/iap/verify`, {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({
-              receipt: result.transaction.receipt,
-              productId: result.transaction.productId,
-              plan: selectedPlanId,
-              transactionId: result.transaction.transactionId
-            }),
+          showToast({
+            message: "Subscription successful! Welcome to premium.",
+            type: "success",
+            duration: 5000
           });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Server receipt verification failed');
-          }
-
-          const data = await response.json();
-          if (data.success) {
-            showToast({
-              message: "Subscription successful! Welcome to premium.",
-              type: "success",
-              duration: 5000
-            });
-            await verifyToken();
-          } else {
-            throw new Error(data.error || 'Verification failed');
-          }
+          await verifyToken();
         } else if (result.userCancelled) {
           showToast({ message: "Purchase cancelled.", type: "info" });
         } else if (result.pending) {
@@ -179,7 +195,6 @@ export default function SubscriptionPage() {
           throw new Error(result.error?.message || 'Purchase failed');
         }
       } else {
-        // Stripe checkout session for Android and Web
         const response = await authenticatedFetch(`${API_URL}/api/payment/stripe/create-checkout-session`, {
           method: 'POST',
           headers: getAuthHeaders(),
@@ -206,6 +221,44 @@ export default function SubscriptionPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleRestore = async () => {
+    showToast({ message: "Checking for active subscriptions...", type: "info" });
+
+    if (isNativeIAPPlatform()) {
+      try {
+        const iapService = IAPService.getInstance();
+        const transactions = await iapService.restorePurchases();
+        const storeLabel = getStoreLabel();
+
+        if (transactions && transactions.length > 0) {
+          const latestTx = transactions.sort((a, b) => b.purchaseDate - a.purchaseDate)[0];
+          const plan: IAPPlanId = latestTx.productId.includes('max') ? 'max' : 'pro';
+
+          showToast({ message: "Syncing purchase with server...", type: "info" });
+          await verifyIAPPurchase(latestTx, plan);
+
+          showToast({ message: "Subscription restored successfully!", type: "success" });
+          await verifyToken();
+          return;
+        }
+
+        showToast({ message: `No active ${storeLabel} subscription found.`, type: "info" });
+      } catch (e: any) {
+        console.error('Restore error:', e);
+        showToast({ message: `Restore failed: ${e.message}`, type: "error" });
+      }
+      return;
+    }
+
+    verifyToken().then(updatedUser => {
+      if (updatedUser?.isPremium) {
+        showToast({ message: "Subscription restored!", type: "success" });
+      } else {
+        showToast({ message: "No active subscription found.", type: "info" });
+      }
+    });
   };
 
   return (
@@ -315,57 +368,7 @@ export default function SubscriptionPage() {
         {/* Restore link */}
         <button
           className="text-center text-[var(--sub)] underline text-[var(--font-sm)] bg-transparent border-none cursor-pointer"
-          onClick={async () => {
-            showToast({ message: "Checking for active subscriptions...", type: "info" });
-
-            if (Capacitor.getPlatform() === 'ios') {
-              try {
-                const iapService = IAPService.getInstance();
-                const transactions = await iapService.restorePurchases();
-
-                if (transactions && transactions.length > 0) {
-                  // Sort by purchaseDate descending to find the latest transaction
-                  const latestTx = transactions.sort((a, b) => b.purchaseDate - a.purchaseDate)[0];
-                  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
-                  const plan = latestTx.productId.includes('max') ? 'max' : 'pro';
-
-                  showToast({ message: "Syncing purchase with server...", type: "info" });
-
-                  const response = await authenticatedFetch(`${API_URL}/api/payment/iap/verify`, {
-                    method: 'POST',
-                    headers: getAuthHeaders(),
-                    body: JSON.stringify({
-                      receipt: latestTx.receipt,
-                      productId: latestTx.productId,
-                      plan: plan,
-                      transactionId: latestTx.transactionId
-                    }),
-                  });
-
-                  if (response.ok) {
-                    const data = await response.json();
-                    if (data.success) {
-                      showToast({ message: "Subscription restored successfully!", type: "success" });
-                      await verifyToken();
-                      return;
-                    }
-                  }
-                }
-                showToast({ message: "No active App Store subscription found.", type: "info" });
-              } catch (e: any) {
-                console.error('Restore error:', e);
-                showToast({ message: `Restore failed: ${e.message}`, type: "error" });
-              }
-            } else {
-              verifyToken().then(updatedUser => {
-                if (updatedUser?.isPremium) {
-                  showToast({ message: "Subscription restored!", type: "success" });
-                } else {
-                  showToast({ message: "No active subscription found.", type: "info" });
-                }
-              });
-            }
-          }}
+          onClick={handleRestore}
         >
           Restore subscription
         </button>

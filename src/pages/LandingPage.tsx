@@ -1,6 +1,6 @@
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { IoIosSearch, IoMdCheckmark, IoMdRocket, IoMdChatbubbles, IoMdFlame } from "react-icons/io";
-import logo from "../assets/syntra-icon.png";
+import logo from "../assets/images/logo.png";
 import bgVideo from "../assets/syntra-bg-video.mp4";
 import { getUserData } from "../utils/auth";
 

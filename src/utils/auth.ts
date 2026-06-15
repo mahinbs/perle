@@ -46,10 +46,25 @@ export function setAuthToken(token: string): void {
   localStorage.setItem(AUTH_TOKEN_KEY, token);
 }
 
+export function applyTheme(darkMode: boolean): void {
+  if (typeof window === 'undefined') return;
+  document.documentElement.classList.toggle('dark', darkMode);
+}
+
+export function getStoredDarkModePreference(): boolean {
+  const user = getUserData();
+  return user?.darkMode === true;
+}
+
+export function initializeTheme(): void {
+  applyTheme(getStoredDarkModePreference());
+}
+
 export function removeAuthToken(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(USER_DATA_KEY);
+  applyTheme(false);
 }
 
 export function getUserData(): User | null {
@@ -62,11 +77,7 @@ export function setUserData(user: User): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
   if (user && typeof user.darkMode === 'boolean') {
-    if (user.darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    applyTheme(user.darkMode);
   }
 }
 

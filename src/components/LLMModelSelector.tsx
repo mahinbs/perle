@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import type { LLMModel, LLMModelInfo, ExperienceMode } from "../types";
 import { getAuthToken, getUserData } from "../utils/auth";
@@ -297,7 +298,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   isPremium = false,
   size = "medium",
   experienceMode = 'normal',
-  onExperienceModeChange,
+  onExperienceModeChange: _onExperienceModeChange,
 }) => {
   const hasActiveAuthSession = (): boolean =>
     Boolean(getAuthToken() && getUserData());
@@ -642,24 +643,17 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     </button>
   );
 
-  const dropdownRect = dropdownRef.current?.getBoundingClientRect();
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen]);
 
   return (
     <>
-      {isOpen && isMobile && (
-        <div
-          ref={backdropRef}
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            // backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 99998,
-          }}
-        />
-      )}
       <div ref={dropdownRef} style={{ position: "relative" }}>
         <button
           className="btn-ghost glass-button btn-shadow max-md:!h-[34px] max-md:!min-h-[34px] max-md:!py-0 max-md:!px-[8px]"
@@ -693,68 +687,89 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               }}
             />
             <span className="font-medium">
-              {selectedModelInfo?.name.slice(0, 4).concat('...') || "Select Model"}
+              {isPremium
+                ? (selectedModelInfo?.name.slice(0, 8).concat(selectedModelInfo.name.length > 8 ? "…" : "") || "Model")
+                : "Free"}
             </span>
           </div>
           <span style={{ fontSize: currentSize.fontSize, opacity: 0.7 }}>
-            {isOpen ? "▲" : "▼"}
+            ▲
           </span>
         </button>
 
         {isOpen &&
-          (isMobile ? (
-            createPortal(
+          createPortal(
+            <>
               <div
-                ref={mobileDropdownRef}
+                ref={backdropRef}
+                onClick={() => setIsOpen(false)}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  backgroundColor: "rgba(0, 0, 0, 0.4)",
+                  zIndex: 99998,
+                }}
+              />
+              <div
+                ref={isMobile ? mobileDropdownRef : desktopDropdownRef}
                 onClick={(e) => e.stopPropagation()}
                 onTouchStart={(e) => e.stopPropagation()}
                 className="glass-panel"
                 style={{
                   position: "fixed",
-                  top: "120px",
                   left: 0,
                   right: 0,
+                  bottom: 0,
                   zIndex: 99999,
-                  maxHeight: "300px",
+                  maxHeight: "70vh",
                   overflowY: "auto",
-                  minWidth: "100%",
+                  borderRadius: "16px 16px 0 0",
+                  paddingBottom: "max(16px, env(safe-area-inset-bottom))",
                   WebkitOverflowScrolling: "touch",
-                  touchAction: "pan-y", // Allow vertical scrolling
+                  touchAction: "pan-y",
                 }}
               >
-                  {/* Mode Selector Section */}
-                  <div style={{
-                    padding: "8px 12px",
-                    borderBottom: "1px solid var(--border)",
+                <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 8px" }}>
+                  <div style={{ width: 40, height: 4, borderRadius: 999, background: "var(--border)" }} />
+                </div>
+                <div
+                  style={{
                     display: "flex",
-                    gap: 8,
-                    overflowX: "auto",
-                    backgroundColor: "rgba(0,0,0,0.02)"
-                  }}>
-                    {(['normal', 'web_search', 'deep_research'] as ExperienceMode[]).map((mode) => (
-                      <button
-                        key={mode}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onExperienceModeChange?.(mode);
-                        }}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: 999,
-                          fontSize: "var(--font-xs)",
-                          fontWeight: 600,
-                          backgroundColor: experienceMode === mode ? "var(--accent)" : "transparent",
-                          color: experienceMode === mode ? "black" : "var(--text)",
-                          border: "1px solid var(--border)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {mode === 'normal' ? 'Normal' : mode === 'web_search' ? 'Web search' : 'Deep research'}
-                      </button>
-                    ))}
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "0 16px 8px",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: "var(--font-sm)" }}>Select model</div>
+                    <div style={{ fontSize: "var(--font-xs)", color: "var(--sub)" }}>
+                      {selectedModelInfo?.name || "Choose an AI model"}
+                    </div>
                   </div>
-
-                  {!isPremium && (
+                  <button
+                    type="button"
+                    onClick={() => setIsOpen(false)}
+                    aria-label="Close model selector"
+                    className="btn-ghost"
+                    style={{
+                      flexShrink: 0,
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      border: "1px solid var(--border)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      color: "var(--text)",
+                      background: "var(--input-bg)",
+                    }}
+                  >
+                    <FaTimes size={14} />
+                  </button>
+                </div>
+                {!isPremium && (
                   <button
                     onClick={() => {
                       setIsOpen(false);
@@ -790,132 +805,18 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                       ★
                     </div>
                     <div>
-                      <div style={{ fontSize: "var(--font-sm)" }}>
-                        Upgrade Plan
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "var(--font-xs)",
-                          opacity: 0.8,
-                          fontWeight: 400,
-                        }}
-                      >
+                      <div style={{ fontSize: "var(--font-sm)" }}>Upgrade Plan</div>
+                      <div style={{ fontSize: "var(--font-xs)", opacity: 0.8, fontWeight: 400 }}>
                         Unlock premium models
                       </div>
                     </div>
                   </button>
                 )}
-                {availableModels.map((model) => renderModelButton(model, true))}
-              </div>,
-              document.body
-            )
-          ) : (
-            createPortal(
-            <div
-              ref={desktopDropdownRef}
-              className="glass-panel no-scrollbar"
-              style={{
-                position: "fixed",
-                left: dropdownRect ? dropdownRect.left : 0,
-                bottom: dropdownRect
-                  ? window.innerHeight - dropdownRect.top + 4
-                  : 0,
-                zIndex: 99999,
-                maxHeight: 300,
-                overflowY: "auto",
-                minWidth: Math.max(dropdownRect?.width ?? 300, 300),
-              }}
-            >
-              {/* Mode Selector Section (Desktop) */}
-              <div style={{
-                padding: "8px 12px",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                gap: 8,
-                backgroundColor: "rgba(0,0,0,0.02)"
-              }}>
-                {(['normal', 'web_search', 'deep_research'] as ExperienceMode[]).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onExperienceModeChange?.(mode);
-                    }}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      fontSize: "var(--font-xs)",
-                      fontWeight: 600,
-                      backgroundColor: experienceMode === mode ? "var(--accent)" : "transparent",
-                      color: experienceMode === mode ? "black" : "var(--text)",
-                      border: "1px solid var(--border)",
-                      whiteSpace: "nowrap",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {mode === 'normal' ? 'Normal' : mode === 'web_search' ? 'Web search' : 'Deep research'}
-                  </button>
-                ))}
+                {availableModels.map((model) => renderModelButton(model, isMobile))}
               </div>
-
-              {!isPremium && (
-                <button
-                  onClick={() => {
-                    setIsOpen(false);
-                    navigateTo(hasActiveAuthSession() ? "/subscription" : "/profile");
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "10px 16px",
-                    border: "none",
-                    textAlign: "left",
-                    cursor: "pointer",
-                    borderBottom: "1px solid var(--border)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    color: "var(--accent)",
-                    fontWeight: 600,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: "50%",
-                      backgroundColor: "var(--accent)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#fff",
-                      fontSize: "12px",
-                      flexShrink: 0,
-                    }}
-                  >
-                    ★
-                  </div>
-                  <div>
-                    <div style={{ fontSize: "var(--font-sm)" }}>
-                      Upgrade Plan
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "var(--font-xs)",
-                        opacity: 0.8,
-                        fontWeight: 400,
-                        color: "var(--text)",
-                      }}
-                    >
-                      Unlock premium models
-                    </div>
-                  </div>
-                </button>
-              )}
-              {availableModels.map((model) => renderModelButton(model, false))}
-            </div>,
+            </>,
             document.body
-            )
-          ))}
+          )}
       </div>
     </>
   );

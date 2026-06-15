@@ -12,7 +12,7 @@ import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode } from 
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 
 export default function HomePage() {
-  const { state: currentData } = useRouterNavigation();
+  const { state: currentData, navigateTo } = useRouterNavigation();
   const [mode, setMode] = useState<Mode>("Ask");
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
   const [hasSelectedMode, setHasSelectedMode] = useState(false);
@@ -36,7 +36,10 @@ export default function HomePage() {
   const lastLoadedConversationIdRef = useRef<string | null>(null); // Track which conversation was loaded from sidebar
   const answerCardRef = useRef<HTMLDivElement>(null);
   const loadingCardRef = useRef<HTMLDivElement>(null);
+  const conversationEndRef = useRef<HTMLDivElement>(null);
+  const lastSearchedKeyRef = useRef<string>("");
   const lastSearchedQueryRef = useRef<string>("");
+  const experienceModeRef = useRef<ExperienceMode>(experienceMode);
   const isSearchingRef = useRef<boolean>(false);
   const queryRef = useRef<string>(""); // Keep query in ref to avoid stale closures
   const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
@@ -198,15 +201,28 @@ export default function HomePage() {
     queryRef.current = query;
   }, [query]);
 
+  useEffect(() => {
+    experienceModeRef.current = experienceMode;
+  }, [experienceMode]);
+
+  // Allow re-searching the same query when experience mode changes
+  useEffect(() => {
+    lastSearchedKeyRef.current = "";
+  }, [experienceMode]);
+
   const doSearch = useCallback(
     async (searchQuery?: string) => {
       // Use the provided searchQuery or get current query from ref (avoids stale closure)
       const currentQuery = searchQuery || queryRef.current;
       const q = formatQuery(currentQuery);
+      if (q && /\b(sleep disorder|sleep disorders|insomnia|can't sleep|cannot sleep|trouble sleeping)\b/i.test(q)) {
+        navigateTo("/sleep-disorders");
+        return;
+      }
       if (!q) {
         setAnswer(null);
         setSearchedQuery("");
-        lastSearchedQueryRef.current = "";
+        lastSearchedKeyRef.current = "";
         return;
       }
 
@@ -215,14 +231,15 @@ export default function HomePage() {
         return;
       }
 
-      // Prevent duplicate searches if this is the same query as the last one
       const finalQuery = searchQuery || queryRef.current;
-      if (finalQuery === lastSearchedQueryRef.current) {
-        return; // Don't search again if it's the same query
+      const activeExperienceMode = experienceModeRef.current;
+      const searchKey = `${activeExperienceMode}:${finalQuery}`;
+      if (searchKey === lastSearchedKeyRef.current) {
+        return;
       }
 
-      // Mark as searching and store the query
       isSearchingRef.current = true;
+      lastSearchedKeyRef.current = searchKey;
       lastSearchedQueryRef.current = finalQuery;
 
       // Capture current files to process for this search
@@ -274,11 +291,11 @@ export default function HomePage() {
             { role: "assistant" as const, content: item.chunks.map((c) => c.text).join("\n\n") },
           ]);
         const backendMode: Mode =
-          experienceMode === "normal" ? "Ask" : "Research";
+          activeExperienceMode === "normal" ? "Ask" : "Research";
         const backendSearchType: 'auto' | 'instant' | 'deep' =
-          experienceMode === "normal"
+          activeExperienceMode === "normal"
             ? "auto"
-            : experienceMode === "web_search"
+            : activeExperienceMode === "web_search"
             ? "instant"
             : "deep";
         const isExaShortcutModel =
@@ -409,7 +426,7 @@ export default function HomePage() {
       // Removed 'query' from dependencies to prevent re-creation on every query change
       // The function uses query from closure, which is fine since we pass it explicitly when needed
     },
-    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode]
+    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode, navigateTo]
   );
 
   // Handle keyboard shortcuts
@@ -496,30 +513,32 @@ export default function HomePage() {
     setShowHistory(newQuery.length > 0);
   }, []);
 
-  const scrollToLoadingCard = useCallback(() => {
-    // Delay so the loading card ("IQ is thinking...") has time to render
-    const scrollToTarget = () => {
-      loadingCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    };
+  const scrollToLatestContent = useCallback(() => {
     requestAnimationFrame(() => {
-      setTimeout(scrollToTarget, 150);
+      setTimeout(() => {
+        conversationEndRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
+      }, 120);
     });
   }, []);
 
-  // Auto-scroll to AnswerCard when answer is received
-  // Commented out - prevents scrolling to top when answer is received
-  // useEffect(() => {
-  //   if (answer && !isLoading && answerCardRef.current) {
-  //     // Small delay to ensure the answer is rendered
-  //     setTimeout(() => {
-  //       answerCardRef.current?.scrollIntoView({
-  //         behavior: 'smooth',
-  //         block: 'start',
-  //         inline: 'nearest'
-  //       });
-  //     }, 100);
-  //   }
-  // }, [answer, isLoading]);
+  const scrollToLoadingCard = useCallback(() => {
+    scrollToLatestContent();
+  }, [scrollToLatestContent]);
+
+  useEffect(() => {
+    if (isLoading || conversationHistory.length > 0) {
+      scrollToLatestContent();
+    }
+  }, [isLoading, conversationHistory.length, scrollToLatestContent]);
+
+  useEffect(() => {
+    if (answer && !isLoading) {
+      scrollToLatestContent();
+    }
+  }, [answer, isLoading, scrollToLatestContent]);
 
   // Load specific conversation (no animations)
   const loadConversation = useCallback(async (conversationId: string) => {
@@ -688,7 +707,7 @@ export default function HomePage() {
                     skipTypewriter={shouldSkipTypewriter}
                     attachments={prevAnswer.attachments}
                     generatedMedia={prevAnswer.generatedMedia}
-                    hideSources={experienceMode === "normal"}
+                    hideSources={false}
                     onQueryEdit={(editedQuery) => {
                       setQuery(editedQuery);
                       doSearch(editedQuery);
@@ -727,11 +746,12 @@ export default function HomePage() {
                   doSearch(searchQuery);
                 }}
                 attachments={currentUploadedFiles}
-                hideSources={experienceMode === "normal"}
+                hideSources={false}
               />
               </div>
             )}
           </div>
+          <div ref={conversationEndRef} />
           <div className="spacer-12" />
           </div>
 
