@@ -1,11 +1,26 @@
+import { useEffect, useState } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { IoIosSearch, IoMdCheckmark, IoMdRocket, IoMdChatbubbles, IoMdFlame } from "react-icons/io";
 import logo from "../assets/images/logo.png";
-import bgVideo from "../assets/syntra-bg-video.mp4";
 import { getUserData } from "../utils/auth";
 
 export default function LandingPage() {
   const { navigateTo } = useRouterNavigation();
+  const [bgVideo, setBgVideo] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    import("../assets/syntra-bg-video.mp4")
+      .then((mod) => {
+        if (!cancelled) setBgVideo(mod.default);
+      })
+      .catch(() => {
+        if (!cancelled) setBgVideo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handlePlanClick = (planId: string) => {
     const user = getUserData();
@@ -53,14 +68,17 @@ export default function LandingPage() {
     <div className="min-h-screen flex flex-col justify-between" style={{ background: "var(--bg)", color: "var(--text)" }}>
       {/* Background Video - full opacity, dark overlay for readability */}
       <div className="fixed inset-0 pointer-events-none z-0 select-none">
+        {bgVideo ? (
         <video
           src={bgVideo}
           autoPlay
           muted
           loop
           playsInline
+          preload="metadata"
           className="w-full h-full object-cover opacity-30"
         />
+        ) : null}
         {/* Dark overlay so content stays legible */}
         <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.75) 100%)" }} />
       </div>
@@ -91,7 +109,7 @@ export default function LandingPage() {
         {/* Hero Section */}
         <section className="text-center py-16 md:py-24 flex flex-col items-center gap-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold tracking-wide" style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "rgba(199, 168, 105, 0.08)" }}>
-            <IoMdFlame size={14} /> Introducing SyntraIQ 1.0.0
+            <IoMdFlame size={14} /> Introducing SyntraIQ 1.0.1
           </div>
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight max-w-3xl leading-tight font-ubuntu">
             Intelligent Knowledge Discovery <br />

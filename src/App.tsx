@@ -4,7 +4,7 @@ import { RouterNavigationProvider } from './contexts/RouterNavigationContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AppRouter } from './components/Router';
 import { SplashScreen } from './components/SplashScreen';
-import { initializeTheme } from './utils/auth';
+import { initializeTheme, initializeAuthSession, registerAuthSessionListeners } from './utils/auth';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -12,6 +12,8 @@ export default function App() {
   useEffect(() => {
     // Light theme by default; dark only when user enabled it in profile
     initializeTheme();
+    registerAuthSessionListeners();
+    void initializeAuthSession();
 
     const timer = window.setTimeout(() => setShowSplash(false), 1800);
     return () => window.clearTimeout(timer);

@@ -102,7 +102,7 @@ export async function generateVideoWithGemini(
   prompt: string, 
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  referenceImageDataUrl?: string, // Optional reference image for style/content guidance
+  referenceImageDataUrl?: string | string[], // Optional reference image(s) for style/content guidance
   referenceVideoFileUri?: string  // Optional: file_uri from File API for video-to-video / "make it better"
 ): Promise<GeneratedVideo | null> {
   // Always use the free Gemini API key for video generation
@@ -124,6 +124,10 @@ export async function generateVideoWithGemini(
     width = 720;
     height = 720;
   }
+
+  const referenceImages = referenceImageDataUrl
+    ? (Array.isArray(referenceImageDataUrl) ? referenceImageDataUrl : [referenceImageDataUrl])
+    : [];
   
   // Try models in order: Veo 3.1 (preview with reference image support)
   const models = [
@@ -139,8 +143,8 @@ export async function generateVideoWithGemini(
       console.log(`   Prompt: "${prompt}"`);
       console.log(`   Duration: ${duration}s`);
       console.log(`   Aspect Ratio: ${aspectRatio}`);
-      if (referenceImageDataUrl && model.api === 'gemini') {
-        console.log(`   📎 Using reference image for style guidance (Veo 3.1)`);
+      if (referenceImages.length > 0 && model.api === 'gemini') {
+        console.log(`   📎 Using ${referenceImages.length} reference image(s) for style guidance (Veo 3.1)`);
       }
       if (referenceVideoFileUri && model.api === 'gemini') {
         console.log(`   🎬 Using reference VIDEO (file_uri) for video-to-video / extension (Veo 3.1)`);
@@ -162,29 +166,26 @@ export async function generateVideoWithGemini(
            instance.video = { uri: referenceVideoFileUri };
          }
          
-         if (referenceImageDataUrl) {
-           let imageBase64 = referenceImageDataUrl;
+         // Reference IMAGE: use the first image as the starting frame for image-to-video.
+         // Veo expects instance.image with bytesBase64Encoded (same format as generateVideoFromImage).
+         if (referenceImages.length > 0) {
+           const firstImage = referenceImages[0];
+           let imageBase64 = firstImage;
            let mimeType = 'image/jpeg';
-           
-           if (referenceImageDataUrl.startsWith('data:')) {
-             const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+
+           if (firstImage.startsWith('data:')) {
+             const matches = firstImage.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
              if (matches) {
                mimeType = matches[1];
                imageBase64 = matches[2];
              }
            }
-           
-           // CORRECT STRUCTURE from official Vertex AI docs:
-           // https://docs.cloud.google.com/vertex-ai/generative-ai/docs/video/use-reference-images-to-guide-video-generation
-           instance.referenceImages = [{
-             image: {
-               bytesBase64Encoded: imageBase64,
-               mimeType: mimeType
-             },
-             referenceType: 'style'  // Can be 'style' or other types
-           }];
-           
-           console.log(`   📷 Reference image added (${(imageBase64.length / 1024).toFixed(1)}KB, type: ${mimeType})`);
+
+           console.log(`   📷 Reference image for I2V (${(imageBase64.length / 1024).toFixed(1)}KB, type: ${mimeType})`);
+           instance.image = {
+             bytesBase64Encoded: imageBase64,
+             mimeType,
+           };
          }
          
          const requestBody = {
@@ -255,6 +256,7 @@ export async function generateVideoWithGemini(
       
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        attempts++; // Always increment so the loop doesn't run forever
         
         const statusResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`, {
           headers: {
@@ -347,7 +349,7 @@ export async function generateVideo(
   prompt: string,
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  referenceImageDataUrl?: string,
+  referenceImageDataUrl?: string | string[],
   referenceVideoFileUri?: string // file_uri from File API for video-to-video / "make it better"
 ): Promise<GeneratedVideo | null> {
   // Try Gemini Veo first (with optional reference image or reference video)
@@ -402,8 +404,9 @@ export async function generateVideoFromImage(
     height = 720;
   }
   
-  // Try models in order: fast -> standard (based on your quota)
-  // These are the actual available model names from Google AI
+  // Veo 3.0 models support the instances[0].image format for image-to-video.
+  // veo-3.1-generate-preview does NOT support this I2V format — it ignores the image and
+  // generates text-to-video instead, producing an unrelated video.
   const models = [
     { name: 'veo-3.0-fast-generate-001', displayName: 'Veo 3.0 Fast I2V' },
     { name: 'veo-3.0-generate-001', displayName: 'Veo 3.0 Standard I2V' },
@@ -432,11 +435,13 @@ export async function generateVideoFromImage(
       }
       
       // Try Gemini Veo with image input (predictLongRunning method)
+      // mimeType is required by the Veo API alongside bytesBase64Encoded
       const requestBody = {
         instances: [{
           prompt: prompt || 'Animate this image with smooth, natural motion',
           image: {
-            bytesBase64Encoded: imageBase64
+            bytesBase64Encoded: imageBase64,
+            mimeType: imageMimeType,
           }
         }],
         parameters: {}

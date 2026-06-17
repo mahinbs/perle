@@ -30,6 +30,10 @@ const resendOTPSchema = z.object({
   email: z.string().email('Invalid email format')
 });
 
+const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(1, 'Refresh token is required')
+});
+
 // Signup using Supabase Auth
 router.post('/auth/signup', async (req, res) => {
   try {
@@ -152,6 +156,7 @@ router.post('/auth/verify-otp', async (req, res) => {
 
     res.json({
       token: sessionToken,
+      refreshToken: verifyData.session?.refresh_token,
       user: {
         id: verifyData.user.id,
         name: name,
@@ -315,6 +320,7 @@ router.post('/auth/login', async (req, res) => {
 
     res.json({
       token: authData.session.access_token,
+      refreshToken: authData.session.refresh_token,
       user: {
         id: authData.user.id,
         name: name,
@@ -339,17 +345,53 @@ router.post('/auth/login', async (req, res) => {
   }
 });
 
-// Logout
-router.post('/auth/logout', authenticateToken, async (req: AuthRequest, res) => {
+// Refresh access token using Supabase refresh token
+router.post('/auth/refresh', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-
-    if (token) {
-      // Sign out from Supabase Auth
-      await supabase.auth.signOut();
+    const parse = refreshTokenSchema.safeParse(req.body);
+    if (!parse.success) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: parse.error.flatten().fieldErrors
+      });
     }
 
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return res.status(500).json({ error: 'Auth service not configured' });
+    }
+
+    const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ refresh_token: parse.data.refreshToken }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.access_token) {
+      return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    }
+
+    res.json({
+      token: data.access_token,
+      refreshToken: data.refresh_token,
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Logout — client clears tokens; no server-side global sign-out (avoids invalidating other sessions)
+router.post('/auth/logout', authenticateToken, async (_req: AuthRequest, res) => {
+  try {
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);

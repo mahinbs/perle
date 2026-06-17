@@ -4,11 +4,17 @@ import { useToast } from "../contexts/ToastContext";
 import type { LLMModel, AnswerResult, ExperienceMode } from "../types";
 import { Capacitor } from "@capacitor/core";
 import {
+  getLocalItem,
+  onStorageChange,
+  removeLocalItem,
+  setLocalItem,
+  STORAGE_KEYS,
+} from "../utils/storage";
+import {
   FaPaperclip,
   FaFolderOpen,
   FaImage,
   FaCamera,
-  FaSearch,
   FaPen,
   FaVideo,
   FaPlus,
@@ -18,13 +24,14 @@ import {
   FaImages,
   FaTools,
 } from "react-icons/fa";
+import { IoIosSend } from "react-icons/io";
 import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
 import VoiceOverlay from "./VoiceOverlay";
 import { LLMModelSelector } from "./LLMModelSelector";
 import { getAuthHeaders, getAuthToken, isAuthenticated } from "../utils/auth";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import syntraIcon from "../assets/syntra-icon.png";
+import syntraGif from "../assets/gif/syntraiq.gif";
 import { ExperienceModeButtons } from "./ExperienceModeButtons";
 import { getUserData } from "../utils/auth";
 
@@ -56,6 +63,8 @@ interface SearchBarProps {
   experienceMode?: ExperienceMode;
   onExperienceModeChange?: (mode: ExperienceMode) => void;
   showModelSelector?: boolean;
+  queryLimitReached?: boolean;
+  onQueryLimitReached?: () => void;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -78,6 +87,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   experienceMode = "normal",
   onExperienceModeChange,
   showModelSelector = true,
+  queryLimitReached = false,
+  onQueryLimitReached,
 }) => {
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showAttachModal, setShowAttachModal] = useState<"menu" | "camera" | null>(null);
@@ -107,35 +118,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
   const { showToast } = useToast();
 
-  // Monitor for voice output starting and reopen overlay if needed
+  // Reopen voice overlay when answer text is written during an active voice session
   useEffect(() => {
-    const checkVoiceOverlay = () => {
-      const shouldKeepOpen = localStorage.getItem("perle-keep-voice-overlay-open");
-      const currentAnswerText = localStorage.getItem("perle-current-answer-text");
+    const reopenIfNeeded = () => {
+      const shouldKeepOpen = getLocalItem(STORAGE_KEYS.keepVoiceOverlayOpen);
+      const currentAnswerText = getLocalItem(STORAGE_KEYS.currentAnswerText);
 
-      if (shouldKeepOpen || currentAnswerText) {
-        console.log('🔍 Voice overlay check:', {
-          shouldKeepOpen: !!shouldKeepOpen,
-          currentAnswerText: !!currentAnswerText,
-          showVoiceOverlay
-        });
-      }
-
-      // If flag is set and voice output has started (answer text exists), reopen overlay
       if (shouldKeepOpen && currentAnswerText) {
-        console.log('✅ Reopening voice overlay for response');
         setShowVoiceOverlay(true);
-        localStorage.setItem("perle-voice-session-active", "1");
-        // Clear the flag once overlay is opened
-        localStorage.removeItem("perle-keep-voice-overlay-open");
+        setLocalItem(STORAGE_KEYS.voiceSessionActive, "1");
+        removeLocalItem(STORAGE_KEYS.keepVoiceOverlayOpen);
       }
     };
 
-    // Check periodically for voice output starting/completing
-    const interval = setInterval(checkVoiceOverlay, 200);
-
-    return () => clearInterval(interval);
-  }, [showVoiceOverlay]);
+    reopenIfNeeded();
+    return onStorageChange(reopenIfNeeded);
+  }, [isLoading, answer, showVoiceOverlay]);
   const { navigateTo } = useRouterNavigation();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -250,7 +248,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (user?.isPremium) {
       const maxModel = "gpt-4o" as LLMModel;
       (setSelectedModel ?? onModelChange)(maxModel);
-      localStorage.setItem("perle-selected-model", maxModel);
+      localStorage.setItem("syntraiq-selected-model", maxModel);
       showToast({ message: "SyntraIQ Max model selected", type: "success", duration: 2500 });
       return;
     }
@@ -260,6 +258,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const triggerSearchWithScroll = () => {
     const trimmed = query.trim();
     if (!trimmed || isLoading) return;
+    if (queryLimitReached) {
+      onQueryLimitReached?.();
+      return;
+    }
     inputRef.current?.blur();
     onSearch(trimmed);
     setQuery("");
@@ -269,7 +271,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       requestAnimationFrame(() => {
         const scrollContainer = document.querySelector(".flex-1.min-h-0.overflow-y-auto");
         if (scrollContainer) {
-          scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: "smooth" });
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
         }
       });
     }
@@ -296,7 +298,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     if (mode === "session") {
       setShowVoiceOverlay(true);
-      localStorage.setItem("perle-voice-session-active", "1");
+      localStorage.setItem("syntraiq-voice-session-active", "1");
     }
 
     // Stop any ongoing TTS playback before starting a new recording
@@ -393,7 +395,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         // Resume listening after the spoken prompt ends.
         window.setTimeout(() => {
           const voiceSessionActive =
-            localStorage.getItem("perle-voice-session-active") === "1";
+            localStorage.getItem("syntraiq-voice-session-active") === "1";
           if (voiceSessionActive && showVoiceOverlay) {
             startVoiceInput("session");
           }
@@ -417,12 +419,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         // Pass the transcript directly to onSearch to avoid state timing issues
         onSearch(finalTranscript);
         // tell AnswerCard to speak the next answer
-        localStorage.setItem("perle-speak-next-answer", "1");
-        console.log('✅ Set perle-speak-next-answer flag');
+        localStorage.setItem("syntraiq-speak-next-answer", "1");
+        console.log('✅ Set syntraiq-speak-next-answer flag');
         // Keep voice overlay open so the response can be shown
-        localStorage.setItem("perle-keep-voice-overlay-open", "1");
-        localStorage.setItem("perle-voice-session-active", "1");
-        console.log('✅ Set perle-keep-voice-overlay-open flag');
+        localStorage.setItem("syntraiq-keep-voice-overlay-open", "1");
+        localStorage.setItem("syntraiq-voice-session-active", "1");
+        console.log('✅ Set syntraiq-keep-voice-overlay-open flag');
         // Always clear the query immediately after triggering search
         setTimeout(() => {
           setQuery("");
@@ -493,34 +495,46 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       }
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(content);
-      utterance.rate = 0.9;
+      utterance.rate = 0.92;
       utterance.pitch = 1;
       utterance.volume = 0.9;
       let resumeKeepAlive: number | null = null;
+      let spokenOffset = 0;
+
       utterance.onstart = () => {
         setIsSpeaking(true);
-        localStorage.setItem("perle-current-answer-text", content);
-        // Chrome pauses speechSynthesis silently after ~15s — keep it alive
+        localStorage.setItem("syntraiq-current-answer-text", "");
         resumeKeepAlive = window.setInterval(() => {
           try {
             if (window.speechSynthesis.paused) window.speechSynthesis.resume();
           } catch { /* ignore */ }
         }, 10000);
       };
+
+      utterance.onboundary = (event) => {
+        if (event.name !== "word" && event.charIndex <= spokenOffset) return;
+        spokenOffset = event.charIndex + (event.charLength || 0);
+        const slice = content.slice(0, spokenOffset).trim();
+        if (slice) {
+          localStorage.setItem("syntraiq-current-answer-text", slice);
+        }
+      };
+
       utterance.onend = () => {
         setIsSpeaking(false);
+        localStorage.setItem("syntraiq-current-answer-text", content);
         if (resumeKeepAlive) { clearInterval(resumeKeepAlive); resumeKeepAlive = null; }
         const voiceSessionActive =
-          localStorage.getItem("perle-voice-session-active") === "1";
+          localStorage.getItem("syntraiq-voice-session-active") === "1";
         if (voiceSessionActive) {
-          localStorage.setItem("perle-auto-listen-next", "1");
+          localStorage.setItem("syntraiq-auto-listen-next", "1");
         }
       };
       utterance.onerror = () => {
         setIsSpeaking(false);
+        localStorage.setItem("syntraiq-current-answer-text", content);
         if (resumeKeepAlive) { clearInterval(resumeKeepAlive); resumeKeepAlive = null; }
       };
-      // Small delay after cancel() so Chrome doesn't silently drop the utterance
       window.setTimeout(() => window.speechSynthesis.speak(utterance), 100);
     } catch {
       setIsSpeaking(false);
@@ -532,7 +546,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const pendingVoiceSpeakRef = useRef(false);
   useEffect(() => {
     // Pick up the flag when it's set (while loading)
-    if (localStorage.getItem("perle-speak-next-answer") === "1") {
+    if (localStorage.getItem("syntraiq-speak-next-answer") === "1") {
       pendingVoiceSpeakRef.current = true;
     }
     if (!pendingVoiceSpeakRef.current) return;
@@ -541,7 +555,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     const chunks = answer?.chunks;
     if (!chunks || chunks.length === 0) return;
     // Consume
-    localStorage.removeItem("perle-speak-next-answer");
+    localStorage.removeItem("syntraiq-speak-next-answer");
     pendingVoiceSpeakRef.current = false;
     const answerText = chunks.map((c) => c.text).join("\n\n");
     speakTextImmediately(answerText);
@@ -549,18 +563,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // When an answer finishes in active voice session, start listening again automatically.
   useEffect(() => {
-    const interval = window.setInterval(() => {
+    const tryAutoListen = () => {
       const shouldAutoListen =
-        localStorage.getItem("perle-auto-listen-next") === "1";
+        getLocalItem(STORAGE_KEYS.autoListenNext) === "1";
       const voiceSessionActive =
-        localStorage.getItem("perle-voice-session-active") === "1";
+        getLocalItem(STORAGE_KEYS.voiceSessionActive) === "1";
       if (shouldAutoListen && voiceSessionActive && showVoiceOverlay && !isListening) {
-        localStorage.removeItem("perle-auto-listen-next");
+        removeLocalItem(STORAGE_KEYS.autoListenNext);
         startVoiceInput("session");
       }
-    }, 250);
-    return () => window.clearInterval(interval);
-  }, [showVoiceOverlay, isListening]);
+    };
+
+    tryAutoListen();
+    return onStorageChange(tryAutoListen);
+  }, [showVoiceOverlay, isListening, isLoading, answer]);
 
   const getFileType = (file: File): "image" | "document" | "other" => {
     if (file.type.startsWith("image/")) return "image";
@@ -616,7 +632,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const generateImage = async (
     prompt: string,
     aspectRatio: string = "1:1",
-    referenceImage?: File
+    referenceImages?: File | File[]
   ): Promise<{
     url: string;
     prompt: string;
@@ -632,12 +648,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       );
     }
 
-    // Use FormData if reference image is provided
-    if (referenceImage) {
+    const hasReferenceImages = Array.isArray(referenceImages)
+      ? referenceImages.length > 0
+      : Boolean(referenceImages);
+
+    if (hasReferenceImages) {
       const formData = new FormData();
       formData.append("prompt", prompt);
       formData.append("aspectRatio", aspectRatio);
-      formData.append("referenceImage", referenceImage);
+      const files = Array.isArray(referenceImages)
+        ? referenceImages
+        : referenceImages
+          ? [referenceImages]
+          : [];
+      files.forEach((file) => formData.append("referenceImages", file));
+      if (files[0]) formData.append("referenceImage", files[0]);
 
       const token = getAuthToken();
       const res = await fetch(
@@ -691,7 +716,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     prompt: string,
     duration: number = 5,
     aspectRatio: string = "16:9",
-    referenceImage?: File
+    referenceImages?: File | File[]
   ): Promise<{
     url: string;
     prompt: string;
@@ -708,13 +733,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       );
     }
 
-    // Use FormData if reference image is provided
-    if (referenceImage) {
+    const hasReferenceImages = Array.isArray(referenceImages)
+      ? referenceImages.length > 0
+      : Boolean(referenceImages);
+
+    if (hasReferenceImages) {
       const formData = new FormData();
       formData.append("prompt", prompt);
       formData.append("duration", duration.toString());
       formData.append("aspectRatio", aspectRatio);
-      formData.append("referenceImage", referenceImage);
+      const files = Array.isArray(referenceImages)
+        ? referenceImages
+        : referenceImages
+          ? [referenceImages]
+          : [];
+      files.forEach((file) => formData.append("referenceImages", file));
+      if (files[0]) formData.append("referenceImage", files[0]);
 
       const token = getAuthToken();
       const res = await fetch(
@@ -792,11 +826,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     const promptToUse = toolDescription.trim();
 
-    // Check if this is an edit request and use last generated media as reference
-    let referenceImage: File | undefined = toolAttachedImages.length > 0 ? toolAttachedImages[0].file : undefined;
+    let referenceImages: File[] = toolAttachedImages.map((img) => img.file);
 
-    // If no reference image attached but prompt is an edit request and we have last media
-    if (!referenceImage && isEditRequest(promptToUse) && lastToolsMedia) {
+    // If no reference images attached but prompt is an edit request and we have last media
+    if (referenceImages.length === 0 && isEditRequest(promptToUse) && lastToolsMedia) {
       console.log('🔍 Edit request detected in Tools - using previous media as reference');
       console.log(`📸 Previous media: ${lastToolsMedia.type} - "${lastToolsMedia.prompt}"`);
 
@@ -805,7 +838,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           const response = await fetch(lastToolsMedia.url);
           const blob = await response.blob();
           const file = new File([blob], 'reference.png', { type: 'image/png' });
-          referenceImage = file;
+          referenceImages = [file];
           console.log('✅ Using last generated image as reference for editing');
         } catch (error) {
           console.error('Failed to load previous image as reference:', error);
@@ -819,15 +852,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     setIsGenerating(true);
     setGeneratingPrompt(promptToUse);
-    setGeneratingImages(referenceImage ? [{ id: 'ref', file: referenceImage, preview: URL.createObjectURL(referenceImage), type: 'image' as const }] : []); // Store for display
+    setGeneratingImages(toolAttachedImages);
     setGeneratedMedia(null);
-    setToolDescription(""); // Clear the input immediately
-    setToolAttachedImages([]); // Clear attachments immediately
+    setToolDescription("");
+    setToolAttachedImages([]);
+
+    const referencePayload =
+      referenceImages.length > 0 ? referenceImages : undefined;
 
     try {
       if (toolMode === "image") {
-        // Generate image with optional reference image
-        const result = await generateImage(promptToUse, "1:1", referenceImage);
+        const result = await generateImage(promptToUse, "1:1", referencePayload);
         const mediaData = {
           type: "image" as const,
           url: result.url,
@@ -842,15 +877,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         }
 
         showToast({
-          message: referenceImage
-            ? "Image generated using reference image!"
+          message: referencePayload
+            ? "Image generated using reference image(s)!"
             : "Image generated successfully!",
           type: "success",
           duration: 3000,
         });
       } else if (toolMode === "video") {
-        // Generate video with optional reference image
-        const result = await generateVideo(promptToUse, 5, "16:9", referenceImage);
+        const result = await generateVideo(promptToUse, 5, "16:9", referencePayload);
         const mediaData = {
           type: "video" as const,
           url: result.url,
@@ -865,8 +899,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         }
 
         showToast({
-          message: referenceImage
-            ? "Video generated using reference image!"
+          message: referencePayload
+            ? "Video generated using reference image(s)!"
             : "Video generated successfully!",
           type: "success",
           duration: 3000,
@@ -949,18 +983,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   };
 
-  const handleFileUpload = async (files: FileList | null) => {
-    if (!files) return;
+  const handleFileUpload = async (files: File[] | null) => {
+    if (!files || files.length === 0) return;
 
     // Handle tool mode file uploads (for image generation reference)
     if (toolMode) {
-      const maxFiles = 1; // Only allow 1 image for tool mode
+      const maxFiles = isPremium ? 5 : 2;
       const currentFileCount = toolAttachedImages.length;
 
       if (currentFileCount >= maxFiles) {
         showToast({
-          message: `Only ${maxFiles} image allowed for ${toolMode === "image" ? "image" : "video"
-            } generation.`,
+          message: `Maximum ${maxFiles} image${maxFiles > 1 ? "s" : ""} allowed for ${toolMode === "image" ? "image" : "video"} generation.`,
           type: "error",
           duration: 3000,
         });
@@ -992,7 +1025,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         const preview = await createFilePreview(file);
 
         newFiles.push({
-          id: `${Date.now()}-${Math.random()}`,
+          id: `${Date.now()}-${i}-${Math.random()}`,
           file,
           type: "image",
           preview,
@@ -1011,7 +1044,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       }
 
       if (newFiles.length > 0) {
-        setToolAttachedImages([...toolAttachedImages, ...newFiles]);
+        setToolAttachedImages((prev) => [...prev, ...newFiles]);
       }
       return;
     }
@@ -1066,7 +1099,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       const preview = await createFilePreview(file);
 
       newFiles.push({
-        id: `${Date.now()}-${Math.random()}`,
+        id: `${Date.now()}-${i}-${Math.random()}`,
         file,
         type,
         preview,
@@ -1097,7 +1130,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       });
     }
 
-    if (newFiles.length > 0) {
+    if (newFiles.length > 0 && onFilesChange) {
       onFilesChange([...uploadedFiles, ...newFiles]);
     }
   };
@@ -1283,7 +1316,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 }}
               >
                 <img
-                  src={syntraIcon}
+                  src={syntraGif}
                   loading="eager"
                   alt="SyntraIQ"
                   className="rounded-full w-6 h-6 object-cover"
@@ -1296,7 +1329,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             )}
             <button
               className="btn-ghost glass-button btn-shadow !font-normal"
-              onClick={() => navigateTo("/create-video")}
+              onClick={() => navigateTo("/create?mode=video")}
               disabled={isListening || isGenerating}
               style={{
                 padding: "6px 10px",
@@ -1317,7 +1350,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </button>
             <button
               className="btn-ghost glass-button btn-shadow !font-normal"
-              onClick={() => navigateTo("/edit-images")}
+              onClick={() => navigateTo("/create?mode=image")}
               disabled={isListening || isGenerating}
               style={{
                 padding: "6px 10px",
@@ -1331,16 +1364,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 background: "var(--card)",
               }}
             >
-              {/* <FaImage size={14} /> */}
-              <img
-                src='/editimg.png'
-                loading="eager"
-                alt="editimg"
-                className="object-contain w-4 h-4 dark:invert opacity-70"
-                style={{ display: 'block' }}
-              />
+              <FaImage size={14} />
               <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
-                Edit image
+                Generate Image
               </span>
             </button>
             <button
@@ -1465,7 +1491,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     }}
                   >
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      <img src={syntraIcon} alt="" className="w-4 h-4 rounded-full object-cover" />
+                      <img src={syntraGif} alt="" className="w-4 h-4 rounded-full object-cover" />
                       Try SyntraIQ Max
                     </span>
                   </button>
@@ -1475,7 +1501,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
                     setShowToolsMenu(false);
-                    navigateTo("/create-video");
+                    navigateTo("/create?mode=video");
                   }}
                   disabled={isListening || isGenerating}
                   style={{
@@ -1494,7 +1520,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       gap: 8,
                     }}
                   >
-                    <FaVideo size={16} /> Generate Video
+                    <FaVideo size={16} /> Create Videos
                   </span>
                 </button>
 
@@ -1502,12 +1528,13 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
                     setShowToolsMenu(false);
-                    navigateTo("/edit-images");
+                    navigateTo("/create?mode=image");
                   }}
                   disabled={isListening || isGenerating}
                   style={{
                     width: "100%",
                     justifyContent: "flex-start",
+                    marginBottom: 4,
                     opacity: isListening || isGenerating ? 0.5 : 1,
                     cursor:
                       isListening || isGenerating ? "not-allowed" : "pointer",
@@ -1520,7 +1547,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       gap: 8,
                     }}
                   >
-                    <FaImage size={16} /> Edit Images
+                    <FaImage size={16} /> Generate Image
                   </span>
                 </button>
 
@@ -1622,19 +1649,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               Generating {toolMode === "image" ? "Image" : "Video"}
             </div>
             <div className="glass-card" style={{ padding: 12, position: "relative" }}>
-              <div
-                style={{
-                  fontSize: "var(--font-md)",
-                  color: "var(--text)",
-                  fontWeight: 500,
-                  padding: "8px 12px",
-                  background: "var(--border)",
-                  borderRadius: "var(--radius-sm)",
-                  marginBottom: 12,
-                }}
-              >
-                {generatingPrompt}
-              </div>
               {generatingImages && generatingImages.length > 0 && (
                 <div style={{
                   display: "flex",
@@ -1675,6 +1689,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   ))}
                 </div>
               )}
+              <div
+                style={{
+                  fontSize: "var(--font-md)",
+                  color: "var(--text)",
+                  fontWeight: 500,
+                  padding: "8px 12px",
+                  background: "var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  marginBottom: 12,
+                }}
+              >
+                {generatingPrompt}
+              </div>
               <div
                 style={{
                   display: "flex",
@@ -1817,11 +1844,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             } catch { }
             setIsSpeaking(false);
             pendingVoiceSpeakRef.current = false;
-            localStorage.removeItem("perle-keep-voice-overlay-open");
-            localStorage.removeItem("perle-voice-session-active");
-            localStorage.removeItem("perle-auto-listen-next");
-            localStorage.removeItem("perle-speak-next-answer");
-            localStorage.removeItem("perle-current-answer-text");
+            localStorage.removeItem("syntraiq-keep-voice-overlay-open");
+            localStorage.removeItem("syntraiq-voice-session-active");
+            localStorage.removeItem("syntraiq-auto-listen-next");
+            localStorage.removeItem("syntraiq-speak-next-answer");
+            localStorage.removeItem("syntraiq-current-answer-text");
           }}
         />
 
@@ -1862,75 +1889,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 ))}
               </div>
             )}
-            {/* Attached Images Display - Above textarea */}
-            {toolAttachedImages.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  marginBottom: 4,
-                }}
-              >
-                {toolAttachedImages.map((img) => (
-                  <div
-                    key={img.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "8px 12px",
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-sm)",
-                      fontSize: "var(--font-sm)",
-                      boxShadow: "var(--shadow)",
-                      maxWidth: "250px",
-                    }}
-                  >
-                    {img.preview ? (
-                      <img
-                        src={img.preview}
-                        alt="Reference"
-                        style={{
-                          width: 32,
-                          height: 32,
-                          objectFit: "cover",
-                          borderRadius: "6px",
-                        }}
-                      />
-                    ) : (
-                      <span style={{ fontSize: "20px" }}>🖼️</span>
-                    )}
-                    <button
-                      className="btn-ghost glass-button btn-shadow"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setToolAttachedImages(
-                          toolAttachedImages.filter((i) => i.id !== img.id)
-                        );
-                      }}
-                      disabled={isGenerating}
-                      style={{
-                        padding: 4,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        opacity: isGenerating ? 0.5 : 1,
-                        minWidth: "24px",
-                        height: "24px",
-                        flexShrink: 0,
-                      }}
-                      aria-label="Remove"
-                      title="Remove image"
-                    >
-                      <FaTimes size={14} style={{ color: "var(--text)" }} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
 
 
           </div>
@@ -1942,10 +1900,80 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 flex: 1,
                 display: "flex",
                 flexDirection: "column",
-                gap: 8,
+                gap: 4,
                 position: "relative",
               }}
             >
+              {/* Attached images — above the prompt textarea */}
+              {toolAttachedImages.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    paddingLeft: 4,
+                    paddingBottom: 2,
+                  }}
+                >
+                  {toolAttachedImages.map((img) => (
+                    <div
+                      key={img.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 10px",
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "var(--font-sm)",
+                        boxShadow: "var(--shadow)",
+                        maxWidth: "250px",
+                      }}
+                    >
+                      {img.preview ? (
+                        <img
+                          src={img.preview}
+                          alt="Reference"
+                          style={{
+                            width: 32,
+                            height: 32,
+                            objectFit: "cover",
+                            borderRadius: "6px",
+                          }}
+                        />
+                      ) : (
+                        <span style={{ fontSize: "20px" }}>🖼️</span>
+                      )}
+                      <button
+                        className="btn-ghost glass-button btn-shadow"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setToolAttachedImages(
+                            toolAttachedImages.filter((i) => i.id !== img.id)
+                          );
+                        }}
+                        disabled={isGenerating}
+                        style={{
+                          padding: 4,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          opacity: isGenerating ? 0.5 : 1,
+                          minWidth: "24px",
+                          height: "24px",
+                          flexShrink: 0,
+                        }}
+                        aria-label="Remove"
+                        title="Remove image"
+                      >
+                        <FaTimes size={14} style={{ color: "var(--text)" }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                 <div
                   style={{
@@ -1976,52 +2004,50 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   >
                     <FaTimes size={14} />
                   </button>
-                  {toolAttachedImages.length === 0 && (
-                    <button
-                      className="btn-ghost glass-button btn-shadow max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[12px] max-md:![&>svg]:!h-[12px]"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        fileInputRef.current?.click();
-                      }}
-                      disabled={
+                  <button
+                    className="btn-ghost glass-button btn-shadow max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[12px] max-md:![&>svg]:!h-[12px]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    disabled={
+                      isListening ||
+                      isGenerating ||
+                      toolAttachedImages.length >= (isPremium ? 5 : 2)
+                    }
+                    style={{
+                      padding: 6,
+                      opacity:
                         isListening ||
-                        isGenerating ||
-                        toolAttachedImages.length >= 1
-                      }
-                      style={{
-                        padding: 6,
-                        opacity:
-                          isListening ||
-                            isGenerating ||
-                            toolAttachedImages.length >= 1
-                            ? 0.5
-                            : 1,
-                        cursor:
-                          isListening ||
-                            isGenerating ||
-                            toolAttachedImages.length >= 1
-                            ? "not-allowed"
-                            : "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "rgba(0, 0, 0, 0.05)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "6px",
-                        minWidth: "28px",
-                        height: "28px",
-                        pointerEvents: "auto",
-                      }}
-                      aria-label="Add reference image"
-                      title={
-                        toolAttachedImages.length >= 1
-                          ? "Only one image allowed"
-                          : "Add reference image (optional)"
-                      }
-                    >
-                      <FaPlus size={14} style={{ color: "var(--text)" }} />
-                    </button>
-                  )}
+                          isGenerating ||
+                          toolAttachedImages.length >= (isPremium ? 5 : 2)
+                          ? 0.5
+                          : 1,
+                      cursor:
+                        isListening ||
+                          isGenerating ||
+                          toolAttachedImages.length >= (isPremium ? 5 : 2)
+                          ? "not-allowed"
+                          : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(0, 0, 0, 0.05)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      minWidth: "28px",
+                      height: "28px",
+                      pointerEvents: "auto",
+                    }}
+                    aria-label="Add reference images"
+                    title={
+                      toolAttachedImages.length >= (isPremium ? 5 : 2)
+                        ? `Maximum ${isPremium ? 5 : 2} images allowed`
+                        : "Add reference images (optional)"
+                    }
+                  >
+                    <FaPlus size={14} style={{ color: "var(--text)" }} />
+                  </button>
                 </div>
                 <textarea
                   ref={inputRef}
@@ -2141,8 +2167,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             )}
 
-            {/* Model Selector - Only show for premium users after user has selected a mode, disabled during tool mode */}
-            {!toolMode && (showModelSelector || !isAuthenticated()) && (
+            {/* Model selector — premium only (keeps send button visible for free/guest users) */}
+            {!toolMode && showModelSelector && isPremium && (
               <div>
                 <LLMModelSelector
                   selectedModel={selectedModel}
@@ -2151,7 +2177,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     (setSelectedModel ?? onModelChange)(model);
                     // Save to localStorage immediately for premium users
                     if (isPremium) {
-                      localStorage.setItem("perle-selected-model", model);
+                      localStorage.setItem("syntraiq-selected-model", model);
                     }
                   }}
                   isPremium={isPremium}
@@ -2257,8 +2283,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               ) : null}
             </div>
 
-            {/* Show conversation options for premium users with existing answers */}
-            {isPremium && hasAnswer && (
+            {/* New conversation — available to all; free users limited by daily query cap */}
+            {hasAnswer && (
               <div
                 style={{
                   display: "flex",
@@ -2288,26 +2314,34 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             )}
 
-            {query.trim() ? (
-              <button
-                type="button"
-                className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
-                onClick={triggerSearchWithScroll}
-                disabled={isLoading || !query.trim()}
-                aria-label="Search"
-                style={{
-                  padding: hasAnswer ? 6 : 8,
-                  color: "",
-                  opacity: isLoading || !query.trim() ? 0.5 : 1,
-                  cursor: isLoading || !query.trim() ? "not-allowed" : "pointer",
-                  marginRight: 8,
-                  touchAction: "manipulation",
-                  WebkitTapHighlightColor: "transparent",
-                }}
-              >
-                {isLoading ? "…" : <FaSearch size={hasAnswer ? 16 : 20} />}
-              </button>
-            ) : speechSupported ? (
+            <button
+              type="button"
+              className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
+              onClick={triggerSearchWithScroll}
+              disabled={isLoading || !query.trim()}
+              aria-label={queryLimitReached ? "Upgrade to continue" : "Send message"}
+              title={
+                queryLimitReached
+                  ? "Daily limit reached — upgrade to continue"
+                  : query.trim()
+                    ? "Send"
+                    : "Type a message to send"
+              }
+              style={{
+                padding: hasAnswer ? 6 : 8,
+                color: queryLimitReached && query.trim() ? "var(--accent)" : "",
+                opacity: isLoading || !query.trim() ? 0.45 : 1,
+                cursor: isLoading || !query.trim() ? "not-allowed" : "pointer",
+                marginRight: 4,
+                touchAction: "manipulation",
+                WebkitTapHighlightColor: "transparent",
+                flexShrink: 0,
+              }}
+            >
+              {isLoading ? "…" : <IoIosSend size={hasAnswer ? 18 : 22} />}
+            </button>
+
+            {!query.trim() && speechSupported ? (
               <button
                 className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                 onClick={() => {
@@ -2317,11 +2351,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   } catch { }
                   setIsSpeaking(false);
                   pendingVoiceSpeakRef.current = false;
-                  localStorage.removeItem("perle-speak-next-answer");
-                  localStorage.removeItem("perle-voice-open-speak-first");
-                  localStorage.removeItem("perle-current-answer-text");
-                  localStorage.removeItem("perle-auto-listen-next");
-                  localStorage.setItem("perle-voice-session-active", "1");
+                  localStorage.removeItem("syntraiq-speak-next-answer");
+                  localStorage.removeItem("syntraiq-voice-open-speak-first");
+                  localStorage.removeItem("syntraiq-current-answer-text");
+                  localStorage.removeItem("syntraiq-auto-listen-next");
+                  localStorage.setItem("syntraiq-voice-session-active", "1");
                   setShowVoiceOverlay(true);
                 }}
                 disabled={isListening || isLoading}
@@ -2342,18 +2376,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          multiple={!toolMode}
+          multiple
           accept={
             toolMode
               ? "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml"
               : "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml,.pdf,.doc,.docx,.txt,.csv,.odt,.xls,.xlsx"
           }
           onChange={(e) => {
-            handleFileUpload(e.target.files);
-            // Reset input so same file can be selected again
-            if (e.target) {
-              e.target.value = "";
-            }
+            const input = e.target;
+            const selected = input.files ? Array.from(input.files) : [];
+            void handleFileUpload(selected).finally(() => {
+              input.value = "";
+            });
           }}
           style={{ display: "none" }}
         />

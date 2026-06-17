@@ -182,8 +182,9 @@ export default function AIFriendPage() {
   const [cursorPosition, setCursorPosition] = useState(0);
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const pendingScrollToMessageIdRef = useRef<string | null>(null);
+  const pendingScrollToMessageElRef = useRef<HTMLDivElement | null>(null);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -193,17 +194,20 @@ export default function AIFriendPage() {
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
 
-  const scrollToLatestMessage = () => {
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-      }, 80);
-    });
-  };
-
+  // ChatGPT-style UX: scroll once per new user message (not on every token/render).
   useEffect(() => {
-    scrollToLatestMessage();
-  }, [messages, isLoading]);
+    if (!isLoading) return;
+    if (!pendingScrollToMessageIdRef.current) return;
+    if (!pendingScrollToMessageElRef.current) return;
+
+    const el = pendingScrollToMessageElRef.current;
+    pendingScrollToMessageIdRef.current = null;
+    pendingScrollToMessageElRef.current = null;
+
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  }, [isLoading, messages.length]);
 
   // Focus input on mount
   useEffect(() => {
@@ -261,7 +265,7 @@ export default function AIFriendPage() {
 
       // Load saved model preference
       const savedModel = localStorage.getItem(
-        "perle-ai-friend-model"
+        "syntraiq-ai-friend-model"
       ) as LLMModel | null;
       if (savedModel && premium) {
         setSelectedModel(savedModel);
@@ -558,6 +562,7 @@ export default function AIFriendPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    pendingScrollToMessageIdRef.current = userMessage.id;
     const messageText = inputValue.trim();
     setInputValue("");
     setAttachedFile(null);
@@ -1357,7 +1362,7 @@ export default function AIFriendPage() {
       </div>
 
       {/* Messages Area */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-5">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col">
         {messages.map((message, index) => {
           const showDateDivider =
             index === 0 ||
@@ -1396,6 +1401,12 @@ export default function AIFriendPage() {
           <div
               className={`flex items-end gap-3 mb-4 ${message.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
+              style={{ scrollMarginTop: 90 }}
+              ref={(el) => {
+                if (message.id === pendingScrollToMessageIdRef.current) {
+                  pendingScrollToMessageElRef.current = el;
+                }
+              }}
           >
             <img
                 src={messageAvatar}
@@ -1444,7 +1455,6 @@ export default function AIFriendPage() {
           </Fragment>
           );
         })}
-
         {isLoading && (
           <div className="flex items-end gap-3 mb-4">
             <img
@@ -1452,7 +1462,10 @@ export default function AIFriendPage() {
               alt={`${aiProfile.name} avatar`}
               className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(16,163,127,0.5)]"
             />
-            <div className="px-4 py-3 rounded-[var(--radius-sm)] border border-[var(--border)]">
+            <div className="px-4 py-3 rounded-[var(--radius-sm)] glass-panel border border-[rgba(255,255,255,0.1)]">
+              <div className="text-[length:var(--font-md)] font-semibold mb-1">
+                Thinking...
+              </div>
               <div className="flex gap-1 items-center">
                 <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite]" />
                 <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.2s]" />
@@ -1461,8 +1474,6 @@ export default function AIFriendPage() {
             </div>
           </div>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area */}
@@ -1481,7 +1492,7 @@ export default function AIFriendPage() {
             selectedModel={selectedModel}
             onModelChange={(model) => {
               setSelectedModel(model);
-              localStorage.setItem("perle-ai-friend-model", model);
+              localStorage.setItem("syntraiq-ai-friend-model", model);
             }}
             isPremium={isPremium}
             size="large"
@@ -1696,7 +1707,7 @@ export default function AIFriendPage() {
                 selectedModel={selectedModel}
                 onModelChange={(model) => {
                   setSelectedModel(model);
-                  localStorage.setItem("perle-ai-friend-model", model);
+                  localStorage.setItem("syntraiq-ai-friend-model", model);
                 }}
                 isPremium={isPremium}
                 size="small"

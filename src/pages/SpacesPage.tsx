@@ -129,7 +129,7 @@ export default function SpacesPage() {
       setIsPremium(premium);
 
       const savedModel = localStorage.getItem(
-        "perle-space-model",
+        "syntraiq-space-model",
       ) as LLMModel | null;
       if (savedModel && premium) {
         setSelectedModel(savedModel);
@@ -675,7 +675,7 @@ export default function SpacesPage() {
                 size="small"
                 onModelChange={(model) => {
                   setSelectedModel(model);
-                  localStorage.setItem("perle-space-model", model);
+                  localStorage.setItem("syntraiq-space-model", model);
                 }}
               />
             </div>

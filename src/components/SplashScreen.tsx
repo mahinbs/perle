@@ -1,30 +1,43 @@
-// import logo from "../assets/images/logo.png";
-// import earth from "../assets/images/earth.png";
-import earthVideo from "../assets/earth.mp4";
+import { useEffect, useState } from "react";
 
 export function SplashScreen() {
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    import("../assets/earth.mp4")
+      .then((mod) => {
+        if (!cancelled) setVideoSrc(mod.default);
+      })
+      .catch(() => {
+        if (!cancelled) setVideoSrc(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <>
       <div className="splash-screen" role="status" aria-label="Loading">
-        {/* <div className="splash-logo relative w-full">
-          <h1 className="font-ubuntu text-4xl font-bold translate-y-1">
-            Syntra <span className="text-gold font-bold!">IQ</span>
-          </h1>
-          <div className="relative mb-5">
-            <div className="bg-gradient-to-b from-transparent to-[#F8F7F4] dark:to-[#0E0E0E] absolute top-0 left-0 w-full h-full"/>
-            <img src={earth} alt="Earth" className="w-full object-cover" />
-          </div>
-        </div> */}
         <div className="splash-logo relative w-full">
-          <video
-            src={earthVideo}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="w-full max-w-md mx-auto object-cover rounded-lg"
-            aria-hidden
-          />
+          {videoSrc ? (
+            <video
+              src={videoSrc}
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className="w-full max-w-md mx-auto object-cover rounded-lg"
+              aria-hidden
+            />
+          ) : (
+            <div
+              className="w-full max-w-md mx-auto h-48 rounded-lg bg-[var(--input-bg)] animate-pulse"
+              aria-hidden
+            />
+          )}
         </div>
         <p className="splash-tagline font-ubuntu text-lg! font-medium">
           Preparing your Syntra<span className="text-gold">IQ</span> experience…

@@ -6,7 +6,7 @@ export interface DiscoverArticle {
   readTime: string;
 }
 
-const ARTICLE_CACHE_PREFIX = 'perle-article-v1-';
+const ARTICLE_CACHE_PREFIX = 'syntraiq-article-v1-';
 const ARTICLE_CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
 function getArticleCache(id: string): DiscoverArticle | null {

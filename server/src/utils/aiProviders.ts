@@ -50,9 +50,11 @@ function stripMarkdown(text: string): string {
   return text.trim();
 }
 
-function chunkTextToAnswer(text: string, sources: Source[]): AnswerResult['chunks'] {
-  // Strip markdown before returning
-  const cleanText = stripMarkdown(text);
+function chunkTextToAnswer(text: string, sources: Source[], chatMode: ChatMode = 'normal'): AnswerResult['chunks'] {
+  const cleanText =
+    chatMode === 'ai_friend' || chatMode === 'ai_psychologist'
+      ? stripMarkdown(text)
+      : text.trim();
   // Return single chunk with full text instead of splitting into sentences
   return [{
     text: cleanText,
@@ -130,7 +132,7 @@ function buildNormalModePrompt(
   if (mode === 'Compare') {
     return `${contextPrefix}Mode: Compare\nQuery: ${query}\nProvide a comparison answer. Start with a brief 1-2 sentence overview, then you MUST present the main comparison as a markdown table using pipe syntax, for example:\n| Aspect | Option A | Option B |\n| --- | --- | --- |\n| Speed | ... | ... |\n| Price | ... | ... |\nUse a header row, a |---|---| separator row, and at least 4 comparison rows. Do not use only bullet points for the core comparison. After the table, you may add 2-3 short takeaway bullets.`;
   }
-  return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+  return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nAnswer with a # title, ## section headings, **bold** key terms, and • bullet points.`;
 }
 
 // Get current date in a readable format
@@ -559,16 +561,19 @@ IMPORTANT: When asked about time, date, current events, or prices, prioritize th
       return `You are SyntraIQ, an AI-powered answer engine like Perplexity AI. 
 
 CRITICAL FORMATTING RULES (YOU MUST FOLLOW):
-• Start with a brief 1-2 sentence overview
-• Include 1-2 relevant emojis at the start of section headings and titles (e.g. 💉💊🧪 for health/medical, 🏏🏑🎾 for sports, 📊📈 for finance, 🔬🧪 for science, 💡📚 for education, 🌍 for environment, etc.)
-• Put emojis right before headings to make answers scannable (e.g. "💉 Key Health Benefits:" or "📊 Market Overview:")
-• Then ALWAYS use bullet points (•) to break down information
-• Use "•" for main points
-• Use "  - " for sub-points
+• Start with a clear title using markdown: "# Topic Title" (one title per answer, plain text only — e.g. "# Best Medicines for Impetigo")
+• After the title, write a brief 1-2 sentence overview paragraph (plain text, no bullets)
+• Use "## Section Heading" for each major section (plain text only — e.g. "## Topical Antibiotics (First-Line)")
+• Use "### Subsection" only when a section needs a smaller heading inside it
+• Use bullet points with "•" for lists
+• **Bold** key terms, names, drug names, product names, and important phrases inside bullets and paragraphs using **double asterisks**
+• Use "  - " for nested sub-points under a bullet
 • For steps or rankings, use "1.", "2.", "3." format
-• Keep each point concise (1-2 lines max)
-• Add line breaks between sections for readability
-• NO markdown (no ##, no **, no code blocks)
+• Separate major sections with a blank line; for long answers you may add "---" on its own line between sections
+• Keep each bullet concise (1-2 lines max)
+• Put citations inline as [1], [2] — never write source(1)
+• Use markdown structure (#, ##, **bold**) — do NOT use code blocks unless showing code
+• Do NOT use emojis, icons, or decorative symbols anywhere in the answer — keep formatting clean and professional
 
 MATHEMATICAL FORMULAS (CRITICAL):
 • When writing mathematical formulas, ALWAYS use LaTeX format
@@ -590,19 +595,28 @@ MATHEMATICAL FORMULAS (CRITICAL):
 • DO NOT write formulas in plain text like "m1u1" - use \\(m_1 u_1\\) instead
 
 Example format:
-"Brief overview sentence here.
+"# Understanding Artificial Intelligence
 
-🔬 Main topic:
-• First key point here
-• Second key point with formula \\(E = \\frac{1}{2}mv^2\\)
-• Third key point here
+Artificial intelligence enables machines to perform tasks that typically require human intelligence.
 
-📐 Important equation:
-\\[\\sum \\mathbf{P}_{initial} = \\sum \\mathbf{P}_{final}\\]
+## What Is AI
 
-📌 Additional context:
-• Another point
-• Final point"
+• **Machine learning** — Systems that learn patterns from data [1]
+• **Deep learning** — Neural networks with many layers for complex tasks
+  - Used in image recognition and language models
+
+## How AI Works
+
+• **Data input** — Raw information is collected and prepared
+• **Training** — Models learn from examples using algorithms like \\(gradient\\ descent\\)
+• **Inference** — The trained model makes predictions on new data
+
+---
+
+## Key Takeaways
+
+• AI combines data, algorithms, and compute power
+• Applications span healthcare, finance, education, and more"
 
 IMPORTANT: 
 • ONLY introduce yourself as "SyntraIQ" when EXPLICITLY asked (e.g., "what is SyntraIQ", "who are you", "tell me about yourself")
@@ -628,7 +642,7 @@ export async function generateOpenAIAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -648,7 +662,7 @@ export async function generateOpenAIAnswer(
     
     return {
       sources,
-      chunks: chunkTextToAnswer(perleInfo, sources),
+      chunks: chunkTextToAnswer(perleInfo, sources, chatMode),
       query,
       mode,
       timestamp: Date.now()
@@ -732,17 +746,20 @@ export async function generateOpenAIAnswer(
     prompt = buildNormalModePrompt(mode, query, conversationHistory);
   }
   
-  // Build user message content (text + optional image)
-  if (imageDataUrl) {
-    // OpenAI vision format: content is an array of objects
+  // Build user message content (text + optional images)
+  if (imageDataUrls && imageDataUrls.length > 0) {
+    const imageParts = imageDataUrls
+      .filter((url) => url.startsWith('data:image/'))
+      .map((url) => ({ type: 'image_url' as const, image_url: { url } }));
+
     messages.push({
       role: 'user',
       content: [
         { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: imageDataUrl } }
+        ...imageParts,
       ]
     });
-    console.log(`📷 Added image to OpenAI request`);
+    console.log(`📷 Added ${imageParts.length} image(s) to OpenAI request`);
   } else {
     // Regular text message
     messages.push({ role: 'user', content: prompt });
@@ -811,7 +828,7 @@ export async function generateOpenAIAnswer(
 
   return {
     sources,
-    chunks: chunkTextToAnswer(content, sources),
+    chunks: chunkTextToAnswer(content, sources, chatMode),
     query,
     mode,
     timestamp: Date.now(),
@@ -832,7 +849,7 @@ export async function generateGeminiAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -860,6 +877,14 @@ export async function generateGeminiAnswer(
     geminiModel = 'gemini-2.5-flash-lite'; // Cheapest option (cost-optimized for free tier)
   }
 
+  // gemini-2.5-flash-lite has limited multimodal support — it doesn't reliably handle
+  // image OR document inline_data. Upgrade to gemini-2.0-flash whenever ANY file is attached.
+  const hasAnyAttachment = (imageDataUrls?.length ?? 0) > 0;
+  if (hasAnyAttachment && geminiModel === 'gemini-2.5-flash-lite') {
+    geminiModel = 'gemini-2.0-flash';
+    console.log(`📎 File(s) attached — upgrading model to gemini-2.0-flash for multimodal support`);
+  }
+
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
     const perleInfo = getSyntraIQInfoResponse();
@@ -876,7 +901,7 @@ export async function generateGeminiAnswer(
     
     return {
       sources,
-      chunks: chunkTextToAnswer(perleInfo, sources),
+      chunks: chunkTextToAnswer(perleInfo, sources, chatMode),
       query,
       mode,
       timestamp: Date.now()
@@ -955,14 +980,15 @@ export async function generateGeminiAnswer(
   const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0);
   const maxOutputTokens = Math.min(tokenLimit, 8192); // Gemini supports up to 8192 tokens, use full limit to prevent truncation
   
-  // Build parts array (text + optional image)
+  // Build parts array (text + optional attachments)
   const parts: any[] = [{ text: `${sys}\n\n${prompt}` }];
   
-  // Add image or document if provided
-  if (imageDataUrl) {
-    // Extract base64 data and mime type from data URL
-    const matches = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (matches) {
+  // Add images or documents if provided
+  if (imageDataUrls && imageDataUrls.length > 0) {
+    for (const imageDataUrl of imageDataUrls) {
+      const matches = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) continue;
+
       const [, mimeType, base64Data] = matches;
       
       // Check if it's an image or document
@@ -1003,18 +1029,20 @@ export async function generateGeminiAnswer(
     }
   }
   
+  // Use a longer timeout when any file is attached — images/PDFs need more processing time.
+  const requestTimeout = hasAnyAttachment ? 60_000 : 25_000;
+
   const result = await withTimeout(
     modelInstance.generateContent({
       contents: [{ role: 'user', parts: parts }],
       generationConfig: {
         maxOutputTokens: maxOutputTokens,
         temperature: 0.3,
-        // SPEED OPTIMIZATIONS:
-        topP: 0.9, // Slightly restrict for faster generation
-        topK: 40, // Limit candidate tokens for speed
+        topP: 0.9,
+        topK: 40,
       }
     }),
-    25_000 // 25s timeout - reduced for faster responses (Gemini Flash is fast!)
+    requestTimeout
   ) as any;
 
   const response = result.response;
@@ -1092,7 +1120,7 @@ export async function generateGeminiAnswer(
 
   return {
     sources,
-    chunks: chunkTextToAnswer(content, sources),
+    chunks: chunkTextToAnswer(content, sources, chatMode),
     query,
     mode,
     timestamp: Date.now(),
@@ -1112,7 +1140,7 @@ export async function generateClaudeAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -1132,7 +1160,7 @@ export async function generateClaudeAnswer(
     
     return {
       sources,
-      chunks: chunkTextToAnswer(syntraiqInfo, sources),
+      chunks: chunkTextToAnswer(syntraiqInfo, sources, chatMode),
       query,
       mode,
       timestamp: Date.now()
@@ -1285,7 +1313,7 @@ export async function generateClaudeAnswer(
 
   return {
     sources,
-    chunks: chunkTextToAnswer(content, sources),
+    chunks: chunkTextToAnswer(content, sources, chatMode),
     query,
     mode,
     timestamp: Date.now(),
@@ -1305,7 +1333,7 @@ export async function generateGrokAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -1325,7 +1353,7 @@ export async function generateGrokAnswer(
     
     return {
       sources,
-      chunks: chunkTextToAnswer(perleInfo, sources),
+      chunks: chunkTextToAnswer(perleInfo, sources, chatMode),
       query,
       mode,
       timestamp: Date.now()
@@ -1512,7 +1540,7 @@ export async function generateGrokAnswer(
 
   return {
     sources,
-    chunks: chunkTextToAnswer(content, sources),
+    chunks: chunkTextToAnswer(content, sources, chatMode),
     query,
     mode,
     timestamp: Date.now(),
@@ -1533,7 +1561,7 @@ export async function generateAIAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -1541,17 +1569,17 @@ export async function generateAIAnswer(
   let result: AnswerResult;
   
   if (model === 'gpt-5' || model === 'gpt-5.1' || model === 'gpt-5.2' || model === 'gpt-5.3' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
-    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-3.0' || model === 'gemini-3.1' || model === 'gemini-3.1-flash' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   } else if (model === 'claude-4.6-sonnet' || model === 'claude-4.6-opus' || model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-4-opus' || model === 'claude-4.1-opus' || model === 'claude-3-haiku') {
-    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
-    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   } else {
     // Fallback to Gemini Lite for unknown models
-    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   }
   
   // Add image generation for normal mode if query requires it

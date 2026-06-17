@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 
 interface VoiceResponseTextProps {
   text?: string;
@@ -9,80 +9,35 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
   text: providedText,
   speaking,
 }) => {
-  const [displayedText, setDisplayedText] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const typewriterTimerRef = useRef<number | null>(null);
 
-  // Typewriter rendering for voice response text shown under the globe.
-  useEffect(() => {
-    const cleaned = (providedText || "")
-      .replace(/\bundefined\b/gi, "")
-      .replace(/\r\n/g, "\n")
-      .trim();
+  const cleaned = (providedText || "")
+    .replace(/\bundefined\b/gi, "")
+    .replace(/\r\n/g, "\n")
+    .trim();
 
-    if (typewriterTimerRef.current) {
-      window.clearTimeout(typewriterTimerRef.current);
-      typewriterTimerRef.current = null;
-    }
-
-    if (!cleaned) {
-      setDisplayedText("");
-      return;
-    }
-
-    // If stream resets/changes drastically, snap to latest to avoid odd backspacing.
-    if (!cleaned.startsWith(displayedText)) {
-      setDisplayedText(cleaned);
-      return;
-    }
-
-    const typeNext = () => {
-      setDisplayedText((prev) => {
-        if (prev.length >= cleaned.length) return prev;
-        return cleaned.slice(0, prev.length + 1);
-      });
-      typewriterTimerRef.current = window.setTimeout(typeNext, 12);
-    };
-
-    if (displayedText.length < cleaned.length) {
-      typewriterTimerRef.current = window.setTimeout(typeNext, 12);
-    }
-
-    return () => {
-      if (typewriterTimerRef.current) {
-        window.clearTimeout(typewriterTimerRef.current);
-        typewriterTimerRef.current = null;
-      }
-    };
-  }, [providedText]);
-
-  // Auto-scroll to bottom
+  // Auto-scroll as text grows during speech
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [displayedText]);
+  }, [cleaned]);
 
-  const hasText = displayedText.length > 0;
+  const hasText = cleaned.length > 0;
 
-  // Same text structuring logic used by AnswerCard.
-  const formatText = (text: string, appendDot?: boolean): React.ReactNode => {
+  const formatText = (text: string): React.ReactNode => {
     if (!text) return null;
 
-    const renderWithMath = (value: string): React.ReactNode[] => [value];
-
-    // Process the text line by line to detect structure
     const lines = text.split("\n");
     const result: React.ReactNode[] = [];
     let currentParagraph: string[] = [];
     let currentList: Array<{ bullet: string; content: string }> = [];
     let inList = false;
 
-    const flushParagraph = (isLast = false) => {
+    const flushParagraph = () => {
       if (currentParagraph.length > 0) {
         const paraText = currentParagraph.join(" ").trim();
         if (paraText) {
-          const mathRendered = renderWithMath(paraText);
           result.push(
             <p
               key={`para-${result.length}`}
@@ -92,21 +47,7 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
                 lineHeight: 1.7,
               }}
             >
-              {mathRendered}
-              {isLast && appendDot && (
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: "3px",
-                    height: "3px",
-                    borderRadius: "50%",
-                    backgroundColor: "var(--text)",
-                    marginLeft: "4px",
-                    verticalAlign: "middle",
-                    animation: "blink 1s infinite",
-                  }}
-                />
-              )}
+              {paraText}
             </p>
           );
         }
@@ -114,7 +55,7 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
       }
     };
 
-    const flushList = (isLast = false) => {
+    const flushList = () => {
       if (currentList.length > 0) {
         result.push(
           <ul
@@ -126,41 +67,22 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
               listStyle: "none",
             }}
           >
-            {currentList.map((item, idx) => {
-              const isLastItem = isLast && appendDot && idx === currentList.length - 1;
-              return (
-                <li
-                  key={`li-${idx}`}
-                  style={{
-                    marginBottom: 8,
-                    lineHeight: 1.7,
-                    display: "flex",
-                    gap: 5,
-                  }}
-                >
-                  <span style={{ flexShrink: 0, color: "var(--accent)", fontWeight: 600 }}>
-                    {item.bullet}
-                  </span>
-                  <span style={{ flex: 1 }}>
-                    {renderWithMath(item.content)}
-                    {isLastItem && (
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: "3px",
-                          height: "3px",
-                          borderRadius: "50%",
-                          backgroundColor: "var(--text)",
-                          marginLeft: "4px",
-                          verticalAlign: "middle",
-                          animation: "blink 1s infinite",
-                        }}
-                      />
-                    )}
-                  </span>
-                </li>
-              );
-            })}
+            {currentList.map((item, idx) => (
+              <li
+                key={`li-${idx}`}
+                style={{
+                  marginBottom: 8,
+                  lineHeight: 1.7,
+                  display: "flex",
+                  gap: 5,
+                }}
+              >
+                <span style={{ flexShrink: 0, color: "var(--accent)", fontWeight: 600 }}>
+                  {item.bullet}
+                </span>
+                <span style={{ flex: 1 }}>{item.content}</span>
+              </li>
+            ))}
           </ul>
         );
         currentList = [];
@@ -170,26 +92,20 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
 
     lines.forEach((line) => {
       const trimmed = line.trim();
-
-      // Empty line - flush current context
       if (!trimmed) {
-        if (inList) {
-          flushList(false);
-        } else {
-          flushParagraph(false);
-        }
+        if (inList) flushList();
+        else flushParagraph();
         return;
       }
 
-      // Check if it's a heading (ends with colon, single line, reasonable length)
       if (
         trimmed.endsWith(":") &&
         trimmed.length < 150 &&
         !trimmed.includes("•") &&
         !trimmed.match(/^[-•\d]/)
       ) {
-        flushParagraph(false);
-        flushList(false);
+        flushParagraph();
+        flushList();
         result.push(
           <h3
             key={`heading-${result.length}`}
@@ -207,54 +123,34 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
         return;
       }
 
-      // Check if it's a bullet point
       if (
         trimmed.startsWith("•") ||
         trimmed.startsWith("-") ||
         trimmed.match(/^\d+\./)
       ) {
-        flushParagraph(false);
+        flushParagraph();
         inList = true;
-
         let bullet = "•";
         let content = trimmed;
-
-        if (trimmed.startsWith("•")) {
-          content = trimmed.substring(1).trim();
-        } else if (trimmed.startsWith("-")) {
-          content = trimmed.substring(1).trim();
-        } else if (trimmed.match(/^\d+\./)) {
+        if (trimmed.startsWith("•")) content = trimmed.substring(1).trim();
+        else if (trimmed.startsWith("-")) content = trimmed.substring(1).trim();
+        else if (trimmed.match(/^\d+\./)) {
           const match = trimmed.match(/^(\d+\.)\s*(.*)/);
           if (match) {
             bullet = match[1];
             content = match[2];
           }
         }
-
-        if (content) {
-          currentList.push({ bullet, content });
-        }
+        if (content) currentList.push({ bullet, content });
         return;
       }
 
-      // Regular text line
-      if (inList) {
-        flushList(false);
-      }
+      if (inList) flushList();
       currentParagraph.push(trimmed);
     });
 
-    // Flush any remaining content (these are the last elements)
-    if (inList && currentList.length > 0) {
-      // We're in a list, so the list is the last element
-      flushList(true);
-    } else if (currentParagraph.length > 0) {
-      // Paragraph is the last element
-      flushParagraph(true);
-    } else if (currentList.length > 0) {
-      // List is the last element (shouldn't normally happen, but handle it)
-      flushList(true);
-    }
+    if (inList) flushList();
+    else flushParagraph();
 
     return result.length > 0 ? <>{result}</> : text;
   };
@@ -263,22 +159,36 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
     <div
       ref={containerRef}
       className={`
-        w-full text-center text-(--text)
-        text-[clamp(1rem,3vh,1.5rem)] leading-[1.6]
-        max-w-[800px]
-        min-h-[60px] max-h-[25vh]
-        p-[2vh_2vw]
-        
-        flex items-center justify-center overflow-x-hidden overflow-y-auto
-        [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+        w-full text-left text-(--text)
+        text-[clamp(0.95rem,2.5vh,1.25rem)] leading-[1.65]
+        max-w-[min(800px,92vw)]
+        flex-1 min-h-[80px]
+        p-[1vh_2vw]
+        overflow-x-hidden overflow-y-auto
+        [scrollbar-width:thin]
         [-webkit-overflow-scrolling:touch]
-        transition-[max-height,opacity,padding] duration-300 ease-in-out
-        ${hasText ? (speaking ? 'opacity-95' : 'opacity-70') : 'opacity-0'}
+        transition-opacity duration-300 ease-in-out
+        ${hasText ? (speaking ? "opacity-100" : "opacity-90") : "opacity-0"}
       `}
+      style={{ maxHeight: "min(52vh, 480px)" }}
     >
       {hasText && (
-        <div className="w-full break-after-auto text-left whitespace-pre-wrap">
-          {formatText(displayedText)}
+        <div className="w-full whitespace-pre-wrap">
+          {formatText(cleaned)}
+          {speaking && (
+            <span
+              style={{
+                display: "inline-block",
+                width: 3,
+                height: 3,
+                borderRadius: "50%",
+                backgroundColor: "var(--accent)",
+                marginLeft: 4,
+                verticalAlign: "middle",
+                animation: "blink 1s infinite",
+              }}
+            />
+          )}
         </div>
       )}
     </div>
@@ -286,5 +196,3 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
 };
 
 export default React.memo(VoiceResponseTextComponent);
-
-

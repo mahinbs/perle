@@ -4,9 +4,10 @@ import type { Source } from '../types';
 interface SourceChipProps {
   source: Source;
   onClick?: () => void;
+  citationNumber?: number;
 }
 
-export const SourceChip: React.FC<SourceChipProps> = ({ source, onClick }) => {
+export const SourceChip: React.FC<SourceChipProps> = ({ source, onClick, citationNumber }) => {
   const handleClick = () => {
     if (onClick) {
       onClick();
@@ -51,12 +52,20 @@ export const SourceChip: React.FC<SourceChipProps> = ({ source, onClick }) => {
       }}
     >
       <span style={{
-        display: "inline-block",
-        width: "14px",
-        height: "14px",
-        background: "url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"%23dfb768\"><path d=\"M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5\"/></svg>') no-repeat center/contain",
-        opacity: 0.8
-      }} />
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minWidth: 18,
+        height: 18,
+        borderRadius: 999,
+        background: "rgba(223, 183, 104, 0.35)",
+        color: "var(--text)",
+        fontSize: 11,
+        fontWeight: 700,
+        flexShrink: 0,
+      }}>
+        {citationNumber ?? "•"}
+      </span>
       <span style={{
         maxWidth: "150px",
         overflow: "hidden",

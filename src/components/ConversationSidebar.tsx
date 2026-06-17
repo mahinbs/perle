@@ -25,7 +25,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   onNewConversation,
   onDeleteConversation,
   isOpen,
-  onToggle
+  onToggle,
 }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -135,13 +135,13 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
   return (
     <>
-      {/* Hover / Touch Area - Invisible trigger on the left edge */}
+      {/* Hover trigger on left edge — desktop only */}
       <div
-        className="fixed top-0 left-0 bottom-0 w-2 z-40"
+        className="hidden lg:block fixed top-0 left-0 bottom-0 w-2 z-40"
         onMouseEnter={() => !isOpen && onToggle()}
-        style={{ 
-          cursor: 'pointer',
-          backgroundColor: 'transparent'
+        style={{
+          cursor: "pointer",
+          backgroundColor: "transparent",
         }}
       />
 

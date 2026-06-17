@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { FaUserCircle } from "react-icons/fa";
+import { FaUserCircle, FaEllipsisV } from "react-icons/fa";
 import { Link, useLocation } from "react-router-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getAllDiscoverItems } from "../services/discoverService";
 import type { DiscoverItem } from "../types";
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onOpenSidebar?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
   const { navigateTo } = useRouterNavigation();
   const location = useLocation();
   const [previewItems, setPreviewItems] = useState<DiscoverItem[]>([]);
@@ -41,6 +45,24 @@ export const Header: React.FC = () => {
           }}
         >
           <div className="flex items-center min-w-0" style={{ gap: "clamp(2px, 1vw, 12px)", flexShrink: 0 }}>
+            {onOpenSidebar && (
+              <button
+                type="button"
+                className="lg:hidden btn-ghost glass-button flex items-center justify-center rounded-xl"
+                onClick={onOpenSidebar}
+                aria-label="Open conversations"
+                style={{
+                  width: 40,
+                  height: 40,
+                  minWidth: 40,
+                  minHeight: 40,
+                  padding: 0,
+                  touchAction: "manipulation",
+                }}
+              >
+                <FaEllipsisV size={18} />
+              </button>
+            )}
             <button
               type="button"
               className="glass-button !font-bold font-ubuntu dark:border-yellow-300/25 rounded-lg px-2 md:px-3 text-[14px] md:text-[14px] h-[32px] md:h-[40px] flex items-center justify-center cursor-pointer whitespace-nowrap"
@@ -61,7 +83,7 @@ export const Header: React.FC = () => {
           </div>
           <div
             className="flex items-center shrink-0 header-actions-right"
-            style={{ gap: 20, marginLeft: 8 }}
+            style={{ gap: 6, marginLeft: 4 }}
           >
             <Link
               to="/discover"
@@ -121,9 +143,9 @@ export const Header: React.FC = () => {
             display: flex;
             align-items: center;
             justify-content: center;
-            min-width: 3.5rem;
-            min-height: 2.75rem;
-            padding: 4px 6px;
+            min-width: 2.75rem;
+            min-height: 2.5rem;
+            padding: 2px 4px;
             margin: 0;
             border: none;
             background: transparent !important;
@@ -188,10 +210,10 @@ export const Header: React.FC = () => {
           }
 
           .header-profile-btn {
-            width: 44px;
-            height: 44px;
-            min-width: 44px;
-            min-height: 44px;
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            min-height: 40px;
             padding: 0 !important;
             flex-shrink: 0;
           }

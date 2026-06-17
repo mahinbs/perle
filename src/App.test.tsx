@@ -104,7 +104,7 @@ describe('App', () => {
     
     render(<App />);
     
-    expect(localStorageMock.getItem).toHaveBeenCalledWith('perle-search-history');
+    expect(localStorageMock.getItem).toHaveBeenCalledWith('syntraiq-search-history');
   });
 
   it('should save search to history', async () => {
@@ -118,7 +118,7 @@ describe('App', () => {
     
     await waitFor(() => {
       expect(localStorageMock.setItem).toHaveBeenCalledWith(
-        'perle-search-history',
+        'syntraiq-search-history',
         expect.stringContaining('new test query')
       );
     });

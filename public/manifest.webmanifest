@@ -3,15 +3,35 @@
   "short_name": "SyntraIQ",
   "description": "Elegant AI search and assistant",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#FFFFFF",
   "theme_color": "#C7A869",
   "icons": [
     {
       "src": "/app-icon.png",
       "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon.png",
+      "type": "image/png",
       "sizes": "1024x1024",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon.png",
+      "type": "image/png",
+      "sizes": "1024x1024",
+      "purpose": "maskable"
     }
   ]
 }

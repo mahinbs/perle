@@ -3,7 +3,12 @@ import { IoIosArrowBack } from "react-icons/io";
 import { FaImage, FaSpinner, FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
-import { getAuthHeaders } from "../utils/auth";
+import { isAuthenticated } from "../utils/auth";
+import { generateImageApi } from "../utils/mediaApi";
+import {
+  MediaStudioModal,
+  type MediaStudioModalView,
+} from "../components/MediaStudioModal";
 
 const TEMPLATES = [
   { id: "enhance", label: "Enhance quality", prompt: "Enhance this image with sharper details, better lighting and vivid colors" },
@@ -23,6 +28,8 @@ export default function EditImagesPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [modalView, setModalView] = useState<MediaStudioModalView | null>(null);
+  const [activePrompt, setActivePrompt] = useState("");
 
   const handleFile = (file: File | undefined) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -39,33 +46,45 @@ export default function EditImagesPage() {
 
   const handleGenerate = async () => {
     if (!imageFile || !prompt.trim()) return;
+
+    if (!isAuthenticated()) {
+      setModalView("auth");
+      return;
+    }
+
+    const promptText = prompt.trim();
+    setActivePrompt(promptText);
     setIsGenerating(true);
+    setModalView("generating");
     setResultUrl(null);
 
     try {
-      const baseUrl = import.meta.env.VITE_API_URL as string;
-      const formData = new FormData();
-      formData.append("referenceImage", imageFile);
-      formData.append("prompt", prompt.trim());
-
-      const response = await fetch(`${baseUrl}/api/media/generate-image`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to edit image");
-      }
-
-      const data = await response.json();
-      setResultUrl(data.url || data.imageUrl);
+      const result = await generateImageApi(promptText, "1:1", imageFile);
+      setResultUrl(result.url);
+      setModalView("result");
       showToast({ message: "Image edited!", type: "success", duration: 3000 });
-    } catch (e: any) {
-      showToast({ message: e.message || "Image edit failed", type: "error", duration: 4000 });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Image edit failed";
+      setModalView(null);
+      showToast({ message, type: "error", duration: 4000 });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!resultUrl) return;
+    try {
+      const response = await fetch(resultUrl);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `edited-image-${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast({ message: "Download failed", type: "error", duration: 3000 });
     }
   };
 
@@ -123,7 +142,7 @@ export default function EditImagesPage() {
           ))}
         </div>
 
-        {resultUrl && (
+        {resultUrl && !modalView && (
           <div className="glass-card border border-[var(--border)] rounded-xl overflow-hidden mb-6">
             <img src={resultUrl} alt="Edited result" className="w-full object-contain" />
           </div>
@@ -151,6 +170,18 @@ export default function EditImagesPage() {
       </div>
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+
+      <MediaStudioModal
+        view={modalView}
+        mediaType="image"
+        prompt={activePrompt}
+        previewUrl={preview}
+        resultUrl={resultUrl}
+        onClose={() => setModalView(null)}
+        onLogin={() => navigateTo("/profile", { mode: "login" })}
+        onUpgrade={() => navigateTo("/subscription")}
+        onDownload={() => void handleDownload()}
+      />
     </div>
   );
 }

@@ -2,6 +2,52 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
 import { SourceChip } from "./SourceChip";
+import {
+  AnswerBulletDot,
+  isColonHeading,
+  isSectionDivider,
+  normalizeCitationText,
+  parseMarkdownHeading,
+  renderAnswerHeading,
+  renderInlineFormatted,
+  stripHeadingEmojis,
+} from "../utils/answerFormatting";
+
+function CitationBadge({
+  number,
+  source,
+}: {
+  number: number;
+  source?: Source;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => source && window.open(source.url, "_blank")}
+      title={source?.title || `Source ${number}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minWidth: 18,
+        height: 18,
+        padding: "0 5px",
+        margin: "0 2px",
+        borderRadius: 999,
+        background: "var(--accent)",
+        color: "var(--bg)",
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1,
+        verticalAlign: "super",
+        border: "none",
+        cursor: source ? "pointer" : "default",
+      }}
+    >
+      {number}
+    </button>
+  );
+}
 import { copyToClipboard, shareContent } from "../utils/helpers";
 import { useToast } from "../contexts/ToastContext";
 
@@ -15,7 +61,7 @@ import {
   FaChevronDown,
   FaDownload,
 } from "react-icons/fa";
-import syntraIcon from "../assets/syntra-icon.png";
+import syntraGif from "../assets/gif/syntraiq.gif";
 
 type ModeType = Mode;
 
@@ -471,7 +517,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   // (Previously scrolled to last chunk during typing and to bottom when complete)
 
   // Auto-speak is now handled by SearchBar directly to avoid multi-card race conditions.
-  // AnswerCard no longer consumes perle-speak-next-answer.
+  // AnswerCard no longer consumes syntraiq-speak-next-answer.
 
   // Helper function to render LaTeX formulas with full mathematical symbol support
   const renderWithMath = (text: string): React.ReactNode[] => {
@@ -647,6 +693,27 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   );
 
   // Format text with markdown-like formatting
+  const renderTextContent = (text: string): React.ReactNode => {
+    const normalized = normalizeCitationText(text);
+    const hasRichInline =
+      /\[\d+\]/.test(normalized) ||
+      /\*\*[^*]+\*\*/.test(normalized) ||
+      /(?<!\*)\*[^*]+\*(?!\*)/.test(normalized);
+
+    if (!hasRichInline) {
+      return <>{renderWithMath(normalized)}</>;
+    }
+
+    return renderInlineFormatted(
+      normalized,
+      sources,
+      renderWithMath,
+      (number) => (
+        <CitationBadge number={number} source={sources[number - 1]} />
+      )
+    );
+  };
+
   const formatText = (text: string, appendDot?: boolean): React.ReactNode => {
     if (!text) return null;
 
@@ -661,7 +728,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       if (currentParagraph.length > 0) {
         const paraText = currentParagraph.join(' ').trim();
         if (paraText) {
-          const mathRendered = renderWithMath(paraText);
+          const mathRendered = renderTextContent(paraText);
           result.push(
             <p
               key={`para-${result.length}`}
@@ -701,27 +768,52 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             style={{
               marginTop: result.length > 0 ? 12 : 0,
               marginBottom: 12,
-              paddingLeft: 5,
-              listStyle: 'none',
+              paddingLeft: 0,
+              listStyle: "none",
             }}
           >
             {currentList.map((item, idx) => {
-              const isLastItem = isLast && appendDot && idx === currentList.length - 1;
+              const isLastItem =
+                isLast && appendDot && idx === currentList.length - 1;
+              const isNumbered = /^\d+\.$/.test(item.bullet);
               return (
                 <li
                   key={`li-${idx}`}
                   style={{
-                    marginBottom: 8,
+                    marginBottom: 10,
                     lineHeight: 1.7,
-                    display: 'flex',
-                    gap: 5,
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start",
                   }}
                 >
-                  <span style={{ flexShrink: 0, color: 'var(--accent)', fontWeight: 600 }}>
-                    {item.bullet}
-                  </span>
+                  {isNumbered ? (
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        color: "var(--accent)",
+                        fontWeight: 700,
+                        minWidth: 20,
+                      }}
+                    >
+                      {item.bullet}
+                    </span>
+                  ) : item.bullet === "sub" ? (
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        color: "var(--sub)",
+                        marginTop: 2,
+                        minWidth: 12,
+                      }}
+                    >
+                      –
+                    </span>
+                  ) : (
+                    <AnswerBulletDot />
+                  )}
                   <span style={{ flex: 1 }}>
-                    {renderWithMath(item.content)}
+                    {renderTextContent(item.content)}
                     {isLastItem && (
                       <span
                         style={{
@@ -748,7 +840,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     };
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-      const trimmed = lines[lineIndex].trim();
+      const rawLine = lines[lineIndex];
+      const trimmed = rawLine.trim();
 
       if (isMarkdownTableRow(trimmed)) {
         flushParagraph(false);
@@ -793,38 +886,77 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         continue;
       }
 
-      // Check if it's a heading (ends with colon, single line, reasonable length)
-      if (trimmed.endsWith(':') && trimmed.length < 150 && !trimmed.includes('•') && !trimmed.match(/^[-•\d]/)) {
+      if (isSectionDivider(trimmed)) {
         flushParagraph(false);
         flushList(false);
         result.push(
-          <h3
-            key={`heading-${result.length}`}
+          <hr
+            key={`divider-${result.length}`}
             style={{
-              fontSize: 'var(--font-lg)',
-              fontWeight: 600,
-              marginTop: result.length > 0 ? 24 : 0,
-              marginBottom: 12,
-              color: 'var(--text)',
+              border: "none",
+              borderTop: "1px solid var(--border)",
+              margin: "20px 0",
             }}
-          >
-            {trimmed}
-          </h3>
+          />
         );
         continue;
       }
 
+      const markdownHeading = parseMarkdownHeading(trimmed);
+      if (markdownHeading) {
+        flushParagraph(false);
+        flushList(false);
+        result.push(
+          renderAnswerHeading(
+            markdownHeading.level,
+            markdownHeading.text,
+            `heading-${result.length}`,
+            renderTextContent(markdownHeading.text)
+          )
+        );
+        continue;
+      }
+
+      // Legacy colon headings (e.g. "Defining AI:")
+      if (isColonHeading(trimmed)) {
+        flushParagraph(false);
+        flushList(false);
+        const headingText = stripHeadingEmojis(trimmed.replace(/:+$/, "").trim());
+        result.push(
+          renderAnswerHeading(
+            2,
+            headingText,
+            `heading-${result.length}`,
+            renderTextContent(headingText)
+          )
+        );
+        continue;
+      }
+
+      const subBulletMatch = rawLine.match(/^\s{2,}[-•]\s+(.+)$/);
+      if (subBulletMatch) {
+        flushParagraph(false);
+        inList = true;
+        currentList.push({ bullet: "sub", content: subBulletMatch[1].trim() });
+        continue;
+      }
+
       // Check if it's a bullet point
-      if (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.match(/^\d+\./)) {
+      if (
+        trimmed.startsWith("•") ||
+        trimmed.startsWith("-") ||
+        trimmed.startsWith("*") ||
+        trimmed.match(/^\d+\./)
+      ) {
         flushParagraph(false);
         inList = true;
 
-        let bullet = '•';
+        let bullet = "•";
         let content = trimmed;
 
-        if (trimmed.startsWith('•')) {
+        if (trimmed.startsWith("•")) {
           content = trimmed.substring(1).trim();
-        } else if (trimmed.startsWith('-')) {
+        } else if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
           content = trimmed.substring(1).trim();
         } else if (trimmed.match(/^\d+\./)) {
           const match = trimmed.match(/^(\d+\.)\s*(.*)/);
@@ -897,7 +1029,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const handleBookmarkAnswer = () => {
     // Save to localStorage for now
     const bookmarks = JSON.parse(
-      localStorage.getItem("perle-bookmarks") || "[]"
+      localStorage.getItem("syntraiq-bookmarks") || "[]"
     );
     const bookmark = {
       id: Date.now().toString(),
@@ -908,7 +1040,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
     bookmarks.unshift(bookmark);
     localStorage.setItem(
-      "perle-bookmarks",
+      "syntraiq-bookmarks",
       JSON.stringify(bookmarks.slice(0, 50))
     );
 
@@ -923,7 +1055,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     console.log('🎤 startVoiceOutput called, speechSupported:', speechSupported, 'isSpeaking:', isSpeaking, 'chunks:', chunks.length);
 
     // Clear the trigger flag if it exists
-    localStorage.removeItem("perle-trigger-voice-output");
+    localStorage.removeItem("syntraiq-trigger-voice-output");
 
     const answerText = chunks.map((c) => c.text).join(" ");
     console.log('🎤 Answer text length:', answerText.length);
@@ -933,16 +1065,16 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       console.log("⚠️ Text-to-speech is not supported, but showing text anyway");
 
       // Display full text immediately
-      localStorage.setItem("perle-current-answer-text", answerText);
+      localStorage.setItem("syntraiq-current-answer-text", answerText);
 
       // Clear after a delay
       setTimeout(() => {
-        const voiceSessionActive = localStorage.getItem("perle-voice-session-active") === "1";
+        const voiceSessionActive = localStorage.getItem("syntraiq-voice-session-active") === "1";
         if (!voiceSessionActive) {
-          localStorage.removeItem("perle-current-answer-text");
-          localStorage.setItem("perle-voice-output-complete", "1");
+          localStorage.removeItem("syntraiq-current-answer-text");
+          localStorage.setItem("syntraiq-voice-output-complete", "1");
           setTimeout(() => {
-            localStorage.removeItem("perle-voice-output-complete");
+            localStorage.removeItem("syntraiq-voice-output-complete");
           }, 100);
         }
       }, 5000); // Show for 5 seconds
@@ -967,9 +1099,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     let resumeKeepAlive: ReturnType<typeof setInterval> | null = null;
 
     // Initialize with empty text
-    localStorage.setItem("perle-current-answer-text", "");
-    localStorage.setItem("perle-current-word-index", "0");
-    localStorage.setItem("perle-speech-rate", "0.9");
+    localStorage.setItem("syntraiq-current-answer-text", "");
+    localStorage.setItem("syntraiq-current-word-index", "0");
+    localStorage.setItem("syntraiq-speech-rate", "0.9");
 
     const utterance = new SpeechSynthesisUtterance(answerText);
     utterance.rate = 0.9;
@@ -985,8 +1117,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       // Show first word immediately
       if (words.length > 0) {
         const displayedText = words[0];
-        localStorage.setItem("perle-current-answer-text", displayedText);
-        localStorage.setItem("perle-current-word-index", "0");
+        localStorage.setItem("syntraiq-current-answer-text", displayedText);
+        localStorage.setItem("syntraiq-current-word-index", "0");
       }
 
       // Chrome pauses speechSynthesis silently after ~15s. Resume every 10s to prevent this.
@@ -1032,9 +1164,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         if (estimatedWordIndex > currentWordIndex && shouldUseFallback) {
           currentWordIndex = estimatedWordIndex;
           const displayedText = words.slice(0, estimatedWordIndex + 1).join("");
-          localStorage.setItem("perle-current-answer-text", displayedText);
+          localStorage.setItem("syntraiq-current-answer-text", displayedText);
           localStorage.setItem(
-            "perle-current-word-index",
+            "syntraiq-current-word-index",
             estimatedWordIndex.toString()
           );
           // Update lastBoundaryUpdate to prevent double-updates when boundary catches up
@@ -1065,9 +1197,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           lastBoundaryUpdate = Date.now();
           // Update displayed text up to and including current word
           const displayedText = words.slice(0, wordIndex + 1).join("");
-          localStorage.setItem("perle-current-answer-text", displayedText);
+          localStorage.setItem("syntraiq-current-answer-text", displayedText);
           localStorage.setItem(
-            "perle-current-word-index",
+            "syntraiq-current-word-index",
             wordIndex.toString()
           );
         }
@@ -1086,22 +1218,22 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         resumeKeepAlive = null;
       }
       // Show full text when speech ends
-      localStorage.setItem("perle-current-answer-text", answerText);
+      localStorage.setItem("syntraiq-current-answer-text", answerText);
       // Keep full answer text visible while voice session is active.
-      const voiceSessionActive = localStorage.getItem("perle-voice-session-active") === "1";
+      const voiceSessionActive = localStorage.getItem("syntraiq-voice-session-active") === "1";
       if (voiceSessionActive) {
         // Continue hands-free loop: once answer is spoken, go back to listening.
-        localStorage.setItem("perle-auto-listen-next", "1");
+        localStorage.setItem("syntraiq-auto-listen-next", "1");
       }
       if (!voiceSessionActive) {
         setTimeout(() => {
-          localStorage.removeItem("perle-current-answer-text");
-          localStorage.removeItem("perle-current-word-index");
+          localStorage.removeItem("syntraiq-current-answer-text");
+          localStorage.removeItem("syntraiq-current-word-index");
           // Signal that voice output has completed
-          localStorage.setItem("perle-voice-output-complete", "1");
+          localStorage.setItem("syntraiq-voice-output-complete", "1");
           // Clean up this flag after a moment
           setTimeout(() => {
-            localStorage.removeItem("perle-voice-output-complete");
+            localStorage.removeItem("syntraiq-voice-output-complete");
           }, 100);
         }, 2000);
       }
@@ -1120,7 +1252,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         resumeKeepAlive = null;
       }
       // Show full text on error
-      localStorage.setItem("perle-current-answer-text", answerText);
+      localStorage.setItem("syntraiq-current-answer-text", answerText);
     };
 
     synthesisRef.current = utterance;
@@ -1135,15 +1267,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
     // Clear the stored text when speech is stopped
-    localStorage.removeItem("perle-current-answer-text");
-    localStorage.removeItem("perle-current-word-index");
+    localStorage.removeItem("syntraiq-current-answer-text");
+    localStorage.removeItem("syntraiq-current-word-index");
     // Note: fallbackInterval will be cleared in onend/onerror handlers
   };
 
   // Monitor for trigger flag and start voice output when ready
   useEffect(() => {
     const checkTrigger = () => {
-      const shouldTrigger = localStorage.getItem("perle-trigger-voice-output");
+      const shouldTrigger = localStorage.getItem("syntraiq-trigger-voice-output");
       if (shouldTrigger && chunks.length > 0 && !isLoading) {
         console.log('🎤 Trigger detected, starting voice output...');
         startVoiceOutput();
@@ -1242,28 +1374,20 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             </div>
           </div>
         )}
-        <div className="flex items-center gap-2" style={{ marginTop: query ? 8 : 0 }}>
-          <div className="w-10 h-10" style={{ position: 'relative' }}>
+        <div className="flex items-start gap-2" style={{ marginTop: query ? 8 : 0 }}>
+          <div className="w-10 h-10 shrink-0" style={{ position: 'relative' }}>
             <img
-              src={syntraIcon}
+              src={syntraGif}
               loading="eager"
               alt="IQ"
               className="rounded-full w-full h-full object-cover"
               style={{ display: 'block' }}
             />
           </div>
-          <p className="text-base">
-            IQ is thinking
-            <span className="dot-blink" style={{ animationDelay: "0s" }}>
-              .
-            </span>
-            <span className="dot-blink" style={{ animationDelay: "0.2s" }}>
-              .
-            </span>
-            <span className="dot-blink" style={{ animationDelay: "0.4s" }}>
-              .
-            </span>
-          </p>
+          <div>
+            <p className="text-base font-semibold mb-1">Thinking...</p>
+            <p className="text-sm opacity-70">{query ? "Working on your request" : "Please wait"}</p>
+          </div>
         </div>
       </div>
     );
@@ -1531,9 +1655,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         {chunks.map((chunk, index) => (
           <div key={index} style={{ position: "relative" }} data-chunk data-chunk-index={index}>
             <div
-              className="text-[1.26rem] leading-relaxed"
+              className="answer-content leading-relaxed"
               style={{
-                // fontSize: 'var(--font-lg)',
+                fontSize: "1.05rem",
                 marginBottom: 12,
                 color: "var(--text)",
               }}
@@ -1559,9 +1683,14 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               >
                 {!hideSources &&
                   chunk.citationIds.map((id) => {
-                    const source = sources.find((s) => s.id === id);
+                    const sourceIndex = sources.findIndex((s) => s.id === id);
+                    const source = sourceIndex >= 0 ? sources[sourceIndex] : undefined;
                     return source ? (
-                      <SourceChip key={`${id}-${index}`} source={source} />
+                      <SourceChip
+                        key={`${id}-${index}`}
+                        source={source}
+                        citationNumber={sourceIndex + 1}
+                      />
                     ) : null;
                   })}
               </div>
@@ -1640,7 +1769,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
           {expandedSources && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {sources.map((source) => (
+              {sources.map((source, sourceIndex) => (
                 <div
                   key={source.id}
                   className="card"
@@ -1658,9 +1787,29 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                       marginBottom: 6,
                       color: "var(--text)",
                       lineHeight: 1.35,
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "flex-start",
                     }}
                   >
-                    {source.title}
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minWidth: 22,
+                        height: 22,
+                        borderRadius: 999,
+                        background: "var(--accent)",
+                        color: "var(--bg)",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {sourceIndex + 1}
+                    </span>
+                    <span>{source.title}</span>
                   </div>
                   <div
                     className="sub text-sm"

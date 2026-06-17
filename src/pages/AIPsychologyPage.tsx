@@ -76,19 +76,28 @@ export default function AIPsychologyPage() {
   ]);
   const [dailySuggestionUses, setDailySuggestionUses] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const pendingScrollToMessageIdRef = useRef<string | null>(null);
+  const pendingScrollToMessageElRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
+  // ChatGPT-style UX: scroll once per new user message.
   useEffect(() => {
+    if (!isLoading) return;
+    if (!pendingScrollToMessageIdRef.current) return;
+    if (!pendingScrollToMessageElRef.current) return;
+
+    const el = pendingScrollToMessageElRef.current;
+    pendingScrollToMessageIdRef.current = null;
+    pendingScrollToMessageElRef.current = null;
+
     requestAnimationFrame(() => {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-      }, 80);
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
     });
-  }, [messages, isLoading]);
+  }, [isLoading, messages.length]);
 
   // Focus input on mount
   useEffect(() => {
@@ -104,7 +113,7 @@ export default function AIPsychologyPage() {
 
       // Load saved model preference
       const savedModel = localStorage.getItem(
-        "perle-ai-psychologist-model"
+        "syntraiq-ai-psychologist-model"
       ) as LLMModel | null;
       if (savedModel && premium) {
         setSelectedModel(savedModel);
@@ -274,6 +283,7 @@ export default function AIPsychologyPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    pendingScrollToMessageIdRef.current = userMessage.id;
     const messageText = textToSend;
     setInputValue("");
     if (attachedFileName) {
@@ -470,7 +480,7 @@ export default function AIPsychologyPage() {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-5">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col">
         {messages.map((message, index) => {
           const showDateDivider =
             index === 0 ||
@@ -487,6 +497,12 @@ export default function AIPsychologyPage() {
             className={`flex items-end gap-3 mb-4 ${
               message.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
+              style={{ scrollMarginTop: 90 }}
+              ref={(el) => {
+                if (message.id === pendingScrollToMessageIdRef.current) {
+                  pendingScrollToMessageElRef.current = el;
+                }
+              }}
           >
             <img
               src={
@@ -540,7 +556,6 @@ export default function AIPsychologyPage() {
           </Fragment>
         );
         })}
-
         {isLoading && (
           <div className="flex items-end gap-3 mb-4">
             <img
@@ -549,6 +564,9 @@ export default function AIPsychologyPage() {
               className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(155,89,182,0.5)]"
             />
             <div className="px-4 py-3 rounded-[var(--radius-sm)] glass-panel border border-[rgba(255,255,255,0.1)]">
+              <div className="text-[length:var(--font-md)] font-semibold mb-1">
+                Thinking...
+              </div>
               <div className="flex gap-1 items-center">
                 <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite]" />
                 <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.2s]" />
@@ -557,8 +575,6 @@ export default function AIPsychologyPage() {
             </div>
           </div>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area */}
@@ -722,7 +738,7 @@ export default function AIPsychologyPage() {
                 selectedModel={selectedModel}
                 onModelChange={(model) => {
                   setSelectedModel(model);
-                  localStorage.setItem("perle-ai-psychologist-model", model);
+                  localStorage.setItem("syntraiq-ai-psychologist-model", model);
                 }}
                 isPremium={isPremium}
                 size="small"

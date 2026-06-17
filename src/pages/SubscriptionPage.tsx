@@ -4,7 +4,7 @@ import { IoClose } from "react-icons/io5";
 import { FaCheck, FaTimes } from "react-icons/fa";
 import { Capacitor } from "@capacitor/core";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import { authenticatedFetch, getAuthHeaders, getUserData, verifyToken } from "../utils/auth";
+import { authenticatedFetch, getAuthHeaders, getUserData, verifyToken, isAuthenticated } from "../utils/auth";
 import { useToast } from "../contexts/ToastContext";
 import { IAPService, IAP_PRODUCT_IDS, type IAPPlanId } from "../services/iapService";
 
@@ -97,21 +97,31 @@ async function verifyIAPPurchase(
 }
 
 export default function SubscriptionPage() {
-  const { goBack } = useRouterNavigation();
+  const { goBack, state: navState, navigateTo } = useRouterNavigation();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialPlanId = searchParams.get("plan") || plans[0].id;
   const [selectedPlanId, setSelectedPlanId] = useState(initialPlanId);
   const [isLoading, setIsLoading] = useState(false);
   const { showToast } = useToast();
-  const user = getUserData();
+  const [authUser, setAuthUser] = useState(getUserData());
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
-  const isCurrentPlan = user?.premiumTier === selectedPlan.tier;
+  const isCurrentPlan = authUser?.premiumTier === selectedPlan.tier;
 
   const [displayPrices, setDisplayPrices] = useState<Record<string, string>>({
     pro: "₹399/mo",
     max: "₹899/mo"
   });
+
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      setAuthUser(null);
+      return;
+    }
+    void verifyToken().then((user) => {
+      if (user) setAuthUser(user);
+    });
+  }, []);
 
   useEffect(() => {
     if (isNativeIAPPlatform()) {
@@ -147,7 +157,9 @@ export default function SubscriptionPage() {
         type: "success",
         duration: 5000
       });
-      verifyToken();
+      verifyToken().then((user) => {
+        if (user) setAuthUser(user);
+      });
       setSearchParams({}, { replace: true });
     }
 
@@ -163,6 +175,16 @@ export default function SubscriptionPage() {
 
   const handleUpgrade = async () => {
     if (isCurrentPlan) return;
+
+    if (!isAuthenticated()) {
+      showToast({
+        message: "Please log in to purchase a subscription.",
+        type: "info",
+        duration: 4000,
+      });
+      navigateTo("/profile", { mode: "login", returnTo: "/subscription" }, { replace: true });
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -186,7 +208,9 @@ export default function SubscriptionPage() {
             type: "success",
             duration: 5000
           });
-          await verifyToken();
+          await verifyToken().then((user) => {
+            if (user) setAuthUser(user);
+          });
         } else if (result.userCancelled) {
           showToast({ message: "Purchase cancelled.", type: "info" });
         } else if (result.pending) {
@@ -240,7 +264,9 @@ export default function SubscriptionPage() {
           await verifyIAPPurchase(latestTx, plan);
 
           showToast({ message: "Subscription restored successfully!", type: "success" });
-          await verifyToken();
+          await verifyToken().then((user) => {
+            if (user) setAuthUser(user);
+          });
           return;
         }
 
@@ -252,7 +278,8 @@ export default function SubscriptionPage() {
       return;
     }
 
-    verifyToken().then(updatedUser => {
+    verifyToken().then((updatedUser) => {
+      if (updatedUser) setAuthUser(updatedUser);
       if (updatedUser?.isPremium) {
         showToast({ message: "Subscription restored!", type: "success" });
       } else {
@@ -266,7 +293,13 @@ export default function SubscriptionPage() {
       {/* Top Bar */}
       <div className="flex justify-start mb-6">
         <button
-          onClick={() => goBack()}
+          onClick={() => {
+            if (navState?.fromAuthRedirect) {
+              navigateTo("/");
+            } else {
+              goBack();
+            }
+          }}
           className="bg-transparent border-none text-[var(--text)] cursor-pointer p-0"
         >
           <IoClose size={28} />
@@ -275,6 +308,15 @@ export default function SubscriptionPage() {
 
       {/* Header */}
       <div className="text-center mb-6">
+        {navState?.limitReached && (
+          <div
+            className="glass-card border border-[var(--accent)] rounded-xl p-4 mb-4 text-sm"
+            style={{ color: "var(--text)" }}
+          >
+            {navState.message ||
+              "Your daily free limit has been reached. Upgrade to continue."}
+          </div>
+        )}
         <h1 className="h1 justify-center mb-3 text-[40px] tracking-[-1px]">
           Syntra<span className="text-gold">IQ</span>
         </h1>
@@ -320,7 +362,7 @@ export default function SubscriptionPage() {
         <div className="grid grid-cols-2 gap-2">
           {plans.map((plan) => {
             const isSelected = selectedPlanId === plan.id;
-            const isUserPlan = user?.premiumTier === plan.tier;
+            const isUserPlan = authUser?.premiumTier === plan.tier;
 
             return (
               <div

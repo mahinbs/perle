@@ -3,7 +3,12 @@ import { IoIosArrowBack } from "react-icons/io";
 import { FaVideo, FaSpinner } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
-import { getAuthHeaders } from "../utils/auth";
+import { getUserData, isAuthenticated } from "../utils/auth";
+import { generateVideoApi } from "../utils/mediaApi";
+import {
+  MediaStudioModal,
+  type MediaStudioModalView,
+} from "../components/MediaStudioModal";
 
 const TEMPLATES = [
   { id: "cinematic", label: "Cinematic scene", prompt: "A cinematic drone shot over misty mountains at sunrise, golden light, 4K quality" },
@@ -14,43 +19,72 @@ const TEMPLATES = [
   { id: "space", label: "Space journey", prompt: "Camera flying through a colorful nebula with stars and distant planets" },
 ];
 
+function hasVideoAccess(): boolean {
+  const user = getUserData();
+  if (!user) return false;
+  const tier = user.premiumTier || "free";
+  return Boolean(user.isPremium && (tier === "pro" || tier === "max"));
+}
+
 export default function CreateVideoPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [modalView, setModalView] = useState<MediaStudioModalView | null>(null);
+  const [activePrompt, setActivePrompt] = useState("");
 
   const handleGenerate = async () => {
     const text = prompt.trim();
     if (!text) return;
 
+    if (!isAuthenticated()) {
+      setModalView("auth");
+      return;
+    }
+
+    if (!hasVideoAccess()) {
+      setModalView("upgrade");
+      return;
+    }
+
+    setActivePrompt(text);
     setIsGenerating(true);
+    setModalView("generating");
     setGeneratedUrl(null);
 
     try {
-      const baseUrl = import.meta.env.VITE_API_URL as string;
-      const response = await fetch(`${baseUrl}/api/media/generate-video`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-        },
-        body: JSON.stringify({ prompt: text }),
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to generate video");
-      }
-
-      const data = await response.json();
-      setGeneratedUrl(data.url || data.videoUrl);
+      const result = await generateVideoApi(text, 5, "16:9");
+      setGeneratedUrl(result.url);
+      setModalView("result");
       showToast({ message: "Video generated!", type: "success", duration: 3000 });
-    } catch (e: any) {
-      showToast({ message: e.message || "Video generation failed", type: "error", duration: 4000 });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Video generation failed";
+      setModalView(null);
+      if (message.toLowerCase().includes("pro") || message.toLowerCase().includes("subscription")) {
+        setModalView("upgrade");
+      } else {
+        showToast({ message, type: "error", duration: 5000 });
+      }
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!generatedUrl) return;
+    try {
+      const response = await fetch(generatedUrl);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `generated-video-${Date.now()}.mp4`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast({ message: "Download failed", type: "error", duration: 3000 });
     }
   };
 
@@ -85,7 +119,7 @@ export default function CreateVideoPage() {
           ))}
         </div>
 
-        {generatedUrl && (
+        {generatedUrl && !modalView && (
           <div className="glass-card border border-[var(--border)] rounded-xl overflow-hidden mb-6">
             <video src={generatedUrl} controls playsInline className="w-full max-h-[300px] object-contain bg-black" />
           </div>
@@ -111,6 +145,17 @@ export default function CreateVideoPage() {
           {isGenerating ? "Generating..." : "Generate Video"}
         </button>
       </div>
+
+      <MediaStudioModal
+        view={modalView}
+        mediaType="video"
+        prompt={activePrompt}
+        resultUrl={generatedUrl}
+        onClose={() => setModalView(null)}
+        onLogin={() => navigateTo("/profile", { mode: "login" })}
+        onUpgrade={() => navigateTo("/subscription")}
+        onDownload={() => void handleDownload()}
+      />
     </div>
   );
 }

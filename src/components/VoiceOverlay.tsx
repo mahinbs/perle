@@ -9,7 +9,6 @@ import { createPortal } from "react-dom";
 import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
-import syntraIcon from "../assets/syntra-icon.png";
 import type { Source } from "../types";
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
@@ -62,7 +61,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
   onToggleListening,
   onClose,
   responseText,
-  sources = [],
+  sources: _sources = [],
 }) => {
   const [os, setOs] = useState("");
   const hasAutoStartedRef = useRef(false);
@@ -132,9 +131,9 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       // When opening voice mode to read existing chat answer, do not immediately
       // start listening (which would cancel TTS). Let TTS start first.
       try {
-        const speakFirst = localStorage.getItem("perle-voice-open-speak-first") === "1";
+        const speakFirst = localStorage.getItem("syntraiq-voice-open-speak-first") === "1";
         if (speakFirst) {
-          localStorage.removeItem("perle-voice-open-speak-first");
+          localStorage.removeItem("syntraiq-voice-open-speak-first");
           return;
         }
       } catch { }
@@ -164,8 +163,8 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
     } catch { }
 
     // Clear any stored answer text on mount
-    localStorage.removeItem("perle-current-answer-text");
-    localStorage.removeItem("perle-current-word-index");
+    localStorage.removeItem("syntraiq-current-answer-text");
+    localStorage.removeItem("syntraiq-current-word-index");
 
     // Cleanup on unmount
     return () => {
@@ -211,9 +210,9 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           onClick={() => {
             try {
               if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-              localStorage.removeItem("perle-current-answer-text");
-              localStorage.removeItem("perle-current-word-index");
-              localStorage.removeItem("perle-keep-voice-overlay-open");
+              localStorage.removeItem("syntraiq-current-answer-text");
+              localStorage.removeItem("syntraiq-current-word-index");
+              localStorage.removeItem("syntraiq-keep-voice-overlay-open");
             } catch { }
             onClose();
           }}
@@ -240,39 +239,9 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           gap: 16,
           overflow: "hidden",
           paddingTop: 8,
+          paddingBottom: 92,
         }}
       >
-        {sources.length > 0 && (
-          <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 8, padding: "0 8px" }}>
-            {sources.slice(0, 5).map((source) => (
-              <a
-                key={source.id}
-                href={source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="glass-button btn-shadow"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  fontSize: "var(--font-xs)",
-                  color: "var(--text)",
-                  textDecoration: "none",
-                  maxWidth: 160,
-                }}
-              >
-                <span style={{ width: 18, height: 18, borderRadius: 4, background: "var(--accent)", color: "#111", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
-                  {(source.domain || "www").charAt(0).toUpperCase()}
-                </span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {source.domain || source.title}
-                </span>
-              </a>
-            ))}
-          </div>
-        )}
         <SpeakingGradientCircle
           isListening={isListening}
           responseText={responseText}
@@ -302,9 +271,22 @@ const SpeakingGradientCircle: React.FC<{
   const [speaking, setSpeaking] = useState(false);
   const [displayText, setDisplayText] = useState<string>(propResponseText || "");
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isPinnedTop, setIsPinnedTop] = useState(false);
   const hasResponse = Boolean(displayText?.trim());
 
-  const baseGlobeSize = hasResponse ? "22vmin" : "40vmin";
+  const baseGlobeSize = hasResponse ? (isPinnedTop ? "24vmin" : "34vmin") : "40vmin";
+
+  // Keep globe centered briefly when response starts, then move it to top.
+  useEffect(() => {
+    if (!hasResponse) {
+      setIsPinnedTop(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setIsPinnedTop(true);
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [hasResponse]);
 
   // Detect theme (light or dark)
   useEffect(() => {
@@ -330,7 +312,7 @@ const SpeakingGradientCircle: React.FC<{
       try {
         const storedText =
           typeof window !== "undefined"
-            ? window.localStorage.getItem("perle-current-answer-text")
+            ? window.localStorage.getItem("syntraiq-current-answer-text")
             : null;
 
         if (storedText) {
@@ -670,12 +652,12 @@ const SpeakingGradientCircle: React.FC<{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: hasResponse ? "flex-start" : "center",
-        gap: hasResponse ? 16 : "4vh",
+        justifyContent: isPinnedTop ? "flex-start" : "center",
+        gap: isPinnedTop ? 16 : "4vh",
         width: "100%",
         flex: 1,
         minHeight: 0,
-        paddingTop: hasResponse ? 8 : 0,
+        paddingTop: isPinnedTop ? 8 : 0,
       }}
     >
       <div
@@ -685,29 +667,14 @@ const SpeakingGradientCircle: React.FC<{
           flexShrink: 0,
         }}
       >
-        {hasResponse ? (
-          <img
-            src={syntraIcon}
-            alt="SyntraIQ"
-            style={{
-              width: baseGlobeSize,
-              height: baseGlobeSize,
-              maxWidth: 120,
-              maxHeight: 120,
-              objectFit: "contain",
-              borderRadius: "50%",
-            }}
-          />
-        ) : (
-          <GlobeView
-            baseGlobeSize={baseGlobeSize}
-            globeConfig={globeConfig}
-            globeData={globeData}
-          />
-        )}
+        <GlobeView
+          baseGlobeSize={baseGlobeSize}
+          globeConfig={globeConfig}
+          globeData={globeData}
+        />
       </div>
 
-      <div style={{ flex: 1, width: "100%", minHeight: 0, overflowY: "auto", display: "flex", justifyContent: "center" }}>
+      <div style={{ flex: 1, width: "100%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center" }}>
         <VoiceResponseText text={displayText} speaking={speaking} />
       </div>
     </div>

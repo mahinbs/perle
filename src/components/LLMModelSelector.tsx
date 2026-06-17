@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import type { LLMModel, LLMModelInfo, ExperienceMode } from "../types";
-import { getAuthToken, getUserData } from "../utils/auth";
 
 // Premium models available to premium users
 const premiumModels: LLMModelInfo[] = [
@@ -300,9 +299,6 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   experienceMode = 'normal',
   onExperienceModeChange: _onExperienceModeChange,
 }) => {
-  const hasActiveAuthSession = (): boolean =>
-    Boolean(getAuthToken() && getUserData());
-
   const [isOpen, setIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -773,7 +769,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                   <button
                     onClick={() => {
                       setIsOpen(false);
-                      navigateTo(hasActiveAuthSession() ? "/subscription" : "/profile");
+                      navigateTo("/subscription");
                     }}
                     style={{
                       width: "100%",

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
-import { setAuthToken, setUserData } from '../utils/auth';
+import { setAuthCredentials, setUserData, getPostAuthNavigation } from '../utils/auth';
+import { getLocalItem, removeLocalItem, setLocalItem, STORAGE_KEYS } from '../utils/storage';
 import { IoIosArrowBack } from 'react-icons/io';
 
 // Use Vite's env access directly
@@ -23,10 +24,10 @@ export default function VerificationPage() {
 
   useEffect(() => {
     // Get email from navigation state or localStorage
-    const savedEmail = state?.email || localStorage.getItem('perle-verification-email');
+    const savedEmail = state?.email || getLocalItem(STORAGE_KEYS.verificationEmail);
     if (savedEmail) {
       setEmail(savedEmail);
-      localStorage.setItem('perle-verification-email', savedEmail);
+      setLocalItem(STORAGE_KEYS.verificationEmail, savedEmail);
     } else {
       // If no email, redirect to signup
       navigateTo('/profile');
@@ -34,7 +35,7 @@ export default function VerificationPage() {
 
     // Save plan to localStorage if present in state
     if (state?.plan) {
-      localStorage.setItem('perle-verification-plan', state.plan);
+      setLocalItem(STORAGE_KEYS.verificationPlan, state.plan);
     }
 
     // Focus first input
@@ -125,17 +126,18 @@ export default function VerificationPage() {
       }
 
       // Save token and user data
-      setAuthToken(data.token);
+      setAuthCredentials(data.token, data.refreshToken);
       setUserData(data.user);
 
       // Clear verification email
-      localStorage.removeItem('perle-verification-email');
+      removeLocalItem(STORAGE_KEYS.verificationEmail);
 
       // Redirect to subscription page if plan is pending
-      const redirectPlan = state?.plan || localStorage.getItem('perle-verification-plan');
+      const redirectPlan = state?.plan || getLocalItem(STORAGE_KEYS.verificationPlan);
       if (redirectPlan) {
-        localStorage.removeItem('perle-verification-plan');
-        navigateTo(`/subscription?plan=${redirectPlan}`);
+        removeLocalItem(STORAGE_KEYS.verificationPlan);
+        const { path } = getPostAuthNavigation(data.user, { plan: redirectPlan });
+        navigateTo(path);
       } else {
         navigateTo('/');
       }
@@ -172,10 +174,9 @@ export default function VerificationPage() {
       setError('');
       setCountdown(60);
       
-      // In development, show OTP in console
-      if (data.devOTP) {
+      // In development only, log OTP to console (never show in production UI)
+      if (import.meta.env.DEV && data.devOTP) {
         console.log('🔑 Development OTP:', data.devOTP);
-        alert(`Development mode: Your OTP is ${data.devOTP}`);
       }
     } catch (error) {
       setError('Failed to resend code. Please try again.');
