@@ -231,6 +231,8 @@ export default function ProfilePage() {
     setAuthError("");
 
     try {
+      // Store password in memory so VerificationPage can call login after OTP to get refreshToken
+      (window as any).__signupPassword = password;
       const response = await signup(name, email, password);
 
       // Check if verification is required

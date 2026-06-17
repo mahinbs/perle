@@ -35,11 +35,47 @@ const premiumModels: LLMModelInfo[] = [
     capabilities: ["Smart Selection", "Optimized", "Cost Effective"],
   },
   // OpenAI Models
+  // OpenAI — latest tier
+  {
+    id: "gpt-5.5-pro",
+    name: "GPT-5.5 Pro",
+    provider: "OpenAI",
+    description: "Highest OpenAI tier — maximum intelligence",
+    capabilities: ["Max Intelligence", "Deep Reasoning", "Premium"],
+  },
+  {
+    id: "gpt-5.5",
+    name: "GPT-5.5",
+    provider: "OpenAI",
+    description: "GPT-5.5 — top-tier OpenAI model",
+    capabilities: ["Advanced Reasoning", "Latest Tech", "High Performance"],
+  },
+  {
+    id: "gpt-5.4",
+    name: "GPT-5.4",
+    provider: "OpenAI",
+    description: "GPT-5.4 high-performance model",
+    capabilities: ["Reasoning", "Long Context", "Fast"],
+  },
+  {
+    id: "o3",
+    name: "o3",
+    provider: "OpenAI",
+    description: "OpenAI o3 reasoning model — deep multi-step reasoning",
+    capabilities: ["Deep Reasoning", "Math", "Code", "Premium"],
+  },
+  {
+    id: "o4-mini",
+    name: "o4-mini",
+    provider: "OpenAI",
+    description: "OpenAI o4-mini reasoning — fast and efficient",
+    capabilities: ["Reasoning", "Fast", "Cost Effective"],
+  },
   {
     id: "gpt-5",
     name: "GPT-5",
     provider: "OpenAI",
-    description: "Latest and most advanced OpenAI model (GPT-4o)",
+    description: "GPT-5 flagship model",
     capabilities: ["Advanced Reasoning", "Latest Tech", "High Performance"],
   },
   {
@@ -62,6 +98,27 @@ const premiumModels: LLMModelInfo[] = [
     provider: "OpenAI",
     description: "GPT-5.3 compatibility profile",
     capabilities: ["Advanced", "Fast", "Compatibility"],
+  },
+  {
+    id: "gpt-4.1",
+    name: "GPT-4.1",
+    provider: "OpenAI",
+    description: "GPT-4.1 — improved coding and instruction following",
+    capabilities: ["Coding", "Instruction", "Web Search"],
+  },
+  {
+    id: "gpt-4.1-mini",
+    name: "GPT-4.1 Mini",
+    provider: "OpenAI",
+    description: "GPT-4.1 Mini — fast and affordable",
+    capabilities: ["Fast", "Efficient", "Cost Effective"],
+  },
+  {
+    id: "gpt-4.1-nano",
+    name: "GPT-4.1 Nano",
+    provider: "OpenAI",
+    description: "GPT-4.1 Nano — ultra-lightweight for simple tasks",
+    capabilities: ["Ultra Fast", "Lightweight", "Free Tier"],
   },
   {
     id: "gpt-4o",
@@ -107,13 +164,41 @@ const premiumModels: LLMModelInfo[] = [
     capabilities: ["Pro Quality", "Reasoning", "Tooling"],
   },
   {
+    id: "gemini-3.5-flash",
+    name: "Gemini 3.5 Flash",
+    provider: "Google",
+    description: "Gemini 3.5 Flash — fast and highly capable",
+    capabilities: ["Fast", "Multimodal", "Web Search"],
+  },
+  {
     id: "gemini-3.1-flash",
     name: "Gemini 3.1 Flash",
     provider: "Google",
     description: "Gemini 3.1 fast profile",
     capabilities: ["Fast", "Low Latency", "Multimodal"],
   },
+  {
+    id: "gemini-3.1-flash-lite",
+    name: "Gemini 3.1 Flash Lite",
+    provider: "Google",
+    description: "Gemini 3.1 Flash Lite — ultra-efficient",
+    capabilities: ["Ultra Fast", "Lightweight", "Low Cost"],
+  },
   // Anthropic Claude Models (Latest First)
+  {
+    id: "claude-4.8-opus",
+    name: "Claude 4.8 Opus",
+    provider: "Anthropic",
+    description: "Claude 4.8 Opus — highest intelligence tier",
+    capabilities: ["200K Context", "Max Intelligence", "Deep Analysis", "Premium"],
+  },
+  {
+    id: "claude-4.7-opus",
+    name: "Claude 4.7 Opus",
+    provider: "Anthropic",
+    description: "Claude 4.7 Opus — top-tier reasoning and analysis",
+    capabilities: ["200K Context", "Deep Analysis", "Reasoning", "Latest"],
+  },
   {
     id: "claude-4.6-sonnet",
     name: "Claude Sonnet 4.6",
@@ -182,7 +267,21 @@ const premiumModels: LLMModelInfo[] = [
     description: "Fastest model for quick responses and high throughput",
     capabilities: ["200K Context", "Fast", "Cost Effective", "Lightweight"],
   },
-  // xAI Grok Models
+  // xAI Grok Models (Latest First)
+  {
+    id: "grok-4.20",
+    name: "Grok 4.20",
+    provider: "xAI",
+    description: "Grok 4.20 — highest Grok intelligence tier",
+    capabilities: ["Max Intelligence", "Real-time", "Premium"],
+  },
+  {
+    id: "grok-4.3",
+    name: "Grok 4.3",
+    provider: "xAI",
+    description: "Grok 4.3 — powerful and up-to-date",
+    capabilities: ["Real-time Data", "Advanced", "Web Search"],
+  },
   {
     id: "grok-3",
     name: "Grok 3",
@@ -316,21 +415,20 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   // - deep_research: show only the strongest deep research models
   const deepResearchIds: LLMModel[] = [
     'exa-deep',
-    'gpt-5.3',
-    'gpt-5.2',
-    'gpt-5.1',
-    'gpt-5',
+    // OpenAI deep research / reasoning
+    'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3', 'gpt-5.2', 'gpt-5.1', 'gpt-5',
+    'o3', 'o4-mini',
+    // Grok heavy / premium
+    'grok-4-heavy', 'grok-4-fast', 'grok-4.20',
+    // Claude high-tier
+    'claude-4.8-opus', 'claude-4.7-opus',
+    'claude-4.6-opus', 'claude-4.6-sonnet',
+    'claude-4.5-opus', 'claude-4.5-sonnet',
+    'claude-4-opus', 'claude-4-sonnet',
+    // Gemini pro
+    'gemini-3.1', 'gemini-3.1-flash', 'gemini-3.5-flash', 'gemini-pro',
+    // OpenAI mid
     'gpt-4o',
-    'grok-4-heavy',
-    'grok-4-fast',
-    'claude-4.6-opus',
-    'claude-4.6-sonnet',
-    'claude-4.5-opus',
-    'claude-4.5-sonnet',
-    'claude-4-opus',
-    'claude-4-sonnet',
-    'gemini-3.1',
-    'gemini-3.1-flash',
   ];
 
   const filteredModels = isPremium

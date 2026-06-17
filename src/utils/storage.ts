@@ -49,6 +49,7 @@ const LEGACY_KEY_MAP: Record<string, string> = {
 
 const AUTH_TOKEN_KEY = 'syntraiq-auth-token';
 const REFRESH_TOKEN_KEY = 'syntraiq-refresh-token';
+const TOKEN_EXPIRES_AT_KEY = 'syntraiq-token-expires-at';
 // Only truly legacy/old key names — never include AUTH_TOKEN_KEY itself
 const LEGACY_AUTH_KEYS = ['perle-auth-token'];
 
@@ -172,6 +173,21 @@ export function setRefreshToken(token: string): void {
 export function removeRefreshToken(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+export function getTokenExpiresAt(): number {
+  if (typeof window === 'undefined') return 0;
+  return Number(localStorage.getItem(TOKEN_EXPIRES_AT_KEY) || 0);
+}
+
+export function setTokenExpiresAt(expiresAt: number): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(TOKEN_EXPIRES_AT_KEY, String(expiresAt));
+}
+
+export function removeTokenExpiresAt(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(TOKEN_EXPIRES_AT_KEY);
 }
 
 export function notifyStorageChange(key: string): void {

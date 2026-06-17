@@ -288,6 +288,42 @@ body {
   height: 40px;
 }
 
+.thinking-dots {
+  display: inline-block;
+  letter-spacing: 0.05em;
+  animation: thinking-dots-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes thinking-dots-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Mic recording blink — applied to the mic button wrapper when isListening */
+@keyframes mic-recording-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); opacity: 1; }
+  50%       { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); opacity: 0.85; }
+}
+
+.mic-recording {
+  animation: mic-recording-pulse 1.2s ease-in-out infinite;
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #EF4444 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+/* Mic icon SVG color when recording */
+.mic-recording svg path,
+.mic-recording svg rect {
+  stroke: #EF4444;
+  fill: #EF4444;
+}
+
 /* Card component with enhanced mobile interactions */
 .card {
   background: var(--card);

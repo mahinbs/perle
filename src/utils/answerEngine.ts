@@ -1,4 +1,5 @@
 import type { Source, AnswerResult, Mode, LLMModel } from '../types';
+import type { ChatResult } from '../types';
 import { rerankSources, chunkAnswer } from './helpers';
 import { getUserLocalContext } from './userLocalContext';
 
@@ -145,12 +146,51 @@ function getModelPrefix(model: LLMModel): string {
 }
 
 /**
- * Mock API functions for future integration
+ * Build search/chat FormData including all files under the single 'files' field.
  */
+function buildSearchFormData(
+  params: {
+    query?: string;
+    message?: string;
+    mode?: Mode;
+    model: LLMModel;
+    newConversation?: boolean;
+    conversationId?: string | null;
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+    searchType?: 'auto' | 'instant' | 'deep';
+    userContext?: object;
+    chatMode?: string;
+    aiFriendId?: string;
+    spaceId?: string;
+  },
+  uploadedFiles: UploadedFile[] = []
+): FormData {
+  const fd = new FormData();
+  if (params.query) fd.append('query', params.query);
+  if (params.message) fd.append('message', params.message);
+  if (params.mode) fd.append('mode', params.mode);
+  fd.append('model', params.model);
+  if (params.newConversation !== undefined) fd.append('newConversation', String(params.newConversation));
+  if (params.conversationId) fd.append('conversationId', params.conversationId);
+  if (params.conversationHistory?.length) fd.append('conversationHistory', JSON.stringify(params.conversationHistory));
+  if (params.searchType) fd.append('searchType', params.searchType);
+  if (params.userContext) fd.append('userContext', JSON.stringify(params.userContext));
+  if (params.chatMode) fd.append('chatMode', params.chatMode);
+  if (params.aiFriendId) fd.append('aiFriendId', params.aiFriendId);
+  if (params.spaceId) fd.append('spaceId', params.spaceId);
+
+  // All files go under the single 'files' field (backend accepts images + documents)
+  uploadedFiles.forEach((uf) => {
+    if (uf?.file) fd.append('files', uf.file, uf.file.name);
+  });
+
+  return fd;
+}
+
 export async function searchAPI(
   query: string, 
   mode: Mode, 
-  model: LLMModel = 'gpt-4', 
+  model: LLMModel = 'gemini-lite', 
   newConversation: boolean = false,
   uploadedFiles: UploadedFile[] = [],
   conversationId: string | null = null,
@@ -162,68 +202,76 @@ export async function searchAPI(
     throw new Error('API URL not configured. Please set VITE_API_URL in your .env file.');
   }
   
-  // Import auth utilities dynamically to avoid circular dependencies
-  const { getAuthHeaders } = await import('./auth');
+  const { getAuthHeaders, saveTokensFromResponseHeaders } = await import('./auth');
   const userContext = getUserLocalContext();
+
+  const formData = buildSearchFormData(
+    { query, mode, model, newConversation, conversationId, conversationHistory, searchType, userContext },
+    uploadedFiles
+  );
+
+  const headers = getAuthHeaders(false); // no Content-Type for FormData
   
-  // If files are uploaded, use FormData; otherwise use JSON
-  if (uploadedFiles.length > 0) {
-    const formData = new FormData();
-    formData.append('query', query);
-    formData.append('mode', mode);
-    formData.append('model', model);
-    formData.append('newConversation', String(newConversation));
-    if (conversationId) {
-      formData.append('conversationId', conversationId);
-    }
-    if (conversationHistory.length > 0) {
-      formData.append('conversationHistory', JSON.stringify(conversationHistory));
-    }
-    if (searchType) {
-      formData.append('searchType', searchType);
-    }
-    formData.append('userContext', JSON.stringify(userContext));
-    
-    // Attach all uploaded files
-    uploadedFiles.forEach((uploadedFile) => {
-      if (!uploadedFile?.file) return;
-      if (uploadedFile.type === 'image') {
-        formData.append('images', uploadedFile.file);
-      } else {
-        formData.append('files', uploadedFile.file);
-      }
-    });
-    
-    const headers = getAuthHeaders();
-    delete (headers as any)['Content-Type']; // Let browser set multipart boundary
-    
-    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
-      method: 'POST',
-      headers,
-      body: formData
-    });
-    
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(errorData.error || `API request failed with status ${res.status}`);
-    }
-    
-    return await res.json();
-  } else {
-    // No files - use regular JSON
-    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ query, mode, model, newConversation, conversationId, conversationHistory, userContext, searchType })
-    });
-    
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(errorData.error || `API request failed with status ${res.status}`);
-    }
-    
-    return await res.json();
+  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
+    method: 'POST',
+    headers,
+    body: formData
+  });
+
+  saveTokensFromResponseHeaders(res);
+  
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(errorData.error || `API request failed with status ${res.status}`);
   }
+  
+  const data = await res.json();
+  // Normalise: if backend returns chunks[], use them; if it returns message (chat fallback), wrap it
+  if (!data.chunks && data.message) {
+    data.chunks = [{ text: data.message, citationIds: [] }];
+  }
+  return data;
+}
+
+export async function chatAPI(
+  message: string,
+  model: LLMModel = 'gemini-lite',
+  chatMode: string = 'normal',
+  uploadedFiles: UploadedFile[] = [],
+  conversationId: string | null = null,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  aiFriendId?: string,
+  spaceId?: string,
+): Promise<ChatResult> {
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
+  if (!baseUrl) {
+    throw new Error('API URL not configured. Please set VITE_API_URL in your .env file.');
+  }
+
+  const { getAuthHeaders, saveTokensFromResponseHeaders } = await import('./auth');
+  const userContext = getUserLocalContext();
+
+  const formData = buildSearchFormData(
+    { message, model, chatMode, conversationId, conversationHistory, userContext, aiFriendId, spaceId },
+    uploadedFiles
+  );
+
+  const headers = getAuthHeaders(false);
+
+  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/chat`, {
+    method: 'POST',
+    headers,
+    body: formData
+  });
+
+  saveTokensFromResponseHeaders(res);
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(errorData.error || `API request failed with status ${res.status}`);
+  }
+
+  return await res.json();
 }
 
 export async function getSearchSuggestions(query: string): Promise<string[]> {

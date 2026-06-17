@@ -3,15 +3,18 @@ import React from "react";
 interface MicWaveIconProps {
   size?: number;
   color?: string;
-  active?: boolean; // when true, animate side waves
+  active?: boolean; // when true, animate side waves and blink red
 }
 
 const MicWaveIcon: React.FC<MicWaveIconProps> = ({
   size = 24,
-  color = "currentColor",
+  color,
   active = false,
 }) => {
+  // When active (recording), override color to recording red
+  const iconColor = active ? "#EF4444" : (color ?? "currentColor");
   const waveOpacity = active ? 1 : 0.35;
+
   return (
     <svg
       width={size}
@@ -20,17 +23,22 @@ const MicWaveIcon: React.FC<MicWaveIconProps> = ({
       fill="none"
       aria-hidden
       focusable="false"
-      style={{ display: "block" }}
+      style={{
+        display: "block",
+        // Subtle blink on the whole icon when recording
+        animation: active ? "mic-icon-blink 1.2s ease-in-out infinite" : undefined,
+      }}
     >
       <style>
         {`
-				@keyframes wavePulseL { 0%{transform:translateX(0) scale(1);opacity:.15} 50%{transform:translateX(-1px) scale(1.03);opacity:1} 100%{transform:translateX(0) scale(1);opacity:.15} }
-				@keyframes wavePulseR { 0%{transform:translateX(0) scale(1);opacity:.15} 50%{transform:translateX(1px) scale(1.03);opacity:1} 100%{transform:translateX(0) scale(1);opacity:.15} }
-				`}
+        @keyframes wavePulseL { 0%{transform:translateX(0) scale(1);opacity:.15} 50%{transform:translateX(-1px) scale(1.03);opacity:1} 100%{transform:translateX(0) scale(1);opacity:.15} }
+        @keyframes wavePulseR { 0%{transform:translateX(0) scale(1);opacity:.15} 50%{transform:translateX(1px) scale(1.03);opacity:1} 100%{transform:translateX(0) scale(1);opacity:.15} }
+        @keyframes mic-icon-blink { 0%,100%{opacity:1} 50%{opacity:0.55} }
+        `}
       </style>
       {/* Mic body */}
       <g
-        stroke={color}
+        stroke={iconColor}
         strokeWidth="4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -41,7 +49,7 @@ const MicWaveIcon: React.FC<MicWaveIconProps> = ({
           width="12"
           height="24"
           rx="6"
-          fill={color}
+          fill={iconColor}
           opacity={0.95}
         />
         <path d="M18 32c0 6 5 12 14 12s14-6 14-12" />
@@ -50,7 +58,7 @@ const MicWaveIcon: React.FC<MicWaveIconProps> = ({
       </g>
       {/* Side waves - left */}
       <g
-        stroke={color}
+        stroke={iconColor}
         strokeWidth="3"
         strokeLinecap="round"
         opacity={waveOpacity}
@@ -65,7 +73,7 @@ const MicWaveIcon: React.FC<MicWaveIconProps> = ({
       </g>
       {/* Side waves - right */}
       <g
-        stroke={color}
+        stroke={iconColor}
         strokeWidth="3"
         strokeLinecap="round"
         opacity={waveOpacity}

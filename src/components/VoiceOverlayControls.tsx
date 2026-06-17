@@ -86,15 +86,13 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
       </div>
 
       <button
-        className={isListening ? "btn" : "btn-ghost glass-button"}
+        className={`${isListening ? "btn mic-recording" : "btn-ghost glass-button"}`}
         onClick={handleToggleListening}
         aria-label={isListening ? "Stop listening" : "Start voice"}
         style={{
           width: buttonSize,
           height: buttonSize,
           borderRadius: 9999,
-          color: isListening ? "#111" : "var(--text)",
-          borderColor: isListening ? undefined : "var(--border)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

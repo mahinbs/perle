@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
 import { SourceChip } from "./SourceChip";
+import { SourcesPill } from "./SourcesPill";
 import {
   AnswerBulletDot,
   isColonHeading,
@@ -58,7 +59,6 @@ import {
   FaShare,
   FaClipboard,
   FaCheck,
-  FaChevronDown,
   FaDownload,
 } from "react-icons/fa";
 import syntraGif from "../assets/gif/syntraiq.gif";
@@ -231,6 +231,16 @@ interface AnswerCardProps {
   suggestedQuestions?: string[];
 }
 
+/** Mobile chat query sizing — aligned with ChatGPT / Perplexity phone UI */
+const QUERY_TEXT_STYLE: React.CSSProperties = {
+  fontSize: "var(--font-md)",
+  fontWeight: 500,
+  lineHeight: 1.45,
+  color: "var(--text)",
+  wordBreak: "break-word",
+  borderRadius: "8px",
+};
+
 export const AnswerCard: React.FC<AnswerCardProps> = ({
   chunks,
   sources,
@@ -245,7 +255,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   hideSources = false,
   suggestedQuestions = [],
 }) => {
-  const [expandedSources, setExpandedSources] = useState(false);
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
@@ -1291,14 +1300,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     return () => clearInterval(interval);
   }, [chunks, isLoading, startVoiceOutput]);
 
-  // In modes where sources are enabled, show source cards by default.
-  useEffect(() => {
-    if (!hideSources && sources.length > 0) {
-      setExpandedSources(true);
-    } else {
-      setExpandedSources(false);
-    }
-  }, [hideSources, sources.length]);
+  // Sources are now rendered via SourcesPill (collapsible pill), no auto-expand needed.
 
   if (isLoading) {
     return (
@@ -1360,14 +1362,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               </div>
             )}
             <div
-              style={{
-                fontSize: "var(--font-xl)",
-                fontWeight: 600,
-                lineHeight: "32px",
-                color: "var(--text)",
-                wordBreak: "break-word",
-                borderRadius: "8px",
-              }}
+              style={QUERY_TEXT_STYLE}
               className="glass-card !max-w-[calc(90%)] !px-4 !py-2"
             >
               {query}
@@ -1375,7 +1370,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           </div>
         )}
         <div className="flex items-start gap-2" style={{ marginTop: query ? 8 : 0 }}>
-          <div className="w-10 h-10 shrink-0" style={{ position: 'relative' }}>
+          <div className="w-9 h-9 shrink-0" style={{ position: 'relative' }}>
             <img
               src={syntraGif}
               loading="eager"
@@ -1384,9 +1379,18 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               style={{ display: 'block' }}
             />
           </div>
-          <div>
-            <p className="text-base font-semibold mb-1">Thinking...</p>
-            <p className="text-sm opacity-70">{query ? "Working on your request" : "Please wait"}</p>
+          <div className="pt-0.5">
+            <p
+              style={{
+                fontSize: "var(--font-sm)",
+                fontWeight: 500,
+                color: "var(--sub)",
+                margin: 0,
+              }}
+            >
+              IQ is thinking
+              <span className="thinking-dots" aria-hidden="true">.....</span>
+            </p>
           </div>
         </div>
       </div>
@@ -1533,14 +1537,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               title={onQueryEdit ? "Click to edit query" : undefined}
             >
               <div
-                style={{
-                  fontSize: "var(--font-xl)",
-                  fontWeight: 600,
-                  lineHeight: "32px",
-                  color: "var(--text)",
-                  wordBreak: "break-word",
-                  borderRadius: "8px",
-                }}
+                style={QUERY_TEXT_STYLE}
                 className="glass-card !max-w-[calc(90%)] !px-4 !py-2"
               >
                 {query}
@@ -1657,7 +1654,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             <div
               className="answer-content leading-relaxed"
               style={{
-                fontSize: "1.05rem",
+                fontSize: "var(--font-md)",
                 marginBottom: 12,
                 color: "var(--text)",
               }}
@@ -1738,123 +1735,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         </div>
       )}
 
-      {/* Sources Section (hide completely when no sources or when explicitly hidden) */}
+      {/* Sources pill — collapsed favicon stack + count, expands on tap, opens in new tab */}
       {!hideSources && sources.length > 0 && (
-        <div>
-          <div className="spacer-4" />
-          <button
-            className="btn-ghost"
-            onClick={() => setExpandedSources(!expandedSources)}
-            style={{
-              width: "100%",
-              justifyContent: "space-between",
-              padding: "12px 0",
-              borderBottom: "1px solid var(--border)",
-              marginBottom: 16,
-              fontSize: "var(--font-md)",
-              fontWeight: 500,
-            }}
-          >
-            <span>Sources ({sources.length})</span>
-            <span
-              style={{
-                transform: expandedSources ? "rotate(180deg)" : "rotate(0deg)",
-                transition: "transform 0.2s",
-                fontSize: "var(--font-sm)",
-              }}
-            >
-              <FaChevronDown size={14} />
-            </span>
-          </button>
-
-          {expandedSources && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {sources.map((source, sourceIndex) => (
-                <div
-                  key={source.id}
-                  className="card"
-                  style={{
-                    padding: 14,
-                    border: "1px solid var(--border)",
-                    borderRadius: 12,
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      fontSize: "var(--font-md)",
-                      marginBottom: 6,
-                      color: "var(--text)",
-                      lineHeight: 1.35,
-                      display: "flex",
-                      gap: 8,
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        minWidth: 22,
-                        height: 22,
-                        borderRadius: 999,
-                        background: "var(--accent)",
-                        color: "var(--bg)",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {sourceIndex + 1}
-                    </span>
-                    <span>{source.title}</span>
-                  </div>
-                  <div
-                    className="sub text-sm"
-                    style={{
-                      marginBottom: 8,
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 6,
-                      alignItems: "center",
-                    }}
-                  >
-                    <span className="chip" style={{ padding: "2px 8px" }}>
-                      {source.domain || "source"}
-                    </span>
-                    {source.year && <span>• {source.year}</span>}
-                  </div>
-                  {source.snippet && (
-                    <div
-                      className="sub text-sm"
-                      style={{
-                        lineHeight: "20px",
-                        color: "var(--text)",
-                        opacity: 0.9,
-                      }}
-                    >
-                      {source.snippet}
-                    </div>
-                  )}
-                  <button
-                    className="btn-ghost"
-                    onClick={() => window.open(source.url, "_blank")}
-                    style={{
-                      marginTop: 10,
-                      padding: "6px 10px",
-                      fontSize: "var(--font-sm)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                    }}
-                  >
-                    Open Source
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+        <div style={{ marginTop: 8 }}>
+          <SourcesPill sources={sources} />
         </div>
       )}
 

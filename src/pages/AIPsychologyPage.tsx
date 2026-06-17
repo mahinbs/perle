@@ -5,7 +5,6 @@ import { Capacitor } from "@capacitor/core";
 import {
   FaPen,
   FaStar,
-  FaStop,
   FaLightbulb,
   FaSyncAlt,
   FaPaperclip,
@@ -14,6 +13,7 @@ import {
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
 import { getUserData, getAuthHeaders, removeAuthToken } from "../utils/auth";
+import { chatAPI } from "../utils/answerEngine";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import { ExperienceModeButtons } from "../components/ExperienceModeButtons";
 import type { LLMModel, ExperienceMode } from "../types";
@@ -25,7 +25,6 @@ import {
   scheduleScrollExchangeToTop,
 } from "../utils/chatScroll";
 import { ChatDateDivider } from "../components/ChatDateDivider";
-import { getUserLocalContext } from "../utils/userLocalContext";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 
 interface Message {
@@ -316,38 +315,14 @@ export default function AIPsychologyPage() {
           role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
           content: m.content,
         }));
-      const userContextPayload = getUserLocalContext();
-
-      const response = await fetch(`${API_URL}/api/chat`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          message: messageText,
-          model: selectedModel,
-          newConversation: newConversation,
-          chatMode: "ai_psychologist", // Use AI psychologist mode
-          conversationHistory: conversationHistoryPayload,
-          userContext: userContextPayload,
-        }),
-      });
-
-      // Handle 401 - user logged out, continue as free user
-      if (response.status === 401) {
-        removeAuthToken();
-        // Continue with free user experience - don't redirect
-        return;
-      }
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(
-          errorData.error || `API request failed with status ${response.status}`
-        );
-      }
-
-      const data = await response.json();
+      const data = await chatAPI(
+        messageText,
+        selectedModel,
+        'ai_psychologist',
+        [],
+        null,
+        conversationHistoryPayload,
+      );
 
       // Check if response is empty or invalid
       if (!data.message || data.message.trim().length === 0) {
@@ -647,24 +622,14 @@ export default function AIPsychologyPage() {
 
           <div className="flex w-full items-center justify-between gap-3">
             <div className="flex gap-2">
-              {isListening ? (
-                <button
-                  className="btn w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-[#EF4444] glass-button"
-                  onClick={stopVoiceInput}
-                  aria-label="Stop recording"
-                >
-                  <FaStop size={16} />
-                </button>
-              ) : (
-                <button
-                  className="btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center"
-                  onClick={startVoiceInput}
-                  aria-label="Voice input"
-                  disabled={isLoading}
-                >
-                  <MicWaveIcon size={19} active={false} />
-                </button>
-              )}
+              <button
+                className={`btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center${isListening ? " mic-recording" : ""}`}
+                onClick={isListening ? stopVoiceInput : startVoiceInput}
+                aria-label={isListening ? "Stop recording" : "Voice input"}
+                disabled={!isListening && isLoading}
+              >
+                <MicWaveIcon size={19} active={isListening} />
+              </button>
 
               <button
                 className={`btn-ghost glass-button w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${

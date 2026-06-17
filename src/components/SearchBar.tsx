@@ -168,10 +168,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       input.removeAttribute("capture");
       input.multiple = true;
       if (kind === "image") {
-        input.accept = "image/*";
+        input.accept = "image/jpeg,image/png,image/gif,image/webp";
       } else {
         input.accept =
-          "image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+          "image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       }
       input.click();
     }, 120);
@@ -749,6 +749,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         }
       );
 
+      if (res.status === 429) {
+        const limitData = await res.json().catch(() => ({}));
+        const msg = limitData.error || "Daily video generation limit reached.";
+        const used: number = limitData.used ?? 0;
+        const limit: number = limitData.limit ?? 0;
+        const tier: string = limitData.tier ?? '';
+        const upgradeHint = tier === 'pro'
+          ? " Upgrade to Max for 12 videos/day."
+          : "";
+        throw new Error(`${msg} (${used}/${limit} used)${upgradeHint}`);
+      }
+
       if (!res.ok) {
         const errorData = await res
           .json()
@@ -771,6 +783,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         body: JSON.stringify({ prompt, duration, aspectRatio }),
       }
     );
+
+    if (res.status === 429) {
+      const limitData = await res.json().catch(() => ({}));
+      const msg = limitData.error || "Daily video generation limit reached.";
+      const used: number = limitData.used ?? 0;
+      const limit: number = limitData.limit ?? 0;
+      const tier: string = limitData.tier ?? '';
+      const upgradeHint = tier === 'pro'
+        ? " Upgrade to Max for 12 videos/day."
+        : "";
+      throw new Error(`${msg} (${used}/${limit} used)${upgradeHint}`);
+    }
 
     if (!res.ok) {
       const errorData = await res
@@ -2238,7 +2262,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 </button>
               ) : speechSupported ? (
                 <button
-                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                  className={`btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]${isListening && voiceInputModeRef.current === "dictation" ? " mic-recording" : ""}`}
                   onClick={() => {
                     if (isListening && voiceInputModeRef.current === "dictation") {
                       stopVoiceInput();
@@ -2252,14 +2276,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   style={{
                     padding: hasAnswer ? "4px 6px" : "4px 8px",
                     fontSize: "var(--font-md)",
-                    background:
-                      isListening && voiceInputModeRef.current === "dictation"
-                        ? "var(--accent)"
-                        : "transparent",
-                    color:
-                      isListening && voiceInputModeRef.current === "dictation"
-                        ? "white"
-                        : "inherit",
                   }}
                 >
                   <MicWaveIcon
@@ -2366,8 +2382,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           multiple
           accept={
             toolMode
-              ? "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml"
-              : "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml,.pdf,.doc,.docx,.txt,.csv,.odt,.xls,.xlsx"
+              ? "image/jpeg,image/png,image/gif,image/webp"
+              : "image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           }
           onChange={(e) => {
             const input = e.target;
