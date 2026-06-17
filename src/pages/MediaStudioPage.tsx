@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { IoIosArrowBack } from "react-icons/io";
 import { FaImage, FaVideo, FaSpinner, FaTimes, FaPlus, FaArrowUp, FaDownload } from "react-icons/fa";
@@ -11,6 +11,12 @@ import {
   MediaStudioModal,
   type MediaStudioModalView,
 } from "../components/MediaStudioModal";
+import {
+  CHAT_EXCHANGE_SCROLL_OFFSET,
+  getActiveExchangeMinHeight,
+  scrollExchangeToTop,
+  useScrollViewportHeight,
+} from "../utils/chatScroll";
 
 type MediaMode = "image" | "video";
 const MAX_ATTACHED_IMAGES = 5;
@@ -79,22 +85,32 @@ export default function MediaStudioPage() {
     }
   }, [searchParams]);
 
-  // ChatGPT-style UX: scroll once so the newly started exchange begins
-  // near the top of the viewport.
-  useEffect(() => {
+  const scrollViewportHeight = useScrollViewportHeight(conversationScrollRef);
+  const activeExchangeMinHeight = getActiveExchangeMinHeight(scrollViewportHeight);
+
+  const pinActiveEntry = (target: HTMLElement | null) => {
+    const container = conversationScrollRef.current;
+    if (!container || !target) return;
+
+    const minH = getActiveExchangeMinHeight(container.clientHeight);
+    if (minH) {
+      target.style.minHeight = `${minH}px`;
+    }
+
+    scrollExchangeToTop(container, target, { behavior: "auto" });
+  };
+
+  // ChatGPT-style UX: pin the new prompt + generation at the top of the scroll area.
+  useLayoutEffect(() => {
     if (!isGenerating) return;
     if (!pendingScrollEntryIdRef.current) return;
-    if (!pendingScrollEntryElRef.current) return;
-
-    requestAnimationFrame(() => {
-      pendingScrollEntryElRef.current?.scrollIntoView({
-        block: "start",
-        behavior: "smooth",
-      });
-    });
+    const el = pendingScrollEntryElRef.current;
+    if (!el) return;
 
     pendingScrollEntryIdRef.current = null;
     pendingScrollEntryElRef.current = null;
+
+    pinActiveEntry(el);
   }, [conversation.length, isGenerating]);
 
   const canSubmit = Boolean(prompt.trim()) && !isGenerating;
@@ -279,7 +295,7 @@ export default function MediaStudioPage() {
         </div>
       </div>
 
-      <div ref={conversationScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 flex flex-col">
+      <div ref={conversationScrollRef} className="flex-1 overflow-y-auto overflow-anchor-none overflow-x-hidden px-4 py-5 flex flex-col">
         {!hasStarted && (
           <>
             <div className="sub text-sm font-semibold mb-3 uppercase tracking-wide opacity-70">
@@ -328,11 +344,20 @@ export default function MediaStudioPage() {
           </>
         )}
 
-        {conversation.map((entry) => (
+        {conversation.map((entry, index) => {
+          const isLastEntry = index === conversation.length - 1;
+
+          return (
           <div
             key={entry.id}
+            data-chat-exchange
             className="mb-6"
-            style={{ scrollMarginTop: 90 }}
+            style={{
+              scrollMarginTop: CHAT_EXCHANGE_SCROLL_OFFSET,
+              ...(isLastEntry && activeExchangeMinHeight
+                ? { minHeight: activeExchangeMinHeight }
+                : {}),
+            }}
             ref={(el) => {
               if (entry.id === pendingScrollEntryIdRef.current) {
                 pendingScrollEntryElRef.current = el;
@@ -427,7 +452,8 @@ export default function MediaStudioPage() {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div

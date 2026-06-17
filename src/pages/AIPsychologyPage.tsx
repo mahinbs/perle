@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, Fragment } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
 import { Capacitor } from "@capacitor/core";
@@ -20,6 +20,10 @@ import type { LLMModel, ExperienceMode } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
 import { getChatDateLabel, isDifferentChatDay } from "../utils/chatDates";
+import {
+  CHAT_EXCHANGE_SCROLL_OFFSET,
+  scheduleScrollExchangeToTop,
+} from "../utils/chatScroll";
 import { ChatDateDivider } from "../components/ChatDateDivider";
 import { getUserLocalContext } from "../utils/userLocalContext";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
@@ -84,19 +88,17 @@ export default function AIPsychologyPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
-  // ChatGPT-style UX: scroll once per new user message.
-  useEffect(() => {
+  // ChatGPT-style UX: pin the new user message at the top; AI response streams below.
+  useLayoutEffect(() => {
     if (!isLoading) return;
     if (!pendingScrollToMessageIdRef.current) return;
-    if (!pendingScrollToMessageElRef.current) return;
-
     const el = pendingScrollToMessageElRef.current;
+    if (!el) return;
+
     pendingScrollToMessageIdRef.current = null;
     pendingScrollToMessageElRef.current = null;
 
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ block: "start", behavior: "smooth" });
-    });
+    scheduleScrollExchangeToTop(messagesContainerRef.current, el);
   }, [isLoading, messages.length]);
 
   // Focus input on mount
@@ -497,7 +499,7 @@ export default function AIPsychologyPage() {
             className={`flex items-end gap-3 mb-4 ${
               message.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
-              style={{ scrollMarginTop: 90 }}
+              style={{ scrollMarginTop: CHAT_EXCHANGE_SCROLL_OFFSET }}
               ref={(el) => {
                 if (message.id === pendingScrollToMessageIdRef.current) {
                   pendingScrollToMessageElRef.current = el;

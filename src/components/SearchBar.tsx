@@ -58,8 +58,6 @@ interface SearchBarProps {
   onMediaGenerated?: (media: { type: 'image' | 'video'; url: string; prompt: string }) => void; // Callback when media is generated
   answer?: AnswerResult | null;
   currentAnswerText?: string;
-  /** Called once when follow-up is submitted (scroll to bottom only on submit, not during answer typing) */
-  onScrollToBottom?: () => void;
   experienceMode?: ExperienceMode;
   onExperienceModeChange?: (mode: ExperienceMode) => void;
   showModelSelector?: boolean;
@@ -83,7 +81,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   setSelectedModel,
   onModelChange,
   answer = null,
-  onScrollToBottom,
   experienceMode = "normal",
   onExperienceModeChange,
   showModelSelector = true,
@@ -265,16 +262,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     inputRef.current?.blur();
     onSearch(trimmed);
     setQuery("");
-    if (onScrollToBottom) {
-      requestAnimationFrame(() => onScrollToBottom());
-    } else {
-      requestAnimationFrame(() => {
-        const scrollContainer = document.querySelector(".flex-1.min-h-0.overflow-y-auto");
-        if (scrollContainer) {
-          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
-        }
-      });
-    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

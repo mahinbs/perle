@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useLayoutEffect, useRef } from "react";
 import logo from "../assets/images/logo-1.png";
 import { Header } from "../components/Header";
 import { SearchBar } from "../components/SearchBar";
@@ -17,6 +17,12 @@ import {
   shouldEnforceQueryLimit,
   getQueryLimitMessage,
 } from "../utils/queryLimit";
+import {
+  CHAT_EXCHANGE_SCROLL_OFFSET,
+  getActiveExchangeMinHeight,
+  scrollExchangeToTop,
+  useScrollViewportHeight,
+} from "../utils/chatScroll";
 
 export default function HomePage() {
   const { state: currentData, navigateTo } = useRouterNavigation();
@@ -45,6 +51,7 @@ export default function HomePage() {
   const loadingCardRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pendingAutoScrollRef = useRef(false);
+  const pendingScrollOnCompleteRef = useRef(false);
   const lastSearchedKeyRef = useRef<string>("");
   const lastSearchedQueryRef = useRef<string>("");
   const experienceModeRef = useRef<ExperienceMode>(experienceMode);
@@ -330,8 +337,9 @@ export default function HomePage() {
       // Clear input immediately so they move to "Loading" state visually
       setUploadedFiles([]);
 
-      // Scroll so the newly started exchange begins near the top.
+      // Pin the new exchange at the top; older Q&A scroll up out of view.
       pendingAutoScrollRef.current = true;
+      pendingScrollOnCompleteRef.current = true;
       setIsLoading(true);
       saveToHistory(q);
 
@@ -591,22 +599,48 @@ export default function HomePage() {
     setShowHistory(newQuery.length > 0);
   }, []);
 
-  const scrollToLoadingCard = useCallback(() => {
-    requestAnimationFrame(() => {
-      loadingCardRef.current?.scrollIntoView({
-        block: "start",
-        behavior: "smooth",
-      });
-    });
+  const scrollViewportHeight = useScrollViewportHeight(scrollContainerRef);
+  const activeExchangeMinHeight = getActiveExchangeMinHeight(scrollViewportHeight);
+
+  const pinActiveExchange = useCallback((target: HTMLElement | null) => {
+    const container = scrollContainerRef.current;
+    if (!container || !target) return;
+
+    const minH = getActiveExchangeMinHeight(container.clientHeight);
+    if (minH) {
+      target.style.minHeight = `${minH}px`;
+    }
+
+    scrollExchangeToTop(container, target, { behavior: "auto" });
   }, []);
 
-  // ChatGPT-style UX: scroll once when a new exchange starts.
-  useEffect(() => {
+  // ChatGPT-style UX: pin the new question + answer at the top of the scroll area.
+  useLayoutEffect(() => {
     if (!isLoading) return;
     if (!pendingAutoScrollRef.current) return;
+
+    const target = loadingCardRef.current;
+    if (!target) return;
+
     pendingAutoScrollRef.current = false;
-    scrollToLoadingCard();
-  }, [isLoading, scrollToLoadingCard]);
+    pinActiveExchange(target);
+  }, [isLoading, conversationHistory.length, pinActiveExchange]);
+
+  // Keep the completed answer pinned after the loading card is replaced.
+  useLayoutEffect(() => {
+    if (isLoading || conversationHistory.length === 0) return;
+    if (!pendingScrollOnCompleteRef.current) return;
+    pendingScrollOnCompleteRef.current = false;
+
+    const wrapper = answerCardRef.current;
+    if (!wrapper) return;
+
+    const exchanges = wrapper.querySelectorAll<HTMLElement>("[data-chat-exchange]");
+    const lastExchange = exchanges[exchanges.length - 1];
+    if (lastExchange) {
+      pinActiveExchange(lastExchange);
+    }
+  }, [isLoading, conversationHistory.length, pinActiveExchange]);
 
   // Load specific conversation (no animations)
   const loadConversation = useCallback(async (conversationId: string) => {
@@ -729,8 +763,8 @@ export default function HomePage() {
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
       />
 
-      {/* Main Content - ORIGINAL LAYOUT */}
-      <div className="container !px-2 flex flex-col justify-between h-full relative">
+      {/* Main Content */}
+      <div className="container !px-2 !pb-0 flex flex-col h-dvh overflow-hidden relative">
         {/* Background Logo */}
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none -translate-y-[5%] z-0 opacity-[0.1] select-none dark:invert">
           <img
@@ -740,12 +774,12 @@ export default function HomePage() {
           />
         </div>
 
-        <div className="relative z-10 flex flex-col justify-start h-full min-h-0">
+        <div className="relative z-10 flex flex-col flex-1 min-h-0">
           <Header onOpenSidebar={() => setIsSidebarOpen(true)} />
 
           <div
             ref={scrollContainerRef}
-            className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col"
+            className="flex-1 min-h-0 overflow-y-auto overflow-anchor-none no-scrollbar flex flex-col"
           >
           <div className="spacer-4" />
           <div ref={answerCardRef}>
@@ -763,14 +797,19 @@ export default function HomePage() {
               const shouldSkipTypewriter = isLoadingOldConversation ||
                 isFromLoadedConversation ||
                 !isLastItem;
+              const isActiveExchange = !isLoading && isLastItem;
 
               return (
                 <div
                   key={`answer-${prevAnswer.timestamp}-${index}`}
+                  data-chat-exchange
                   style={{
                     marginBottom: index < conversationHistory.length - 1 ? 5 : 0,
                     transition: isLoadingOldConversation ? 'none' : undefined,
-                    animation: isLoadingOldConversation ? 'none' : undefined
+                    animation: isLoadingOldConversation ? 'none' : undefined,
+                    ...(isActiveExchange && activeExchangeMinHeight
+                      ? { minHeight: activeExchangeMinHeight }
+                      : {}),
                   }}
                 >
                   <AnswerCard
@@ -803,7 +842,13 @@ export default function HomePage() {
             {isLoading && (
               <div
                 ref={loadingCardRef}
-                style={{ scrollMarginTop: 90 }}
+                data-chat-exchange
+                style={{
+                  scrollMarginTop: CHAT_EXCHANGE_SCROLL_OFFSET,
+                  ...(activeExchangeMinHeight
+                    ? { minHeight: activeExchangeMinHeight }
+                    : {}),
+                }}
               >
                 <AnswerCard
                   chunks={[]}
@@ -864,7 +909,6 @@ export default function HomePage() {
             isPremium={isPremium}
             onNewConversation={handleNewConversation}
             onMediaGenerated={handleMediaGenerated}
-            onScrollToBottom={scrollToLoadingCard}
             experienceMode={experienceMode}
             onExperienceModeChange={(mode) => {
               if (!hasSelectedMode) {
