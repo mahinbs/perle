@@ -12,7 +12,7 @@ export const DiscoverRail: React.FC = () => {
     const fetchItems = async () => {
       try {
         const items = await getAllDiscoverItems();
-        setDiscoverItems(Array.isArray(items) ? items : []);
+        setDiscoverItems(Array.isArray(items) ? items.slice(0, 2) : []);
       } catch (error) {
         console.error('Failed to fetch discover items:', error);
         setDiscoverItems([]);
@@ -23,43 +23,27 @@ export const DiscoverRail: React.FC = () => {
     fetchItems();
   }, []);
 
-  // Map tag to mode
   const getModeFromTag = (tag: string): Mode => {
     const tagLower = tag.toLowerCase();
     if (tagLower.includes('research')) return 'Research';
     if (tagLower.includes('explain') || tagLower.includes('brief')) return 'Ask';
     if (tagLower.includes('compare')) return 'Compare';
     if (tagLower.includes('summarize') || tagLower.includes('summary')) return 'Summarize';
-    return 'Ask'; // Default
+    return 'Ask';
   };
 
   const handleItemClick = (item: DiscoverItem) => {
-    // Navigate to home with search query and mode
     const mode = getModeFromTag(item.tag);
-    navigateTo('/', { 
+    navigateTo('/', {
       searchQuery: item.title,
-      mode: mode
+      mode: mode,
     });
-  };
-
-  const handleViewAll = () => {
-    navigateTo('/discover');
   };
 
   if (isLoading) {
     return (
-      <div>
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div className="h3">Discover</div>
-          <button 
-            className="btn-ghost" 
-            onClick={handleViewAll}
-            style={{ fontSize: 'var(--font-md)' }}
-          >
-            View All →
-          </button>
-        </div>
-        <div className="sub text-sm">Loading...</div>
+      <div className="px-1 mb-3">
+        <div className="sub text-sm">Loading discover...</div>
       </div>
     );
   }
@@ -69,59 +53,43 @@ export const DiscoverRail: React.FC = () => {
   }
 
   return (
-    <div>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div className="h3">Discover</div>
-        <button 
-          className="btn-ghost" 
-          onClick={handleViewAll}
-          style={{ fontSize: 'var(--font-md)' }}
+    <div className="px-1 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="h3 text-base font-semibold">Discover</div>
+        <button
+          type="button"
+          className="btn-ghost text-sm"
+          onClick={() => navigateTo('/discover')}
         >
           View All →
         </button>
       </div>
-      
-      <div className="scroll-x">
-        {discoverItems.map(item => (
-          <div 
-            key={item.id} 
-            className="card" 
-            style={{ 
-              padding: 0, 
-              minWidth: 240, 
-              maxWidth: 280,
-              overflow: 'hidden',
-              cursor: 'pointer'
-            }}
+
+      <div className="flex flex-col gap-3">
+        {discoverItems.map((item) => (
+          <button
+            key={item.id}
+            type="button"
             onClick={() => handleItemClick(item)}
+            className="glass-card border border-[var(--border)] rounded-xl overflow-hidden flex flex-row items-stretch text-left w-full hover:border-[var(--accent)] transition-colors"
+            style={{ minHeight: 88 }}
           >
-            <img 
-              src={item.image} 
-              alt={item.alt} 
-              style={{ 
-                display: 'block', 
-                width: '100%', 
-                height: 140, 
-                objectFit: 'cover' 
-              }} 
+            <img
+              src={item.image}
+              alt={item.alt}
+              className="w-[100px] min-w-[100px] h-[88px] object-cover shrink-0"
             />
-            <div style={{ padding: 14 }}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                {item.title}
-              </div>
-              <div className="sub text-sm" style={{ marginBottom: 8, lineHeight: '18px' }}>
+            <div className="flex-1 p-3 flex flex-col justify-center min-w-0">
+              <div className="font-semibold text-sm mb-1 truncate">{item.title}</div>
+              <div className="sub text-xs line-clamp-2 leading-snug opacity-80">
                 {item.description}
               </div>
-              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="chip" style={{ fontSize: 'var(--font-sm)' }}>
-                  {item.tag}
-                </span>
-                <span className="sub text-sm">
-                  {item.category}
-                </span>
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className="chip text-xs py-0.5 px-2">{item.tag}</span>
+                <span className="sub text-xs opacity-60">{item.category}</span>
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>

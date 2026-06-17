@@ -2,6 +2,52 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
 import { SourceChip } from "./SourceChip";
+import {
+  AnswerBulletDot,
+  isColonHeading,
+  isSectionDivider,
+  normalizeCitationText,
+  parseMarkdownHeading,
+  renderAnswerHeading,
+  renderInlineFormatted,
+  stripHeadingEmojis,
+} from "../utils/answerFormatting";
+
+function CitationBadge({
+  number,
+  source,
+}: {
+  number: number;
+  source?: Source;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => source && window.open(source.url, "_blank")}
+      title={source?.title || `Source ${number}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minWidth: 18,
+        height: 18,
+        padding: "0 5px",
+        margin: "0 2px",
+        borderRadius: 999,
+        background: "var(--accent)",
+        color: "var(--bg)",
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1,
+        verticalAlign: "super",
+        border: "none",
+        cursor: source ? "pointer" : "default",
+      }}
+    >
+      {number}
+    </button>
+  );
+}
 import { copyToClipboard, shareContent } from "../utils/helpers";
 import { useToast } from "../contexts/ToastContext";
 
@@ -15,8 +61,160 @@ import {
   FaChevronDown,
   FaDownload,
 } from "react-icons/fa";
-import loadingGif from "../assets/gif/loading-video.gif";
-import loadingVideo from "../assets/loading.mp4";
+import syntraGif from "../assets/gif/syntraiq.gif";
+
+type ModeType = Mode;
+
+function splitTableCells(line: string): string[] {
+  let trimmed = line.trim();
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function isMarkdownTableRow(line: string): boolean {
+  if (!line.includes("|")) return false;
+  return splitTableCells(line).filter(Boolean).length >= 2;
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  const cells = splitTableCells(line);
+  if (cells.length < 2) return false;
+  return cells.every(
+    (cell) => cell === "" || /^:?-{3,}:?$/.test(cell) || /^-+$/.test(cell)
+  );
+}
+
+function hasMarkdownTable(text: string): boolean {
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!isMarkdownTableRow(lines[i].trim())) continue;
+    if (i + 1 < lines.length) {
+      const next = lines[i + 1].trim();
+      if (isMarkdownTableSeparator(next) || isMarkdownTableRow(next)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isComparisonContext(mode?: ModeType, query?: string): boolean {
+  if (mode === "Compare") return true;
+  const q = (query || "").toLowerCase();
+  return /\b(vs\.?|versus|compare|comparison|difference between|differences between|better than|which is better)\b/.test(
+    q
+  );
+}
+
+function extractComparisonSubjects(query?: string): [string, string] | null {
+  if (!query) return null;
+  const vsMatch = query.match(/(.+?)\s+(?:vs\.?|versus)\s+(.+)/i);
+  if (vsMatch) {
+    return [vsMatch[1].trim(), vsMatch[2].trim()];
+  }
+  const betweenMatch = query.match(
+    /(?:compare|comparison|difference between)\s+(.+?)\s+and\s+(.+)/i
+  );
+  if (betweenMatch) {
+    return [betweenMatch[1].trim(), betweenMatch[2].trim()];
+  }
+  return null;
+}
+
+function tryBuildComparisonTableFromText(text: string, query?: string): string {
+  if (hasMarkdownTable(text)) return text;
+
+  const subjects = extractComparisonSubjects(query);
+  const subjectA = subjects?.[0] ?? "Option 1";
+  const subjectB = subjects?.[1] ?? "Option 2";
+  const rows: string[][] = [];
+
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const withoutBullet = line.replace(/^[•\-*]\s+/, "").replace(/^\d+\.\s+/, "");
+
+    if (isMarkdownTableRow(withoutBullet)) {
+      rows.push(splitTableCells(withoutBullet));
+      continue;
+    }
+
+    const pipeParts = withoutBullet.includes("|")
+      ? splitTableCells(withoutBullet)
+      : null;
+    if (pipeParts && pipeParts.length >= 3) {
+      rows.push(pipeParts);
+      continue;
+    }
+
+    const colonMatch = withoutBullet.match(/^([^:]{2,80}):\s*(.+)$/);
+    if (colonMatch) {
+      const aspect = colonMatch[1].trim();
+      const value = colonMatch[2].trim();
+      const splitBySubjects = value.split(/\s*[;|/]\s*/);
+      if (splitBySubjects.length >= 2) {
+        rows.push([aspect, splitBySubjects[0], splitBySubjects[1]]);
+        continue;
+      }
+      const aMatch = value.match(
+        new RegExp(`${subjectA}[:\\s-]+([^,;|]+)`, "i")
+      );
+      const bMatch = value.match(
+        new RegExp(`${subjectB}[:\\s-]+([^,;|]+)`, "i")
+      );
+      if (aMatch && bMatch) {
+        rows.push([aspect, aMatch[1].trim(), bMatch[1].trim()]);
+      }
+    }
+  }
+
+  if (rows.length < 2) return text;
+
+  const firstRowLooksLikeHeader =
+    rows[0].length >= 2 &&
+    rows[0].every((cell) => cell.length < 40) &&
+    rows[0].some((cell) =>
+      /feature|aspect|criteria|category|point/i.test(cell)
+    );
+
+  let header: string[];
+  let body: string[][];
+  if (firstRowLooksLikeHeader && rows[0].length >= 3) {
+    header = rows[0];
+    body = rows.slice(1);
+  } else if (rows[0].length >= 3) {
+    header = rows[0];
+    body = rows.slice(1);
+  } else {
+    header = ["Aspect", subjectA, subjectB];
+    body = rows.map((row) =>
+      row.length >= 3 ? row : [row[0], row[1] ?? "", row[2] ?? ""]
+    );
+  }
+
+  const tableBlock = [
+    `| ${header.join(" | ")} |`,
+    `| ${header.map(() => "---").join(" | ")} |`,
+    ...body.map((row) => `| ${row.join(" | ")} |`),
+  ].join("\n");
+
+  const intro = text.split("\n").find((l) => l.trim() && !l.trim().startsWith("•")) ?? "";
+  return intro ? `${intro}\n\n${tableBlock}` : tableBlock;
+}
+
+function preprocessAnswerText(
+  text: string,
+  mode?: ModeType,
+  query?: string
+): string {
+  if (!text) return text;
+  if (isComparisonContext(mode, query) && !hasMarkdownTable(text)) {
+    return tryBuildComparisonTableFromText(text, query);
+  }
+  return text;
+}
 
 interface AnswerCardProps {
   chunks: AnswerChunk[];
@@ -37,7 +235,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   chunks,
   sources,
   isLoading,
-  mode: _mode,
+  mode,
   query,
   onQueryEdit,
   onSearch: _onSearch,
@@ -65,9 +263,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const typewriterTimeoutRef = useRef<any>(null);
   const answerContentRef = useRef<HTMLDivElement>(null);
-  const loadingVideoRef = useRef<HTMLVideoElement>(null);
-  const [showVideoFallback, setShowVideoFallback] = useState(true); // Start with gif, switch to video when ready
-  const [videoReady, setVideoReady] = useState(false);
   const { showToast } = useToast();
 
   // Try to import KaTeX dynamically, but make it optional
@@ -322,7 +517,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   // (Previously scrolled to last chunk during typing and to bottom when complete)
 
   // Auto-speak is now handled by SearchBar directly to avoid multi-card race conditions.
-  // AnswerCard no longer consumes perle-speak-next-answer.
+  // AnswerCard no longer consumes syntraiq-speak-next-answer.
 
   // Helper function to render LaTeX formulas with full mathematical symbol support
   const renderWithMath = (text: string): React.ReactNode[] => {
@@ -427,12 +622,103 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     return parts.length > 0 ? parts : [text];
   };
 
+  const renderMarkdownTable = (
+    headerCells: string[],
+    bodyRows: string[][],
+    key: string
+  ) => (
+    <div
+      key={key}
+      className="answer-table-wrap"
+      style={{
+        marginTop: 16,
+        marginBottom: 16,
+        overflowX: "auto",
+        borderRadius: "var(--radius-sm)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <table
+        className="answer-table"
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "var(--font-sm)",
+        }}
+      >
+        <thead>
+          <tr>
+            {headerCells.map((cell, cellIndex) => (
+              <th
+                key={`th-${cellIndex}`}
+                style={{
+                  padding: "10px 12px",
+                  textAlign: "left",
+                  fontWeight: 600,
+                  borderBottom: "1px solid var(--border)",
+                  background: "var(--input-bg)",
+                  color: "var(--text)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {renderWithMath(cell)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bodyRows.map((row, rowIndex) => (
+            <tr key={`tr-${rowIndex}`}>
+              {headerCells.map((_, cellIndex) => (
+                <td
+                  key={`td-${rowIndex}-${cellIndex}`}
+                  style={{
+                    padding: "10px 12px",
+                    borderBottom:
+                      rowIndex < bodyRows.length - 1
+                        ? "1px solid var(--border)"
+                        : undefined,
+                    verticalAlign: "top",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {renderWithMath(row[cellIndex] ?? "")}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   // Format text with markdown-like formatting
+  const renderTextContent = (text: string): React.ReactNode => {
+    const normalized = normalizeCitationText(text);
+    const hasRichInline =
+      /\[\d+\]/.test(normalized) ||
+      /\*\*[^*]+\*\*/.test(normalized) ||
+      /(?<!\*)\*[^*]+\*(?!\*)/.test(normalized);
+
+    if (!hasRichInline) {
+      return <>{renderWithMath(normalized)}</>;
+    }
+
+    return renderInlineFormatted(
+      normalized,
+      sources,
+      renderWithMath,
+      (number) => (
+        <CitationBadge number={number} source={sources[number - 1]} />
+      )
+    );
+  };
+
   const formatText = (text: string, appendDot?: boolean): React.ReactNode => {
     if (!text) return null;
 
-    // Process the text line by line to detect structure
-    const lines = text.split('\n');
+    const processedText = preprocessAnswerText(text, mode, query);
+    const lines = processedText.split("\n");
     const result: React.ReactNode[] = [];
     let currentParagraph: string[] = [];
     let currentList: Array<{ bullet: string; content: string }> = [];
@@ -442,7 +728,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       if (currentParagraph.length > 0) {
         const paraText = currentParagraph.join(' ').trim();
         if (paraText) {
-          const mathRendered = renderWithMath(paraText);
+          const mathRendered = renderTextContent(paraText);
           result.push(
             <p
               key={`para-${result.length}`}
@@ -482,27 +768,52 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             style={{
               marginTop: result.length > 0 ? 12 : 0,
               marginBottom: 12,
-              paddingLeft: 5,
-              listStyle: 'none',
+              paddingLeft: 0,
+              listStyle: "none",
             }}
           >
             {currentList.map((item, idx) => {
-              const isLastItem = isLast && appendDot && idx === currentList.length - 1;
+              const isLastItem =
+                isLast && appendDot && idx === currentList.length - 1;
+              const isNumbered = /^\d+\.$/.test(item.bullet);
               return (
                 <li
                   key={`li-${idx}`}
                   style={{
-                    marginBottom: 8,
+                    marginBottom: 10,
                     lineHeight: 1.7,
-                    display: 'flex',
-                    gap: 5,
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start",
                   }}
                 >
-                  <span style={{ flexShrink: 0, color: 'var(--accent)', fontWeight: 600 }}>
-                    {item.bullet}
-                  </span>
+                  {isNumbered ? (
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        color: "var(--accent)",
+                        fontWeight: 700,
+                        minWidth: 20,
+                      }}
+                    >
+                      {item.bullet}
+                    </span>
+                  ) : item.bullet === "sub" ? (
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        color: "var(--sub)",
+                        marginTop: 2,
+                        minWidth: 12,
+                      }}
+                    >
+                      –
+                    </span>
+                  ) : (
+                    <AnswerBulletDot />
+                  )}
                   <span style={{ flex: 1 }}>
-                    {renderWithMath(item.content)}
+                    {renderTextContent(item.content)}
                     {isLastItem && (
                       <span
                         style={{
@@ -528,8 +839,42 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       }
     };
 
-    lines.forEach((line, _index) => {
-      const trimmed = line.trim();
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const rawLine = lines[lineIndex];
+      const trimmed = rawLine.trim();
+
+      if (isMarkdownTableRow(trimmed)) {
+        flushParagraph(false);
+        flushList(false);
+
+        const parsedRows: string[][] = [];
+        let scanIndex = lineIndex;
+        while (scanIndex < lines.length) {
+          const rowLine = lines[scanIndex].trim();
+          if (!rowLine) break;
+          if (isMarkdownTableSeparator(rowLine)) {
+            scanIndex += 1;
+            continue;
+          }
+          if (!isMarkdownTableRow(rowLine)) break;
+          parsedRows.push(splitTableCells(rowLine));
+          scanIndex += 1;
+        }
+
+        if (parsedRows.length >= 1) {
+          const headerCells = parsedRows[0];
+          const bodyRows = parsedRows.slice(1);
+          result.push(
+            renderMarkdownTable(
+              headerCells,
+              bodyRows,
+              `table-${result.length}`
+            )
+          );
+          lineIndex = scanIndex - 1;
+          continue;
+        }
+      }
 
       // Empty line - flush current context
       if (!trimmed) {
@@ -538,41 +883,80 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         } else {
           flushParagraph(false);
         }
-        return;
+        continue;
       }
 
-      // Check if it's a heading (ends with colon, single line, reasonable length)
-      if (trimmed.endsWith(':') && trimmed.length < 150 && !trimmed.includes('•') && !trimmed.match(/^[-•\d]/)) {
+      if (isSectionDivider(trimmed)) {
         flushParagraph(false);
         flushList(false);
         result.push(
-          <h3
-            key={`heading-${result.length}`}
+          <hr
+            key={`divider-${result.length}`}
             style={{
-              fontSize: 'var(--font-lg)',
-              fontWeight: 600,
-              marginTop: result.length > 0 ? 24 : 0,
-              marginBottom: 12,
-              color: 'var(--text)',
+              border: "none",
+              borderTop: "1px solid var(--border)",
+              margin: "20px 0",
             }}
-          >
-            {trimmed}
-          </h3>
+          />
         );
-        return;
+        continue;
+      }
+
+      const markdownHeading = parseMarkdownHeading(trimmed);
+      if (markdownHeading) {
+        flushParagraph(false);
+        flushList(false);
+        result.push(
+          renderAnswerHeading(
+            markdownHeading.level,
+            markdownHeading.text,
+            `heading-${result.length}`,
+            renderTextContent(markdownHeading.text)
+          )
+        );
+        continue;
+      }
+
+      // Legacy colon headings (e.g. "Defining AI:")
+      if (isColonHeading(trimmed)) {
+        flushParagraph(false);
+        flushList(false);
+        const headingText = stripHeadingEmojis(trimmed.replace(/:+$/, "").trim());
+        result.push(
+          renderAnswerHeading(
+            2,
+            headingText,
+            `heading-${result.length}`,
+            renderTextContent(headingText)
+          )
+        );
+        continue;
+      }
+
+      const subBulletMatch = rawLine.match(/^\s{2,}[-•]\s+(.+)$/);
+      if (subBulletMatch) {
+        flushParagraph(false);
+        inList = true;
+        currentList.push({ bullet: "sub", content: subBulletMatch[1].trim() });
+        continue;
       }
 
       // Check if it's a bullet point
-      if (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.match(/^\d+\./)) {
+      if (
+        trimmed.startsWith("•") ||
+        trimmed.startsWith("-") ||
+        trimmed.startsWith("*") ||
+        trimmed.match(/^\d+\./)
+      ) {
         flushParagraph(false);
         inList = true;
 
-        let bullet = '•';
+        let bullet = "•";
         let content = trimmed;
 
-        if (trimmed.startsWith('•')) {
+        if (trimmed.startsWith("•")) {
           content = trimmed.substring(1).trim();
-        } else if (trimmed.startsWith('-')) {
+        } else if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
           content = trimmed.substring(1).trim();
         } else if (trimmed.match(/^\d+\./)) {
           const match = trimmed.match(/^(\d+\.)\s*(.*)/);
@@ -585,7 +969,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         if (content) {
           currentList.push({ bullet, content });
         }
-        return;
+        continue;
       }
 
       // Regular text line
@@ -593,7 +977,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         flushList(false);
       }
       currentParagraph.push(trimmed);
-    });
+    }
 
     // Flush any remaining content (these are the last elements)
     if (inList && currentList.length > 0) {
@@ -645,7 +1029,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const handleBookmarkAnswer = () => {
     // Save to localStorage for now
     const bookmarks = JSON.parse(
-      localStorage.getItem("perle-bookmarks") || "[]"
+      localStorage.getItem("syntraiq-bookmarks") || "[]"
     );
     const bookmark = {
       id: Date.now().toString(),
@@ -656,7 +1040,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
     bookmarks.unshift(bookmark);
     localStorage.setItem(
-      "perle-bookmarks",
+      "syntraiq-bookmarks",
       JSON.stringify(bookmarks.slice(0, 50))
     );
 
@@ -671,7 +1055,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     console.log('🎤 startVoiceOutput called, speechSupported:', speechSupported, 'isSpeaking:', isSpeaking, 'chunks:', chunks.length);
 
     // Clear the trigger flag if it exists
-    localStorage.removeItem("perle-trigger-voice-output");
+    localStorage.removeItem("syntraiq-trigger-voice-output");
 
     const answerText = chunks.map((c) => c.text).join(" ");
     console.log('🎤 Answer text length:', answerText.length);
@@ -681,16 +1065,16 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       console.log("⚠️ Text-to-speech is not supported, but showing text anyway");
 
       // Display full text immediately
-      localStorage.setItem("perle-current-answer-text", answerText);
+      localStorage.setItem("syntraiq-current-answer-text", answerText);
 
       // Clear after a delay
       setTimeout(() => {
-        const voiceSessionActive = localStorage.getItem("perle-voice-session-active") === "1";
+        const voiceSessionActive = localStorage.getItem("syntraiq-voice-session-active") === "1";
         if (!voiceSessionActive) {
-          localStorage.removeItem("perle-current-answer-text");
-          localStorage.setItem("perle-voice-output-complete", "1");
+          localStorage.removeItem("syntraiq-current-answer-text");
+          localStorage.setItem("syntraiq-voice-output-complete", "1");
           setTimeout(() => {
-            localStorage.removeItem("perle-voice-output-complete");
+            localStorage.removeItem("syntraiq-voice-output-complete");
           }, 100);
         }
       }, 5000); // Show for 5 seconds
@@ -715,9 +1099,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     let resumeKeepAlive: ReturnType<typeof setInterval> | null = null;
 
     // Initialize with empty text
-    localStorage.setItem("perle-current-answer-text", "");
-    localStorage.setItem("perle-current-word-index", "0");
-    localStorage.setItem("perle-speech-rate", "0.9");
+    localStorage.setItem("syntraiq-current-answer-text", "");
+    localStorage.setItem("syntraiq-current-word-index", "0");
+    localStorage.setItem("syntraiq-speech-rate", "0.9");
 
     const utterance = new SpeechSynthesisUtterance(answerText);
     utterance.rate = 0.9;
@@ -733,8 +1117,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       // Show first word immediately
       if (words.length > 0) {
         const displayedText = words[0];
-        localStorage.setItem("perle-current-answer-text", displayedText);
-        localStorage.setItem("perle-current-word-index", "0");
+        localStorage.setItem("syntraiq-current-answer-text", displayedText);
+        localStorage.setItem("syntraiq-current-word-index", "0");
       }
 
       // Chrome pauses speechSynthesis silently after ~15s. Resume every 10s to prevent this.
@@ -780,9 +1164,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         if (estimatedWordIndex > currentWordIndex && shouldUseFallback) {
           currentWordIndex = estimatedWordIndex;
           const displayedText = words.slice(0, estimatedWordIndex + 1).join("");
-          localStorage.setItem("perle-current-answer-text", displayedText);
+          localStorage.setItem("syntraiq-current-answer-text", displayedText);
           localStorage.setItem(
-            "perle-current-word-index",
+            "syntraiq-current-word-index",
             estimatedWordIndex.toString()
           );
           // Update lastBoundaryUpdate to prevent double-updates when boundary catches up
@@ -813,9 +1197,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           lastBoundaryUpdate = Date.now();
           // Update displayed text up to and including current word
           const displayedText = words.slice(0, wordIndex + 1).join("");
-          localStorage.setItem("perle-current-answer-text", displayedText);
+          localStorage.setItem("syntraiq-current-answer-text", displayedText);
           localStorage.setItem(
-            "perle-current-word-index",
+            "syntraiq-current-word-index",
             wordIndex.toString()
           );
         }
@@ -834,22 +1218,22 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         resumeKeepAlive = null;
       }
       // Show full text when speech ends
-      localStorage.setItem("perle-current-answer-text", answerText);
+      localStorage.setItem("syntraiq-current-answer-text", answerText);
       // Keep full answer text visible while voice session is active.
-      const voiceSessionActive = localStorage.getItem("perle-voice-session-active") === "1";
+      const voiceSessionActive = localStorage.getItem("syntraiq-voice-session-active") === "1";
       if (voiceSessionActive) {
         // Continue hands-free loop: once answer is spoken, go back to listening.
-        localStorage.setItem("perle-auto-listen-next", "1");
+        localStorage.setItem("syntraiq-auto-listen-next", "1");
       }
       if (!voiceSessionActive) {
         setTimeout(() => {
-          localStorage.removeItem("perle-current-answer-text");
-          localStorage.removeItem("perle-current-word-index");
+          localStorage.removeItem("syntraiq-current-answer-text");
+          localStorage.removeItem("syntraiq-current-word-index");
           // Signal that voice output has completed
-          localStorage.setItem("perle-voice-output-complete", "1");
+          localStorage.setItem("syntraiq-voice-output-complete", "1");
           // Clean up this flag after a moment
           setTimeout(() => {
-            localStorage.removeItem("perle-voice-output-complete");
+            localStorage.removeItem("syntraiq-voice-output-complete");
           }, 100);
         }, 2000);
       }
@@ -868,7 +1252,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         resumeKeepAlive = null;
       }
       // Show full text on error
-      localStorage.setItem("perle-current-answer-text", answerText);
+      localStorage.setItem("syntraiq-current-answer-text", answerText);
     };
 
     synthesisRef.current = utterance;
@@ -883,15 +1267,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
     // Clear the stored text when speech is stopped
-    localStorage.removeItem("perle-current-answer-text");
-    localStorage.removeItem("perle-current-word-index");
+    localStorage.removeItem("syntraiq-current-answer-text");
+    localStorage.removeItem("syntraiq-current-word-index");
     // Note: fallbackInterval will be cleared in onend/onerror handlers
   };
 
   // Monitor for trigger flag and start voice output when ready
   useEffect(() => {
     const checkTrigger = () => {
-      const shouldTrigger = localStorage.getItem("perle-trigger-voice-output");
+      const shouldTrigger = localStorage.getItem("syntraiq-trigger-voice-output");
       if (shouldTrigger && chunks.length > 0 && !isLoading) {
         console.log('🎤 Trigger detected, starting voice output...');
         startVoiceOutput();
@@ -906,14 +1290,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
     return () => clearInterval(interval);
   }, [chunks, isLoading, startVoiceOutput]);
-
-  // Reset video state when loading starts
-  useEffect(() => {
-    if (isLoading) {
-      setShowVideoFallback(true); // Show gif initially
-      setVideoReady(false);
-    }
-  }, [isLoading]);
 
   // In modes where sources are enabled, show source cards by default.
   useEffect(() => {
@@ -931,121 +1307,88 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           Syntra<span className="text-[var(--accent)]">IQ</span>
         </div> */}
         {query && (
-          // <div className="my-1 text-2xl font-bold text-end">
-          //   {query}
-          // </div>
           <div
-            className="flex justify-end"
-          // onMouseEnter={(e) => {
-          //   if (onQueryEdit) {
-          //     e.currentTarget.style.backgroundColor = "var(--border)";
-          //   }
-          // }}
-          // onMouseLeave={(e) => {
-          //   e.currentTarget.style.backgroundColor = "transparent";
-          // }}
+            className="flex flex-col items-end gap-3"
+            style={{ marginBottom: 24 }}
           >
-            <div style={{
-              fontSize: "var(--font-xl)",
-              fontWeight: 600,
-              lineHeight: "32px",
-              color: "var(--text)",
-              wordBreak: "break-word",
-              borderRadius: "8px",
-            }} className="glass-card !max-w-[calc(90%)] !px-4 !py-2">{query}</div>
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10" style={{ position: 'relative' }}>
-            {showVideoFallback ? (
-              <img
-                src={loadingGif}
-                loading="eager"
-                alt="loading"
-                className="rounded-full w-full h-full object-cover dark:invert"
-                style={{ display: 'block' }}
-              />
-            ) : (
-              <video
-                ref={loadingVideoRef}
-                src={loadingVideo}
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="rounded-full w-full h-full object-cover"
-                onError={() => setShowVideoFallback(true)}
-                onCanPlay={() => {
-                  if (loadingVideoRef.current) {
-                    loadingVideoRef.current.playbackRate = 4.0;
-                    setVideoReady(true);
-                    setShowVideoFallback(false);
-                  }
-                }}
-                onLoadedData={() => {
-                  if (loadingVideoRef.current && !videoReady) {
-                    loadingVideoRef.current.playbackRate = 4.0;
-                    setVideoReady(true);
-                    setShowVideoFallback(false);
-                  }
-                }}
-                style={{ display: 'block' }}
-              />
+            {attachments && attachments.length > 0 && (
+              <div className="flex gap-2 flex-wrap justify-end max-w-[90%]">
+                {attachments.map((file) => (
+                  <div
+                    key={file.id}
+                    style={{
+                      position: "relative",
+                      width: "clamp(60px, 20vw, 100px)",
+                      height: "clamp(60px, 20vw, 100px)",
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {file.preview ? (
+                      file.file.type.startsWith("video/") ? (
+                        <video
+                          src={file.preview}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          muted
+                          playsInline
+                        />
+                      ) : (
+                        <img
+                          src={file.preview}
+                          alt="Attachment"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      )
+                    ) : (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "var(--input-bg)",
+                          fontSize: "24px",
+                        }}
+                      >
+                        📄
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
-          </div>
-          <p className="text-base">
-            IQ is thinking
-            <span className="dot-blink" style={{ animationDelay: "0s" }}>
-              .
-            </span>
-            <span className="dot-blink" style={{ animationDelay: "0.2s" }}>
-              .
-            </span>
-            <span className="dot-blink" style={{ animationDelay: "0.4s" }}>
-              .
-            </span>
-          </p>
-        </div>
-        {attachments && attachments.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <div className="sub text-sm" style={{ marginBottom: 8 }}>Attachments</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {attachments.map((file) => (
-                <div
-                  key={file.id}
-                  style={{
-                    position: "relative",
-                    width: 60,
-                    height: 60,
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    border: "1px solid var(--border)"
-                  }}
-                >
-                  {file.preview ? (
-                    <img
-                      src={file.preview}
-                      alt="Attachment"
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <div style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: "var(--input-bg)",
-                      fontSize: "24px"
-                    }}>
-                      📄
-                    </div>
-                  )}
-                </div>
-              ))}
+            <div
+              style={{
+                fontSize: "var(--font-xl)",
+                fontWeight: 600,
+                lineHeight: "32px",
+                color: "var(--text)",
+                wordBreak: "break-word",
+                borderRadius: "8px",
+              }}
+              className="glass-card !max-w-[calc(90%)] !px-4 !py-2"
+            >
+              {query}
             </div>
           </div>
         )}
+        <div className="flex items-start gap-2" style={{ marginTop: query ? 8 : 0 }}>
+          <div className="w-10 h-10 shrink-0" style={{ position: 'relative' }}>
+            <img
+              src={syntraGif}
+              loading="eager"
+              alt="IQ"
+              className="rounded-full w-full h-full object-cover"
+              style={{ display: 'block' }}
+            />
+          </div>
+          <div>
+            <p className="text-base font-semibold mb-1">Thinking...</p>
+            <p className="text-sm opacity-70">{query ? "Working on your request" : "Please wait"}</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1086,112 +1429,123 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     <div className="card !bg-transparent !border-none !shadow-none" style={{ padding: 5 }}>
       {/* Display the searched query prominently */}
       {query && (
-        <div className=""
+        <div
           style={{
             marginBottom: 20,
             paddingBottom: 16,
             borderBottom: "1px solid var(--border)",
           }}
         >
-
-          {attachments && attachments.length > 0 && (
-            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 12 }}>
-              {attachments.map((file) => (
+          <div className="flex flex-col items-end gap-3">
+            {attachments && attachments.length > 0 && (
+              <div className="flex gap-2 flex-wrap justify-end max-w-[90%]">
+                {attachments.map((file) => (
+                  <div
+                    key={file.id}
+                    style={{
+                      position: "relative",
+                      width: "clamp(60px, 20vw, 100px)",
+                      height: "clamp(60px, 20vw, 100px)",
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {file.preview ? (
+                      file.file.type.startsWith("video/") ? (
+                        <video
+                          src={file.preview}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          muted
+                          playsInline
+                        />
+                      ) : (
+                        <img
+                          src={file.preview}
+                          alt="Attachment"
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      )
+                    ) : (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "var(--input-bg)",
+                          fontSize: "24px",
+                        }}
+                      >
+                        📄
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {generatedMedia && (
+              <div className="max-w-[90%]">
                 <div
-                  key={file.id}
                   style={{
-                    position: "relative",
-                    width: "clamp(60px, 20vw, 100px)",
-                    height: "clamp(60px, 20vw, 100px)",
-                    borderRadius: 8,
+                    borderRadius: 12,
                     overflow: "hidden",
-                    border: "1px solid var(--border)"
+                    maxWidth: generatedMedia.type === "image" ? 400 : 600,
+                    border: "1px solid var(--border)",
                   }}
                 >
-                  {file.preview ? (
+                  {generatedMedia.type === "image" ? (
                     <img
-                      src={file.preview}
-                      alt="Attachment"
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      src={generatedMedia.url}
+                      alt={generatedMedia.prompt}
+                      style={{
+                        width: "100%",
+                        height: "auto",
+                        display: "block",
+                      }}
                     />
                   ) : (
-                    <div style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: "var(--input-bg)",
-                      fontSize: "24px"
-                    }}>
-                      📄
-                    </div>
+                    <video
+                      src={generatedMedia.url}
+                      controls
+                      style={{
+                        width: "100%",
+                        height: "auto",
+                        display: "block",
+                      }}
+                    />
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-          {generatedMedia && (
-            <div style={{ marginTop: 16, paddingLeft: 12 }}>
-              <div style={{
-                borderRadius: 12,
-                overflow: "hidden",
-                maxWidth: generatedMedia.type === "image" ? 400 : 600,
-                border: "1px solid var(--border)"
-              }}>
-                {generatedMedia.type === "image" ? (
-                  <img
-                    src={generatedMedia.url}
-                    alt={generatedMedia.prompt}
-                    style={{
-                      width: "100%",
-                      height: "auto",
-                      display: "block"
-                    }}
-                  />
-                ) : (
-                  <video
-                    src={generatedMedia.url}
-                    controls
-                    style={{
-                      width: "100%",
-                      height: "auto",
-                      display: "block"
-                    }}
-                  />
-                )}
+              </div>
+            )}
+            <div
+              onClick={() => {
+                if (onQueryEdit) {
+                  setShowEditModal(true);
+                }
+              }}
+              style={{
+                cursor: onQueryEdit ? "pointer" : "default",
+                transition: "background-color 0.2s ease",
+              }}
+              className="flex justify-end w-full"
+              title={onQueryEdit ? "Click to edit query" : undefined}
+            >
+              <div
+                style={{
+                  fontSize: "var(--font-xl)",
+                  fontWeight: 600,
+                  lineHeight: "32px",
+                  color: "var(--text)",
+                  wordBreak: "break-word",
+                  borderRadius: "8px",
+                }}
+                className="glass-card !max-w-[calc(90%)] !px-4 !py-2"
+              >
+                {query}
               </div>
             </div>
-          )}
-          <div
-            onClick={() => {
-              if (onQueryEdit) {
-                setShowEditModal(true);
-              }
-            }}
-            style={{
-              cursor: onQueryEdit ? "pointer" : "default",
-              transition: "background-color 0.2s ease",
-            }}
-            className="flex justify-end"
-            // onMouseEnter={(e) => {
-            //   if (onQueryEdit) {
-            //     e.currentTarget.style.backgroundColor = "var(--border)";
-            //   }
-            // }}
-            // onMouseLeave={(e) => {
-            //   e.currentTarget.style.backgroundColor = "transparent";
-            // }}
-            title={onQueryEdit ? "Click to edit query" : undefined}
-          >
-            <div style={{
-              fontSize: "var(--font-xl)",
-              fontWeight: 600,
-              lineHeight: "32px",
-              color: "var(--text)",
-              wordBreak: "break-word",
-              borderRadius: "8px",
-            }} className="glass-card !max-w-[calc(90%)] !px-4 !py-2">{query}</div>
           </div>
         </div>
       )}
@@ -1301,9 +1655,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         {chunks.map((chunk, index) => (
           <div key={index} style={{ position: "relative" }} data-chunk data-chunk-index={index}>
             <div
-              className="text-[1.26rem] leading-relaxed"
+              className="answer-content leading-relaxed"
               style={{
-                // fontSize: 'var(--font-lg)',
+                fontSize: "1.05rem",
                 marginBottom: 12,
                 color: "var(--text)",
               }}
@@ -1329,9 +1683,14 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               >
                 {!hideSources &&
                   chunk.citationIds.map((id) => {
-                    const source = sources.find((s) => s.id === id);
+                    const sourceIndex = sources.findIndex((s) => s.id === id);
+                    const source = sourceIndex >= 0 ? sources[sourceIndex] : undefined;
                     return source ? (
-                      <SourceChip key={`${id}-${index}`} source={source} />
+                      <SourceChip
+                        key={`${id}-${index}`}
+                        source={source}
+                        citationNumber={sourceIndex + 1}
+                      />
                     ) : null;
                   })}
               </div>
@@ -1370,7 +1729,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 key={question}
                 className="glass-button !px-2 !py-0.5 rounded-sm"
                 style={{ cursor: "pointer" }}
-                onClick={() => _onSearch?.(question, _mode)}
+                onClick={() => _onSearch?.(question, mode)}
               >
                 {question}
               </button>
@@ -1410,7 +1769,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
           {expandedSources && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {sources.map((source) => (
+              {sources.map((source, sourceIndex) => (
                 <div
                   key={source.id}
                   className="card"
@@ -1428,9 +1787,29 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                       marginBottom: 6,
                       color: "var(--text)",
                       lineHeight: 1.35,
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "flex-start",
                     }}
                   >
-                    {source.title}
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minWidth: 22,
+                        height: 22,
+                        borderRadius: 999,
+                        background: "var(--accent)",
+                        color: "var(--bg)",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {sourceIndex + 1}
+                    </span>
+                    <span>{source.title}</span>
                   </div>
                   <div
                     className="sub text-sm"

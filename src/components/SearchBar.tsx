@@ -2,12 +2,19 @@ import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel, AnswerResult, ExperienceMode } from "../types";
+import { Capacitor } from "@capacitor/core";
+import {
+  getLocalItem,
+  onStorageChange,
+  removeLocalItem,
+  setLocalItem,
+  STORAGE_KEYS,
+} from "../utils/storage";
 import {
   FaPaperclip,
   FaFolderOpen,
   FaImage,
   FaCamera,
-  FaSearch,
   FaPen,
   FaVideo,
   FaPlus,
@@ -15,16 +22,18 @@ import {
   FaSpinner,
   FaDownload,
   FaImages,
-  FaRobot,
   FaTools,
 } from "react-icons/fa";
+import { IoIosSend } from "react-icons/io";
 import MicWaveIcon from "./MicWaveIcon";
 import HeadsetWaveIcon from "./HeadsetWaveIcon";
 import VoiceOverlay from "./VoiceOverlay";
 import { LLMModelSelector } from "./LLMModelSelector";
 import { getAuthHeaders, getAuthToken, isAuthenticated } from "../utils/auth";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import loadingGif from "../assets/gif/loading-video.gif";
+import syntraGif from "../assets/gif/syntraiq.gif";
+import { ExperienceModeButtons } from "./ExperienceModeButtons";
+import { getUserData } from "../utils/auth";
 
 import { UploadedFile } from "../types";
 
@@ -54,6 +63,8 @@ interface SearchBarProps {
   experienceMode?: ExperienceMode;
   onExperienceModeChange?: (mode: ExperienceMode) => void;
   showModelSelector?: boolean;
+  queryLimitReached?: boolean;
+  onQueryLimitReached?: () => void;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -76,8 +87,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   experienceMode = "normal",
   onExperienceModeChange,
   showModelSelector = true,
+  queryLimitReached = false,
+  onQueryLimitReached,
 }) => {
   const [showUploadMenu, setShowUploadMenu] = useState(false);
+  const [showAttachModal, setShowAttachModal] = useState<"menu" | "camera" | null>(null);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [toolMode, setToolMode] = useState<"image" | "video" | null>(null);
   const [toolDescription, setToolDescription] = useState("");
@@ -104,35 +118,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
   const { showToast } = useToast();
 
-  // Monitor for voice output starting and reopen overlay if needed
+  // Reopen voice overlay when answer text is written during an active voice session
   useEffect(() => {
-    const checkVoiceOverlay = () => {
-      const shouldKeepOpen = localStorage.getItem("perle-keep-voice-overlay-open");
-      const currentAnswerText = localStorage.getItem("perle-current-answer-text");
+    const reopenIfNeeded = () => {
+      const shouldKeepOpen = getLocalItem(STORAGE_KEYS.keepVoiceOverlayOpen);
+      const currentAnswerText = getLocalItem(STORAGE_KEYS.currentAnswerText);
 
-      if (shouldKeepOpen || currentAnswerText) {
-        console.log('🔍 Voice overlay check:', {
-          shouldKeepOpen: !!shouldKeepOpen,
-          currentAnswerText: !!currentAnswerText,
-          showVoiceOverlay
-        });
-      }
-
-      // If flag is set and voice output has started (answer text exists), reopen overlay
       if (shouldKeepOpen && currentAnswerText) {
-        console.log('✅ Reopening voice overlay for response');
         setShowVoiceOverlay(true);
-        localStorage.setItem("perle-voice-session-active", "1");
-        // Clear the flag once overlay is opened
-        localStorage.removeItem("perle-keep-voice-overlay-open");
+        setLocalItem(STORAGE_KEYS.voiceSessionActive, "1");
+        removeLocalItem(STORAGE_KEYS.keepVoiceOverlayOpen);
       }
     };
 
-    // Check periodically for voice output starting/completing
-    const interval = setInterval(checkVoiceOverlay, 200);
-
-    return () => clearInterval(interval);
-  }, [showVoiceOverlay]);
+    reopenIfNeeded();
+    return onStorageChange(reopenIfNeeded);
+  }, [isLoading, answer, showVoiceOverlay]);
   const { navigateTo } = useRouterNavigation();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -142,8 +143,42 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const hasClearedForAnswerRef = useRef<boolean>(false);
   const voiceSilenceTimerRef = useRef<number | null>(null);
+  const voiceInputModeRef = useRef<"dictation" | "session">("dictation");
   const uploadBtnRef = useRef<HTMLButtonElement>(null);
   const toolsBtnRef = useRef<HTMLButtonElement>(null);
+  const attachBackdropRef = useRef<HTMLDivElement>(null);
+
+  const closeAttachModal = () => setShowAttachModal(null);
+
+  const openAttachMenu = (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowAttachModal("menu");
+  };
+
+  const pickAttachment = (kind: "files" | "image" | "camera") => {
+    if (kind === "camera") {
+      setShowAttachModal("camera");
+      void startCameraCapture();
+      return;
+    }
+
+    closeAttachModal();
+
+    window.setTimeout(() => {
+      const input = fileInputRef.current;
+      if (!input) return;
+      input.removeAttribute("capture");
+      input.multiple = true;
+      if (kind === "image") {
+        input.accept = "image/*";
+      } else {
+        input.accept =
+          "image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      }
+      input.click();
+    }, 120);
+  };
 
   // Check for speech support
   useEffect(() => {
@@ -208,19 +243,36 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [hasAnswer, searchedQuery, query]);
 
+  const handleTryMaxClick = () => {
+    const user = getUserData();
+    if (user?.isPremium) {
+      const maxModel = "gpt-4o" as LLMModel;
+      (setSelectedModel ?? onModelChange)(maxModel);
+      localStorage.setItem("syntraiq-selected-model", maxModel);
+      showToast({ message: "SyntraIQ Max model selected", type: "success", duration: 2500 });
+      return;
+    }
+    navigateTo("/subscription");
+  };
+
   const triggerSearchWithScroll = () => {
-    if (!query.trim()) return;
+    const trimmed = query.trim();
+    if (!trimmed || isLoading) return;
+    if (queryLimitReached) {
+      onQueryLimitReached?.();
+      return;
+    }
     inputRef.current?.blur();
-    onSearch();
+    onSearch(trimmed);
     setQuery("");
-    // Scroll to bottom once on submit (not during answer typing)
     if (onScrollToBottom) {
       requestAnimationFrame(() => onScrollToBottom());
     } else {
       requestAnimationFrame(() => {
-        const doc = document.documentElement;
-        const scrollTop = doc.scrollHeight - window.innerHeight;
-        window.scrollTo({ top: Math.max(0, scrollTop), behavior: "smooth" });
+        const scrollContainer = document.querySelector(".flex-1.min-h-0.overflow-y-auto");
+        if (scrollContainer) {
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+        }
       });
     }
   };
@@ -236,15 +288,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // NOTE: query copy UX is currently disabled in the UI (button commented out).
 
-  const startVoiceInput = () => {
+  const startVoiceInput = (mode: "dictation" | "session" = "session") => {
     if (!speechSupported) {
       alert("Voice input is not supported in this browser");
       return;
     }
 
-    // Always open voice globe overlay when mic flow starts.
-    setShowVoiceOverlay(true);
-    localStorage.setItem("perle-voice-session-active", "1");
+    voiceInputModeRef.current = mode;
+
+    if (mode === "session") {
+      setShowVoiceOverlay(true);
+      localStorage.setItem("syntraiq-voice-session-active", "1");
+    }
 
     // Stop any ongoing TTS playback before starting a new recording
     try {
@@ -279,6 +334,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     };
 
     const startSilenceTimer = () => {
+      if (mode === "dictation") return;
       clearSilenceTimer();
       voiceSilenceTimerRef.current = window.setTimeout(() => {
         // If user hasn't spoken in 10s, prompt and continue listening cycle.
@@ -310,16 +366,23 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     };
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      transcript = transcript.trim();
       // If user starts speaking while TTS is in progress, barge-in and stop TTS.
-      try {
-        if ("speechSynthesis" in window && window.speechSynthesis.speaking) {
-          window.speechSynthesis.cancel();
-        }
-      } catch { }
-      setQuery(transcript);
-      finalTranscript = transcript; // Store the latest transcript
-      // User provided input, so no silence nudge needed for this turn.
+      if (mode === "session") {
+        try {
+          if ("speechSynthesis" in window && window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+          }
+        } catch { }
+      }
+      if (transcript) {
+        setQuery(transcript);
+        finalTranscript = transcript;
+      }
       clearSilenceTimer();
     };
 
@@ -332,11 +395,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         // Resume listening after the spoken prompt ends.
         window.setTimeout(() => {
           const voiceSessionActive =
-            localStorage.getItem("perle-voice-session-active") === "1";
+            localStorage.getItem("syntraiq-voice-session-active") === "1";
           if (voiceSessionActive && showVoiceOverlay) {
-            startVoiceInput();
+            startVoiceInput("session");
           }
         }, 1800);
+        return;
+      }
+
+      if (mode === "dictation") {
+        if (finalTranscript.trim()) {
+          setQuery(finalTranscript);
+        }
+        inputRef.current?.focus();
         return;
       }
 
@@ -348,12 +419,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         // Pass the transcript directly to onSearch to avoid state timing issues
         onSearch(finalTranscript);
         // tell AnswerCard to speak the next answer
-        localStorage.setItem("perle-speak-next-answer", "1");
-        console.log('✅ Set perle-speak-next-answer flag');
+        localStorage.setItem("syntraiq-speak-next-answer", "1");
+        console.log('✅ Set syntraiq-speak-next-answer flag');
         // Keep voice overlay open so the response can be shown
-        localStorage.setItem("perle-keep-voice-overlay-open", "1");
-        localStorage.setItem("perle-voice-session-active", "1");
-        console.log('✅ Set perle-keep-voice-overlay-open flag');
+        localStorage.setItem("syntraiq-keep-voice-overlay-open", "1");
+        localStorage.setItem("syntraiq-voice-session-active", "1");
+        console.log('✅ Set syntraiq-keep-voice-overlay-open flag');
         // Always clear the query immediately after triggering search
         setTimeout(() => {
           setQuery("");
@@ -366,9 +437,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       clearSilenceTimer();
       setIsListening(false);
       if (event.error === "not-allowed") {
+        const isNative = Capacitor.isNativePlatform();
         showToast({
-          message:
-            "Microphone access denied. Please allow microphone access in your browser settings and try again.",
+          message: isNative
+            ? "Microphone access denied. Please allow microphone access in your device settings and try again."
+            : "Microphone access denied. Please allow microphone access in your browser settings and try again.",
           type: "error",
           duration: 4000,
         });
@@ -422,34 +495,46 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       }
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(content);
-      utterance.rate = 0.9;
+      utterance.rate = 0.92;
       utterance.pitch = 1;
       utterance.volume = 0.9;
       let resumeKeepAlive: number | null = null;
+      let spokenOffset = 0;
+
       utterance.onstart = () => {
         setIsSpeaking(true);
-        localStorage.setItem("perle-current-answer-text", content);
-        // Chrome pauses speechSynthesis silently after ~15s — keep it alive
+        localStorage.setItem("syntraiq-current-answer-text", "");
         resumeKeepAlive = window.setInterval(() => {
           try {
             if (window.speechSynthesis.paused) window.speechSynthesis.resume();
           } catch { /* ignore */ }
         }, 10000);
       };
+
+      utterance.onboundary = (event) => {
+        if (event.name !== "word" && event.charIndex <= spokenOffset) return;
+        spokenOffset = event.charIndex + (event.charLength || 0);
+        const slice = content.slice(0, spokenOffset).trim();
+        if (slice) {
+          localStorage.setItem("syntraiq-current-answer-text", slice);
+        }
+      };
+
       utterance.onend = () => {
         setIsSpeaking(false);
+        localStorage.setItem("syntraiq-current-answer-text", content);
         if (resumeKeepAlive) { clearInterval(resumeKeepAlive); resumeKeepAlive = null; }
         const voiceSessionActive =
-          localStorage.getItem("perle-voice-session-active") === "1";
+          localStorage.getItem("syntraiq-voice-session-active") === "1";
         if (voiceSessionActive) {
-          localStorage.setItem("perle-auto-listen-next", "1");
+          localStorage.setItem("syntraiq-auto-listen-next", "1");
         }
       };
       utterance.onerror = () => {
         setIsSpeaking(false);
+        localStorage.setItem("syntraiq-current-answer-text", content);
         if (resumeKeepAlive) { clearInterval(resumeKeepAlive); resumeKeepAlive = null; }
       };
-      // Small delay after cancel() so Chrome doesn't silently drop the utterance
       window.setTimeout(() => window.speechSynthesis.speak(utterance), 100);
     } catch {
       setIsSpeaking(false);
@@ -461,7 +546,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const pendingVoiceSpeakRef = useRef(false);
   useEffect(() => {
     // Pick up the flag when it's set (while loading)
-    if (localStorage.getItem("perle-speak-next-answer") === "1") {
+    if (localStorage.getItem("syntraiq-speak-next-answer") === "1") {
       pendingVoiceSpeakRef.current = true;
     }
     if (!pendingVoiceSpeakRef.current) return;
@@ -470,7 +555,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     const chunks = answer?.chunks;
     if (!chunks || chunks.length === 0) return;
     // Consume
-    localStorage.removeItem("perle-speak-next-answer");
+    localStorage.removeItem("syntraiq-speak-next-answer");
     pendingVoiceSpeakRef.current = false;
     const answerText = chunks.map((c) => c.text).join("\n\n");
     speakTextImmediately(answerText);
@@ -478,18 +563,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // When an answer finishes in active voice session, start listening again automatically.
   useEffect(() => {
-    const interval = window.setInterval(() => {
+    const tryAutoListen = () => {
       const shouldAutoListen =
-        localStorage.getItem("perle-auto-listen-next") === "1";
+        getLocalItem(STORAGE_KEYS.autoListenNext) === "1";
       const voiceSessionActive =
-        localStorage.getItem("perle-voice-session-active") === "1";
+        getLocalItem(STORAGE_KEYS.voiceSessionActive) === "1";
       if (shouldAutoListen && voiceSessionActive && showVoiceOverlay && !isListening) {
-        localStorage.removeItem("perle-auto-listen-next");
-        startVoiceInput();
+        removeLocalItem(STORAGE_KEYS.autoListenNext);
+        startVoiceInput("session");
       }
-    }, 250);
-    return () => window.clearInterval(interval);
-  }, [showVoiceOverlay, isListening]);
+    };
+
+    tryAutoListen();
+    return onStorageChange(tryAutoListen);
+  }, [showVoiceOverlay, isListening, isLoading, answer]);
 
   const getFileType = (file: File): "image" | "document" | "other" => {
     if (file.type.startsWith("image/")) return "image";
@@ -545,7 +632,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const generateImage = async (
     prompt: string,
     aspectRatio: string = "1:1",
-    referenceImage?: File
+    referenceImages?: File | File[]
   ): Promise<{
     url: string;
     prompt: string;
@@ -561,12 +648,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       );
     }
 
-    // Use FormData if reference image is provided
-    if (referenceImage) {
+    const hasReferenceImages = Array.isArray(referenceImages)
+      ? referenceImages.length > 0
+      : Boolean(referenceImages);
+
+    if (hasReferenceImages) {
       const formData = new FormData();
       formData.append("prompt", prompt);
       formData.append("aspectRatio", aspectRatio);
-      formData.append("referenceImage", referenceImage);
+      const files = Array.isArray(referenceImages)
+        ? referenceImages
+        : referenceImages
+          ? [referenceImages]
+          : [];
+      files.forEach((file) => formData.append("referenceImages", file));
+      if (files[0]) formData.append("referenceImage", files[0]);
 
       const token = getAuthToken();
       const res = await fetch(
@@ -620,7 +716,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     prompt: string,
     duration: number = 5,
     aspectRatio: string = "16:9",
-    referenceImage?: File
+    referenceImages?: File | File[]
   ): Promise<{
     url: string;
     prompt: string;
@@ -637,13 +733,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       );
     }
 
-    // Use FormData if reference image is provided
-    if (referenceImage) {
+    const hasReferenceImages = Array.isArray(referenceImages)
+      ? referenceImages.length > 0
+      : Boolean(referenceImages);
+
+    if (hasReferenceImages) {
       const formData = new FormData();
       formData.append("prompt", prompt);
       formData.append("duration", duration.toString());
       formData.append("aspectRatio", aspectRatio);
-      formData.append("referenceImage", referenceImage);
+      const files = Array.isArray(referenceImages)
+        ? referenceImages
+        : referenceImages
+          ? [referenceImages]
+          : [];
+      files.forEach((file) => formData.append("referenceImages", file));
+      if (files[0]) formData.append("referenceImage", files[0]);
 
       const token = getAuthToken();
       const res = await fetch(
@@ -721,11 +826,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     const promptToUse = toolDescription.trim();
 
-    // Check if this is an edit request and use last generated media as reference
-    let referenceImage: File | undefined = toolAttachedImages.length > 0 ? toolAttachedImages[0].file : undefined;
+    let referenceImages: File[] = toolAttachedImages.map((img) => img.file);
 
-    // If no reference image attached but prompt is an edit request and we have last media
-    if (!referenceImage && isEditRequest(promptToUse) && lastToolsMedia) {
+    // If no reference images attached but prompt is an edit request and we have last media
+    if (referenceImages.length === 0 && isEditRequest(promptToUse) && lastToolsMedia) {
       console.log('🔍 Edit request detected in Tools - using previous media as reference');
       console.log(`📸 Previous media: ${lastToolsMedia.type} - "${lastToolsMedia.prompt}"`);
 
@@ -734,7 +838,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           const response = await fetch(lastToolsMedia.url);
           const blob = await response.blob();
           const file = new File([blob], 'reference.png', { type: 'image/png' });
-          referenceImage = file;
+          referenceImages = [file];
           console.log('✅ Using last generated image as reference for editing');
         } catch (error) {
           console.error('Failed to load previous image as reference:', error);
@@ -748,15 +852,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     setIsGenerating(true);
     setGeneratingPrompt(promptToUse);
-    setGeneratingImages(referenceImage ? [{ id: 'ref', file: referenceImage, preview: URL.createObjectURL(referenceImage), type: 'image' as const }] : []); // Store for display
+    setGeneratingImages(toolAttachedImages);
     setGeneratedMedia(null);
-    setToolDescription(""); // Clear the input immediately
-    setToolAttachedImages([]); // Clear attachments immediately
+    setToolDescription("");
+    setToolAttachedImages([]);
+
+    const referencePayload =
+      referenceImages.length > 0 ? referenceImages : undefined;
 
     try {
       if (toolMode === "image") {
-        // Generate image with optional reference image
-        const result = await generateImage(promptToUse, "1:1", referenceImage);
+        const result = await generateImage(promptToUse, "1:1", referencePayload);
         const mediaData = {
           type: "image" as const,
           url: result.url,
@@ -771,15 +877,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         }
 
         showToast({
-          message: referenceImage
-            ? "Image generated using reference image!"
+          message: referencePayload
+            ? "Image generated using reference image(s)!"
             : "Image generated successfully!",
           type: "success",
           duration: 3000,
         });
       } else if (toolMode === "video") {
-        // Generate video with optional reference image
-        const result = await generateVideo(promptToUse, 5, "16:9", referenceImage);
+        const result = await generateVideo(promptToUse, 5, "16:9", referencePayload);
         const mediaData = {
           type: "video" as const,
           url: result.url,
@@ -794,8 +899,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         }
 
         showToast({
-          message: referenceImage
-            ? "Video generated using reference image!"
+          message: referencePayload
+            ? "Video generated using reference image(s)!"
             : "Video generated successfully!",
           type: "success",
           duration: 3000,
@@ -878,18 +983,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   };
 
-  const handleFileUpload = async (files: FileList | null) => {
-    if (!files) return;
+  const handleFileUpload = async (files: File[] | null) => {
+    if (!files || files.length === 0) return;
 
     // Handle tool mode file uploads (for image generation reference)
     if (toolMode) {
-      const maxFiles = 1; // Only allow 1 image for tool mode
+      const maxFiles = isPremium ? 5 : 2;
       const currentFileCount = toolAttachedImages.length;
 
       if (currentFileCount >= maxFiles) {
         showToast({
-          message: `Only ${maxFiles} image allowed for ${toolMode === "image" ? "image" : "video"
-            } generation.`,
+          message: `Maximum ${maxFiles} image${maxFiles > 1 ? "s" : ""} allowed for ${toolMode === "image" ? "image" : "video"} generation.`,
           type: "error",
           duration: 3000,
         });
@@ -921,7 +1025,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         const preview = await createFilePreview(file);
 
         newFiles.push({
-          id: `${Date.now()}-${Math.random()}`,
+          id: `${Date.now()}-${i}-${Math.random()}`,
           file,
           type: "image",
           preview,
@@ -940,7 +1044,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       }
 
       if (newFiles.length > 0) {
-        setToolAttachedImages([...toolAttachedImages, ...newFiles]);
+        setToolAttachedImages((prev) => [...prev, ...newFiles]);
       }
       return;
     }
@@ -995,7 +1099,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       const preview = await createFilePreview(file);
 
       newFiles.push({
-        id: `${Date.now()}-${Math.random()}`,
+        id: `${Date.now()}-${i}-${Math.random()}`,
         file,
         type,
         preview,
@@ -1026,7 +1130,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       });
     }
 
-    if (newFiles.length > 0) {
+    if (newFiles.length > 0 && onFilesChange) {
       onFilesChange([...uploadedFiles, ...newFiles]);
     }
   };
@@ -1052,6 +1156,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     } catch (error) {
       console.error("Error accessing camera:", error);
       setIsCapturing(false);
+      setShowAttachModal(null);
+      showToast({
+        message: "Could not access camera. Please allow camera permission and try again.",
+        type: "error",
+        duration: 4000,
+      });
     }
   };
 
@@ -1061,6 +1171,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       streamRef.current = null;
     }
     setIsCapturing(false);
+    setShowAttachModal(null);
   };
 
   const capturePhoto = () => {
@@ -1149,7 +1260,25 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, [showToolsMenu]);
 
-
+  useEffect(() => {
+    if (!showAttachModal) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (showAttachModal === "camera") {
+          stopCameraCapture();
+        } else {
+          closeAttachModal();
+        }
+      }
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showAttachModal]);
 
   return (
     <>
@@ -1174,7 +1303,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             {!isPremium && (
               <button
                 className="btn-ghost glass-button btn-shadow !border-yellow-600 !text-yellow-600"
-                onClick={() => navigateTo("/pricing")}
+                onClick={handleTryMaxClick}
                 style={{
                   padding: "6px 10px",
                   display: "flex",
@@ -1186,13 +1315,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   fontWeight: 500,
                 }}
               >
-                {/* <FaRobot size={14} /> */}
                 <img
-                  src={loadingGif}
+                  src={syntraGif}
                   loading="eager"
-                  alt="loading"
-                  className="rounded-full w-6 h-6 dark:invert"
-                  style={{ display: 'block' }}
+                  alt="SyntraIQ"
+                  className="rounded-full w-6 h-6 object-cover"
+                  style={{ display: "block" }}
                 />
                 <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
                   Try SyntraIQ Max
@@ -1201,16 +1329,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             )}
             <button
               className="btn-ghost glass-button btn-shadow !font-normal"
-              onClick={() => {
-                setToolMode("video");
-                setToolDescription("");
-                setToolAttachedImages([]);
-                setGeneratedMedia(null);
-                setLastToolsMedia(null);
-                if (onNewConversation) {
-                  onNewConversation();
-                }
-              }}
+              onClick={() => navigateTo("/create?mode=video")}
               disabled={isListening || isGenerating}
               style={{
                 padding: "6px 10px",
@@ -1231,16 +1350,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             </button>
             <button
               className="btn-ghost glass-button btn-shadow !font-normal"
-              onClick={() => {
-                setToolMode("image");
-                setToolDescription("");
-                setToolAttachedImages([]);
-                setGeneratedMedia(null);
-                setLastToolsMedia(null);
-                if (onNewConversation) {
-                  onNewConversation();
-                }
-              }}
+              onClick={() => navigateTo("/create?mode=image")}
               disabled={isListening || isGenerating}
               style={{
                 padding: "6px 10px",
@@ -1254,16 +1364,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 background: "var(--card)",
               }}
             >
-              {/* <FaImage size={14} /> */}
-              <img
-                src='/editimg.png'
-                loading="eager"
-                alt="editimg"
-                className="object-contain w-4 h-4 dark:invert opacity-70"
-                style={{ display: 'block' }}
-              />
+              <FaImage size={14} />
               <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
-                Edit image
+                Generate Image
               </span>
             </button>
             <button
@@ -1295,6 +1398,26 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <FaImages size={14} />
               <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
                 View Gallery
+              </span>
+            </button>
+            <button
+              className="btn-ghost glass-button btn-shadow !font-normal"
+              onClick={() => navigateTo("/sleep-disorders")}
+              disabled={isListening || isGenerating}
+              style={{
+                padding: "6px 10px",
+                opacity: isListening || isGenerating ? 0.5 : 1,
+                cursor: isListening || isGenerating ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                flexShrink: 0,
+                borderRadius: "20px",
+                background: "var(--card)",
+              }}
+            >
+              <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
+                Sleep Disorders
               </span>
             </button>
           </div>
@@ -1357,7 +1480,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     className="btn-ghost glass-button btn-shadow"
                     onClick={() => {
                       setShowToolsMenu(false);
-                      navigateTo("/pricing");
+                      handleTryMaxClick();
                     }}
                     style={{
                       width: "100%",
@@ -1368,7 +1491,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     }}
                   >
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      <FaRobot size={16} /> Try SyntraIQ Max
+                      <img src={syntraGif} alt="" className="w-4 h-4 rounded-full object-cover" />
+                      Try SyntraIQ Max
                     </span>
                   </button>
                 )}
@@ -1376,15 +1500,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <button
                   className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
-                    setToolMode("video");
                     setShowToolsMenu(false);
-                    setToolDescription("");
-                    setToolAttachedImages([]);
-                    setGeneratedMedia(null);
-                    setLastToolsMedia(null); // Reset for new session
-                    if (onNewConversation) {
-                      onNewConversation();
-                    }
+                    navigateTo("/create?mode=video");
                   }}
                   disabled={isListening || isGenerating}
                   style={{
@@ -1403,27 +1520,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       gap: 8,
                     }}
                   >
-                    <FaVideo size={16} /> Generate Video
+                    <FaVideo size={16} /> Create Videos
                   </span>
                 </button>
 
                 <button
                   className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
-                    setToolMode("image");
                     setShowToolsMenu(false);
-                    setToolDescription("");
-                    setToolAttachedImages([]);
-                    setGeneratedMedia(null);
-                    setLastToolsMedia(null); // Reset for new session
-                    if (onNewConversation) {
-                      onNewConversation();
-                    }
+                    navigateTo("/create?mode=image");
                   }}
                   disabled={isListening || isGenerating}
                   style={{
                     width: "100%",
                     justifyContent: "flex-start",
+                    marginBottom: 4,
                     opacity: isListening || isGenerating ? 0.5 : 1,
                     cursor:
                       isListening || isGenerating ? "not-allowed" : "pointer",
@@ -1481,11 +1592,42 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     <FaImages size={16} /> View Gallery
                   </span>
                 </button>
+
+                <button
+                  className="btn-ghost glass-button btn-shadow"
+                  onClick={() => {
+                    setShowToolsMenu(false);
+                    navigateTo("/sleep-disorders");
+                  }}
+                  disabled={isListening || isGenerating}
+                  style={{
+                    width: "100%",
+                    justifyContent: "flex-start",
+                    marginTop: 4,
+                    opacity: isListening || isGenerating ? 0.5 : 1,
+                    cursor:
+                      isListening || isGenerating ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    Sleep Disorders
+                  </span>
+                </button>
               </div>
               );
             })()}
           </div>
         </>
+      )}
+      {!toolMode && onExperienceModeChange && (
+        <div className="mb-2 px-1">
+          <ExperienceModeButtons
+            experienceMode={experienceMode}
+            onExperienceModeChange={onExperienceModeChange}
+            disabled={isLoading || isListening}
+            size="small"
+          />
+        </div>
       )}
       <div
         className="glass-card font-ubuntu !px-3 !pt-1 !pb-2 no-scrollbar !overflow-x-hidden"
@@ -1507,19 +1649,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               Generating {toolMode === "image" ? "Image" : "Video"}
             </div>
             <div className="glass-card" style={{ padding: 12, position: "relative" }}>
-              <div
-                style={{
-                  fontSize: "var(--font-md)",
-                  color: "var(--text)",
-                  fontWeight: 500,
-                  padding: "8px 12px",
-                  background: "var(--border)",
-                  borderRadius: "var(--radius-sm)",
-                  marginBottom: 12,
-                }}
-              >
-                {generatingPrompt}
-              </div>
               {generatingImages && generatingImages.length > 0 && (
                 <div style={{
                   display: "flex",
@@ -1560,6 +1689,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   ))}
                 </div>
               )}
+              <div
+                style={{
+                  fontSize: "var(--font-md)",
+                  color: "var(--text)",
+                  fontWeight: 500,
+                  padding: "8px 12px",
+                  background: "var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  marginBottom: 12,
+                }}
+              >
+                {generatingPrompt}
+              </div>
               <div
                 style={{
                   display: "flex",
@@ -1686,11 +1828,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           isOpen={showVoiceOverlay}
           isListening={isListening}
           responseText={answer?.chunks.map(c => c.text).join(" ") || ""}
+          sources={answer?.sources || []}
           onToggleListening={() => {
             if (isListening) {
               stopVoiceInput();
             } else {
-              startVoiceInput();
+              startVoiceInput("session");
             }
           }}
           onClose={() => {
@@ -1701,158 +1844,46 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             } catch { }
             setIsSpeaking(false);
             pendingVoiceSpeakRef.current = false;
-            localStorage.removeItem("perle-keep-voice-overlay-open");
-            localStorage.removeItem("perle-voice-session-active");
-            localStorage.removeItem("perle-auto-listen-next");
-            localStorage.removeItem("perle-speak-next-answer");
-            localStorage.removeItem("perle-current-answer-text");
+            localStorage.removeItem("syntraiq-keep-voice-overlay-open");
+            localStorage.removeItem("syntraiq-voice-session-active");
+            localStorage.removeItem("syntraiq-auto-listen-next");
+            localStorage.removeItem("syntraiq-speak-next-answer");
+            localStorage.removeItem("syntraiq-current-answer-text");
           }}
         />
 
-
-        {/* Uploaded Files Preview */}
-        {uploadedFiles.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div className="sub text-sm" style={{ marginBottom: 8 }}>
-              Attached files ({uploadedFiles.length})
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {uploadedFiles.map((file) => (
-                <div
-                  key={file.id}
-                  className="glass-card"
-                  style={{
-                    padding: 8,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    maxWidth: 200,
-                  }}
-                >
-                  {file.preview ? (
-                    <img
-                      src={file.preview}
-                      alt={file.file.name}
-                      style={{
-                        width: 40,
-                        height: 40,
-                        objectFit: "cover",
-                        borderRadius: 4,
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: 40,
-                        height: 40,
-                        background: "var(--accent)",
-                        borderRadius: 4,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "var(--font-md)",
-                      }}
-                    >
-                      {file.type === "document" ? "📄" : "📁"}
-                    </div>
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      className="text-sm"
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {file.file.name}
-                    </div>
-                    <div className="sub text-xs">
-                      {(file.file.size / 1024).toFixed(1)} KB
-                    </div>
-                  </div>
-                  <button
-                    className="btn-ghost glass-button btn-shadow"
-                    onClick={() => removeFile(file.id)}
-                    style={{ padding: 4 }}
-                    aria-label="Remove file"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         <div className="row search-container !gap-0">
           {/* Tools Dropdown */}
 
           <div style={{ display: "flex", flexDirection: "column", maxWidth: "100%", minWidth: 0}}>
-            {/* Attached Images Display - Above textarea */}
-            {toolAttachedImages.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  marginBottom: 4,
-                }}
-              >
-                {toolAttachedImages.map((img) => (
-                  <div
-                    key={img.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "8px 12px",
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-sm)",
-                      fontSize: "var(--font-sm)",
-                      boxShadow: "var(--shadow)",
-                      maxWidth: "250px",
-                    }}
-                  >
-                    {img.preview ? (
+            {/* Attached files/images above message input */}
+            {!toolMode && uploadedFiles.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8, paddingTop: 4 }}>
+                {uploadedFiles.map((file) => (
+                  <div key={file.id} style={{ position: "relative" }}>
+                    {file.preview ? (
                       <img
-                        src={img.preview}
-                        alt="Reference"
-                        style={{
-                          width: 32,
-                          height: 32,
-                          objectFit: "cover",
-                          borderRadius: "6px",
-                        }}
+                        src={file.preview}
+                        alt={file.file.name}
+                        style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 10, border: "1px solid var(--border)" }}
                       />
                     ) : (
-                      <span style={{ fontSize: "20px" }}>🖼️</span>
+                      <div
+                        className="glass-card"
+                        style={{ width: 72, height: 72, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 10, fontSize: 24 }}
+                      >
+                        {file.type === "document" ? "📄" : "📁"}
+                      </div>
                     )}
                     <button
-                      className="btn-ghost glass-button btn-shadow"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setToolAttachedImages(
-                          toolAttachedImages.filter((i) => i.id !== img.id)
-                        );
-                      }}
-                      disabled={isGenerating}
-                      style={{
-                        padding: 4,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        opacity: isGenerating ? 0.5 : 1,
-                        minWidth: "24px",
-                        height: "24px",
-                        flexShrink: 0,
-                      }}
-                      aria-label="Remove"
-                      title="Remove image"
+                      type="button"
+                      className="btn-ghost glass-button"
+                      onClick={() => removeFile(file.id)}
+                      style={{ position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: "50%", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+                      aria-label="Remove file"
                     >
-                      <FaTimes size={14} style={{ color: "var(--text)" }} />
+                      <FaTimes size={10} />
                     </button>
                   </div>
                 ))}
@@ -1869,10 +1900,80 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 flex: 1,
                 display: "flex",
                 flexDirection: "column",
-                gap: 8,
+                gap: 4,
                 position: "relative",
               }}
             >
+              {/* Attached images — above the prompt textarea */}
+              {toolAttachedImages.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    paddingLeft: 4,
+                    paddingBottom: 2,
+                  }}
+                >
+                  {toolAttachedImages.map((img) => (
+                    <div
+                      key={img.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 10px",
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "var(--font-sm)",
+                        boxShadow: "var(--shadow)",
+                        maxWidth: "250px",
+                      }}
+                    >
+                      {img.preview ? (
+                        <img
+                          src={img.preview}
+                          alt="Reference"
+                          style={{
+                            width: 32,
+                            height: 32,
+                            objectFit: "cover",
+                            borderRadius: "6px",
+                          }}
+                        />
+                      ) : (
+                        <span style={{ fontSize: "20px" }}>🖼️</span>
+                      )}
+                      <button
+                        className="btn-ghost glass-button btn-shadow"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setToolAttachedImages(
+                            toolAttachedImages.filter((i) => i.id !== img.id)
+                          );
+                        }}
+                        disabled={isGenerating}
+                        style={{
+                          padding: 4,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          opacity: isGenerating ? 0.5 : 1,
+                          minWidth: "24px",
+                          height: "24px",
+                          flexShrink: 0,
+                        }}
+                        aria-label="Remove"
+                        title="Remove image"
+                      >
+                        <FaTimes size={14} style={{ color: "var(--text)" }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                 <div
                   style={{
@@ -1903,52 +2004,50 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   >
                     <FaTimes size={14} />
                   </button>
-                  {toolAttachedImages.length === 0 && (
-                    <button
-                      className="btn-ghost glass-button btn-shadow max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[12px] max-md:![&>svg]:!h-[12px]"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        fileInputRef.current?.click();
-                      }}
-                      disabled={
+                  <button
+                    className="btn-ghost glass-button btn-shadow max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[12px] max-md:![&>svg]:!h-[12px]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    disabled={
+                      isListening ||
+                      isGenerating ||
+                      toolAttachedImages.length >= (isPremium ? 5 : 2)
+                    }
+                    style={{
+                      padding: 6,
+                      opacity:
                         isListening ||
-                        isGenerating ||
-                        toolAttachedImages.length >= 1
-                      }
-                      style={{
-                        padding: 6,
-                        opacity:
-                          isListening ||
-                            isGenerating ||
-                            toolAttachedImages.length >= 1
-                            ? 0.5
-                            : 1,
-                        cursor:
-                          isListening ||
-                            isGenerating ||
-                            toolAttachedImages.length >= 1
-                            ? "not-allowed"
-                            : "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "rgba(0, 0, 0, 0.05)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "6px",
-                        minWidth: "28px",
-                        height: "28px",
-                        pointerEvents: "auto",
-                      }}
-                      aria-label="Add reference image"
-                      title={
-                        toolAttachedImages.length >= 1
-                          ? "Only one image allowed"
-                          : "Add reference image (optional)"
-                      }
-                    >
-                      <FaPlus size={14} style={{ color: "var(--text)" }} />
-                    </button>
-                  )}
+                          isGenerating ||
+                          toolAttachedImages.length >= (isPremium ? 5 : 2)
+                          ? 0.5
+                          : 1,
+                      cursor:
+                        isListening ||
+                          isGenerating ||
+                          toolAttachedImages.length >= (isPremium ? 5 : 2)
+                          ? "not-allowed"
+                          : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(0, 0, 0, 0.05)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      minWidth: "28px",
+                      height: "28px",
+                      pointerEvents: "auto",
+                    }}
+                    aria-label="Add reference images"
+                    title={
+                      toolAttachedImages.length >= (isPremium ? 5 : 2)
+                        ? `Maximum ${isPremium ? 5 : 2} images allowed`
+                        : "Add reference images (optional)"
+                    }
+                  >
+                    <FaPlus size={14} style={{ color: "var(--text)" }} />
+                  </button>
                 </div>
                 <textarea
                   ref={inputRef}
@@ -2051,119 +2150,25 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               >
                 <button
                   ref={uploadBtnRef}
+                  type="button"
                   className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
-                  onClick={() => setShowUploadMenu(!showUploadMenu)}
+                  onClick={openAttachMenu}
                   aria-label="Upload files"
                   disabled={isListening}
                   style={{
                     padding: hasAnswer ? 6 : 8,
                     opacity: isListening ? 0.5 : 1,
                     cursor: isListening ? "not-allowed" : "pointer",
+                    touchAction: "manipulation",
                   }}
                 >
                   <FaPaperclip size={hasAnswer ? 14 : 18} />
                 </button>
-
-                {showUploadMenu && (() => {
-                  const rect = uploadBtnRef.current?.getBoundingClientRect();
-                  return (
-                  createPortal(<div
-                    className="glass-panel"
-                    data-upload-menu
-                    style={{
-                      position: "fixed",
-                      bottom: rect ? window.innerHeight - rect.top + 8 : 0,
-                      left: rect ? rect.left : 0,
-                      padding: 8,
-                      zIndex: 9999,
-                      minWidth: 220,
-                      color: "var(--text)",
-                    }}
-                  >
-                    <button
-                      className="btn-ghost !backdrop-blur-lg glass-button btn-shadow"
-                      onClick={() => {
-                        fileInputRef.current?.click();
-                        setShowUploadMenu(false);
-                      }}
-                      disabled={isListening}
-                      style={{
-                        width: "100%",
-                        justifyContent: "flex-start",
-                        marginBottom: 4,
-                        opacity: isListening ? 0.5 : 1,
-                        cursor: isListening ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <FaFolderOpen size={16} /> Upload Files
-                      </span>
-                    </button>
-
-                    <button
-                      className="btn-ghost glass-button btn-shadow"
-                      onClick={() => {
-                        fileInputRef.current?.click();
-                        setShowUploadMenu(false);
-                      }}
-                      disabled={isListening}
-                      style={{
-                        width: "100%",
-                        justifyContent: "flex-start",
-                        marginBottom: 4,
-                        opacity: isListening ? 0.5 : 1,
-                        cursor: isListening ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <FaImage size={16} /> Upload Images
-                      </span>
-                    </button>
-                    <button
-                      className="btn-ghost glass-button btn-shadow"
-                      onClick={() => {
-                        startCameraCapture();
-                        setShowUploadMenu(false);
-                      }}
-                      disabled={isListening}
-                      style={{
-                        width: "100%",
-                        justifyContent: "flex-start",
-                        opacity: isListening ? 0.5 : 1,
-                        cursor: isListening ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <FaCamera size={16} /> Take Photo
-                      </span>
-                    </button>
-                  </div>, document.body
-                  )
-                  );
-                })()}
               </div>
             )}
 
-            {/* Model Selector - Only show for premium users after user has selected a mode, disabled during tool mode */}
-            {!toolMode && (showModelSelector || !isAuthenticated()) && (
+            {/* Model selector — premium only (keeps send button visible for free/guest users) */}
+            {!toolMode && showModelSelector && isPremium && (
               <div>
                 <LLMModelSelector
                   selectedModel={selectedModel}
@@ -2172,7 +2177,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     (setSelectedModel ?? onModelChange)(model);
                     // Save to localStorage immediately for premium users
                     if (isPremium) {
-                      localStorage.setItem("perle-selected-model", model);
+                      localStorage.setItem("syntraiq-selected-model", model);
                     }
                   }}
                   isPremium={isPremium}
@@ -2248,29 +2253,38 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <button
                   className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                   onClick={() => {
-                    if (isListening) {
+                    if (isListening && voiceInputModeRef.current === "dictation") {
                       stopVoiceInput();
-                    } else {
-                      startVoiceInput();
+                    } else if (!isListening) {
+                      startVoiceInput("dictation");
                     }
                   }}
                   aria-label={
-                    isListening ? "Stop voice input" : "Start voice input"
+                    isListening ? "Stop dictation" : "Dictate message"
                   }
                   style={{
                     padding: hasAnswer ? "4px 6px" : "4px 8px",
                     fontSize: "var(--font-md)",
-                    background: isListening ? "var(--accent)" : "transparent",
-                    color: isListening ? "white" : "inherit",
+                    background:
+                      isListening && voiceInputModeRef.current === "dictation"
+                        ? "var(--accent)"
+                        : "transparent",
+                    color:
+                      isListening && voiceInputModeRef.current === "dictation"
+                        ? "white"
+                        : "inherit",
                   }}
                 >
-                  <MicWaveIcon size={hasAnswer ? 20 : 25} active={isListening} />
+                  <MicWaveIcon
+                    size={hasAnswer ? 20 : 25}
+                    active={isListening && voiceInputModeRef.current === "dictation"}
+                  />
                 </button>
               ) : null}
             </div>
 
-            {/* Show conversation options for premium users with existing answers */}
-            {isPremium && hasAnswer && (
+            {/* New conversation — available to all; free users limited by daily query cap */}
+            {hasAnswer && (
               <div
                 style={{
                   display: "flex",
@@ -2300,23 +2314,34 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             )}
 
-            {query.trim() ? (
-              <button
-                className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
-                onClick={triggerSearchWithScroll}
-                disabled={isLoading}
-                aria-label="Search"
-                style={{
-                  padding: hasAnswer ? 6 : 8,
-                  color: "",
-                  opacity: isLoading ? 0.5 : 1,
-                  cursor: isLoading ? "not-allowed" : "pointer",
-                  marginRight: 8,
-                }}
-              >
-                {isLoading ? "…" : <FaSearch size={hasAnswer ? 16 : 20} />}
-              </button>
-            ) : speechSupported ? (
+            <button
+              type="button"
+              className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
+              onClick={triggerSearchWithScroll}
+              disabled={isLoading || !query.trim()}
+              aria-label={queryLimitReached ? "Upgrade to continue" : "Send message"}
+              title={
+                queryLimitReached
+                  ? "Daily limit reached — upgrade to continue"
+                  : query.trim()
+                    ? "Send"
+                    : "Type a message to send"
+              }
+              style={{
+                padding: hasAnswer ? 6 : 8,
+                color: queryLimitReached && query.trim() ? "var(--accent)" : "",
+                opacity: isLoading || !query.trim() ? 0.45 : 1,
+                cursor: isLoading || !query.trim() ? "not-allowed" : "pointer",
+                marginRight: 4,
+                touchAction: "manipulation",
+                WebkitTapHighlightColor: "transparent",
+                flexShrink: 0,
+              }}
+            >
+              {isLoading ? "…" : <IoIosSend size={hasAnswer ? 18 : 22} />}
+            </button>
+
+            {!query.trim() && speechSupported ? (
               <button
                 className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                 onClick={() => {
@@ -2326,11 +2351,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   } catch { }
                   setIsSpeaking(false);
                   pendingVoiceSpeakRef.current = false;
-                  localStorage.removeItem("perle-speak-next-answer");
-                  localStorage.removeItem("perle-voice-open-speak-first");
-                  localStorage.removeItem("perle-current-answer-text");
-                  localStorage.removeItem("perle-auto-listen-next");
-                  localStorage.setItem("perle-voice-session-active", "1");
+                  localStorage.removeItem("syntraiq-speak-next-answer");
+                  localStorage.removeItem("syntraiq-voice-open-speak-first");
+                  localStorage.removeItem("syntraiq-current-answer-text");
+                  localStorage.removeItem("syntraiq-auto-listen-next");
+                  localStorage.setItem("syntraiq-voice-session-active", "1");
                   setShowVoiceOverlay(true);
                 }}
                 disabled={isListening || isLoading}
@@ -2351,67 +2376,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          multiple={!toolMode}
+          multiple
           accept={
             toolMode
               ? "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml"
               : "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml,.pdf,.doc,.docx,.txt,.csv,.odt,.xls,.xlsx"
           }
           onChange={(e) => {
-            handleFileUpload(e.target.files);
-            // Reset input so same file can be selected again
-            if (e.target) {
-              e.target.value = "";
-            }
+            const input = e.target;
+            const selected = input.files ? Array.from(input.files) : [];
+            void handleFileUpload(selected).finally(() => {
+              input.value = "";
+            });
           }}
           style={{ display: "none" }}
         />
 
-        {/* Camera Modal */}
-        {isCapturing && (
-          <div
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: "rgba(0,0,0,0.8)",
-              zIndex: 10000,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              style={{
-                maxWidth: "90vw",
-                maxHeight: "60vh",
-                borderRadius: 8,
-              }}
-            />
-            <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
-              <button
-                className="btn"
-                onClick={capturePhoto}
-                style={{ padding: "12px 24px" }}
-              >
-                📸 Capture
-              </button>
-              <button
-                className="btn-ghost glass-button btn-shadow"
-                onClick={stopCameraCapture}
-                style={{ padding: "12px 24px" }}
-              >
-                ❌ Cancel
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Search History Dropdown */}
         {/* {showHistory && searchHistory.length > 0 && (
@@ -2485,6 +2465,184 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         </div>
       )} */}
       </div>
+
+      {showAttachModal === "menu" &&
+        createPortal(
+          <>
+            <div
+              ref={attachBackdropRef}
+              onMouseDown={(e) => {
+                if (e.target === attachBackdropRef.current) {
+                  closeAttachModal();
+                }
+              }}
+              style={{
+                position: "fixed",
+                inset: 0,
+                backgroundColor: "rgba(0, 0, 0, 0.45)",
+                zIndex: 100001,
+              }}
+            />
+            <div
+              role="dialog"
+              aria-label="Attach to message"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "fixed",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 100002,
+                background: "var(--bg)",
+                color: "var(--text)",
+                borderTop: "1px solid var(--border)",
+                borderRadius: "16px 16px 0 0",
+                padding: "12px 16px",
+                paddingBottom: "max(20px, env(safe-area-inset-bottom))",
+                boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.25)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 12,
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: "var(--font-sm)" }}>
+                  Attach to message
+                </div>
+                <button
+                  type="button"
+                  className="btn-ghost glass-button"
+                  onClick={closeAttachModal}
+                  aria-label="Close attach menu"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <FaTimes size={14} />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="btn-ghost glass-button w-full mb-2 flex items-center justify-start gap-3"
+                style={{ padding: "12px 14px", minHeight: 48 }}
+                onClick={() => pickAttachment("files")}
+                disabled={isListening}
+              >
+                <FaFolderOpen size={18} />
+                <span>Upload from files</span>
+              </button>
+              <button
+                type="button"
+                className="btn-ghost glass-button w-full mb-2 flex items-center justify-start gap-3"
+                style={{ padding: "12px 14px", minHeight: 48 }}
+                onClick={() => pickAttachment("image")}
+                disabled={isListening}
+              >
+                <FaImage size={18} />
+                <span>Choose image</span>
+              </button>
+              <button
+                type="button"
+                className="btn-ghost glass-button w-full flex items-center justify-start gap-3"
+                style={{ padding: "12px 14px", minHeight: 48 }}
+                onClick={() => pickAttachment("camera")}
+                disabled={isListening}
+              >
+                <FaCamera size={18} />
+                <span>Take photo</span>
+              </button>
+            </div>
+          </>,
+          document.body
+        )}
+
+      {(isCapturing || showAttachModal === "camera") &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.92)",
+              zIndex: 100003,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+            }}
+          >
+            <div
+              style={{
+                color: "#fff",
+                fontSize: "var(--font-lg)",
+                fontWeight: 600,
+                marginBottom: 16,
+              }}
+            >
+              Take a photo
+            </div>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                width: "100%",
+                maxWidth: 480,
+                maxHeight: "65vh",
+                borderRadius: 16,
+                objectFit: "cover",
+                background: "#000",
+              }}
+            />
+            <div
+              style={{
+                marginTop: 24,
+                display: "flex",
+                gap: 16,
+                width: "100%",
+                maxWidth: 480,
+              }}
+            >
+              <button
+                type="button"
+                className="btn flex-1"
+                onClick={capturePhoto}
+                style={{
+                  padding: "14px 24px",
+                  background: "var(--accent)",
+                  color: "#111",
+                }}
+              >
+                Capture
+              </button>
+              <button
+                type="button"
+                className="btn-ghost glass-button flex-1"
+                onClick={stopCameraCapture}
+                style={{
+                  padding: "14px 24px",
+                  color: "white",
+                  borderColor: "rgba(255,255,255,0.3)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 };

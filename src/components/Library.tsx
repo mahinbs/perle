@@ -43,7 +43,7 @@ export const Library: React.FC = () => {
 
   // Load saved bookmarks from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('perle-bookmarks');
+    const saved = localStorage.getItem('syntraiq-bookmarks');
     if (saved) {
       try {
         const bookmarks = JSON.parse(saved);

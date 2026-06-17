@@ -8,10 +8,18 @@ import { searchAPI } from "../utils/answerEngine";
 import { formatQuery } from "../utils/helpers";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getUserData } from "../utils/auth";
+import { getLocalItem, removeLocalItem, setLocalItem, STORAGE_KEYS } from "../utils/storage";
 import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode } from "../types";
+import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
+import {
+  hasReachedDailyQueryLimit,
+  incrementDailyQueryCount,
+  shouldEnforceQueryLimit,
+  getQueryLimitMessage,
+} from "../utils/queryLimit";
 
 export default function HomePage() {
-  const { state: currentData } = useRouterNavigation();
+  const { state: currentData, navigateTo } = useRouterNavigation();
   const [mode, setMode] = useState<Mode>("Ask");
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
   const [hasSelectedMode, setHasSelectedMode] = useState(false);
@@ -35,15 +43,73 @@ export default function HomePage() {
   const lastLoadedConversationIdRef = useRef<string | null>(null); // Track which conversation was loaded from sidebar
   const answerCardRef = useRef<HTMLDivElement>(null);
   const loadingCardRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pendingAutoScrollRef = useRef(false);
+  const lastSearchedKeyRef = useRef<string>("");
   const lastSearchedQueryRef = useRef<string>("");
+  const experienceModeRef = useRef<ExperienceMode>(experienceMode);
   const isSearchingRef = useRef<boolean>(false);
   const queryRef = useRef<string>(""); // Keep query in ref to avoid stale closures
+  const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
+
+  const queryLimitReached =
+    shouldEnforceQueryLimit() && hasReachedDailyQueryLimit();
+
+  const goToSubscriptionForLimit = useCallback(() => {
+    navigateTo("/subscription", {
+      limitReached: true,
+      message: getQueryLimitMessage(),
+    });
+  }, [navigateTo]);
+
+  // Restore home chat when returning from subscription (or other routes)
+  useEffect(() => {
+    const raw = sessionStorage.getItem(STORAGE_KEYS.homeChatSession);
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as {
+        conversationHistory?: AnswerResult[];
+        answer?: AnswerResult | null;
+        activeConversationId?: string | null;
+        searchedQuery?: string;
+      };
+      if (saved.conversationHistory && saved.conversationHistory.length > 0) {
+        setConversationHistory(saved.conversationHistory);
+        setAnswer(saved.answer ?? null);
+        if (saved.activeConversationId) {
+          setActiveConversationId(saved.activeConversationId);
+        }
+        if (saved.searchedQuery) {
+          setSearchedQuery(saved.searchedQuery);
+        }
+      }
+    } catch {
+      sessionStorage.removeItem(STORAGE_KEYS.homeChatSession);
+    }
+  }, []);
+
+  // Persist chat so subscription redirect does not wipe the conversation
+  useEffect(() => {
+    if (conversationHistory.length === 0 && !answer) {
+      sessionStorage.removeItem(STORAGE_KEYS.homeChatSession);
+      return;
+    }
+    sessionStorage.setItem(
+      STORAGE_KEYS.homeChatSession,
+      JSON.stringify({
+        conversationHistory,
+        answer,
+        activeConversationId,
+        searchedQuery,
+      })
+    );
+  }, [conversationHistory, answer, activeConversationId, searchedQuery]);
 
   // Load user premium status on mount and when user data changes
   useEffect(() => {
     // Load saved model preference from localStorage
-    const savedModel = localStorage.getItem(
-      "perle-selected-model"
+    const savedModel = getLocalItem(
+      STORAGE_KEYS.selectedModel
     ) as LLMModel | null;
 
     const updatePremiumStatus = (isInitialLoad = false) => {
@@ -78,7 +144,7 @@ export default function HomePage() {
 
     // Listen for storage changes (when user logs in/out or premium status changes)
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "perle-user-data") {
+      if (e.key === STORAGE_KEYS.userData || e.key === "perle-user-data") {
         const user = getUserData();
         if (user) {
           const premium = user.isPremium ?? false;
@@ -101,8 +167,8 @@ export default function HomePage() {
     // Also check periodically (for same-tab updates) - but don't reset model
     const interval = setInterval(() => {
       const user = getUserData();
-      const currentModel = localStorage.getItem(
-        "perle-selected-model"
+      const currentModel = getLocalItem(
+        STORAGE_KEYS.selectedModel
       ) as LLMModel | null;
       if (user) {
         const premium = user.isPremium ?? false;
@@ -137,16 +203,15 @@ export default function HomePage() {
   // Save model selection to localStorage when it changes (for premium users)
   useEffect(() => {
     if (isPremium && selectedModel !== "auto") {
-      localStorage.setItem("perle-selected-model", selectedModel);
+      setLocalItem(STORAGE_KEYS.selectedModel, selectedModel);
     } else if (isPremium && selectedModel === "auto") {
-      // Remove saved preference if user selects 'auto' (use default)
-      localStorage.removeItem("perle-selected-model");
+      removeLocalItem(STORAGE_KEYS.selectedModel);
     }
   }, [selectedModel, isPremium]);
 
   // Load search history from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem("perle-search-history");
+    const saved = getLocalItem(STORAGE_KEYS.searchHistory);
     if (saved) {
       try {
         setSearchHistory(JSON.parse(saved));
@@ -177,6 +242,22 @@ export default function HomePage() {
   }, [currentData]);
 
   // Save search history to localStorage
+  const appendConversationAnswer = useCallback(
+    (prev: AnswerResult[], item: AnswerResult): AnswerResult[] => {
+      if (prev.length === 0) return [item];
+      const last = prev[prev.length - 1];
+      // Replace back-to-back duplicate entries (same query within 10s)
+      if (
+        last.query === item.query &&
+        Math.abs((last.timestamp ?? 0) - (item.timestamp ?? 0)) < 10000
+      ) {
+        return [...prev.slice(0, -1), item];
+      }
+      return [...prev, item];
+    },
+    []
+  );
+
   const saveToHistory = useCallback((newQuery: string) => {
     const formatted = formatQuery(newQuery);
     if (!formatted) return;
@@ -186,7 +267,7 @@ export default function HomePage() {
         0,
         10
       );
-      localStorage.setItem("perle-search-history", JSON.stringify(updated));
+      setLocalItem(STORAGE_KEYS.searchHistory, JSON.stringify(updated));
       return updated;
     });
   }, []);
@@ -196,15 +277,33 @@ export default function HomePage() {
     queryRef.current = query;
   }, [query]);
 
+  useEffect(() => {
+    experienceModeRef.current = experienceMode;
+  }, [experienceMode]);
+
+  // Allow re-searching the same query when experience mode changes
+  useEffect(() => {
+    lastSearchedKeyRef.current = "";
+  }, [experienceMode]);
+
   const doSearch = useCallback(
     async (searchQuery?: string) => {
       // Use the provided searchQuery or get current query from ref (avoids stale closure)
       const currentQuery = searchQuery || queryRef.current;
       const q = formatQuery(currentQuery);
+      if (q && /\b(sleep disorder|sleep disorders|insomnia|can't sleep|cannot sleep|trouble sleeping)\b/i.test(q)) {
+        navigateTo("/sleep-disorders");
+        return;
+      }
       if (!q) {
         setAnswer(null);
         setSearchedQuery("");
-        lastSearchedQueryRef.current = "";
+        lastSearchedKeyRef.current = "";
+        return;
+      }
+
+      if (shouldEnforceQueryLimit() && hasReachedDailyQueryLimit()) {
+        goToSubscriptionForLimit();
         return;
       }
 
@@ -213,14 +312,15 @@ export default function HomePage() {
         return;
       }
 
-      // Prevent duplicate searches if this is the same query as the last one
       const finalQuery = searchQuery || queryRef.current;
-      if (finalQuery === lastSearchedQueryRef.current) {
-        return; // Don't search again if it's the same query
+      const activeExperienceMode = experienceModeRef.current;
+      const searchKey = `${activeExperienceMode}:${finalQuery}`;
+      if (searchKey === lastSearchedKeyRef.current) {
+        return;
       }
 
-      // Mark as searching and store the query
       isSearchingRef.current = true;
+      lastSearchedKeyRef.current = searchKey;
       lastSearchedQueryRef.current = finalQuery;
 
       // Capture current files to process for this search
@@ -230,8 +330,14 @@ export default function HomePage() {
       // Clear input immediately so they move to "Loading" state visually
       setUploadedFiles([]);
 
+      // Scroll so the newly started exchange begins near the top.
+      pendingAutoScrollRef.current = true;
       setIsLoading(true);
       saveToHistory(q);
+
+      if (shouldEnforceQueryLimit()) {
+        incrementDailyQueryCount();
+      }
 
       // Update both query (for editing) and searchedQuery (for display)
       setQuery(finalQuery);
@@ -272,11 +378,11 @@ export default function HomePage() {
             { role: "assistant" as const, content: item.chunks.map((c) => c.text).join("\n\n") },
           ]);
         const backendMode: Mode =
-          experienceMode === "normal" ? "Ask" : "Research";
+          activeExperienceMode === "normal" ? "Ask" : "Research";
         const backendSearchType: 'auto' | 'instant' | 'deep' =
-          experienceMode === "normal"
+          activeExperienceMode === "normal"
             ? "auto"
-            : experienceMode === "web_search"
+            : activeExperienceMode === "web_search"
             ? "instant"
             : "deep";
         const isExaShortcutModel =
@@ -342,29 +448,16 @@ export default function HomePage() {
           attachments: filesToProcess.length > 0 ? filesToProcess : undefined
         };
 
-        setAnswer(answerWithAttachments);
-
         // Update history with the answer containing attachments
         if (newConversation) {
           setConversationHistory([answerWithAttachments]);
         } else {
-          // We need to replace the last added item if we want to include attachments, 
-          // but doSearch adds raw 'res'. Let's fix history.
-          setConversationHistory((prev) => {
-            const newHistory = [...prev];
-            // The last item was just added via setConversationHistory above?
-            // No, React state updates are batched/async. 
-            // We should modify how we update history.
-            return newHistory;
-          });
-
-          // Actually, let's redo the history update logic cleanly
-          setConversationHistory(prev => {
-            const newHistory = newConversation ? [] : [...prev];
-            newHistory.push(answerWithAttachments);
-            return newHistory;
-          });
+          setConversationHistory((prev) =>
+            appendConversationAnswer(prev, answerWithAttachments)
+          );
         }
+
+        setAnswer(answerWithAttachments);
 
         // Start clearing files after successful search initiation
         // setUploadedFiles([]); // Handled at start
@@ -396,7 +489,9 @@ export default function HomePage() {
           setConversationHistory([errorAnswer]);
           setNewConversation(false);
         } else {
-          setConversationHistory((prev) => [...prev, errorAnswer]);
+          setConversationHistory((prev) =>
+            appendConversationAnswer(prev, errorAnswer)
+          );
         }
 
         setAnswer(errorAnswer);
@@ -407,7 +502,7 @@ export default function HomePage() {
       // Removed 'query' from dependencies to prevent re-creation on every query change
       // The function uses query from closure, which is fine since we pass it explicitly when needed
     },
-    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode]
+    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode, navigateTo, appendConversationAnswer, goToSubscriptionForLimit]
   );
 
   // Handle keyboard shortcuts
@@ -417,7 +512,9 @@ export default function HomePage() {
         switch (e.key) {
           case "k":
             e.preventDefault();
-            document.querySelector("input")?.focus();
+            document
+              .querySelector<HTMLTextAreaElement>("textarea.search-input-scrollbar")
+              ?.focus();
             break;
           case "Enter":
             e.preventDefault();
@@ -495,29 +592,21 @@ export default function HomePage() {
   }, []);
 
   const scrollToLoadingCard = useCallback(() => {
-    // Delay so the loading card ("IQ is thinking...") has time to render
-    const scrollToTarget = () => {
-      loadingCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    };
     requestAnimationFrame(() => {
-      setTimeout(scrollToTarget, 150);
+      loadingCardRef.current?.scrollIntoView({
+        block: "start",
+        behavior: "smooth",
+      });
     });
   }, []);
 
-  // Auto-scroll to AnswerCard when answer is received
-  // Commented out - prevents scrolling to top when answer is received
-  // useEffect(() => {
-  //   if (answer && !isLoading && answerCardRef.current) {
-  //     // Small delay to ensure the answer is rendered
-  //     setTimeout(() => {
-  //       answerCardRef.current?.scrollIntoView({
-  //         behavior: 'smooth',
-  //         block: 'start',
-  //         inline: 'nearest'
-  //       });
-  //     }, 100);
-  //   }
-  // }, [answer, isLoading]);
+  // ChatGPT-style UX: scroll once when a new exchange starts.
+  useEffect(() => {
+    if (!isLoading) return;
+    if (!pendingAutoScrollRef.current) return;
+    pendingAutoScrollRef.current = false;
+    scrollToLoadingCard();
+  }, [isLoading, scrollToLoadingCard]);
 
   // Load specific conversation (no animations)
   const loadConversation = useCallback(async (conversationId: string) => {
@@ -571,16 +660,22 @@ export default function HomePage() {
 
   // Handle new conversation
   const handleNewConversation = useCallback(() => {
+    if (shouldEnforceQueryLimit() && hasReachedDailyQueryLimit()) {
+      goToSubscriptionForLimit();
+      return;
+    }
+
     console.log(`🆕 NEW CHAT CLICKED - Clearing activeConversationId`);
+    sessionStorage.removeItem(STORAGE_KEYS.homeChatSession);
     setActiveConversationId(null);
-    lastLoadedConversationIdRef.current = null; // Clear the loaded conversation ref
+    lastLoadedConversationIdRef.current = null;
     setNewConversation(true);
     setAnswer(null);
     setConversationHistory([]);
     setSearchedQuery("");
     setQuery("");
-    setIsSidebarOpen(false); // Close sidebar on mobile
-  }, []);
+    setIsSidebarOpen(false);
+  }, [navigateTo, goToSubscriptionForLimit]);
 
   // Handle conversation deletion
   const handleDeleteConversation = useCallback((conversationId: string) => {
@@ -620,6 +715,10 @@ export default function HomePage() {
 
   return (
     <>
+      {/* AI Data Consent Modal — shown once before first AI interaction */}
+      {showConsentModal && (
+        <AIDataConsentModal onAccept={() => setShowConsentModal(false)} />
+      )}
       {/* Conversation Sidebar */}
       <ConversationSidebar
         activeConversationId={activeConversationId}
@@ -642,12 +741,14 @@ export default function HomePage() {
         </div>
 
         <div className="relative z-10 flex flex-col justify-start h-full min-h-0">
-          <Header />
+          <Header onOpenSidebar={() => setIsSidebarOpen(true)} />
 
-          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col">
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col"
+          >
           <div className="spacer-4" />
           <div ref={answerCardRef}>
-            {/* Render all answers in conversation history */}
             {conversationHistory.map((prevAnswer, index) => {
               // Determine if this conversation was loaded from sidebar
               // If activeConversationId matches lastLoadedConversationIdRef (and isn't null), all items are from old conversation
@@ -682,7 +783,7 @@ export default function HomePage() {
                     skipTypewriter={shouldSkipTypewriter}
                     attachments={prevAnswer.attachments}
                     generatedMedia={prevAnswer.generatedMedia}
-                    hideSources={experienceMode === "normal"}
+                    hideSources={false}
                     onQueryEdit={(editedQuery) => {
                       setQuery(editedQuery);
                       doSearch(editedQuery);
@@ -699,32 +800,35 @@ export default function HomePage() {
               );
             })}
 
-            {/* Show current answer only if loading (it will be added to history when complete) */}
             {isLoading && (
-              <div ref={loadingCardRef}>
-              <AnswerCard
-                chunks={[]}
-                sources={[]}
-                suggestedQuestions={[]}
-                isLoading={true}
-                mode={mode}
-                query={searchedQuery}
-                onQueryEdit={(editedQuery) => {
-                  setQuery(editedQuery);
-                  doSearch(editedQuery);
-                }}
-                onSearch={(searchQuery, searchMode) => {
-                  if (searchMode) {
-                    setMode(searchMode);
-                  }
-                  setQuery(searchQuery);
-                  doSearch(searchQuery);
-                }}
-                attachments={currentUploadedFiles}
-                hideSources={experienceMode === "normal"}
-              />
+              <div
+                ref={loadingCardRef}
+                style={{ scrollMarginTop: 90 }}
+              >
+                <AnswerCard
+                  chunks={[]}
+                  sources={[]}
+                  suggestedQuestions={[]}
+                  isLoading={true}
+                  mode={mode}
+                  query={searchedQuery}
+                  onQueryEdit={(editedQuery) => {
+                    setQuery(editedQuery);
+                    doSearch(editedQuery);
+                  }}
+                  onSearch={(searchQuery, searchMode) => {
+                    if (searchMode) {
+                      setMode(searchMode);
+                    }
+                    setQuery(searchQuery);
+                    doSearch(searchQuery);
+                  }}
+                  attachments={currentUploadedFiles}
+                  hideSources={false}
+                />
               </div>
             )}
+
           </div>
           <div className="spacer-12" />
           </div>
@@ -743,7 +847,9 @@ export default function HomePage() {
             onModelChange={setSelectedModel}
             uploadedFiles={uploadedFiles}
             onFilesChange={setUploadedFiles}
-            hasAnswer={!!answer && !isLoading}
+            hasAnswer={
+              !isLoading && (!!answer || conversationHistory.length > 0)
+            }
             answer={answer}
             currentAnswerText={
               (answer?.chunks?.map((c) => c.text).join(" ").trim()) ||
@@ -766,7 +872,9 @@ export default function HomePage() {
               }
               setExperienceMode(mode);
             }}
-            showModelSelector={true}
+            showModelSelector={isPremium}
+            queryLimitReached={queryLimitReached}
+            onQueryLimitReached={goToSubscriptionForLimit}
           />
         </div>
         {/* <div className="spacer-16" />

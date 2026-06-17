@@ -50,9 +50,11 @@ function stripMarkdown(text: string): string {
   return text.trim();
 }
 
-function chunkTextToAnswer(text: string, sources: Source[]): AnswerResult['chunks'] {
-  // Strip markdown before returning
-  const cleanText = stripMarkdown(text);
+function chunkTextToAnswer(text: string, sources: Source[], chatMode: ChatMode = 'normal'): AnswerResult['chunks'] {
+  const cleanText =
+    chatMode === 'ai_friend' || chatMode === 'ai_psychologist'
+      ? stripMarkdown(text)
+      : text.trim();
   // Return single chunk with full text instead of splitting into sentences
   return [{
     text: cleanText,
@@ -114,6 +116,23 @@ function getEffectiveTokenLimit(mode: Mode, detailedContinuation: boolean): numb
   if (!detailedContinuation) return base;
   // Allow deeper expansion for "explain in detail" style follow-ups.
   return Math.min(Math.round(base * 1.8), 7000);
+}
+
+function buildNormalModePrompt(
+  mode: Mode,
+  query: string,
+  conversationHistory: Array<{ role: string; content: string }>,
+  contextPrefix = ''
+): string {
+  const detailedFollowUp =
+    isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
+  if (detailedFollowUp) {
+    return `${contextPrefix}Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`;
+  }
+  if (mode === 'Compare') {
+    return `${contextPrefix}Mode: Compare\nQuery: ${query}\nProvide a comparison answer. Start with a brief 1-2 sentence overview, then you MUST present the main comparison as a markdown table using pipe syntax, for example:\n| Aspect | Option A | Option B |\n| --- | --- | --- |\n| Speed | ... | ... |\n| Price | ... | ... |\nUse a header row, a |---|---| separator row, and at least 4 comparison rows. Do not use only bullet points for the core comparison. After the table, you may add 2-3 short takeaway bullets.`;
+  }
+  return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nAnswer with a # title, ## section headings, **bold** key terms, and • bullet points.`;
 }
 
 // Get current date in a readable format
@@ -381,6 +400,32 @@ function resolveExaSearchType(mode: Mode, override?: ExaSearchType): ExaSearchTy
   return 'auto';
 }
 
+function shouldPerformWebSearch(
+  query: string,
+  mode: Mode,
+  searchType: ExaSearchType | undefined,
+  chatMode: ChatMode,
+  conversationHistory: ConversationMessage[]
+): boolean {
+  if (chatMode === 'ai_psychologist') return false;
+  // User explicitly chose Web or Deep mode — always run web search
+  if (searchType === 'instant' || searchType === 'deep') return true;
+  if (mode === 'Research') return true;
+  if (isSmallTalkQuery(query)) return false;
+
+  const continuationFollowUp = isContinuationFollowUpQuery(query);
+  const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
+  const continuationMode = continuationFollowUp || contextLinkedFollowUp;
+  const explicitWebSearch = isExplicitWebSearchRequest(query);
+
+  return (
+    explicitWebSearch ||
+    requiresCurrentInfo(query) ||
+    isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
+    continuationMode
+  );
+}
+
 function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
   const cleaned = query.replace(/\s+/g, ' ').trim();
   const shortTopic = cleaned.length > 70 ? `${cleaned.slice(0, 70)}...` : cleaned;
@@ -415,10 +460,29 @@ function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
     ];
   }
 
+  const topicWords = cleaned.split(/\s+/).filter((w) => w.length > 2).slice(0, 4);
+  const topicHint = topicWords.length > 0 ? topicWords.join(' ') : shortTopic;
+
+  if (/\b(ai|artificial intelligence|machine learning|ml)\b/i.test(cleaned)) {
+    return [
+      'What are the main types of machine learning and how do they differ?',
+      'Which industries are seeing the biggest impact from AI right now?',
+      'What skills should someone learn to work with AI tools effectively?',
+    ];
+  }
+
+  if (/\b(sleep|insomnia|sleep disorder)\b/i.test(cleaned)) {
+    return [
+      'What lifestyle habits most improve sleep quality within a few weeks?',
+      'When should someone see a doctor about chronic sleep problems?',
+      'How do stress and screen time affect sleep cycles?',
+    ];
+  }
+
   return [
-    `Do you want a concise summary of "${shortTopic}" first?`,
-    `Should I explain "${shortTopic}" in deeper detail with examples?`,
-    `Want a practical checklist or next steps for "${shortTopic}"?`,
+    `What are the key causes behind ${topicHint}?`,
+    `How does ${topicHint} compare to common alternatives or approaches?`,
+    `What practical steps can someone take to get started with ${topicHint}?`,
   ];
 }
 
@@ -471,6 +535,8 @@ function getSystemPrompt(
       if (friendDescription && friendName) {
         return `You are ${friendName}, a friend having a casual conversation. ${friendDescription}
 
+GROUP CHAT IDENTITY (CRITICAL): You are ONLY ${friendName}. Never speak as or on behalf of any other friend. Do not use another friend's name as if you are them. Address the user naturally without guessing or stating their name unless they explicitly shared it.
+
 Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.
 
 IMPORTANT: When asked about time, date, current events, or prices, prioritize the USER LOCAL CONTEXT. If unavailable, fallback to IST and INR.${memoryContextBlock}${spaceContext}${dateContext}${userLocalContext}`;
@@ -495,16 +561,19 @@ IMPORTANT: When asked about time, date, current events, or prices, prioritize th
       return `You are SyntraIQ, an AI-powered answer engine like Perplexity AI. 
 
 CRITICAL FORMATTING RULES (YOU MUST FOLLOW):
-• Start with a brief 1-2 sentence overview
-• Include 1-2 relevant emojis at the start of section headings and titles (e.g. 💉💊🧪 for health/medical, 🏏🏑🎾 for sports, 📊📈 for finance, 🔬🧪 for science, 💡📚 for education, 🌍 for environment, etc.)
-• Put emojis right before headings to make answers scannable (e.g. "💉 Key Health Benefits:" or "📊 Market Overview:")
-• Then ALWAYS use bullet points (•) to break down information
-• Use "•" for main points
-• Use "  - " for sub-points
+• Start with a clear title using markdown: "# Topic Title" (one title per answer, plain text only — e.g. "# Best Medicines for Impetigo")
+• After the title, write a brief 1-2 sentence overview paragraph (plain text, no bullets)
+• Use "## Section Heading" for each major section (plain text only — e.g. "## Topical Antibiotics (First-Line)")
+• Use "### Subsection" only when a section needs a smaller heading inside it
+• Use bullet points with "•" for lists
+• **Bold** key terms, names, drug names, product names, and important phrases inside bullets and paragraphs using **double asterisks**
+• Use "  - " for nested sub-points under a bullet
 • For steps or rankings, use "1.", "2.", "3." format
-• Keep each point concise (1-2 lines max)
-• Add line breaks between sections for readability
-• NO markdown (no ##, no **, no code blocks)
+• Separate major sections with a blank line; for long answers you may add "---" on its own line between sections
+• Keep each bullet concise (1-2 lines max)
+• Put citations inline as [1], [2] — never write source(1)
+• Use markdown structure (#, ##, **bold**) — do NOT use code blocks unless showing code
+• Do NOT use emojis, icons, or decorative symbols anywhere in the answer — keep formatting clean and professional
 
 MATHEMATICAL FORMULAS (CRITICAL):
 • When writing mathematical formulas, ALWAYS use LaTeX format
@@ -526,19 +595,28 @@ MATHEMATICAL FORMULAS (CRITICAL):
 • DO NOT write formulas in plain text like "m1u1" - use \\(m_1 u_1\\) instead
 
 Example format:
-"Brief overview sentence here.
+"# Understanding Artificial Intelligence
 
-🔬 Main topic:
-• First key point here
-• Second key point with formula \\(E = \\frac{1}{2}mv^2\\)
-• Third key point here
+Artificial intelligence enables machines to perform tasks that typically require human intelligence.
 
-📐 Important equation:
-\\[\\sum \\mathbf{P}_{initial} = \\sum \\mathbf{P}_{final}\\]
+## What Is AI
 
-📌 Additional context:
-• Another point
-• Final point"
+• **Machine learning** — Systems that learn patterns from data [1]
+• **Deep learning** — Neural networks with many layers for complex tasks
+  - Used in image recognition and language models
+
+## How AI Works
+
+• **Data input** — Raw information is collected and prepared
+• **Training** — Models learn from examples using algorithms like \\(gradient\\ descent\\)
+• **Inference** — The trained model makes predictions on new data
+
+---
+
+## Key Takeaways
+
+• AI combines data, algorithms, and compute power
+• Applications span healthcare, finance, education, and more"
 
 IMPORTANT: 
 • ONLY introduce yourself as "SyntraIQ" when EXPLICITLY asked (e.g., "what is SyntraIQ", "who are you", "tell me about yourself")
@@ -564,7 +642,7 @@ export async function generateOpenAIAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -584,7 +662,7 @@ export async function generateOpenAIAnswer(
     
     return {
       sources,
-      chunks: chunkTextToAnswer(perleInfo, sources),
+      chunks: chunkTextToAnswer(perleInfo, sources, chatMode),
       query,
       mode,
       timestamp: Date.now()
@@ -604,18 +682,9 @@ export async function generateOpenAIAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
-  const explicitWebSearch = isExplicitWebSearchRequest(query);
-  const shouldWebSearch =
-    chatMode !== 'ai_psychologist' &&
-    !isSmallTalkQuery(query) &&
-    (
-      explicitWebSearch ||
-      requiresCurrentInfo(query) ||
-      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
-      continuationMode
-    );
+  const shouldWebSearch = shouldPerformWebSearch(query, mode, searchType, chatMode, conversationHistory);
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing web search...');
+    console.log('🌐 Performing web search (mode/searchType triggered)...');
     const exaKey = process.env.EXA_API_KEY || '';
     if (exaKey) {
       webSearchResults = await searchWithExa(
@@ -674,24 +743,23 @@ export async function generateOpenAIAnswer(
     // For friend/psychologist mode, just send the message naturally
     prompt = query;
   } else {
-    // For normal mode, include mode context for structured answers
-    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
-    prompt = detailedFollowUp
-      ? `Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
-      : `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    prompt = buildNormalModePrompt(mode, query, conversationHistory);
   }
   
-  // Build user message content (text + optional image)
-  if (imageDataUrl) {
-    // OpenAI vision format: content is an array of objects
+  // Build user message content (text + optional images)
+  if (imageDataUrls && imageDataUrls.length > 0) {
+    const imageParts = imageDataUrls
+      .filter((url) => url.startsWith('data:image/'))
+      .map((url) => ({ type: 'image_url' as const, image_url: { url } }));
+
     messages.push({
       role: 'user',
       content: [
         { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: imageDataUrl } }
+        ...imageParts,
       ]
     });
-    console.log(`📷 Added image to OpenAI request`);
+    console.log(`📷 Added ${imageParts.length} image(s) to OpenAI request`);
   } else {
     // Regular text message
     messages.push({ role: 'user', content: prompt });
@@ -760,7 +828,7 @@ export async function generateOpenAIAnswer(
 
   return {
     sources,
-    chunks: chunkTextToAnswer(content, sources),
+    chunks: chunkTextToAnswer(content, sources, chatMode),
     query,
     mode,
     timestamp: Date.now(),
@@ -781,7 +849,7 @@ export async function generateGeminiAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -809,6 +877,14 @@ export async function generateGeminiAnswer(
     geminiModel = 'gemini-2.5-flash-lite'; // Cheapest option (cost-optimized for free tier)
   }
 
+  // gemini-2.5-flash-lite has limited multimodal support — it doesn't reliably handle
+  // image OR document inline_data. Upgrade to gemini-2.0-flash whenever ANY file is attached.
+  const hasAnyAttachment = (imageDataUrls?.length ?? 0) > 0;
+  if (hasAnyAttachment && geminiModel === 'gemini-2.5-flash-lite') {
+    geminiModel = 'gemini-2.0-flash';
+    console.log(`📎 File(s) attached — upgrading model to gemini-2.0-flash for multimodal support`);
+  }
+
   // Check if this is a self-referential query about the AI
   if (isSelfReferentialQuery(query)) {
     const perleInfo = getSyntraIQInfoResponse();
@@ -825,7 +901,7 @@ export async function generateGeminiAnswer(
     
     return {
       sources,
-      chunks: chunkTextToAnswer(perleInfo, sources),
+      chunks: chunkTextToAnswer(perleInfo, sources, chatMode),
       query,
       mode,
       timestamp: Date.now()
@@ -841,18 +917,9 @@ export async function generateGeminiAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
-  const explicitWebSearch = isExplicitWebSearchRequest(query);
-  const shouldWebSearch =
-    chatMode !== 'ai_psychologist' &&
-    !isSmallTalkQuery(query) &&
-    (
-      explicitWebSearch ||
-      requiresCurrentInfo(query) ||
-      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
-      continuationMode
-    );
+  const shouldWebSearch = shouldPerformWebSearch(query, mode, searchType, chatMode, conversationHistory);
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing web search...');
+    console.log('🌐 Performing web search (mode/searchType triggered)...');
     const exaKey = process.env.EXA_API_KEY || '';
     if (exaKey) {
       webSearchResults = await searchWithExa(
@@ -907,24 +974,21 @@ export async function generateGeminiAnswer(
     // For friend/psychologist mode, just send the message naturally with conversation context
     prompt = `${contextPrompt}${query}`;
   } else {
-    // For normal mode, include mode context for structured answers
-    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
-    prompt = detailedFollowUp
-      ? `${contextPrompt}Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
-      : `${contextPrompt}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    prompt = buildNormalModePrompt(mode, query, conversationHistory, contextPrompt);
   }
 
   const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0);
   const maxOutputTokens = Math.min(tokenLimit, 8192); // Gemini supports up to 8192 tokens, use full limit to prevent truncation
   
-  // Build parts array (text + optional image)
+  // Build parts array (text + optional attachments)
   const parts: any[] = [{ text: `${sys}\n\n${prompt}` }];
   
-  // Add image or document if provided
-  if (imageDataUrl) {
-    // Extract base64 data and mime type from data URL
-    const matches = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (matches) {
+  // Add images or documents if provided
+  if (imageDataUrls && imageDataUrls.length > 0) {
+    for (const imageDataUrl of imageDataUrls) {
+      const matches = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) continue;
+
       const [, mimeType, base64Data] = matches;
       
       // Check if it's an image or document
@@ -965,18 +1029,20 @@ export async function generateGeminiAnswer(
     }
   }
   
+  // Use a longer timeout when any file is attached — images/PDFs need more processing time.
+  const requestTimeout = hasAnyAttachment ? 60_000 : 25_000;
+
   const result = await withTimeout(
     modelInstance.generateContent({
       contents: [{ role: 'user', parts: parts }],
       generationConfig: {
         maxOutputTokens: maxOutputTokens,
         temperature: 0.3,
-        // SPEED OPTIMIZATIONS:
-        topP: 0.9, // Slightly restrict for faster generation
-        topK: 40, // Limit candidate tokens for speed
+        topP: 0.9,
+        topK: 40,
       }
     }),
-    25_000 // 25s timeout - reduced for faster responses (Gemini Flash is fast!)
+    requestTimeout
   ) as any;
 
   const response = result.response;
@@ -1054,7 +1120,7 @@ export async function generateGeminiAnswer(
 
   return {
     sources,
-    chunks: chunkTextToAnswer(content, sources),
+    chunks: chunkTextToAnswer(content, sources, chatMode),
     query,
     mode,
     timestamp: Date.now(),
@@ -1074,7 +1140,7 @@ export async function generateClaudeAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -1094,7 +1160,7 @@ export async function generateClaudeAnswer(
     
     return {
       sources,
-      chunks: chunkTextToAnswer(syntraiqInfo, sources),
+      chunks: chunkTextToAnswer(syntraiqInfo, sources, chatMode),
       query,
       mode,
       timestamp: Date.now()
@@ -1114,18 +1180,9 @@ export async function generateClaudeAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
-  const explicitWebSearch = isExplicitWebSearchRequest(query);
-  const shouldWebSearch =
-    chatMode !== 'ai_psychologist' &&
-    !isSmallTalkQuery(query) &&
-    (
-      explicitWebSearch ||
-      requiresCurrentInfo(query) ||
-      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
-      continuationMode
-    );
+  const shouldWebSearch = shouldPerformWebSearch(query, mode, searchType, chatMode, conversationHistory);
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing web search for Claude...');
+    console.log('🌐 Performing web search for Claude...');
     const exaKey = process.env.EXA_API_KEY || '';
     if (exaKey) {
       webSearchResults = await searchWithExa(
@@ -1187,11 +1244,7 @@ export async function generateClaudeAnswer(
     // For friend/psychologist mode, just send the message naturally
     prompt = query;
   } else {
-    // For normal mode, include mode context for structured answers
-    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
-    prompt = detailedFollowUp
-      ? `Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
-      : `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    prompt = buildNormalModePrompt(mode, query, conversationHistory);
   }
   messages.push({ role: 'user', content: prompt });
 
@@ -1260,7 +1313,7 @@ export async function generateClaudeAnswer(
 
   return {
     sources,
-    chunks: chunkTextToAnswer(content, sources),
+    chunks: chunkTextToAnswer(content, sources, chatMode),
     query,
     mode,
     timestamp: Date.now(),
@@ -1280,7 +1333,7 @@ export async function generateGrokAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -1300,7 +1353,7 @@ export async function generateGrokAnswer(
     
     return {
       sources,
-      chunks: chunkTextToAnswer(perleInfo, sources),
+      chunks: chunkTextToAnswer(perleInfo, sources, chatMode),
       query,
       mode,
       timestamp: Date.now()
@@ -1325,18 +1378,9 @@ export async function generateGrokAnswer(
   const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
   const continuationMode = continuationFollowUp || contextLinkedFollowUp;
   const searchQuery = buildFollowUpSearchQuery(query, conversationHistory);
-  const explicitWebSearch = isExplicitWebSearchRequest(query);
-  const shouldWebSearch =
-    chatMode !== 'ai_psychologist' &&
-    !isSmallTalkQuery(query) &&
-    (
-      explicitWebSearch ||
-      requiresCurrentInfo(query) ||
-      isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
-      continuationMode
-    );
+  const shouldWebSearch = shouldPerformWebSearch(query, mode, searchType, chatMode, conversationHistory);
   if (shouldWebSearch) {
-    console.log('🌐 Query requires current info - performing Grok web search...');
+    console.log('🌐 Performing Grok web search...');
     const exaKey = process.env.EXA_API_KEY || '';
     if (exaKey) {
       webSearchResults = await searchWithExa(
@@ -1401,11 +1445,7 @@ export async function generateGrokAnswer(
     // For friend/psychologist mode, just send the message naturally
     prompt = query;
   } else {
-    // For normal mode, include mode context for structured answers
-    const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
-    prompt = detailedFollowUp
-      ? `Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`
-      : `Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+    prompt = buildNormalModePrompt(mode, query, conversationHistory);
   }
   messages.push({ role: 'user', content: prompt });
 
@@ -1500,7 +1540,7 @@ export async function generateGrokAnswer(
 
   return {
     sources,
-    chunks: chunkTextToAnswer(content, sources),
+    chunks: chunkTextToAnswer(content, sources, chatMode),
     query,
     mode,
     timestamp: Date.now(),
@@ -1521,7 +1561,7 @@ export async function generateAIAnswer(
   friendMemoryContext?: string | null,
   spaceTitle?: string | null,
   spaceDescription?: string | null,
-  imageDataUrl?: string,
+  imageDataUrls?: string[],
   userContext?: UserLocalContext,
   searchType?: ExaSearchType
 ): Promise<AnswerResult> {
@@ -1529,17 +1569,17 @@ export async function generateAIAnswer(
   let result: AnswerResult;
   
   if (model === 'gpt-5' || model === 'gpt-5.1' || model === 'gpt-5.2' || model === 'gpt-5.3' || model === 'gpt-4o' || model === 'gpt-4o-mini' || model === 'gpt-4-turbo' || model === 'gpt-4' || model === 'gpt-3.5-turbo') {
-    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateOpenAIAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   } else if (model === 'gemini-2.0-latest' || model === 'gemini-3.0' || model === 'gemini-3.1' || model === 'gemini-3.1-flash' || model === 'gemini-lite' || model === 'auto') {
     // 'auto' also uses Gemini Lite
-    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateGeminiAnswer(query, mode, model === 'auto' ? 'gemini-lite' : model, isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   } else if (model === 'claude-4.6-sonnet' || model === 'claude-4.6-opus' || model === 'claude-4.5-sonnet' || model === 'claude-4.5-opus' || model === 'claude-4.5-haiku' || model === 'claude-4-sonnet' || model === 'claude-4-opus' || model === 'claude-4.1-opus' || model === 'claude-3-haiku') {
-    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateClaudeAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   } else if (model === 'grok-3' || model === 'grok-3-mini' /* || model === 'grok-4' */ || model === 'grok-4-heavy' || model === 'grok-4-fast' || model === 'grok-code-fast-1' || model === 'grok-beta') {
-    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateGrokAnswer(query, mode, model, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   } else {
     // Fallback to Gemini Lite for unknown models
-    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrl, userContext, searchType);
+    result = await generateGeminiAnswer(query, mode, 'gemini-lite', isPremium, conversationHistory, chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, imageDataUrls, userContext, searchType);
   }
   
   // Add image generation for normal mode if query requires it

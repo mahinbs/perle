@@ -10,10 +10,13 @@ const router = Router();
 const uploadLogo = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    const isImageMime = file.mimetype.startsWith('image/');
+    const isHeic = /\.(heic|heif)$/i.test(file.originalname);
+    const isImageExt = /\.(jpe?g|png|gif|webp|heic|heif|bmp|svg)$/i.test(file.originalname);
+    if (isImageMime || isHeic || isImageExt || !file.mimetype) {
       cb(null, true);
     } else {
       cb(new Error('Only image files are allowed'));
@@ -130,10 +133,16 @@ router.post('/spaces/upload-logo', authenticateToken, uploadLogo.single('logo'),
     console.log(`📤 Uploading space logo to ai-friend-logos bucket: ${filePath}`);
 
     // Upload to Supabase Storage bucket 'ai-friend-logos' (reusing same bucket)
+    const contentType = req.file.mimetype || (
+      /\.heic$/i.test(req.file.originalname) ? 'image/heic' :
+      /\.heif$/i.test(req.file.originalname) ? 'image/heif' :
+      'image/jpeg'
+    );
+
     const { data, error } = await supabase.storage
       .from('ai-friend-logos')
       .upload(filePath, req.file.buffer, {
-        contentType: req.file.mimetype,
+        contentType,
         upsert: false
       });
 

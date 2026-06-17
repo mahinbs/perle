@@ -51,11 +51,40 @@ export function extractImagePrompt(query: string, answer: string): string | null
   return null;
 }
 
+function normalizeReferenceImages(input?: string | string[]): string[] {
+  if (!input) return [];
+  return Array.isArray(input) ? input : [input];
+}
+
+function appendReferenceImageParts(parts: any[], referenceImageDataUrl: string) {
+  let imageBase64 = referenceImageDataUrl;
+  let mimeType = 'image/jpeg';
+
+  if (referenceImageDataUrl.startsWith('data:')) {
+    const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+    if (matches) {
+      mimeType = matches[1];
+      imageBase64 = matches[2];
+    }
+  }
+
+  // Use snake_case format (inline_data / mime_type) — confirmed working with gemini-3-pro-image-preview.
+  // Google protobuf REST APIs accept both snake_case and camelCase interchangeably.
+  parts.push({
+    inline_data: {
+      mime_type: mimeType,
+      data: imageBase64,
+    },
+  });
+
+  console.log(`   📷 Reference image added (${(imageBase64.length / 1024).toFixed(1)}KB, ${mimeType})`);
+}
+
 // Generate image using Gemini Imagen API - tries fast model first, then falls back to detailed
 export async function generateImageWithGemini(
   prompt: string, 
   aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1',
-  referenceImageDataUrl?: string // Optional reference image for style/content guidance
+  referenceImageDataUrl?: string | string[] // Optional reference image(s) for style/content guidance
 ): Promise<GeneratedImage | null> {
   // Use the same API key as your Gemini chat
   // Always use the free Gemini API key for image generation
@@ -66,24 +95,25 @@ export async function generateImageWithGemini(
     return null;
   }
   
-  // Try models in order: Gemini 3 Pro Image (with ref support) -> Imagen 4.0 models (fallback)
-  const allModels = [
+  const referenceImages = normalizeReferenceImages(referenceImageDataUrl);
+  const hasReferenceImages = referenceImages.length > 0;
+
+  // Models that support reference image input (image editing / style guidance)
+  // gemini-3-pro-image-preview is the confirmed working model for image editing.
+  const refModels = [
     { name: 'gemini-3-pro-image-preview', displayName: 'Gemini 3 Pro Image', api: 'gemini', supportsRef: true },
+    { name: 'gemini-2.0-flash-preview-image-generation', displayName: 'Gemini 2.0 Flash Image', api: 'gemini', supportsRef: true },
+    { name: 'gemini-2.0-flash-exp-image-generation', displayName: 'Gemini 2.0 Flash Exp Image', api: 'gemini', supportsRef: true },
+  ];
+  // Text-to-image only fallbacks (Imagen — ignores reference, used as last resort)
+  const textOnlyModels = [
     { name: 'imagen-4.0-fast-generate-001', displayName: 'Imagen 4.0 Fast', api: 'vertex', supportsRef: false },
     { name: 'imagen-4.0-generate-001', displayName: 'Imagen 4.0 Standard', api: 'vertex', supportsRef: false },
     { name: 'imagen-4.0-ultra-generate-001', displayName: 'Imagen 4.0 Ultra', api: 'vertex', supportsRef: false },
   ];
 
-  // When we have a reference image (edit request), only use models that support it.
-  // Otherwise we'd fall back to Imagen 4.0 which ignores the reference and generates a new image.
-  const models = referenceImageDataUrl
-    ? allModels.filter((m) => m.supportsRef)
-    : allModels;
-
-  if (referenceImageDataUrl && models.length === 0) {
-    console.warn('⚠️ No Gemini model with reference support available');
-    return null;
-  }
+  // Always try ref-capable models first, then fall through to text-only to avoid 500s.
+  const models = [...refModels, ...textOnlyModels];
 
   for (const model of models) {
     try {
@@ -91,9 +121,9 @@ export async function generateImageWithGemini(
       console.log(`🎨 [${model.displayName.toUpperCase()}] Generating image`);
       console.log(`   Prompt: "${prompt}"`);
       console.log(`   Aspect Ratio: ${aspectRatio}`);
-      if (referenceImageDataUrl && model.supportsRef) {
-        console.log(`   📎 Using reference image for style guidance`);
-      } else if (referenceImageDataUrl && !model.supportsRef) {
+      if (hasReferenceImages && model.supportsRef) {
+        console.log(`   📎 Using ${referenceImages.length} reference image(s) for style guidance`);
+      } else if (hasReferenceImages && !model.supportsRef) {
         console.log(`   ⚠️  Reference images not supported, using prompt only`);
       }
       console.log(`   API: ${model.api === 'gemini' ? 'Gemini API' : 'Vertex AI'}`);
@@ -106,34 +136,18 @@ export async function generateImageWithGemini(
         // Correct structure: contents + generationConfig (not just config)
         const parts: any[] = [{ text: prompt }];
         
-        // Add reference image in contents.parts
-        if (referenceImageDataUrl) {
-          let imageBase64 = referenceImageDataUrl;
-          let mimeType = 'image/png';
-          
-          if (referenceImageDataUrl.startsWith('data:')) {
-            const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-            if (matches) {
-              mimeType = matches[1];
-              imageBase64 = matches[2];
-            }
-          }
-          
-          parts.push({
-            inline_data: {
-              mime_type: mimeType,
-              data: imageBase64
-            }
-          });
-          
-          console.log(`   📷 Reference image added (${(imageBase64.length / 1024).toFixed(1)}KB)`);
+        // Add reference images in contents.parts
+        if (hasReferenceImages && model.supportsRef) {
+          referenceImages.forEach((imageUrl) => appendReferenceImageParts(parts, imageUrl));
         }
         
         const requestBody = {
           contents: [{ parts }],
-          generationConfig: { // User provided 'config' but REST API expects 'generationConfig'
-            response_modalities: ['IMAGE']
-          }
+          generationConfig: {
+            // snake_case (response_modalities) confirmed working with gemini-3-pro-image-preview.
+            // camelCase (responseModalities) is the documented REST format — both are accepted.
+            response_modalities: ['IMAGE'],
+          },
         };
         
         response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.name}:generateContent?key=${apiKey}`, {
@@ -255,7 +269,7 @@ export async function generateImageWithOpenAIGPTImageEdit(
     const ext = mimeType === 'image/jpeg' || mimeType === 'image/jpg' ? 'jpg' : 'png';
 
     const formData = new FormData();
-    formData.append('model', 'gpt-image-1.5');
+    formData.append('model', 'gpt-image-1');
     formData.append('prompt', prompt);
     formData.append('image', new Blob([imageBuffer], { type: mimeType }), `reference.${ext}`);
 
@@ -376,11 +390,14 @@ export async function generateImageWithDALLE(
 export async function generateImage(
   prompt: string, 
   aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1',
-  referenceImageDataUrl?: string
+  referenceImageDataUrl?: string | string[]
 ): Promise<GeneratedImage | null> {
+  const referenceImages = normalizeReferenceImages(referenceImageDataUrl);
+  const primaryReference = referenceImages[0];
+
   // 1) Try Gemini first (native multimodal: image in contents array, no separate edit endpoint)
   try {
-    const geminiImage = await generateImageWithGemini(prompt, aspectRatio, referenceImageDataUrl);
+    const geminiImage = await generateImageWithGemini(prompt, aspectRatio, referenceImages);
     if (geminiImage) {
       return geminiImage;
     }
@@ -388,15 +405,16 @@ export async function generateImage(
     console.warn('⚠️ Gemini image generation failed, trying OpenAI fallback...');
   }
 
-  // 2) If we have a reference image (edit request), use GPT Image edit API — not DALL-E 3
-  if (referenceImageDataUrl) {
+  // 2) If we have a reference image, try OpenAI GPT Image edit first
+  if (primaryReference) {
     console.log('🔄 Using OpenAI GPT Image edit (reference image present)');
-    const editImage = await generateImageWithOpenAIGPTImageEdit(prompt, aspectRatio, referenceImageDataUrl);
+    const editImage = await generateImageWithOpenAIGPTImageEdit(prompt, aspectRatio, primaryReference);
     if (editImage) return editImage;
+    console.log('⚠️ OpenAI GPT Image edit failed, falling back to DALL-E 3 (text-only)');
   }
 
-  // 3) Text-to-image only: DALL-E 3 (cannot edit / use reference)
-  console.log('🔄 Using OpenAI DALL-E 3 for text-to-image');
+  // 3) Final fallback: DALL-E 3 text-to-image (ignores reference but always returns something)
+  console.log('🔄 Using OpenAI DALL-E 3 as final fallback');
   const dalleImage = await generateImageWithDALLE(prompt, aspectRatio);
   return dalleImage;
 }

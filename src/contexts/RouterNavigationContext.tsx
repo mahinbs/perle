@@ -1,8 +1,12 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 
+interface NavigateOptions {
+  replace?: boolean;
+}
+
 interface RouterNavigationContextType {
-  navigateTo: (path: string, state?: any) => void;
+  navigateTo: (path: string, state?: any, options?: NavigateOptions) => void;
   goBack: () => void;
   currentPath: string;
   params: any;
@@ -28,8 +32,8 @@ export const RouterNavigationProvider: React.FC<RouterNavigationProviderProps> =
   const location = useLocation();
   const params = useParams();
 
-  const navigateTo = (path: string, state?: any) => {
-    navigate(path, { state });
+  const navigateTo = (path: string, state?: any, options?: NavigateOptions) => {
+    navigate(path, { state, replace: options?.replace });
   };
 
   const goBack = () => {

@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
+import { Capacitor } from "@capacitor/core";
 import {
   FaPen,
   FaStar,
@@ -14,10 +15,14 @@ import {
 import { useToast } from "../contexts/ToastContext";
 import { getUserData, getAuthHeaders, removeAuthToken } from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
-import type { LLMModel } from "../types";
+import { ExperienceModeButtons } from "../components/ExperienceModeButtons";
+import type { LLMModel, ExperienceMode } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
+import { getChatDateLabel, isDifferentChatDay } from "../utils/chatDates";
+import { ChatDateDivider } from "../components/ChatDateDivider";
 import { getUserLocalContext } from "../utils/userLocalContext";
+import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 
 interface Message {
   id: string;
@@ -61,7 +66,9 @@ export default function AIPsychologyPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite");
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
   const [newConversation, setNewConversation] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
   const [suggestions, setSuggestions] = useState<string[]>([
     "I've been feeling stressed lately and could use some guidance.",
     "Can you help me understand my emotions better?",
@@ -69,16 +76,28 @@ export default function AIPsychologyPage() {
   ]);
   const [dailySuggestionUses, setDailySuggestionUses] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const pendingScrollToMessageIdRef = useRef<string | null>(null);
+  const pendingScrollToMessageElRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
-  // Auto-scroll to bottom when new messages arrive
+  // ChatGPT-style UX: scroll once per new user message.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!isLoading) return;
+    if (!pendingScrollToMessageIdRef.current) return;
+    if (!pendingScrollToMessageElRef.current) return;
+
+    const el = pendingScrollToMessageElRef.current;
+    pendingScrollToMessageIdRef.current = null;
+    pendingScrollToMessageElRef.current = null;
+
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  }, [isLoading, messages.length]);
 
   // Focus input on mount
   useEffect(() => {
@@ -94,7 +113,7 @@ export default function AIPsychologyPage() {
 
       // Load saved model preference
       const savedModel = localStorage.getItem(
-        "perle-ai-psychologist-model"
+        "syntraiq-ai-psychologist-model"
       ) as LLMModel | null;
       if (savedModel && premium) {
         setSelectedModel(savedModel);
@@ -229,8 +248,11 @@ export default function AIPsychologyPage() {
       console.error("Speech recognition error:", event.error);
       setIsListening(false);
       if (event.error === "not-allowed") {
+        const isNative = Capacitor.isNativePlatform();
         showToast({
-          message: "Microphone access denied. Please allow microphone access.",
+          message: isNative
+            ? "Microphone access denied. Please allow microphone access in your device settings."
+            : "Microphone access denied. Please allow microphone access in your browser settings.",
           type: "error",
           duration: 3000,
         });
@@ -261,6 +283,7 @@ export default function AIPsychologyPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    pendingScrollToMessageIdRef.current = userMessage.id;
     const messageText = textToSend;
     setInputValue("");
     if (attachedFileName) {
@@ -412,7 +435,11 @@ export default function AIPsychologyPage() {
   };
 
   return (
-    <div className="container h-screen flex flex-col !p-0">
+    <div className="container h-screen flex flex-col !p-0" style={{ position: "relative" }}>
+      {/* AI Data Consent Modal — shown once before first AI interaction */}
+      {showConsentModal && (
+        <AIDataConsentModal onAccept={() => setShowConsentModal(false)} />
+      )}
       {/* Header */}
       <div className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]" style={{ paddingTop: "var(--safe-area-top)" }}>
         <div className="row flex-nowrap! flex justify-between items-center p-4">
@@ -453,13 +480,29 @@ export default function AIPsychologyPage() {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-5">
-        {messages.map((message) => (
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col">
+        {messages.map((message, index) => {
+          const showDateDivider =
+            index === 0 ||
+            isDifferentChatDay(
+              messages[index - 1].timestamp,
+              message.timestamp
+            );
+          return (
+          <Fragment key={message.id}>
+            {showDateDivider && (
+              <ChatDateDivider label={getChatDateLabel(message.timestamp)} />
+            )}
           <div
-            key={message.id}
             className={`flex items-end gap-3 mb-4 ${
               message.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
+              style={{ scrollMarginTop: 90 }}
+              ref={(el) => {
+                if (message.id === pendingScrollToMessageIdRef.current) {
+                  pendingScrollToMessageElRef.current = el;
+                }
+              }}
           >
             <img
               src={
@@ -510,8 +553,9 @@ export default function AIPsychologyPage() {
               </div>
             </div>
           </div>
-        ))}
-
+          </Fragment>
+        );
+        })}
         {isLoading && (
           <div className="flex items-end gap-3 mb-4">
             <img
@@ -520,6 +564,9 @@ export default function AIPsychologyPage() {
               className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(155,89,182,0.5)]"
             />
             <div className="px-4 py-3 rounded-[var(--radius-sm)] glass-panel border border-[rgba(255,255,255,0.1)]">
+              <div className="text-[length:var(--font-md)] font-semibold mb-1">
+                Thinking...
+              </div>
               <div className="flex gap-1 items-center">
                 <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite]" />
                 <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite_0.2s]" />
@@ -528,12 +575,18 @@ export default function AIPsychologyPage() {
             </div>
           </div>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area */}
-      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0">
+      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+        <div className="mb-2">
+          <ExperienceModeButtons
+            experienceMode={experienceMode}
+            onExperienceModeChange={setExperienceMode}
+            disabled={isLoading}
+            size="small"
+          />
+        </div>
         {attachedFileName && (
           <div className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3">
             <div className="flex items-center gap-2.5 text-[length:var(--font-sm)] text-[var(--text)] flex-1 min-w-0">
@@ -685,10 +738,12 @@ export default function AIPsychologyPage() {
                 selectedModel={selectedModel}
                 onModelChange={(model) => {
                   setSelectedModel(model);
-                  localStorage.setItem("perle-ai-psychologist-model", model);
+                  localStorage.setItem("syntraiq-ai-psychologist-model", model);
                 }}
                 isPremium={isPremium}
                 size="small"
+                experienceMode={experienceMode}
+                onExperienceModeChange={setExperienceMode}
               />
             </div>
           </div>

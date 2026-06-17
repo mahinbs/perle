@@ -6,15 +6,18 @@ import { LoginForm } from "../components/LoginForm";
 import { SignupForm } from "../components/SignupForm";
 import { GoogleIcon } from "../assets/icons/GoogleIcon";
 import { UpgradeCard } from "../components/UpgradeCard";
+import syntraGif from "../assets/gif/syntraiq.gif";
 import {
   login,
   signup,
   logout,
-  verifyToken,
   getUserData,
   setUserData,
+  applyTheme,
   getAuthHeaders,
-  removeAuthToken,
+  authFetch,
+  handleUnauthorizedResponse,
+  getPostAuthNavigation,
   type User,
 } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
@@ -75,16 +78,15 @@ export default function ProfilePage() {
     if (!API_URL) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/profile`, {
+      const response = await authFetch(`${API_URL}/api/profile`, {
         method: "GET",
         headers: getAuthHeaders(),
       });
 
-      // Handle 401 - user logged out
       if (response.status === 401) {
-        removeAuthToken();
-        setIsAuthenticated(false);
-        setUserSettings(null);
+        // Try to refresh once; if it fails, just leave auth state as-is
+        // (don't aggressively log the user out from a background fetch)
+        await handleUnauthorizedResponse();
         return;
       }
 
@@ -93,28 +95,11 @@ export default function ProfilePage() {
         setUserSettings(profile);
         setUserData(profile); // Update localStorage with full profile data
         setIsAuthenticated(true);
-      } else {
-        // If profile fetch fails, try token verification as fallback
-        const verifiedUser = await verifyToken();
-        if (verifiedUser) {
-          setUserSettings(verifiedUser);
-          setIsAuthenticated(true);
-        } else {
-          setIsAuthenticated(false);
-          setUserSettings(null);
-        }
       }
+      // Non-401 failure: keep showing whatever we already have
     } catch (error) {
       console.error("Failed to fetch profile:", error);
-      // Fallback to token verification
-      const verifiedUser = await verifyToken();
-      if (verifiedUser) {
-        setUserSettings(verifiedUser);
-        setIsAuthenticated(true);
-      } else {
-        setIsAuthenticated(false);
-        setUserSettings(null);
-      }
+      // Network error or similar — don't log the user out
     }
   };
 
@@ -151,17 +136,14 @@ export default function ProfilePage() {
 
     setIsLoadingHistory(true);
     try {
-      const response = await fetch(`${API_URL}/api/search/history?limit=50`, {
+      const response = await authFetch(`${API_URL}/api/search/history?limit=50`, {
         method: "GET",
         headers: getAuthHeaders(),
       });
 
-      // Handle 401 - user logged out, update state silently
       if (response.status === 401) {
-        removeAuthToken();
-        setIsAuthenticated(false);
-        setUserSettings(null);
-        // Don't show error - just update state to show login screen
+        // Try to refresh once; silently skip on failure — don't log user out
+        await handleUnauthorizedResponse();
         return;
       }
 
@@ -176,12 +158,12 @@ export default function ProfilePage() {
     }
   };
 
-  // Load search history when authenticated
+  // Load search history when authenticated (skip during auth redirect flows)
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !state?.returnTo && !state?.plan) {
       fetchSearchHistory();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, state?.returnTo, state?.plan]);
 
   const handleLogin = async (email: string, password: string) => {
     setIsLoading(true);
@@ -189,7 +171,6 @@ export default function ProfilePage() {
 
     try {
       const response = await login(email, password);
-      setIsAuthenticated(true);
       if (response.user) {
         setUserSettings(response.user as any);
 
@@ -218,9 +199,16 @@ export default function ProfilePage() {
       }
       setShowLogin(false);
       setShowSignup(false);
-      if (state?.plan) {
-        navigateTo(`/subscription?plan=${state.plan}`);
+      const { path, useAuthRedirect } = getPostAuthNavigation(
+        response.user as User | undefined,
+        state,
+      );
+      if (useAuthRedirect) {
+        navigateTo(path, { fromAuthRedirect: true }, { replace: true });
+      } else {
+        navigateTo(path);
       }
+      setIsAuthenticated(true);
     } catch (error: any) {
       const errorMessage = error.message || "Invalid email or password";
       setAuthError(errorMessage);
@@ -248,7 +236,7 @@ export default function ProfilePage() {
       // Check if verification is required
       if (response.requiresVerification) {
         // Save email for verification page
-        localStorage.setItem("perle-verification-email", response.email || "");
+        localStorage.setItem("syntraiq-verification-email", response.email || "");
         // Show success toast
         showToast({
           message:
@@ -273,8 +261,14 @@ export default function ProfilePage() {
         message: "Account created successfully!",
         type: "success",
       });
-      if (state?.plan) {
-        navigateTo(`/subscription?plan=${state.plan}`);
+      const { path, useAuthRedirect } = getPostAuthNavigation(
+        response.user as User | undefined,
+        state,
+      );
+      if (useAuthRedirect) {
+        navigateTo(path, { fromAuthRedirect: true }, { replace: true });
+      } else {
+        navigateTo(path);
       }
     } catch (error: any) {
       // Show validation errors in toast if present (don't show form error)
@@ -330,6 +324,7 @@ export default function ProfilePage() {
     const updates: any = {};
     if (key === "darkMode") {
       updates.darkMode = value;
+      applyTheme(value === true);
     } else if (key === "notifications") {
       updates.notifications = value;
     } else if (key === "searchHistory") {
@@ -387,6 +382,9 @@ export default function ProfilePage() {
         if (userSettings) {
           setUserSettings({ ...userSettings, [key]: previousValue });
         }
+        if (key === "darkMode") {
+          applyTheme(previousValue === true);
+        }
         showToast({
           message: "Failed to update setting. Please try again.",
           type: "error",
@@ -397,6 +395,9 @@ export default function ProfilePage() {
       // Revert on error
       if (userSettings) {
         setUserSettings({ ...userSettings, [key]: previousValue });
+      }
+      if (key === "darkMode") {
+        applyTheme(previousValue === true);
       }
       showToast({
         message: "Failed to update setting. Please try again.",
@@ -412,17 +413,17 @@ export default function ProfilePage() {
 
     setIsExporting(true);
     try {
-      const response = await fetch(`${API_URL}/api/profile/export`, {
+      const response = await authFetch(`${API_URL}/api/profile/export`, {
         method: "GET",
         headers: getAuthHeaders(),
       });
 
-      // Handle 401 - user logged out, update state silently
       if (response.status === 401) {
-        removeAuthToken();
-        setIsAuthenticated(false);
-        setUserSettings(null);
-        // Don't show error - just update state to show login screen
+        const refreshed = await handleUnauthorizedResponse();
+        if (!refreshed) {
+          setIsAuthenticated(false);
+          setUserSettings(null);
+        }
         return;
       }
 
@@ -436,7 +437,7 @@ export default function ProfilePage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `perle-data-export-${new Date().toISOString().split("T")[0]}.json`;
+        a.download = `syntraiq-data-export-${new Date().toISOString().split("T")[0]}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -481,18 +482,18 @@ export default function ProfilePage() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/profile`, {
+      const response = await authFetch(`${API_URL}/api/profile`, {
         method: "DELETE",
         headers: getAuthHeaders(),
         body: JSON.stringify({ password }),
       });
 
-      // Handle 401 - user logged out, update state silently
       if (response.status === 401) {
-        removeAuthToken();
-        setIsAuthenticated(false);
-        setUserSettings(null);
-        // Don't show error - just update state to show login screen
+        const refreshed = await handleUnauthorizedResponse();
+        if (!refreshed) {
+          setIsAuthenticated(false);
+          setUserSettings(null);
+        }
         return;
       }
 
@@ -765,17 +766,30 @@ export default function ProfilePage() {
                 }}
               />
             ) : null}
+            <img
+              src={syntraGif}
+              alt="SyntraIQ"
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: "50%",
+                objectFit: "cover",
+                marginRight: 16,
+                border: "2px solid var(--border)",
+                display:
+                  (userSettings as any).dp ||
+                  (userSettings as any).displayPictureUrl
+                    ? "none"
+                    : "block",
+              }}
+            />
             <div
               style={{
                 width: 60,
                 height: 60,
                 borderRadius: "50%",
                 background: "var(--accent)",
-                display:
-                  (userSettings as any).dp ||
-                  (userSettings as any).displayPictureUrl
-                    ? "none"
-                    : "flex",
+                display: "none",
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: "var(--font-2xl)",
@@ -1241,18 +1255,19 @@ export default function ProfilePage() {
                   ) {
                     if (API_URL) {
                       try {
-                        const response = await fetch(
+                        const response = await authFetch(
                           `${API_URL}/api/search/history`,
                           {
                             method: "DELETE",
                             headers: getAuthHeaders(),
                           },
                         );
-                        // Handle 401 - user logged out
                         if (response.status === 401) {
-                          removeAuthToken();
-                          setIsAuthenticated(false);
-                          setUserSettings(null);
+                          const refreshed = await handleUnauthorizedResponse();
+                          if (!refreshed) {
+                            setIsAuthenticated(false);
+                            setUserSettings(null);
+                          }
                           return;
                         }
                         if (response.ok) {
@@ -1264,7 +1279,7 @@ export default function ProfilePage() {
                         alert("Failed to clear history");
                       }
                     } else {
-                      localStorage.removeItem("perle-search-history");
+                      localStorage.removeItem("syntraiq-search-history");
                       setSearchHistory([]);
                     }
                   }
@@ -1593,9 +1608,9 @@ export default function ProfilePage() {
                     const file = e.target.files?.[0];
                     if (file) {
                       // Check file size (2MB limit)
-                      if (file.size > 2 * 1024 * 1024) {
+                      if (file.size > 10 * 1024 * 1024) {
                         showToast({
-                          message: "File size exceeds 2MB limit",
+                          message: "File size exceeds 10MB limit",
                           type: "error",
                           duration: 3000,
                         });
@@ -1630,7 +1645,7 @@ export default function ProfilePage() {
                   {uploadingPicture ? "Uploading..." : "Upload Image"}
                 </label>
                 <span className="sub" style={{ fontSize: "var(--font-xs)" }}>
-                  Max 2MB (JPG, PNG, WebP, GIF)
+                  Max 10MB (JPG, PNG, WebP, GIF)
                 </span>
               </div>
               <div style={{ marginBottom: 8 }}>
@@ -1813,7 +1828,7 @@ export default function ProfilePage() {
                       // Remove Content-Type header to let browser set it with boundary
                       delete headers["Content-Type"];
 
-                      const uploadResponse = await fetch(
+                      const uploadResponse = await authFetch(
                         `${API_URL}/api/profile/upload-picture`,
                         {
                           method: "POST",
@@ -1822,12 +1837,13 @@ export default function ProfilePage() {
                         },
                       );
 
-                      // Handle 401 - user logged out
                       if (uploadResponse.status === 401) {
-                        removeAuthToken();
-                        setIsAuthenticated(false);
-                        setUserSettings(null);
-                        setShowEditProfile(false);
+                        const refreshed = await handleUnauthorizedResponse();
+                        if (!refreshed) {
+                          setIsAuthenticated(false);
+                          setUserSettings(null);
+                          setShowEditProfile(false);
+                        }
                         return;
                       }
 

@@ -129,7 +129,7 @@ export default function SpacesPage() {
       setIsPremium(premium);
 
       const savedModel = localStorage.getItem(
-        "perle-space-model",
+        "syntraiq-space-model",
       ) as LLMModel | null;
       if (savedModel && premium) {
         setSelectedModel(savedModel);
@@ -344,7 +344,12 @@ export default function SpacesPage() {
         setSpaceLogoUrl(data.url);
         showToast({ message: "Logo uploaded successfully", type: "success" });
       } else {
-        showToast({ message: "Failed to upload logo", type: "error" });
+        const err = await response.json().catch(() => ({}));
+        showToast({
+          message: err.details || err.error || "Failed to upload logo",
+          type: "error",
+          duration: 4000,
+        });
       }
     } catch (error) {
       console.error("Failed to upload logo:", error);
@@ -601,77 +606,80 @@ export default function SpacesPage() {
       >
         {/* Header */}
         <div
-          className="row"
-          style={{
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "16px",
-            borderBottom: "1px solid var(--border)",
-          }}
+          className="shrink-0 border-b border-[var(--border)] bg-[var(--bg)]"
+          style={{ paddingTop: "max(8px, env(safe-area-inset-top))" }}
         >
-          <button
-            className="btn-ghost"
-            onClick={() => setSelectedSpace(null)}
-            style={{ fontSize: "var(--font-md)" }}
-          >
-            <IoIosArrowBack size={24} /> Back
-          </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {selectedSpace.logo_url && (
-              <img
-                src={selectedSpace.logo_url}
-                alt={selectedSpace.title}
-                style={{ width: 32, height: 32, borderRadius: "50%" }}
-              />
-            )}
-            <div>
-              <div className="h3" style={{ margin: 0 }}>
-                {selectedSpace.title}
-              </div>
-              {selectedSpace.is_public && (
-                <div className="sub text-sm" style={{ opacity: 0.7 }}>
-                  <FaGlobe size={12} /> Public
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 px-3 py-3">
+            <button
+              type="button"
+              className="btn-ghost glass-button flex items-center justify-center w-10 h-10 shrink-0 rounded-lg"
+              onClick={() => setSelectedSpace(null)}
+              aria-label="Back to spaces"
+            >
+              <IoIosArrowBack size={22} />
+            </button>
+
+            <div className="flex items-center gap-2.5 min-w-0 justify-center">
+              {selectedSpace.logo_url ? (
+                <img
+                  src={selectedSpace.logo_url}
+                  alt=""
+                  className="w-9 h-9 rounded-lg object-cover border border-[var(--border)] shrink-0"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-lg bg-[var(--input-bg)] border border-[var(--border)] shrink-0 flex items-center justify-center text-xs font-bold">
+                  {selectedSpace.title.charAt(0).toUpperCase()}
                 </div>
+              )}
+              <div className="min-w-0 text-left">
+                <div className="font-semibold text-[length:var(--font-md)] truncate">
+                  {selectedSpace.title}
+                </div>
+                {selectedSpace.is_public && (
+                  <div className="sub text-xs flex items-center gap-1 opacity-70">
+                    <FaGlobe size={10} /> Public
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              {isLoggedIn && selectedSpace.user_id === userData?.id && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-ghost glass-button w-9 h-9 flex items-center justify-center rounded-lg"
+                    onClick={() => handleEditSpace(selectedSpace)}
+                    aria-label="Edit space"
+                  >
+                    <FaEdit size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost glass-button w-9 h-9 flex items-center justify-center rounded-lg text-red-400"
+                    onClick={() => handleDeleteSpace(selectedSpace.id)}
+                    aria-label="Delete space"
+                  >
+                    <FaTrash size={15} />
+                  </button>
+                </>
               )}
             </div>
           </div>
-          <div
-            style={{
-              width: 100,
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 8,
-            }}
-          >
-            {isLoggedIn && selectedSpace.user_id === userData?.id && (
-              <>
-                <button
-                  className="btn-ghost"
-                  onClick={() => handleEditSpace(selectedSpace)}
-                  style={{ padding: "8px" }}
-                >
-                  <FaEdit size={16} />
-                </button>
-                <button
-                  className="btn-ghost"
-                  onClick={() => handleDeleteSpace(selectedSpace.id)}
-                  style={{ padding: "8px" }}
-                >
-                  <FaTrash size={16} />
-                </button>
-              </>
-            )}
-            {isPremium && (
+
+          {isPremium && (
+            <div className="flex justify-end px-3 pb-3">
               <LLMModelSelector
                 selectedModel={selectedModel}
                 isPremium={isPremium}
+                size="small"
                 onModelChange={(model) => {
                   setSelectedModel(model);
-                  localStorage.setItem("perle-space-model", model);
+                  localStorage.setItem("syntraiq-space-model", model);
                 }}
               />
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Files Section */}
@@ -898,64 +906,74 @@ export default function SpacesPage() {
   // Main spaces list view
   return (
     <div
-      className="container"
+      className="container !pt-0 !px-3"
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 24,
-        minHeight: "100vh",
+        gap: 12,
+        minHeight: "100dvh",
       }}
     >
       {/* Header */}
       <div
-        className="row"
-        style={{
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 8,
-        }}
+        className="shrink-0 sticky top-0 z-20 bg-[var(--bg)] border-b border-[var(--border)] -mx-3 px-3"
+        style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}
       >
-        <button
-          className="btn-ghost"
-          onClick={() => navigateTo("/profile")}
-          aria-label="Back to profile"
-          style={{ fontSize: "var(--font-md)" }}
-        >
-          <IoIosArrowBack size={24} /> Back
-        </button>
-        <div className="h1" style={{ margin: 0 }}>
-          Spaces
-        </div>
-        <div style={{ width: 52 }} />
-      </div>
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-3">
+          <button
+            type="button"
+            className="btn-ghost glass-button flex items-center justify-center w-10 h-10 shrink-0 rounded-lg"
+            onClick={() => navigateTo("/profile")}
+            aria-label="Back to profile"
+          >
+            <IoIosArrowBack size={22} />
+          </button>
 
-      {/* Tabs */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          borderBottom: "1px solid var(--border)",
-        }}
-        className="pb-3"
-      >
-        <button
-          className={!showCommunity ? "btn" : "btn-ghost"}
-          onClick={() => setShowCommunity(false)}
-          style={{
-            borderBottom: !showCommunity ? "2px solid var(--accent)" : "none",
-          }}
-        >
-          My Spaces
-        </button>
-        <button
-          className={showCommunity ? "btn" : "btn-ghost"}
-          onClick={() => setShowCommunity(true)}
-          style={{
-            borderBottom: showCommunity ? "2px solid var(--accent)" : "none",
-          }}
-        >
-          <FaGlobe size={14} /> Community
-        </button>
+          <h1
+            className="h2 text-center min-w-0 truncate m-0"
+            style={{ fontSize: "var(--font-lg)" }}
+          >
+            Manage Spaces
+          </h1>
+
+          {isLoggedIn && !showCommunity ? (
+            <button
+              type="button"
+              className="btn-ghost glass-button flex items-center justify-center w-10 h-10 shrink-0 rounded-lg text-[var(--accent)]"
+              onClick={handleCreateSpace}
+              aria-label="Create new space"
+            >
+              <FaPlus size={18} />
+            </button>
+          ) : (
+            <div className="w-10 h-10 shrink-0" aria-hidden="true" />
+          )}
+        </div>
+
+        <div className="flex gap-2 px-3 pb-3">
+          <button
+            type="button"
+            className={`flex-1 glass-button rounded-lg py-2.5 text-sm font-semibold transition-colors ${
+              !showCommunity
+                ? "!bg-[var(--accent)] !text-[#111] !border-[var(--accent)]"
+                : "btn-ghost"
+            }`}
+            onClick={() => setShowCommunity(false)}
+          >
+            My Spaces
+          </button>
+          <button
+            type="button"
+            className={`flex-1 glass-button rounded-lg py-2.5 text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+              showCommunity
+                ? "!bg-[var(--accent)] !text-[#111] !border-[var(--accent)]"
+                : "btn-ghost"
+            }`}
+            onClick={() => setShowCommunity(true)}
+          >
+            <FaGlobe size={13} /> Community
+          </button>
+        </div>
       </div>
 
       {/* Spaces List */}
@@ -1063,20 +1081,24 @@ export default function SpacesPage() {
                       )}
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div className="flex flex-col gap-2 shrink-0">
                     <button
-                      className="btn-ghost"
+                      type="button"
+                      className="btn-ghost glass-button"
                       onClick={() => handleEditSpace(space)}
-                      style={{ padding: "8px" }}
+                      style={{ padding: "8px 10px" }}
+                      aria-label="Edit space"
                     >
-                      <FaEdit size={16} />
+                      <FaEdit size={15} />
                     </button>
                     <button
-                      className="btn-ghost"
+                      type="button"
+                      className="btn-ghost glass-button"
                       onClick={() => handleDeleteSpace(space.id)}
-                      style={{ padding: "8px" }}
+                      style={{ padding: "8px 10px" }}
+                      aria-label="Delete space"
                     >
-                      <FaTrash size={16} />
+                      <FaTrash size={15} />
                     </button>
                   </div>
                 </div>
@@ -1212,77 +1234,96 @@ export default function SpacesPage() {
               </div>
 
               <div>
-                <label
-                  className="sub"
-                  style={{ marginBottom: 8, display: "block" }}
-                >
-                  Logo
+                <label className="sub" style={{ marginBottom: 10, display: "block", fontWeight: 600 }}>
+                  Logo (optional)
                 </label>
+                <div className="sub text-xs" style={{ marginBottom: 12, opacity: 0.75 }}>
+                  Pick a default avatar or upload your own (max 10MB)
+                </div>
                 <div
                   style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 8,
-                    marginBottom: 12,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: 10,
+                    marginBottom: 16,
                   }}
                 >
                   {defaultLogos.map((logo) => (
                     <button
                       key={logo.id}
+                      type="button"
                       className={
-                        selectedDefaultLogo === logo.id ? "btn" : "btn-ghost"
+                        selectedDefaultLogo === logo.id ? "btn" : "btn-ghost glass-button"
                       }
                       onClick={() => {
                         setSelectedDefaultLogo(logo.id);
                         setSpaceLogoUrl("");
                       }}
-                      style={{ padding: 8 }}
+                      style={{
+                        padding: 10,
+                        borderRadius: 12,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
                     >
                       <img
                         src={logo.url}
                         alt={logo.name}
-                        style={{ width: 40, height: 40, borderRadius: "50%" }}
+                        style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover" }}
                       />
+                      <span className="text-xs opacity-70">{logo.name}</span>
                     </button>
                   ))}
                 </div>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,.heic,.heif"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        showToast({ message: "Logo must be under 10MB", type: "error" });
+                        return;
+                      }
                       handleUploadLogo(file);
                       setSelectedDefaultLogo(null);
                     }
+                    if (e.target) e.target.value = "";
                   }}
                   style={{ display: "none" }}
                   ref={fileInputRef}
                 />
                 <button
-                  className="btn-ghost"
+                  type="button"
+                  className="btn-ghost glass-button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploadingLogo}
                   style={{
                     width: "100%",
-                    padding: "12px",
+                    padding: "14px",
                     border: "1px dashed var(--border)",
+                    borderRadius: 12,
                   }}
                 >
                   {isUploadingLogo ? "Uploading..." : "Upload Custom Logo"}
                 </button>
                 {spaceLogoUrl && !selectedDefaultLogo && (
-                  <img
-                    src={spaceLogoUrl}
-                    alt="Custom logo"
-                    style={{
-                      width: 80,
-                      height: 80,
-                      borderRadius: "8px",
-                      marginTop: 8,
-                      objectFit: "cover",
-                    }}
-                  />
+                  <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
+                    <img
+                      src={spaceLogoUrl}
+                      alt="Custom logo"
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: 12,
+                        objectFit: "cover",
+                        border: "1px solid var(--border)",
+                      }}
+                    />
+                    <span className="sub text-sm">Custom logo ready</span>
+                  </div>
                 )}
               </div>
 

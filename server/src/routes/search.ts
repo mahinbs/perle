@@ -6,6 +6,7 @@ import type { AnswerResult, Mode, LLMModel } from '../types.js';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 import { buildUserLocalContext } from '../utils/requestLocalContext.js';
+import { getUploadedImageFiles, uploadedFilesToDataUrls } from '../utils/mediaHelpers.js';
 
 const router = Router();
 
@@ -142,8 +143,14 @@ const searchSchema = z.object({
   searchType: z.enum(['auto', 'instant', 'deep']).optional()
 });
 
+const searchFileUpload = upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'images', maxCount: 5 },
+  { name: 'files', maxCount: 5 },
+]);
+
 // Main search endpoint (supports file uploads)
-router.post('/search', optionalAuth, upload.single('image'), async (req: AuthRequest, res) => {
+router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, res) => {
   try {
     // Handle both JSON and form-data
     let bodyData = req.body;
@@ -318,63 +325,41 @@ router.post('/search', optionalAuth, upload.single('image'), async (req: AuthReq
       conversationHistory = clientConversationHistory.slice(-contextMessageLimit);
     }
 
-    // Process uploaded file (image/document) if present
-    let imageDataUrl: string | undefined = undefined;
-    if (req.file && req.userId) {
-      try {
-        const fileType = req.file.mimetype.startsWith('image/') ? 'image' : 'document';
-        console.log(`📎 ${fileType} attached in search: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
-        
-        // Step 1: Upload to Supabase 'files' bucket (supports all MIME types)
-        const fileExtension = req.file.originalname?.split('.').pop() || 'bin';
-        const fileName = `search-attachments/${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('files')
-          .upload(fileName, req.file.buffer, {
-            contentType: req.file.mimetype,
-            upsert: false
-          });
-        
-        if (uploadError) {
-          console.error('Failed to upload file to Supabase:', uploadError);
-          // Fallback: use buffer directly
-          const base64File = req.file.buffer.toString('base64');
-          imageDataUrl = `data:${req.file.mimetype};base64,${base64File}`;
-          console.log(`⚠️  Using direct buffer fallback for ${fileType}`);
-        } else {
-          // Step 2: Get public URL
-          const { data: urlData } = supabase.storage
-            .from('files')
-            .getPublicUrl(fileName);
-          
-          console.log(`✅ ${fileType} uploaded to Supabase: ${fileName}`);
-          
-          // Step 3: Convert to base64 for AI (after successful upload)
-          const base64File = req.file.buffer.toString('base64');
-          imageDataUrl = `data:${req.file.mimetype};base64,${base64File}`;
-          
-          console.log(`✅ ${fileType} converted to base64 (${base64File.length} chars) for AI`);
+    // Process uploaded files (images/documents) if present
+    const uploadedFiles = getUploadedImageFiles(req);
+    let imageDataUrls: string[] | undefined;
+    if (uploadedFiles.length > 0) {
+      // Guard: skip files that are too large for inline_data (Gemini limit ~4MB per file).
+      // Large PDFs degrade gracefully — model answers from prompt only.
+      const MAX_INLINE_BYTES = 4 * 1024 * 1024; // 4 MB
+      const acceptableFiles = uploadedFiles.filter((f) => {
+        if (f.buffer.length > MAX_INLINE_BYTES) {
+          console.warn(`⚠️ File too large for inline AI (${(f.buffer.length / 1024 / 1024).toFixed(1)}MB), skipping: ${f.originalname || f.mimetype}`);
+          return false;
         }
-      } catch (fileError) {
-        console.error('Failed to process file:', fileError);
-        // Continue without file if processing fails
+        return true;
+      });
+      if (acceptableFiles.length > 0) {
+        imageDataUrls = uploadedFilesToDataUrls(acceptableFiles);
+        console.log(`📎 ${acceptableFiles.length}/${uploadedFiles.length} file(s) attached in search`);
+      } else {
+        console.warn('⚠️ All attached files exceeded inline size limit — proceeding with text-only query');
       }
     }
 
     // Generate answer using real AI provider only - no fallbacks
     let result: AnswerResult;
     try {
-      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory, 'normal', null, null, null, null, null, imageDataUrl, effectiveUserContext, searchType as any);
+      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory, 'normal', null, null, null, null, null, imageDataUrls, effectiveUserContext, searchType as any);
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
       const errorMessage = apiError?.message || 'Failed to generate answer';
-      // Return specific error message to help debug
       return res.status(500).json({ 
-        error: errorMessage,
-        details: apiError?.message?.includes('API_KEY') 
-          ? 'API key is missing or invalid. Please check your GOOGLE_API_KEY_FREE in .env file.'
-          : undefined
+        error: errorMessage.includes('API_KEY') 
+          ? 'API configuration error. Please contact support.'
+          : errorMessage.length > 200 
+            ? 'Failed to generate answer. Please try again.' 
+            : errorMessage,
       });
     }
 

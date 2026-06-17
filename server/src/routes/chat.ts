@@ -455,7 +455,7 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
         aiFriendMemoryContext,
         spaceTitle, 
         spaceDescription,
-        imageDataUrl, // Pass image for vision models
+        imageDataUrl ? [imageDataUrl] : undefined,
         effectiveUserContext,
         searchType as any
       );

@@ -24,6 +24,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>MinimumOSVersion</key>
+	<string>16.0</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -53,5 +55,7 @@
 	<string>This app requires access to your photo library to select and upload photos.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app requires microphone access for voice input to interact with the AI assistant.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>This app requires speech recognition permission to convert your voice queries into text.</string>
 </dict>
 </plist>

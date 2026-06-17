@@ -1,6 +1,6 @@
 import type { DiscoverItem } from '../types';
  
-const CACHE_KEY = 'perle-discover-cache-v2';
+const CACHE_KEY = 'syntraiq-discover-cache-v2';
 
 // -------------------------------------------------------------------
 // Full topic pool — 10-12 per category.
@@ -97,6 +97,98 @@ const TOPIC_POOL: DiscoverItem[] = [
   { id: 'mental-performance-sports', title: 'Mental Performance in Sports', tag: 'Popular', image: 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=600&h=300&fit=crop', alt: 'Mental performance', description: 'The psychology behind clutch performance and focus under pressure', category: 'Sports' },
 ];
 
+// Nation-wise news for "For You" tab
+const NATION_NEWS_POOL: DiscoverItem[] = [
+  { id: 'news-in-tech', title: 'India Tech Policy Updates', tag: 'News', image: 'https://images.unsplash.com/photo-1526378722484-bd91ca387e72?w=600&h=300&fit=crop', alt: 'India tech news', description: 'Latest regulatory and startup developments across India', category: 'For You', nation: 'India', nationCode: 'IN' },
+  { id: 'news-in-economy', title: 'Indian Markets Today', tag: 'Breaking', image: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&h=300&fit=crop', alt: 'India markets', description: 'Sensex, Nifty, and key economic headlines from India', category: 'For You', nation: 'India', nationCode: 'IN' },
+  { id: 'news-in-health', title: 'Healthcare News India', tag: 'Health', image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=600&h=300&fit=crop', alt: 'India health', description: 'Public health updates and medical breakthroughs in India', category: 'For You', nation: 'India', nationCode: 'IN' },
+  { id: 'news-us-tech', title: 'US Tech Giants Headlines', tag: 'News', image: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&h=300&fit=crop', alt: 'US tech', description: 'Silicon Valley and AI industry news from the United States', category: 'For You', nation: 'United States', nationCode: 'US' },
+  { id: 'news-us-finance', title: 'Wall Street Briefing', tag: 'Finance', image: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&h=300&fit=crop', alt: 'US finance', description: 'Markets, Fed policy, and corporate earnings in the US', category: 'For You', nation: 'United States', nationCode: 'US' },
+  { id: 'news-us-science', title: 'NASA & Space News', tag: 'Science', image: 'https://images.unsplash.com/photo-1446776877081-d282a0f896e2?w=600&h=300&fit=crop', alt: 'US space', description: 'Space missions and scientific discoveries from the US', category: 'For You', nation: 'United States', nationCode: 'US' },
+  { id: 'news-gb-politics', title: 'UK Parliament Updates', tag: 'Politics', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=600&h=300&fit=crop', alt: 'UK politics', description: 'Policy and political developments across the United Kingdom', category: 'For You', nation: 'United Kingdom', nationCode: 'GB' },
+  { id: 'news-gb-tech', title: 'London Tech Scene', tag: 'Tech', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=600&h=300&fit=crop', alt: 'UK tech', description: 'Fintech and AI startups making waves in the UK', category: 'For You', nation: 'United Kingdom', nationCode: 'GB' },
+  { id: 'news-au-climate', title: 'Australia Climate Action', tag: 'Environment', image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=600&h=300&fit=crop', alt: 'Australia climate', description: 'Renewable energy and climate policy news from Australia', category: 'For You', nation: 'Australia', nationCode: 'AU' },
+  { id: 'news-au-sports', title: 'Australian Sports Roundup', tag: 'Sports', image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&h=300&fit=crop', alt: 'Australia sports', description: 'Cricket, AFL, and major sporting events across Australia', category: 'For You', nation: 'Australia', nationCode: 'AU' },
+  { id: 'news-jp-innovation', title: 'Japan Innovation Watch', tag: 'Tech', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=600&h=300&fit=crop', alt: 'Japan tech', description: 'Robotics, electronics, and R&D headlines from Japan', category: 'For You', nation: 'Japan', nationCode: 'JP' },
+  { id: 'news-jp-culture', title: 'Japan Culture & Society', tag: 'Culture', image: 'https://images.unsplash.com/photo-1493976040374-85c8e712f1f9?w=600&h=300&fit=crop', alt: 'Japan culture', description: 'Social trends and cultural stories from across Japan', category: 'For You', nation: 'Japan', nationCode: 'JP' },
+  { id: 'news-de-industry', title: 'German Industry News', tag: 'Business', image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600&h=300&fit=crop', alt: 'Germany industry', description: 'Manufacturing, automotive, and energy updates from Germany', category: 'For You', nation: 'Germany', nationCode: 'DE' },
+  { id: 'news-de-green', title: 'Germany Green Transition', tag: 'Energy', image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=600&h=300&fit=crop', alt: 'Germany energy', description: 'Clean energy and sustainability news from Germany', category: 'For You', nation: 'Germany', nationCode: 'DE' },
+  { id: 'news-ca-ai', title: 'Canada AI Research', tag: 'AI', image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&h=300&fit=crop', alt: 'Canada AI', description: 'AI research hubs and policy updates from Canada', category: 'For You', nation: 'Canada', nationCode: 'CA' },
+  { id: 'news-sg-finance', title: 'Singapore Finance Hub', tag: 'Finance', image: 'https://images.unsplash.com/photo-1525621486887-28a93e024d13?w=600&h=300&fit=crop', alt: 'Singapore finance', description: 'Banking, fintech, and trade headlines from Singapore', category: 'For You', nation: 'Singapore', nationCode: 'SG' },
+];
+
+const NATION_LABELS: Record<string, string> = {
+  IN: 'India',
+  US: 'United States',
+  GB: 'United Kingdom',
+  AU: 'Australia',
+  JP: 'Japan',
+  DE: 'Germany',
+  CA: 'Canada',
+  SG: 'Singapore',
+};
+
+export const DISCOVER_CATEGORIES = [
+  'For You',
+  'Technology',
+  'Psychology',
+  'Finance',
+  'Health',
+] as const;
+
+export type DiscoverCategory = (typeof DISCOVER_CATEGORIES)[number];
+
+export function mapDiscoverCategory(item: DiscoverItem): string {
+  if (item.category === 'Health Care') return 'Health';
+  return item.category || 'Other';
+}
+
+export function filterByDiscoverCategory(
+  items: DiscoverItem[],
+  category: DiscoverCategory
+): DiscoverItem[] {
+  if (category === 'For You') return items.filter((i) => i.category === 'For You' || i.nation);
+  if (category === 'Health') {
+    return items.filter((i) => mapDiscoverCategory(i) === 'Health');
+  }
+  return items.filter((i) => mapDiscoverCategory(i) === category);
+}
+
+export function getUserNationCode(): string {
+  try {
+    const locale = navigator.language || 'en-US';
+    const code = locale.split('-')[1]?.toUpperCase();
+    if (code && NATION_LABELS[code]) return code;
+  } catch { /* ignore */ }
+  return 'US';
+}
+
+const FOR_YOU_NATION_CODES = ['IN', 'US'] as const;
+
+export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
+  const userCode = getUserNationCode();
+  const newsOnly = items.filter(
+    (i) =>
+      (i.nation || i.category === 'For You') &&
+      i.nationCode &&
+      FOR_YOU_NATION_CODES.includes(i.nationCode as (typeof FOR_YOU_NATION_CODES)[number])
+  );
+
+  const india = newsOnly.filter((i) => i.nationCode === 'IN');
+  const us = newsOnly.filter((i) => i.nationCode === 'US');
+
+  // User's region first when IN or US; otherwise India then US
+  if (userCode === 'US') return [...us, ...india];
+  return [...india, ...us];
+}
+
+export const getNationNewsItems = (): DiscoverItem[] => {
+  const pool = NATION_NEWS_POOL.filter((i) =>
+    i.nationCode && FOR_YOU_NATION_CODES.includes(i.nationCode as (typeof FOR_YOU_NATION_CODES)[number])
+  );
+  return seededShuffle(pool, todaySeed());
+};
+
 // -------------------------------------------------------------------
 // Deterministic shuffle seeded by date (same order for 24h)
 // -------------------------------------------------------------------
@@ -165,8 +257,13 @@ async function fetchAndCache(): Promise<DiscoverItem[]> {
 
 export const getAllDiscoverItems = async (): Promise<DiscoverItem[]> => {
   const cached = getCached();
-  if (cached && cached.length > 0) return cached;
-  return fetchAndCache();
+  const newsItems = getNationNewsItems();
+  if (cached && cached.length > 0) {
+    const merged = [...newsItems, ...cached.filter((i) => !i.nation)];
+    return merged;
+  }
+  const topics = await fetchAndCache();
+  return [...newsItems, ...topics];
 };
 
 export const getDiscoverItemById = async (id: string): Promise<DiscoverItem | null> => {

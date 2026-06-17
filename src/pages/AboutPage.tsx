@@ -32,7 +32,7 @@ export default function AboutPage() {
           style={{ width: 80, height: 80, objectFit: "contain", marginBottom: 16, filter: "invert(1)" }} 
         />
         <h2 className="h2" style={{ marginBottom: 8 }}>SyntraIQ</h2>
-        <p className="sub" style={{ marginBottom: 24 }}>Version 1.0.0</p>
+        <p className="sub" style={{ marginBottom: 24 }}>Version 1.0.1</p>
         
         <p style={{ lineHeight: 1.6, marginBottom: 16 }}>
           SyntraIQ is your intelligent companion for knowledge discovery and creative exploration. 

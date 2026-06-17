@@ -97,6 +97,8 @@ export interface DiscoverItem {
   alt: string;
   description?: string;
   category?: string;
+  nation?: string;
+  nationCode?: string;
 }
 
 export interface LibraryItem {

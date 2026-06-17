@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
+import type { Source } from "../types";
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
 
@@ -18,6 +19,7 @@ interface VoiceOverlayProps {
   onToggleListening: () => void;
   onClose: () => void;
   responseText?: string;
+  sources?: Source[];
 }
 
 const GlobeView = React.memo(function GlobeView({
@@ -59,6 +61,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
   onToggleListening,
   onClose,
   responseText,
+  sources: _sources = [],
 }) => {
   const [os, setOs] = useState("");
   const hasAutoStartedRef = useRef(false);
@@ -128,9 +131,9 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       // When opening voice mode to read existing chat answer, do not immediately
       // start listening (which would cancel TTS). Let TTS start first.
       try {
-        const speakFirst = localStorage.getItem("perle-voice-open-speak-first") === "1";
+        const speakFirst = localStorage.getItem("syntraiq-voice-open-speak-first") === "1";
         if (speakFirst) {
-          localStorage.removeItem("perle-voice-open-speak-first");
+          localStorage.removeItem("syntraiq-voice-open-speak-first");
           return;
         }
       } catch { }
@@ -160,8 +163,8 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
     } catch { }
 
     // Clear any stored answer text on mount
-    localStorage.removeItem("perle-current-answer-text");
-    localStorage.removeItem("perle-current-word-index");
+    localStorage.removeItem("syntraiq-current-answer-text");
+    localStorage.removeItem("syntraiq-current-word-index");
 
     // Cleanup on unmount
     return () => {
@@ -207,9 +210,9 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           onClick={() => {
             try {
               if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-              localStorage.removeItem("perle-current-answer-text");
-              localStorage.removeItem("perle-current-word-index");
-              localStorage.removeItem("perle-keep-voice-overlay-open");
+              localStorage.removeItem("syntraiq-current-answer-text");
+              localStorage.removeItem("syntraiq-current-word-index");
+              localStorage.removeItem("syntraiq-keep-voice-overlay-open");
             } catch { }
             onClose();
           }}
@@ -231,16 +234,18 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 24,
+          alignItems: "stretch",
+          justifyContent: "flex-start",
+          gap: 16,
+          overflow: "hidden",
+          paddingTop: 8,
+          paddingBottom: 92,
         }}
       >
-        {/* Watercolor gradient circle animation on voice output */}
         <SpeakingGradientCircle
           isListening={isListening}
           responseText={responseText}
-          key={isOpen ? "open" : "closed"} // Reset component when overlay opens/closes
+          key={isOpen ? "open" : "closed"}
         />
       </div>
 
@@ -266,10 +271,22 @@ const SpeakingGradientCircle: React.FC<{
   const [speaking, setSpeaking] = useState(false);
   const [displayText, setDisplayText] = useState<string>(propResponseText || "");
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isPinnedTop, setIsPinnedTop] = useState(false);
+  const hasResponse = Boolean(displayText?.trim());
 
-  // Use vmin for fluid sizing that respects both viewport dimensions
-  // This replaces the complex clamp calculations
-  const baseGlobeSize = "45vmin";
+  const baseGlobeSize = hasResponse ? (isPinnedTop ? "24vmin" : "34vmin") : "40vmin";
+
+  // Keep globe centered briefly when response starts, then move it to top.
+  useEffect(() => {
+    if (!hasResponse) {
+      setIsPinnedTop(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setIsPinnedTop(true);
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [hasResponse]);
 
   // Detect theme (light or dark)
   useEffect(() => {
@@ -295,7 +312,7 @@ const SpeakingGradientCircle: React.FC<{
       try {
         const storedText =
           typeof window !== "undefined"
-            ? window.localStorage.getItem("perle-current-answer-text")
+            ? window.localStorage.getItem("syntraiq-current-answer-text")
             : null;
 
         if (storedText) {
@@ -635,22 +652,31 @@ const SpeakingGradientCircle: React.FC<{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        gap: "4vh", // Relative gap
+        justifyContent: isPinnedTop ? "flex-start" : "center",
+        gap: isPinnedTop ? 16 : "4vh",
         width: "100%",
-        height: "100%",
-        maxHeight: "100%",
+        flex: 1,
+        minHeight: 0,
+        paddingTop: isPinnedTop ? 8 : 0,
       }}
     >
-      {/* Keep globe rendering isolated from live text/speaking updates */}
-      <GlobeView
-        baseGlobeSize={baseGlobeSize}
-        globeConfig={globeConfig}
-        globeData={globeData}
-      />
+      <div
+        style={{
+          transition: "all 0.5s ease",
+          transform: hasResponse ? "translateY(0)" : "translateY(0)",
+          flexShrink: 0,
+        }}
+      >
+        <GlobeView
+          baseGlobeSize={baseGlobeSize}
+          globeConfig={globeConfig}
+          globeData={globeData}
+        />
+      </div>
 
-      {/* AI Response Text Display - Responsive height for mobile and desktop */}
-      <VoiceResponseText text={displayText} speaking={speaking} />
+      <div style={{ flex: 1, width: "100%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <VoiceResponseText text={displayText} speaking={speaking} />
+      </div>
     </div>
   );
 };

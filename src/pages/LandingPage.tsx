@@ -1,11 +1,26 @@
+import { useEffect, useState } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { IoIosSearch, IoMdCheckmark, IoMdRocket, IoMdChatbubbles, IoMdFlame } from "react-icons/io";
-import logo from "../assets/syntra-icon.png";
-import bgVideo from "../assets/syntra-bg-video.mp4";
+import logo from "../assets/images/logo.png";
 import { getUserData } from "../utils/auth";
 
 export default function LandingPage() {
   const { navigateTo } = useRouterNavigation();
+  const [bgVideo, setBgVideo] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    import("../assets/syntra-bg-video.mp4")
+      .then((mod) => {
+        if (!cancelled) setBgVideo(mod.default);
+      })
+      .catch(() => {
+        if (!cancelled) setBgVideo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handlePlanClick = (planId: string) => {
     const user = getUserData();
@@ -53,14 +68,17 @@ export default function LandingPage() {
     <div className="min-h-screen flex flex-col justify-between" style={{ background: "var(--bg)", color: "var(--text)" }}>
       {/* Background Video - full opacity, dark overlay for readability */}
       <div className="fixed inset-0 pointer-events-none z-0 select-none">
+        {bgVideo ? (
         <video
           src={bgVideo}
           autoPlay
           muted
           loop
           playsInline
+          preload="metadata"
           className="w-full h-full object-cover opacity-30"
         />
+        ) : null}
         {/* Dark overlay so content stays legible */}
         <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(10,10,10,0.55) 0%, rgba(10,10,10,0.75) 100%)" }} />
       </div>
@@ -91,7 +109,7 @@ export default function LandingPage() {
         {/* Hero Section */}
         <section className="text-center py-16 md:py-24 flex flex-col items-center gap-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold tracking-wide" style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "rgba(199, 168, 105, 0.08)" }}>
-            <IoMdFlame size={14} /> Introducing SyntraIQ 1.0.0
+            <IoMdFlame size={14} /> Introducing SyntraIQ 1.0.1
           </div>
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight max-w-3xl leading-tight font-ubuntu">
             Intelligent Knowledge Discovery <br />
@@ -160,6 +178,20 @@ export default function LandingPage() {
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-5xl font-bold font-ubuntu mb-4">Choose Your Speed</h2>
             <p className="max-w-xl mx-auto" style={{ color: "var(--sub)" }}>Flexible monthly pricing options to fuel your learning pace. Upgrade, downgrade, or cancel anytime.</p>
+            {/* Apple 2.3.2 — paid content disclosure */}
+            <p
+              className="max-w-xl mx-auto mt-3 text-xs"
+              style={{
+                color: "var(--sub)",
+                background: "rgba(199,168,105,0.07)",
+                border: "1px solid rgba(199,168,105,0.2)",
+                borderRadius: "8px",
+                padding: "10px 16px",
+                display: "inline-block",
+              }}
+            >
+              💳 <strong>IQ Pro</strong> and <strong>IQ Max</strong> are paid subscriptions and require an <strong>In-App Purchase</strong>. Prices shown in USD/month. Billed monthly. Cancel anytime. Subscription auto-renews unless cancelled at least 24 hours before the renewal date.
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {plans.map((plan) => (
@@ -183,9 +215,14 @@ export default function LandingPage() {
                 )}
                 <div>
                   <h3 className="text-2xl font-bold font-ubuntu mb-2">{plan.name}</h3>
-                  <div className="flex items-baseline gap-2 mb-4">
+                  <div className="flex items-baseline gap-2 mb-1">
                     <span className="text-4xl font-extrabold tracking-tight">{plan.price}</span>
+                    <span className="text-sm" style={{ color: "var(--sub)" }}>/month</span>
                   </div>
+                  {/* In-App Purchase label — Apple 2.3.2 */}
+                  <p className="text-xs mb-4" style={{ color: "var(--sub)", opacity: 0.7 }}>
+                    In-App Purchase · Auto-renews monthly
+                  </p>
                   <p className="text-sm mb-6" style={{ color: "var(--sub)", lineHeight: "1.5" }}>{plan.description}</p>
                   
                   <ul className="flex flex-col gap-3">
@@ -197,21 +234,27 @@ export default function LandingPage() {
                     ))}
                   </ul>
                 </div>
-                <button 
-                  className="btn w-full font-bold py-3 rounded-xl cursor-pointer"
-                  style={{
-                    background: plan.highlighted ? "var(--accent)" : "#1a1a1a",
-                    color: plan.highlighted ? "#111" : "#fff",
-                    border: plan.highlighted ? "none" : "1px solid var(--border)"
-                  }}
-                  onClick={() => handlePlanClick(plan.id)}
-                >
-                  {plan.cta}
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button 
+                    className="btn w-full font-bold py-3 rounded-xl cursor-pointer"
+                    style={{
+                      background: plan.highlighted ? "var(--accent)" : "#1a1a1a",
+                      color: plan.highlighted ? "#111" : "#fff",
+                      border: plan.highlighted ? "none" : "1px solid var(--border)"
+                    }}
+                    onClick={() => handlePlanClick(plan.id)}
+                  >
+                    {plan.cta}
+                  </button>
+                  <p className="text-center text-xs" style={{ color: "var(--sub)", opacity: 0.6 }}>
+                    Requires In-App Purchase
+                  </p>
+                </div>
               </div>
             ))}
           </div>
         </section>
+
 
       </main>
 

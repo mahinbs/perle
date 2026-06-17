@@ -184,10 +184,15 @@ export async function searchAPI(
     }
     formData.append('userContext', JSON.stringify(userContext));
     
-    // Attach only the first file (for now, single file support)
-    if (uploadedFiles[0]?.file) {
-      formData.append('image', uploadedFiles[0].file);
-    }
+    // Attach all uploaded files
+    uploadedFiles.forEach((uploadedFile) => {
+      if (!uploadedFile?.file) return;
+      if (uploadedFile.type === 'image') {
+        formData.append('images', uploadedFile.file);
+      } else {
+        formData.append('files', uploadedFile.file);
+      }
+    });
     
     const headers = getAuthHeaders();
     delete (headers as any)['Content-Type']; // Let browser set multipart boundary

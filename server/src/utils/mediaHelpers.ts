@@ -1,5 +1,12 @@
 import { supabase } from '../lib/supabase.js';
 
+type MulterFile = {
+  buffer: Buffer;
+  mimetype: string;
+  originalname?: string;
+  size: number;
+};
+
 /**
  * Check if a prompt is asking to edit/modify existing media
  * Uses both keyword matching AND contextual analysis
@@ -455,4 +462,56 @@ export async function downloadImageAsDataUrl(imageUrl: string): Promise<string |
     console.error('Error downloading image:', error);
     return null;
   }
+}
+
+export const MAX_REFERENCE_IMAGES = 5;
+
+type MulterFileFields = { [fieldname: string]: MulterFile[] };
+
+export function getUploadedImageFiles(req: {
+  file?: MulterFile;
+  files?: MulterFileFields | MulterFile[];
+}): MulterFile[] {
+  if (Array.isArray(req.files)) {
+    return req.files.slice(0, MAX_REFERENCE_IMAGES);
+  }
+
+  const fields = req.files as MulterFileFields | undefined;
+  if (fields) {
+    // Combine ALL possible field names — spread each so every file type is included.
+    // Dedup by buffer reference to prevent the same multer file appearing twice
+    // (e.g. when the client sends both "referenceImage" and "referenceImages").
+    const allFiles = [
+      ...(fields.referenceImages || []),
+      ...(fields.referenceImage || []),
+      ...(fields.images || []),
+      ...(fields.image || []),
+      ...(fields.files || []),
+    ];
+
+    const seen = new Set<Buffer>();
+    const combined: MulterFile[] = [];
+    for (const f of allFiles) {
+      if (!seen.has(f.buffer)) {
+        seen.add(f.buffer);
+        combined.push(f);
+      }
+    }
+
+    if (combined.length > 0) {
+      return combined.slice(0, MAX_REFERENCE_IMAGES);
+    }
+  }
+
+  if (req.file) return [req.file];
+  return [];
+}
+
+export function fileToDataUrl(file: MulterFile): string {
+  const imageBase64 = file.buffer.toString('base64');
+  return `data:${file.mimetype};base64,${imageBase64}`;
+}
+
+export function uploadedFilesToDataUrls(files: MulterFile[]): string[] {
+  return files.map(fileToDataUrl);
 }

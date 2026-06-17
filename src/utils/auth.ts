@@ -6,8 +6,23 @@ if (import.meta.env.DEV) {
   console.log('🔧 API_URL:', API_URL || 'NOT SET - Please add VITE_API_URL to .env file');
 }
 
-const AUTH_TOKEN_KEY = 'perle-auth-token';
-const USER_DATA_KEY = 'perle-user-data';
+import {
+  getLocalItem,
+  getRefreshToken,
+  getSessionAuthToken,
+  migrateLegacyStorageKeys,
+  removeLocalItem,
+  removeRefreshToken,
+  removeSessionAuthToken,
+  setLocalItem,
+  setRefreshToken,
+  setSessionAuthToken,
+  STORAGE_KEYS,
+} from './storage';
+
+migrateLegacyStorageKeys();
+
+const USER_DATA_KEY = STORAGE_KEYS.userData;
 
 export interface User {
   id: string;
@@ -29,6 +44,7 @@ export interface User {
 
 export interface AuthResponse {
   token?: string;
+  refreshToken?: string;
   user?: User;
   requiresVerification?: boolean;
   email?: string;
@@ -37,37 +53,83 @@ export interface AuthResponse {
 }
 
 export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(AUTH_TOKEN_KEY);
+  return getSessionAuthToken();
 }
 
 export function setAuthToken(token: string): void {
+  setSessionAuthToken(token);
+}
+
+export function setAuthCredentials(token: string, refreshToken?: string): void {
+  setAuthToken(token);
+  if (refreshToken) {
+    setRefreshToken(refreshToken);
+  }
+}
+
+export function applyTheme(darkMode: boolean): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
+  document.documentElement.classList.toggle('dark', darkMode);
+}
+
+export function getStoredDarkModePreference(): boolean {
+  const user = getUserData();
+  return user?.darkMode === true;
+}
+
+export function initializeTheme(): void {
+  applyTheme(getStoredDarkModePreference());
 }
 
 export function removeAuthToken(): void {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-  localStorage.removeItem(USER_DATA_KEY);
+  removeSessionAuthToken();
+  removeRefreshToken();
+  removeLocalItem(USER_DATA_KEY);
+  applyTheme(false);
 }
 
 export function getUserData(): User | null {
   if (typeof window === 'undefined') return null;
-  const data = localStorage.getItem(USER_DATA_KEY);
+  const data = getLocalItem(USER_DATA_KEY);
   return data ? JSON.parse(data) : null;
 }
 
 export function setUserData(user: User): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+  setLocalItem(USER_DATA_KEY, JSON.stringify(user));
   if (user && typeof user.darkMode === 'boolean') {
-    if (user.darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    applyTheme(user.darkMode);
   }
+}
+
+export function hasPaidPremiumPlan(
+  user?: Pick<User, 'isPremium' | 'premiumTier'> | null,
+): boolean {
+  if (!user?.isPremium) return false;
+  return user.premiumTier === 'pro' || user.premiumTier === 'max';
+}
+
+type PostAuthNavState = { returnTo?: string; plan?: string };
+
+export function getPostAuthNavigation(
+  user: User | null | undefined,
+  navState?: PostAuthNavState,
+): { path: string; useAuthRedirect?: boolean } {
+  const wouldGoToSubscription =
+    (navState?.returnTo?.startsWith('/subscription') ?? false) ||
+    Boolean(navState?.plan);
+
+  if (hasPaidPremiumPlan(user) && wouldGoToSubscription) {
+    return { path: '/' };
+  }
+  if (navState?.returnTo) {
+    return { path: navState.returnTo, useAuthRedirect: true };
+  }
+  if (navState?.plan) {
+    return { path: `/subscription?plan=${navState.plan}`, useAuthRedirect: true };
+  }
+  return { path: '/' };
 }
 
 export function getAuthHeaders(): HeadersInit {
@@ -99,7 +161,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
 
   const data: AuthResponse = await response.json();
   if (data.token) {
-    setAuthToken(data.token);
+    setAuthCredentials(data.token, data.refreshToken);
   }
   if (data.user) {
     setUserData(data.user);
@@ -151,7 +213,7 @@ export async function signup(name: string, email: string, password: string): Pro
   
   // If token and user provided, set them
   if (data.token && data.user) {
-    setAuthToken(data.token);
+    setAuthCredentials(data.token, data.refreshToken);
     setUserData(data.user);
   }
   
@@ -173,41 +235,114 @@ export async function logout(): Promise<void> {
   removeAuthToken();
 }
 
-export async function verifyToken(): Promise<User | null> {
-  const token = getAuthToken();
-  if (!token || !API_URL) {
+let refreshInFlight: Promise<boolean> | null = null;
+
+export async function refreshAuthSession(): Promise<boolean> {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+
+  const refreshToken = getRefreshToken();
+  if (!refreshToken || !API_URL) {
+    return false;
+  }
+
+  refreshInFlight = (async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const data: AuthResponse = await response.json();
+      if (data.token) {
+        setAuthCredentials(data.token, data.refreshToken);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+async function fetchVerifiedUser(): Promise<User | null> {
+  const response = await fetch(`${API_URL}/api/auth/verify`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
+  if (response.status === 401) {
     return null;
+  }
+
+  if (!response.ok) {
+    return getUserData();
+  }
+
+  const data = await response.json();
+  setUserData(data.user);
+  return data.user;
+}
+
+export async function verifyToken(): Promise<User | null> {
+  if (!API_URL) {
+    return getUserData();
+  }
+
+  if (!getAuthToken() && !(await refreshAuthSession())) {
+    return getUserData();
   }
 
   try {
-    const response = await fetch(`${API_URL}/api/auth/verify`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    });
+    let user = await fetchVerifiedUser();
 
-    // If 401, token is invalid - silently clear and return null
-    if (response.status === 401) {
-      removeAuthToken();
-      return null;
+    if (!user) {
+      const refreshed = await refreshAuthSession();
+      if (refreshed) {
+        user = await fetchVerifiedUser();
+      }
     }
 
-    if (!response.ok) {
-      removeAuthToken();
-      return null;
-    }
-
-    const data = await response.json();
-    setUserData(data.user);
-    return data.user;
-  } catch (error) {
-    // Silently handle errors - don't show error messages for token verification
-    removeAuthToken();
-    return null;
+    return user ?? getUserData();
+  } catch {
+    return getUserData();
   }
 }
 
+export async function initializeAuthSession(): Promise<void> {
+  if (!getAuthToken() && !getRefreshToken()) {
+    return;
+  }
+  await verifyToken();
+}
+
+let authSessionListenersRegistered = false;
+
+export function registerAuthSessionListeners(): void {
+  if (authSessionListenersRegistered || typeof document === 'undefined') {
+    return;
+  }
+
+  authSessionListenersRegistered = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void initializeAuthSession();
+    }
+  });
+}
+
 export function isAuthenticated(): boolean {
-  return getAuthToken() !== null;
+  return getAuthToken() !== null || getRefreshToken() !== null;
 }
 
 // Helper function to handle API responses and check for authentication errors
@@ -215,15 +350,18 @@ export async function handleApiResponse<T>(
   response: Response,
   onUnauthorized?: () => void
 ): Promise<T> {
-  // If 401 Unauthorized, clear auth and handle gracefully
   if (response.status === 401) {
-    removeAuthToken();
-    if (onUnauthorized) {
-      onUnauthorized();
+    const refreshed = await refreshAuthSession();
+    if (!refreshed) {
+      // Don't auto-wipe the session; let the caller/UI decide
+      if (onUnauthorized) {
+        onUnauthorized();
+      }
+      const errorData = await response.json().catch(() => ({ error: 'Session expired. Please log in again.' }));
+      throw new Error(errorData.error || 'Session expired. Please log in again.');
     }
-    // Return a rejected promise with a user-friendly message
-    const errorData = await response.json().catch(() => ({ error: 'Session expired. Please log in again.' }));
-    throw new Error(errorData.error || 'Session expired. Please log in again.');
+
+    throw new Error('Session refreshed. Please retry the request.');
   }
 
   if (!response.ok) {
@@ -240,24 +378,46 @@ export async function authenticatedFetch(
   options: RequestInit = {},
   onUnauthorized?: () => void
 ): Promise<Response> {
-  const headers = {
-    ...getAuthHeaders(),
-    ...options.headers,
-  };
+  const makeRequest = () =>
+    fetch(url, {
+      ...options,
+      headers: {
+        ...getAuthHeaders(),
+        ...options.headers,
+      },
+    });
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response = await makeRequest();
 
-  // If 401, clear auth immediately
   if (response.status === 401) {
-    removeAuthToken();
+    const refreshed = await refreshAuthSession();
+    if (refreshed) {
+      response = await makeRequest();
+    }
+  }
+
+  if (response.status === 401) {
+    // Don't auto-wipe the session here — too aggressive for background calls.
+    // Callers with explicit onUnauthorized handlers can decide what to do.
     if (onUnauthorized) {
       onUnauthorized();
     }
   }
 
   return response;
+}
+
+/** Authenticated fetch that retries once after refreshing tokens. */
+export async function authFetch(
+  url: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  return authenticatedFetch(url, options);
+}
+
+/** Attempt to refresh the session after a 401. Returns true if refreshed, false otherwise. Does NOT clear local tokens. */
+export async function handleUnauthorizedResponse(): Promise<boolean> {
+  const refreshed = await refreshAuthSession();
+  return refreshed;
 }
 
