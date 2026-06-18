@@ -10,9 +10,12 @@ import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
 import type { Source } from "../types";
+import syntraGif from "../assets/gif/syntraiq.gif";
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
 const BOTTOM_GLOBE_SIZE = "clamp(72px, 22vmin, 110px)";
+const VOICE_OVERLAY_SAFE_TOP = "max(12px, env(safe-area-inset-top, 0px))";
+const VOICE_CONTENT_H_PADDING = "clamp(12px, 4vw, 28px)";
 
 function getSourceDomain(url: string): string {
   try {
@@ -57,7 +60,7 @@ const VoiceSourcesPill: React.FC<{ sources: Source[] }> = ({ sources }) => {
         position: "relative",
         display: "flex",
         justifyContent: "center",
-        paddingTop: "max(4px, env(safe-area-inset-top))",
+        paddingTop: 4,
         flexShrink: 0,
       }}
     >
@@ -189,6 +192,8 @@ const VoiceSourcesPill: React.FC<{ sources: Source[] }> = ({ sources }) => {
 interface VoiceOverlayProps {
   isOpen: boolean;
   isListening: boolean;
+  isLoading?: boolean;
+  queryText?: string;
   onToggleListening: () => void;
   onClose: () => void;
   responseText?: string;
@@ -231,6 +236,8 @@ const GlobeView = React.memo(function GlobeView({
 export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
   isOpen,
   isListening,
+  isLoading = false,
+  queryText = "",
   onToggleListening,
   onClose,
   responseText,
@@ -377,7 +384,19 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       aria-modal="true"
       aria-label="Voice assistant"
     >
-      <VoiceSourcesPill sources={sources} />
+      {/* Always reserve top safe area (Dynamic Island / status bar) — sources pill sits here when ready */}
+      <div
+        style={{
+          flexShrink: 0,
+          paddingTop: VOICE_OVERLAY_SAFE_TOP,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "flex-start",
+          minHeight: isLoading && sources.length === 0 ? 52 : undefined,
+        }}
+      >
+        <VoiceSourcesPill sources={sources} />
+      </div>
 
       <div
         style={{
@@ -388,12 +407,13 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           justifyContent: "flex-start",
           overflow: "hidden",
           minHeight: 0,
-          paddingTop: 12,
           paddingBottom: 8,
         }}
       >
         <VoiceResponsePanel
           responseText={responseText}
+          isLoading={isLoading}
+          queryText={queryText}
           key={isOpen ? "open" : "closed"}
         />
       </div>
@@ -425,12 +445,18 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
 
 const VoiceResponsePanel: React.FC<{
   responseText?: string;
-}> = ({ responseText: propResponseText }) => {
+  isLoading?: boolean;
+  queryText?: string;
+}> = ({ responseText: propResponseText, isLoading = false, queryText = "" }) => {
   const [speaking, setSpeaking] = useState(false);
   const [displayText, setDisplayText] = useState<string>(propResponseText || "");
 
   // Keep display text and speaking state in sync with live voice output text only.
   useEffect(() => {
+    if (isLoading) {
+      setDisplayText("");
+      return;
+    }
     let raf = 0;
     const tick = () => {
       try {
@@ -461,7 +487,77 @@ const VoiceResponsePanel: React.FC<{
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [isLoading]);
+
+  if (isLoading) {
+    return (
+      <div
+        className="voice-overlay-loading"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          width: "100%",
+          maxWidth: "min(720px, 94vw)",
+          marginInline: "auto",
+          flex: 1,
+          minHeight: 0,
+          padding: `8px ${VOICE_CONTENT_H_PADDING} 12px`,
+          gap: 12,
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        {queryText && (
+          <p
+            style={{
+              fontSize: "var(--font-md)",
+              fontWeight: 500,
+              color: "var(--text)",
+              textAlign: "left",
+              margin: 0,
+              maxWidth: "100%",
+              wordBreak: "break-word",
+              alignSelf: "stretch",
+            }}
+          >
+            {queryText}
+          </p>
+        )}
+        <div className="flex items-start gap-1">
+          <img
+            src={syntraGif}
+            alt="IQ"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              objectFit: "cover",
+              flexShrink: 0,
+            }}
+          />
+          <div
+            className="flex items-center justify-center"
+            style={{ minHeight: 36, paddingRight: 8 }}
+          >
+            <p
+              style={{
+                fontSize: "var(--font-sm)",
+                fontWeight: 500,
+                color: "var(--sub)",
+                margin: 0,
+                textAlign: "center",
+                lineHeight: 1.3,
+              }}
+            >
+              IQ is thinking
+              <span className="thinking-dots" aria-hidden="true">.....</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

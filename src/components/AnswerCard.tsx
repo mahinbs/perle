@@ -11,6 +11,8 @@ import {
   parseMarkdownHeading,
   renderAnswerHeading,
   renderInlineFormatted,
+  renderLeadBoldContent,
+  enhanceDocumentStructure,
   stripHeadingEmojis,
 } from "../utils/answerFormatting";
 
@@ -210,10 +212,11 @@ function preprocessAnswerText(
   query?: string
 ): string {
   if (!text) return text;
-  if (isComparisonContext(mode, query) && !hasMarkdownTable(text)) {
-    return tryBuildComparisonTableFromText(text, query);
+  let processed = enhanceDocumentStructure(text);
+  if (isComparisonContext(mode, query) && !hasMarkdownTable(processed)) {
+    processed = tryBuildComparisonTableFromText(processed, query);
   }
-  return text;
+  return processed;
 }
 
 interface AnswerCardProps {
@@ -242,7 +245,7 @@ const QUERY_TEXT_STYLE: React.CSSProperties = {
 };
 
 export const AnswerCard: React.FC<AnswerCardProps> = ({
-  chunks,
+  chunks = [],
   sources,
   isLoading,
   mode,
@@ -255,6 +258,11 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   hideSources = false,
   suggestedQuestions = [],
 }) => {
+  const isVideoAttachment = (file: UploadedFile) =>
+    Boolean(file.file?.type?.startsWith("video/"));
+  const attachmentName = (file: UploadedFile) => file.file?.name ?? "attachment";
+  const attachmentSizeKb = (file: UploadedFile) =>
+    file.file?.size ? (file.file.size / 1024).toFixed(1) : "—";
   const [copiedChunk, setCopiedChunk] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
@@ -741,10 +749,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           result.push(
             <p
               key={`para-${result.length}`}
+              className="answer-paragraph"
               style={{
-                marginTop: result.length > 0 ? 12 : 0,
-                marginBottom: 12,
-                lineHeight: 1.7,
+                marginTop: result.length > 0 ? 14 : 0,
+                marginBottom: 14,
+                lineHeight: 1.75,
+                textAlign: "left",
               }}
             >
               {mathRendered}
@@ -822,7 +832,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     <AnswerBulletDot />
                   )}
                   <span style={{ flex: 1 }}>
-                    {renderTextContent(item.content)}
+                    {renderLeadBoldContent(item.content, renderTextContent)}
                     {isLastItem && (
                       <span
                         style={{
@@ -1328,7 +1338,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     }}
                   >
                     {file.preview ? (
-                      file.file.type.startsWith("video/") ? (
+                      isVideoAttachment(file) ? (
                         <video
                           src={file.preview}
                           style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -1369,23 +1379,31 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             </div>
           </div>
         )}
-        <div className="flex items-start gap-2" style={{ marginTop: query ? 8 : 0 }}>
-          <div className="w-9 h-9 shrink-0" style={{ position: 'relative' }}>
+        <div
+          className="flex items-start gap-1"
+          style={{ marginTop: query ? 8 : 0 }}
+        >
+          <div className="w-9 h-9 shrink-0">
             <img
               src={syntraGif}
               loading="eager"
               alt="IQ"
               className="rounded-full w-full h-full object-cover"
-              style={{ display: 'block' }}
+              style={{ display: "block" }}
             />
           </div>
-          <div className="pt-0.5">
+          <div
+            className="flex items-center justify-center"
+            style={{ minHeight: 36, paddingRight: 8 }}
+          >
             <p
               style={{
                 fontSize: "var(--font-sm)",
                 fontWeight: 500,
                 color: "var(--sub)",
                 margin: 0,
+                textAlign: "center",
+                lineHeight: 1.3,
               }}
             >
               IQ is thinking
@@ -1456,7 +1474,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     }}
                   >
                     {file.preview ? (
-                      file.file.type.startsWith("video/") ? (
+                      isVideoAttachment(file) ? (
                         <video
                           src={file.preview}
                           style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -1490,12 +1508,13 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               </div>
             )}
             {generatedMedia && (
-              <div className="max-w-[90%]">
+              <div className="w-full max-w-full">
                 <div
                   style={{
                     borderRadius: 12,
                     overflow: "hidden",
-                    maxWidth: generatedMedia.type === "image" ? 400 : 600,
+                    width: "100%",
+                    maxWidth: "100%",
                     border: "1px solid var(--border)",
                   }}
                 >
@@ -1505,18 +1524,23 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                       alt={generatedMedia.prompt}
                       style={{
                         width: "100%",
+                        maxWidth: "100%",
                         height: "auto",
                         display: "block",
+                        objectFit: "contain",
                       }}
                     />
                   ) : (
                     <video
                       src={generatedMedia.url}
                       controls
+                      playsInline
                       style={{
                         width: "100%",
+                        maxWidth: "100%",
                         height: "auto",
                         display: "block",
+                        objectFit: "contain",
                       }}
                     />
                   )}
@@ -1652,7 +1676,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         {chunks.map((chunk, index) => (
           <div key={index} style={{ position: "relative" }} data-chunk data-chunk-index={index}>
             <div
-              className="answer-content leading-relaxed"
+              className="answer-content answer-document"
               style={{
                 fontSize: "var(--font-md)",
                 marginBottom: 12,
@@ -1759,21 +1783,27 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {attachments.map((file) => {
+              const canDownloadFile = file.file instanceof File;
+
               const handleDownload = () => {
+                if (!canDownloadFile) {
+                  if (file.preview) {
+                    window.open(file.preview, "_blank");
+                  }
+                  return;
+                }
                 try {
-                  // Create a blob URL from the file
                   const url = URL.createObjectURL(file.file);
                   const link = document.createElement("a");
                   link.href = url;
-                  link.download = file.file.name;
+                  link.download = attachmentName(file);
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
-                  // Clean up the blob URL after a delay
                   setTimeout(() => URL.revokeObjectURL(url), 100);
 
                   showToast({
-                    message: `Downloaded ${file.file.name}`,
+                    message: `Downloaded ${attachmentName(file)}`,
                     type: "success",
                     duration: 2000,
                   });
@@ -1803,7 +1833,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     {file.preview && file.type === "image" ? (
                       <img
                         src={file.preview}
-                        alt={file.file.name}
+                        alt={attachmentName(file)}
                         style={{
                           width: 48,
                           height: 48,
@@ -1841,7 +1871,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {file.file.name}
+                        {attachmentName(file)}
                       </div>
                       <div
                         className="sub text-xs"
@@ -1849,7 +1879,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                           color: "var(--text-secondary)",
                         }}
                       >
-                        {(file.file.size / 1024).toFixed(1)} KB
+                        {attachmentSizeKb(file)} KB
                         {file.type && ` • ${file.type}`}
                       </div>
                     </div>
@@ -1857,7 +1887,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                   <button
                     className="btn-ghost"
                     onClick={handleDownload}
-                    aria-label={`Download ${file.file.name}`}
+                    aria-label={`Download ${attachmentName(file)}`}
                     style={{
                       padding: "8px 12px",
                       fontSize: "var(--font-sm)",

@@ -22,6 +22,7 @@ export const STORAGE_KEYS = {
   triggerVoiceOutput: 'syntraiq-trigger-voice-output',
   speechRate: 'syntraiq-speech-rate',
   homeChatSession: 'syntraiq-home-chat-session',
+  analyzeDocSession: 'syntraiq-analyze-doc-session',
 } as const;
 
 const LEGACY_KEY_MAP: Record<string, string> = {

@@ -15,6 +15,7 @@ import TermsPage from '../pages/TermsPage';
 import PrivacyPage from '../pages/PrivacyPage';
 import GalleryPage from '../pages/GalleryPage';
 import MediaStudioPage from '../pages/MediaStudioPage';
+import AnalyzeDocumentPage from '../pages/AnalyzeDocumentPage';
 import SleepDisorderPage from '../pages/SleepDisorderPage';
 import AboutPage from '../pages/AboutPage';
 import HelpPage from '../pages/HelpPage';
@@ -55,6 +56,7 @@ export function AppRouter() {
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/privacy-policy" element={<PrivacyPage />} />
       <Route path="/gallery" element={<GalleryPage />} />
+      <Route path="/analyze" element={<AnalyzeDocumentPage />} />
       <Route path="/create" element={<MediaStudioPage />} />
       <Route path="/create-video" element={<MediaStudioPage />} />
       <Route path="/edit-images" element={<MediaStudioPage />} />

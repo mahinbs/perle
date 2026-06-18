@@ -1274,7 +1274,7 @@ export default function AIFriendPage() {
       </div>
 
       {/* Messages Area */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-5 flex flex-col">
         {messages.map((message, index) => {
           const showDateDivider =
             index === 0 ||

@@ -3,6 +3,9 @@ import type { ChatResult } from '../types';
 import { rerankSources, chunkAnswer } from './helpers';
 import { getUserLocalContext } from './userLocalContext';
 
+/** Sent to the API when the user submits attachments without typing a prompt. */
+export const FILE_ONLY_DEFAULT_QUERY = 'Review the attached files.';
+
 interface UploadedFile {
   id: string;
   file: File;
@@ -165,26 +168,28 @@ function buildSearchFormData(
   },
   uploadedFiles: UploadedFile[] = []
 ): FormData {
-  const fd = new FormData();
-  if (params.query) fd.append('query', params.query);
-  if (params.message) fd.append('message', params.message);
-  if (params.mode) fd.append('mode', params.mode);
-  fd.append('model', params.model);
-  if (params.newConversation !== undefined) fd.append('newConversation', String(params.newConversation));
-  if (params.conversationId) fd.append('conversationId', params.conversationId);
-  if (params.conversationHistory?.length) fd.append('conversationHistory', JSON.stringify(params.conversationHistory));
-  if (params.searchType) fd.append('searchType', params.searchType);
-  if (params.userContext) fd.append('userContext', JSON.stringify(params.userContext));
-  if (params.chatMode) fd.append('chatMode', params.chatMode);
-  if (params.aiFriendId) fd.append('aiFriendId', params.aiFriendId);
-  if (params.spaceId) fd.append('spaceId', params.spaceId);
+  const formData = new FormData();
+  if (params.query) formData.append('query', params.query);
+  if (params.message) formData.append('message', params.message);
+  if (params.mode) formData.append('mode', params.mode);
+  formData.append('model', params.model);
+  if (params.newConversation !== undefined) formData.append('newConversation', String(params.newConversation));
+  if (params.conversationId) formData.append('conversationId', params.conversationId);
+  if (params.conversationHistory?.length) formData.append('conversationHistory', JSON.stringify(params.conversationHistory));
+  if (params.searchType) formData.append('searchType', params.searchType);
+  if (params.userContext) formData.append('userContext', JSON.stringify(params.userContext));
+  if (params.chatMode) formData.append('chatMode', params.chatMode);
+  if (params.aiFriendId) formData.append('aiFriendId', params.aiFriendId);
+  if (params.spaceId) formData.append('spaceId', params.spaceId);
 
-  // All files go under the single 'files' field (backend accepts images + documents)
-  uploadedFiles.forEach((uf) => {
-    if (uf?.file) fd.append('files', uf.file, uf.file.name);
-  });
+  // Images, PDFs, and documents for analysis — all under the 'files' field
+  for (const uploaded of uploadedFiles) {
+    if (uploaded.file) {
+      formData.append('files', uploaded.file, uploaded.file.name);
+    }
+  }
 
-  return fd;
+  return formData;
 }
 
 export async function searchAPI(

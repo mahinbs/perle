@@ -128,31 +128,34 @@ export function renderAnswerHeading(
   const cleanText = stripHeadingEmojis(text.replace(/:+$/, "").trim());
   const styles: Record<1 | 2 | 3, React.CSSProperties> = {
     1: {
-      fontSize: "1.42rem",
+      fontSize: "1.35rem",
       fontWeight: 700,
       marginTop: 0,
-      marginBottom: 14,
-      lineHeight: 1.35,
+      marginBottom: 16,
+      lineHeight: 1.3,
       color: "var(--text)",
-      letterSpacing: "-0.01em",
+      letterSpacing: "-0.02em",
+      paddingBottom: 10,
+      borderBottom: "2px solid var(--border)",
     },
     2: {
-      fontSize: "1.15rem",
+      fontSize: "1.12rem",
       fontWeight: 700,
       marginTop: 28,
       marginBottom: 12,
-      lineHeight: 1.4,
+      lineHeight: 1.35,
       color: "var(--text)",
-      paddingBottom: 8,
+      paddingBottom: 6,
       borderBottom: "1px solid var(--border)",
     },
     3: {
-      fontSize: "1.02rem",
+      fontSize: "1rem",
       fontWeight: 600,
       marginTop: 20,
       marginBottom: 8,
       lineHeight: 1.4,
       color: "var(--text)",
+      fontStyle: "normal",
     },
   };
 
@@ -179,4 +182,76 @@ export function AnswerBulletDot() {
       }}
     />
   );
+}
+
+/** Bold the leading term in list items (IEEE-style: "Term: detail" or "Term — detail"). */
+export function renderLeadBoldContent(
+  content: string,
+  renderRest: (text: string) => React.ReactNode
+): React.ReactNode {
+  const trimmed = content.trim();
+  if (!trimmed) return null;
+
+  if (/\*\*[^*]+\*\*/.test(trimmed)) {
+    return renderRest(trimmed);
+  }
+
+  const colonMatch = trimmed.match(/^([^:]{2,80}):\s+([\s\S]+)$/);
+  if (colonMatch && !colonMatch[1].includes("\n")) {
+    return (
+      <>
+        <strong style={{ fontWeight: 700, color: "var(--text)" }}>
+          {colonMatch[1].trim()}
+        </strong>
+        {": "}
+        {renderRest(colonMatch[2].trim())}
+      </>
+    );
+  }
+
+  const dashMatch = trimmed.match(/^([^–—-]{2,60}?)\s[-–—]\s+([\s\S]+)$/);
+  if (dashMatch) {
+    return (
+      <>
+        <strong style={{ fontWeight: 700, color: "var(--text)" }}>
+          {dashMatch[1].trim()}
+        </strong>
+        {" — "}
+        {renderRest(dashMatch[2].trim())}
+      </>
+    );
+  }
+
+  return renderRest(trimmed);
+}
+
+/** Normalize spacing and section breaks for document-style answers. */
+export function enhanceDocumentStructure(text: string): string {
+  if (!text) return text;
+
+  let result = text.replace(/\r\n/g, "\n");
+
+  // Promote short ALL-CAPS lines (3–60 chars) to level-2 headings
+  result = result
+    .split("\n")
+    .map((line) => {
+      const t = line.trim();
+      if (
+        t.length >= 3 &&
+        t.length <= 60 &&
+        t === t.toUpperCase() &&
+        /[A-Z]/.test(t) &&
+        !t.startsWith("#") &&
+        !/^[\d•\-*]/.test(t)
+      ) {
+        return `## ${t.charAt(0) + t.slice(1).toLowerCase()}`;
+      }
+      return line;
+    })
+    .join("\n");
+
+  // Ensure blank line before markdown headings
+  result = result.replace(/([^\n])\n(#{1,3}\s)/g, "$1\n\n$2");
+
+  return result;
 }

@@ -116,7 +116,7 @@ export function MediaStudioModal({
             <div className="flex items-center justify-center gap-3 py-6">
               <FaSpinner className="animate-spin text-[var(--accent)]" size={22} />
               <span className="text-sm opacity-80">
-                {mediaType === "image" ? "Editing your image…" : "Creating your video…"}
+                {mediaType === "image" ? "Generaing your image…" : "Creating your video…"}
               </span>
             </div>
             <p className="text-xs text-center opacity-60">

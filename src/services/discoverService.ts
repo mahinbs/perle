@@ -131,9 +131,12 @@ const NATION_LABELS: Record<string, string> = {
 export const DISCOVER_CATEGORIES = [
   'For You',
   'Technology',
+  'Science',
   'Psychology',
-  'Finance',
   'Health',
+  'Environment',
+  'Finance',
+  'Sports',
 ] as const;
 
 export type DiscoverCategory = (typeof DISCOVER_CATEGORIES)[number];
@@ -148,10 +151,12 @@ export function filterByDiscoverCategory(
   category: DiscoverCategory
 ): DiscoverItem[] {
   if (category === 'For You') return items.filter((i) => i.category === 'For You' || i.nation);
+  // Topic tabs — exclude nation news rows
+  const topicsOnly = items.filter((i) => !i.nation);
   if (category === 'Health') {
-    return items.filter((i) => mapDiscoverCategory(i) === 'Health');
+    return topicsOnly.filter((i) => mapDiscoverCategory(i) === 'Health');
   }
-  return items.filter((i) => mapDiscoverCategory(i) === category);
+  return topicsOnly.filter((i) => mapDiscoverCategory(i) === category);
 }
 
 export function getUserNationCode(): string {
