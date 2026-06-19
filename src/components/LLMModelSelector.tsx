@@ -808,7 +808,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                 ref={isMobile ? mobileDropdownRef : desktopDropdownRef}
                 onClick={(e) => e.stopPropagation()}
                 onTouchStart={(e) => e.stopPropagation()}
-                className="glass-panel"
+                className="glass-panel bottom-sheet-safe-bottom"
                 style={{
                   position: "fixed",
                   left: 0,
@@ -818,7 +818,6 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                   maxHeight: "70vh",
                   overflowY: "auto",
                   borderRadius: "16px 16px 0 0",
-                  paddingBottom: "max(16px, env(safe-area-inset-bottom))",
                   WebkitOverflowScrolling: "touch",
                   touchAction: "pan-y",
                 }}

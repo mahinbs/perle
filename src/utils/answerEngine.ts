@@ -315,3 +315,94 @@ export async function getRelatedQueries(query: string): Promise<string[]> {
   if (!res.ok) return [];
   return await res.json();
 }
+
+// ── Streaming search ────────────────────────────────────────────────────────
+export async function searchAPIStream(
+  query: string,
+  mode: Mode,
+  model: LLMModel,
+  newConversation: boolean,
+  conversationId: string | null,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  searchType: 'auto' | 'instant' | 'deep' | undefined,
+  callbacks: {
+    onMeta: (conversationId: string | null) => void;
+    onSources: (sources: Source[]) => void;
+    onToken: (text: string) => void;
+    onDone: (suggestedQuestions: string[]) => void;
+    onError: (message: string) => void;
+  }
+): Promise<void> {
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
+
+  if (!baseUrl) {
+    throw new Error('VITE_API_URL not set');
+  }
+
+  const { getAuthHeaders } = await import('./auth');
+
+  const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      query,
+      mode,
+      model,
+      newConversation,
+      conversationId,
+      conversationHistory,
+      searchType,
+    }),
+  });
+
+  if (!response.ok || !response.body) {
+    const err = await response
+      .json()
+      .catch(() => ({ error: 'Stream failed' }));
+
+    throw new Error(err.error || 'Stream failed');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  let buffer = '';
+  let currentEvent = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (line.startsWith('event:')) {
+        currentEvent = line.slice(6).trim();
+      } else if (line.startsWith('data:')) {
+        try {
+          const data = JSON.parse(line.slice(5).trim());
+
+          if (currentEvent === 'meta') {
+            callbacks.onMeta(data.conversationId ?? null);
+          } else if (currentEvent === 'sources') {
+            callbacks.onSources(data.sources ?? []);
+          } else if (currentEvent === 'token') {
+            callbacks.onToken(data.text ?? '');
+          } else if (currentEvent === 'done') {
+            callbacks.onDone(data.suggestedQuestions ?? []);
+          } else if (currentEvent === 'error') {
+            callbacks.onError(data.message ?? 'Error');
+          }
+        } catch {
+          // Skip malformed line
+        }
+
+        currentEvent = '';
+      }
+    }
+  }
+}

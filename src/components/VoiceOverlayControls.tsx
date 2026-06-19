@@ -38,6 +38,7 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
 
   return (
     <div
+      className="voice-overlay-controls-bar"
       style={{
         display: "flex",
         justifyContent: "space-between",

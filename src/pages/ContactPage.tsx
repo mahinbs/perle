@@ -41,7 +41,7 @@ export default function ContactPage() {
   };
 
   return (
-    <div className="container">
+    <div className="container input-bar-safe-bottom" style={{ paddingBottom: 24 }}>
       <div
         className="row"
         style={{

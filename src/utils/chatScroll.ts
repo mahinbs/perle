@@ -3,6 +3,19 @@ import { useLayoutEffect, useState, type RefObject } from "react";
 /** Offset from the top of the scroll container (header / safe area). */
 export const CHAT_EXCHANGE_SCROLL_OFFSET = 90;
 
+/** Tighter offset for follow-ups so the new question sits higher (mobile). */
+export const CHAT_FOLLOW_UP_SCROLL_OFFSET_MOBILE = 48;
+export const CHAT_FOLLOW_UP_SCROLL_OFFSET_DESKTOP = 64;
+
+export function getExchangeScrollOffset(isFollowUp: boolean): number {
+  if (!isFollowUp) return CHAT_EXCHANGE_SCROLL_OFFSET;
+  if (typeof window === 'undefined') return CHAT_FOLLOW_UP_SCROLL_OFFSET_MOBILE;
+  const isMobile = window.matchMedia('(max-width: 767px)').matches;
+  return isMobile
+    ? CHAT_FOLLOW_UP_SCROLL_OFFSET_MOBILE
+    : CHAT_FOLLOW_UP_SCROLL_OFFSET_DESKTOP;
+}
+
 export type ScrollExchangeOptions = {
   offset?: number;
   behavior?: ScrollBehavior;
@@ -14,10 +27,12 @@ export type ScrollExchangeOptions = {
  */
 export function getActiveExchangeMinHeight(
   viewportHeight: number,
-  offset = CHAT_EXCHANGE_SCROLL_OFFSET
+  offset = CHAT_EXCHANGE_SCROLL_OFFSET,
+  isFollowUp = false
 ): number | undefined {
   if (viewportHeight <= 0) return undefined;
-  return Math.max(0, viewportHeight - offset);
+  const effectiveOffset = isFollowUp ? getExchangeScrollOffset(true) : offset;
+  return Math.max(0, viewportHeight - effectiveOffset);
 }
 
 export function useScrollViewportHeight(

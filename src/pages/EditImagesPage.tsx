@@ -149,7 +149,7 @@ export default function EditImagesPage() {
         )}
       </div>
 
-      <div className="p-4 border-t border-[var(--border)] sticky bottom-0 bg-[var(--bg)]" style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
+      <div className="p-4 border-t border-[var(--border)] sticky bottom-0 bg-[var(--bg)] input-bar-safe-bottom">
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}

@@ -2651,9 +2651,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 borderTop: "1px solid var(--border)",
                 borderRadius: "16px 16px 0 0",
                 padding: "12px 16px",
-                paddingBottom: "max(20px, env(safe-area-inset-bottom))",
                 boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.25)",
               }}
+              className="bottom-sheet-safe-bottom"
             >
               <div
                 style={{

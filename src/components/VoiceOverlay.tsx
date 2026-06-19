@@ -14,6 +14,7 @@ import syntraGif from "../assets/gif/syntraiq.gif";
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
 const BOTTOM_GLOBE_SIZE = "clamp(72px, 22vmin, 110px)";
+const CENTER_GLOBE_SIZE = "clamp(120px, 38vmin, 200px)";
 const VOICE_OVERLAY_SAFE_TOP = "max(12px, env(safe-area-inset-top, 0px))";
 const VOICE_CONTENT_H_PADDING = "clamp(12px, 4vw, 28px)";
 
@@ -368,6 +369,8 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
 
   if (!isOpen) return null;
 
+  const globeAtBottom = isLoading || Boolean(queryText) || Boolean(responseText);
+
   const overlay = (
     <div
       style={{
@@ -408,8 +411,24 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           overflow: "hidden",
           minHeight: 0,
           paddingBottom: 8,
+          position: "relative",
         }}
       >
+        {!globeAtBottom && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          >
+            <VoiceGlobeOrb size={CENTER_GLOBE_SIZE} />
+          </div>
+        )}
         <VoiceResponsePanel
           responseText={responseText}
           isLoading={isLoading}
@@ -433,7 +452,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           onToggleListening={onToggleListening}
           isMac={os === "mac"}
           centerContent={
-            <VoiceGlobeOrb size={BOTTOM_GLOBE_SIZE} />
+            globeAtBottom ? <VoiceGlobeOrb size={BOTTOM_GLOBE_SIZE} /> : null
           }
         />
       </div>

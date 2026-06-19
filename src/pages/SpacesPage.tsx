@@ -855,6 +855,7 @@ export default function SpacesPage() {
 
         {/* Input */}
         <div
+          className="input-bar-safe-bottom"
           style={{
             padding: "16px",
             borderTop: "1px solid var(--border)",

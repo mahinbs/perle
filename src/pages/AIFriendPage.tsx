@@ -1389,7 +1389,7 @@ export default function AIFriendPage() {
       </div>
 
       {/* Input Area */}
-      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0 input-bar-safe-bottom">
         <div className="mb-2">
           <ExperienceModeButtons
             experienceMode={experienceMode}
@@ -1868,14 +1868,13 @@ export default function AIFriendPage() {
               ref={friendSelectorSheetRef}
               role="dialog"
               aria-label="Switch character"
-              className="fixed left-0 right-0 bottom-0 z-[100002]"
+              className="fixed left-0 right-0 bottom-0 z-[100002] bottom-sheet-safe-bottom"
               style={{
                 background: "var(--bg)",
                 color: "var(--text)",
                 borderTop: "1px solid var(--border)",
                 borderRadius: "16px 16px 0 0",
                 padding: "12px 16px",
-                paddingBottom: "max(20px, env(safe-area-inset-bottom))",
                 maxHeight: "70vh",
                 overflowY: "auto",
                 boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.25)",

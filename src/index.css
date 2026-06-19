@@ -129,6 +129,7 @@
   --touch-target: 44px;
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --input-bar-bottom: max(12px, env(safe-area-inset-bottom, 0px));
   --font-xs: 0.75rem;
   --font-sm: 0.875rem;
   --font-md: 1rem;
@@ -708,6 +709,24 @@ body {
 .safe-area-padding {
   padding-top: var(--safe-area-top);
   padding-bottom: var(--safe-area-bottom);
+}
+
+/* iOS: env(safe-area-inset-bottom) is often 0 in Capacitor WKWebView — add minimum gap below text inputs */
+html.platform-ios {
+  --safe-area-bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));
+  --input-bar-bottom: var(--safe-area-bottom);
+}
+
+.input-bar-safe-bottom {
+  padding-bottom: var(--input-bar-bottom) !important;
+}
+
+.bottom-sheet-safe-bottom {
+  padding-bottom: max(20px, var(--input-bar-bottom)) !important;
+}
+
+html.platform-ios .voice-overlay-controls-bar {
+  padding-bottom: max(1.25rem, var(--input-bar-bottom)) !important;
 }
 
 /* Responsive breakpoints */

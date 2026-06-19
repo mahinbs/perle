@@ -555,7 +555,7 @@ export default function AIPsychologyPage() {
       </div>
 
       {/* Input Area */}
-      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0 input-bar-safe-bottom">
         <div className="mb-2">
           <ExperienceModeButtons
             experienceMode={experienceMode}

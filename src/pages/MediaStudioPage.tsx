@@ -457,8 +457,7 @@ export default function MediaStudioPage() {
       </div>
 
       <div
-        className="px-4 pt-2 sticky bottom-0 bg-[var(--bg)]"
-        style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}
+        className="px-4 pt-2 sticky bottom-0 bg-[var(--bg)] input-bar-safe-bottom"
       >
         <div
           className="glass-card border border-[var(--border)] rounded-[28px] p-4 shadow-lg"

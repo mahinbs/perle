@@ -4,12 +4,12 @@ import { Header } from "../components/Header";
 import { SearchBar } from "../components/SearchBar";
 import { AnswerCard } from "../components/AnswerCard";
 import { ConversationSidebar } from "../components/ConversationSidebar";
-import { searchAPI, FILE_ONLY_DEFAULT_QUERY } from "../utils/answerEngine";
+import { searchAPI, searchAPIStream, FILE_ONLY_DEFAULT_QUERY } from "../utils/answerEngine";
 import { formatQuery } from "../utils/helpers";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getUserData } from "../utils/auth";
 import { getLocalItem, removeLocalItem, setLocalItem, STORAGE_KEYS } from "../utils/storage";
-import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode } from "../types";
+import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode, Source } from "../types";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 import {
   hasReachedDailyQueryLimit,
@@ -20,6 +20,7 @@ import {
 import {
   CHAT_EXCHANGE_SCROLL_OFFSET,
   getActiveExchangeMinHeight,
+  getExchangeScrollOffset,
   scrollExchangeToTop,
   useScrollViewportHeight,
 } from "../utils/chatScroll";
@@ -88,6 +89,11 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     AnswerResult[]
   >(() => restoredSnapshotRef.current.conversationHistory);
   const [isLoading, setIsLoading] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
+  const [streamingSources, setStreamingSources] = useState<Source[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const streamingTextRef = useRef("");
+  const streamingSourcesRef = useRef<Source[]>([]);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
@@ -103,9 +109,11 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const lastLoadedConversationIdRef = useRef<string | null>(null); // Track which conversation was loaded from sidebar
   const answerCardRef = useRef<HTMLDivElement>(null);
   const loadingCardRef = useRef<HTMLDivElement>(null);
+  const streamingCardRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pendingAutoScrollRef = useRef(false);
   const pendingScrollOnCompleteRef = useRef(false);
+  const pendingFollowUpRef = useRef(false);
   const lastSearchedKeyRef = useRef<string>(restoredSnapshotRef.current.lastSearchedKey);
   const lastSearchedQueryRef = useRef<string>(restoredSnapshotRef.current.lastSearchedQuery);
   const skipTypewriterOnRestoreRef = useRef(restoredSnapshotRef.current.skipTypewriter);
@@ -381,7 +389,13 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       // Pin the new exchange at the top; older Q&A scroll up out of view.
       pendingAutoScrollRef.current = true;
       pendingScrollOnCompleteRef.current = true;
+      pendingFollowUpRef.current = conversationHistory.length > 0;
       setIsLoading(true);
+      setIsStreaming(false);
+      streamingTextRef.current = "";
+      streamingSourcesRef.current = [];
+      setStreamingText("");
+      setStreamingSources([]);
       saveToHistory(q);
 
       if (shouldEnforceQueryLimit()) {
@@ -447,71 +461,148 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
             : backendSearchType;
         const effectiveModel: LLMModel = isExaShortcutModel ? "auto" : selectedModel;
 
-        const res = await searchAPI(
-          q,
-          backendMode,
-          effectiveModel,
-          newConversation,
-          filesToProcess,
-          activeConversationId,
-          localConversationHistory,
-          effectiveSearchType
-        );
+        const useFileUpload = filesToProcess.length > 0;
 
-        console.log(`✅ FRONTEND RECEIVED: conversationId=${res.conversationId}`);
+        if (useFileUpload) {
+          const res = await searchAPI(
+            q,
+            backendMode,
+            effectiveModel,
+            newConversation,
+            filesToProcess,
+            activeConversationId,
+            localConversationHistory,
+            effectiveSearchType
+          );
 
-        // Reuse prior non-empty sources for continuation follow-ups when backend returns 0.
-        if (
-          (!res.sources || res.sources.length === 0) &&
-          !newConversation &&
-          isContinuationFollowUp(q)
-        ) {
-          const fallbackSources = getLastNonEmptySources();
-          if (fallbackSources.length > 0) {
-            res.sources = fallbackSources as any;
+          console.log(`✅ FRONTEND RECEIVED: conversationId=${res.conversationId}`);
+
+          if (
+            (!res.sources || res.sources.length === 0) &&
+            !newConversation &&
+            isContinuationFollowUp(q)
+          ) {
+            const fallbackSources = getLastNonEmptySources();
+            if (fallbackSources.length > 0) {
+              res.sources = fallbackSources as any;
+            }
           }
-        }
 
-        // Update active conversation ID from response
-        if (res.conversationId) {
-          setActiveConversationId(res.conversationId);
-          // Clear the loaded conversation ref when making a new search
-          // This ensures new queries get typewriter effect even if continuing an old conversation
-          lastLoadedConversationIdRef.current = null;
-          console.log(`💾 FRONTEND SAVED: activeConversationId=${res.conversationId}`);
-        }
+          if (res.conversationId) {
+            setActiveConversationId(res.conversationId);
+            lastLoadedConversationIdRef.current = null;
+            console.log(`💾 FRONTEND SAVED: activeConversationId=${res.conversationId}`);
+          }
 
-        // Reset newConversation flag after using it (so next search continues the conversation)
-        if (newConversation) {
-          setNewConversation(false);
-          // Start new conversation - clear history and add only this answer
-          setConversationHistory([]);
-        }
-        // If not newConversation, keep existing history (will add to it below)
+          const wasNewConversation = newConversation;
+          if (wasNewConversation) {
+            setNewConversation(false);
+          }
 
-        // Set as current answer (will be moved to history above)
-        // Include attachments in the answer result
-        const answerWithAttachments = {
-          ...res,
-          attachments: filesToProcess.length > 0 ? filesToProcess : undefined
-        };
+          const answerWithAttachments = {
+            ...res,
+            attachments: filesToProcess.length > 0 ? filesToProcess : undefined,
+          };
 
-        // Update history with the answer containing attachments
-        if (newConversation) {
-          setConversationHistory([answerWithAttachments]);
+          if (wasNewConversation) {
+            setConversationHistory([answerWithAttachments]);
+          } else {
+            setConversationHistory((prev) =>
+              appendConversationAnswer(prev, answerWithAttachments)
+            );
+          }
+
+          setAnswer(answerWithAttachments);
         } else {
-          setConversationHistory((prev) =>
-            appendConversationAnswer(prev, answerWithAttachments)
+          await searchAPIStream(
+            q,
+            backendMode,
+            effectiveModel,
+            newConversation,
+            activeConversationId,
+            localConversationHistory,
+            effectiveSearchType,
+            {
+              onMeta: (convId) => {
+                if (convId) {
+                  setActiveConversationId(convId);
+                  lastLoadedConversationIdRef.current = null;
+                }
+              },
+
+              onSources: (sources) => {
+                streamingSourcesRef.current = sources;
+                setStreamingSources(sources);
+                setIsLoading(false);
+                setIsStreaming(true);
+              },
+
+              onToken: (text) => {
+                streamingTextRef.current += text;
+                setStreamingText((prev) => prev + text);
+              },
+
+              onDone: (suggestedQuestions) => {
+                setIsStreaming(false);
+
+                let finalSources = streamingSourcesRef.current;
+                if (
+                  finalSources.length === 0 &&
+                  !newConversation &&
+                  isContinuationFollowUp(q)
+                ) {
+                  const fallbackSources = getLastNonEmptySources();
+                  if (fallbackSources.length > 0) {
+                    finalSources = fallbackSources as Source[];
+                  }
+                }
+
+                const wasNewConversation = newConversation;
+                if (wasNewConversation) {
+                  setNewConversation(false);
+                }
+
+                const finalAnswer: AnswerResult = {
+                  sources: finalSources,
+                  chunks: [
+                    {
+                      text: streamingTextRef.current,
+                      citationIds: finalSources.slice(0, 2).map((s) => s.id),
+                      confidence: 0.9,
+                    },
+                  ],
+                  query: q,
+                  mode: backendMode,
+                  timestamp: Date.now(),
+                  suggestedQuestions,
+                  attachments:
+                    filesToProcess.length > 0 ? filesToProcess : undefined,
+                };
+
+                setAnswer(finalAnswer);
+
+                if (wasNewConversation) {
+                  setConversationHistory([finalAnswer]);
+                } else {
+                  setConversationHistory((prev) =>
+                    appendConversationAnswer(prev, finalAnswer)
+                  );
+                }
+              },
+
+              onError: (msg) => {
+                throw new Error(msg);
+              },
+            }
           );
         }
-
-        setAnswer(answerWithAttachments);
-
-        // Start clearing files after successful search initiation
-        // setUploadedFiles([]); // Handled at start
-        // setCurrentUploadedFiles(uploadedFiles); // Handled at start
       } catch (error: any) {
         console.error("Search API error:", error);
+        setIsStreaming(false);
+        streamingTextRef.current = "";
+        streamingSourcesRef.current = [];
+        setStreamingText("");
+        setStreamingSources([]);
         // Show error to user - no mock fallback
         const backendMode: Mode =
           experienceMode === "normal" ? "Ask" : "Research";
@@ -590,7 +681,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     doSearch,
   ]);
 
-  const hasStarted = conversationHistory.length > 0 || isLoading;
+  const hasStarted = conversationHistory.length > 0 || isLoading || isStreaming;
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -628,18 +719,24 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   }, []);
 
   const scrollViewportHeight = useScrollViewportHeight(scrollContainerRef);
-  const activeExchangeMinHeight = getActiveExchangeMinHeight(scrollViewportHeight);
+  const activeExchangeMinHeight = getActiveExchangeMinHeight(
+    scrollViewportHeight,
+    CHAT_EXCHANGE_SCROLL_OFFSET,
+    conversationHistory.length > 0 && (isLoading || isStreaming)
+  );
 
-  const pinActiveExchange = useCallback((target: HTMLElement | null) => {
+  const pinActiveExchange = useCallback((target: HTMLElement | null, isFollowUp?: boolean) => {
     const container = scrollContainerRef.current;
     if (!container || !target) return;
 
-    const minH = getActiveExchangeMinHeight(container.clientHeight);
+    const followUp = isFollowUp ?? pendingFollowUpRef.current;
+    const offset = getExchangeScrollOffset(followUp);
+    const minH = getActiveExchangeMinHeight(container.clientHeight, offset, followUp);
     if (minH) {
       target.style.minHeight = `${minH}px`;
     }
 
-    scrollExchangeToTop(container, target, { behavior: "auto" });
+    scrollExchangeToTop(container, target, { behavior: "auto", offset });
   }, []);
 
   // ChatGPT-style UX: pin the new question + answer at the top of the scroll area.
@@ -651,12 +748,22 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     if (!target) return;
 
     pendingAutoScrollRef.current = false;
-    pinActiveExchange(target);
+    pinActiveExchange(target, pendingFollowUpRef.current);
   }, [isLoading, conversationHistory.length, pinActiveExchange]);
+
+  // Pin streaming card when tokens start flowing.
+  useLayoutEffect(() => {
+    if (!isStreaming) return;
+
+    const target = streamingCardRef.current;
+    if (!target) return;
+
+    pinActiveExchange(target, pendingFollowUpRef.current);
+  }, [isStreaming, pinActiveExchange]);
 
   // Keep the completed answer pinned after the loading card is replaced.
   useLayoutEffect(() => {
-    if (isLoading || conversationHistory.length === 0) return;
+    if (isLoading || isStreaming || conversationHistory.length === 0) return;
     if (!pendingScrollOnCompleteRef.current) return;
     pendingScrollOnCompleteRef.current = false;
 
@@ -666,9 +773,9 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     const exchanges = wrapper.querySelectorAll<HTMLElement>("[data-chat-exchange]");
     const lastExchange = exchanges[exchanges.length - 1];
     if (lastExchange) {
-      pinActiveExchange(lastExchange);
+      pinActiveExchange(lastExchange, pendingFollowUpRef.current);
     }
-  }, [isLoading, conversationHistory.length, pinActiveExchange]);
+  }, [isLoading, isStreaming, conversationHistory.length, pinActiveExchange]);
 
   // Load specific conversation (no animations)
   const loadConversation = useCallback(async (conversationId: string) => {
@@ -860,7 +967,15 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                 isFromLoadedConversation ||
                 skipTypewriterOnRestoreRef.current ||
                 !isLastItem;
-              const isActiveExchange = !isLoading && isLastItem;
+              const isActiveExchange = !isLoading && !isStreaming && isLastItem;
+              const exchangeMinHeight =
+                isActiveExchange && scrollViewportHeight > 0
+                  ? getActiveExchangeMinHeight(
+                      scrollViewportHeight,
+                      CHAT_EXCHANGE_SCROLL_OFFSET,
+                      conversationHistory.length > 1
+                    )
+                  : undefined;
 
               return (
                 <div
@@ -870,9 +985,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                     marginBottom: index < conversationHistory.length - 1 ? 5 : 0,
                     transition: isLoadingOldConversation ? 'none' : undefined,
                     animation: isLoadingOldConversation ? 'none' : undefined,
-                    ...(isActiveExchange && activeExchangeMinHeight
-                      ? { minHeight: activeExchangeMinHeight }
-                      : {}),
+                    ...(exchangeMinHeight ? { minHeight: exchangeMinHeight } : {}),
                   }}
                 >
                   <AnswerCard
@@ -902,12 +1015,47 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
               );
             })}
 
+            {isStreaming && (
+              <div
+                ref={streamingCardRef}
+                data-chat-exchange
+                style={{
+                  scrollMarginTop: getExchangeScrollOffset(
+                    conversationHistory.length > 0
+                  ),
+                  ...(activeExchangeMinHeight
+                    ? { minHeight: activeExchangeMinHeight }
+                    : {}),
+                }}
+              >
+                <AnswerCard
+                  chunks={[
+                    {
+                      text: streamingText,
+                      citationIds: [],
+                      confidence: 0.9,
+                    },
+                  ]}
+                  sources={streamingSources}
+                  isLoading={false}
+                  mode={mode}
+                  query={searchedQuery}
+                  skipTypewriter={true}
+                  suggestedQuestions={[]}
+                  attachments={currentUploadedFiles}
+                  hideSources={false}
+                />
+              </div>
+            )}
+
             {isLoading && (
               <div
                 ref={loadingCardRef}
                 data-chat-exchange
                 style={{
-                  scrollMarginTop: CHAT_EXCHANGE_SCROLL_OFFSET,
+                  scrollMarginTop: getExchangeScrollOffset(
+                    conversationHistory.length > 0
+                  ),
                   ...(activeExchangeMinHeight
                     ? { minHeight: activeExchangeMinHeight }
                     : {}),
@@ -941,14 +1089,14 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
           <div className="spacer-12" />
           </div>
 
-        <div className="shrink-0 sticky bottom-0 left-0 w-full mt-3">
+        <div className="shrink-0 sticky bottom-0 left-0 w-full mt-3 input-bar-safe-bottom">
           <SearchBar
             selectedModel={selectedModel}
             setSelectedModel={setSelectedModel}
             query={query}
             setQuery={handleQueryChange}
             onSearch={doSearch}
-            isLoading={isLoading}
+            isLoading={isLoading || isStreaming}
             showHistory={showHistory}
             searchHistory={searchHistory}
             onQuerySelect={handleQuerySelect}
@@ -956,7 +1104,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
             uploadedFiles={uploadedFiles}
             onFilesChange={setUploadedFiles}
             hasAnswer={
-              !isLoading && (!!answer || conversationHistory.length > 0)
+              !isLoading && !isStreaming && (!!answer || conversationHistory.length > 0)
             }
             answer={answer}
             currentAnswerText={
