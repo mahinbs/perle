@@ -40,11 +40,19 @@ export function getHostnameFromUrl(url: string): string {
 
 export function getSourceDomain(url: string, domain?: string): string {
   const hostnameFromUrl = getHostnameFromUrl(url);
-  if (hostnameFromUrl) return hostnameFromUrl;
+  const isGroundingRedirect = hostnameFromUrl.includes("vertexaisearch.cloud.google.com");
+
+  if (hostnameFromUrl && !isGroundingRedirect) {
+    return hostnameFromUrl;
+  }
 
   const trimmedDomain = domain?.trim();
   if (trimmedDomain && trimmedDomain !== "uploaded-file") {
     return trimmedDomain.replace(/^www\./i, "").split("/")[0] ?? trimmedDomain;
+  }
+
+  if (hostnameFromUrl) {
+    return hostnameFromUrl;
   }
 
   return "";

@@ -27,6 +27,15 @@ describe("sourceFavicon", () => {
     ).toBe("us.ovhcloud.com");
   });
 
+  it("uses domain label when URL is a Google grounding redirect", () => {
+    expect(
+      getSourceDomain(
+        "https://vertexaisearch.cloud.google.com/grounding-api-redirect/some-token",
+        "ovh.com"
+      )
+    ).toBe("ovh.com");
+  });
+
   it("extracts hostname from bare domains", () => {
     expect(getHostnameFromUrl("https://www.youtube.com/watch?v=1")).toBe(
       "youtube.com"
