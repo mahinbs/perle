@@ -6,6 +6,7 @@ interface VoiceOverlayControlsProps {
   onClose: () => void;
   onToggleListening: () => void;
   isMac: boolean;
+  centerContent?: React.ReactNode;
 }
 
 const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
@@ -13,6 +14,7 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
   onClose,
   onToggleListening,
   isMac,
+  centerContent,
 }) => {
   const handleClose = () => {
     try {
@@ -32,27 +34,32 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
     onToggleListening();
   };
 
+  const buttonSize = "clamp(48px, 12vmin, 56px)";
+
   return (
     <div
+      className="voice-overlay-controls-bar"
       style={{
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
         width: "100%",
-        maxWidth: "100%", // Reasonable max width for controls
-        paddingBottom: isMac ? "6rem" : "2rem",
-        paddingLeft: "2rem",
-        paddingRight: "2rem",
+        maxWidth: "100%",
+        paddingBottom: isMac ? "max(2rem, env(safe-area-inset-bottom))" : "max(1.25rem, env(safe-area-inset-bottom))",
+        paddingLeft: "1.5rem",
+        paddingRight: "1.5rem",
+        paddingTop: "0.5rem",
         boxSizing: "border-box",
+        gap: 12,
       }}
     >
       <button
-        className="btn-ghost"
+        className="btn-ghost glass-button"
         onClick={handleClose}
         aria-label="Cancel"
         style={{
-          width: "clamp(48px, 15vmin, 72px)",
-          height: "clamp(48px, 15vmin, 72px)",
+          width: buttonSize,
+          height: buttonSize,
           borderRadius: 9999,
           color: "var(--text)",
           borderColor: "var(--border)",
@@ -60,31 +67,43 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          flexShrink: 0,
         }}
       >
         ✕
       </button>
-      <button
-        className={isListening ? "btn" : "btn-ghost"}
-        onClick={handleToggleListening}
-        aria-label={isListening ? "Stop listening" : "Start voice"}
+
+      <div
         style={{
-          width: "clamp(60px, 18vmin, 84px)",
-          height: "clamp(60px, 18vmin, 84px)",
-          borderRadius: 9999,
-          color: isListening ? "#111" : "var(--text)",
-          borderColor: isListening ? undefined : "var(--border)",
+          flex: 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          minWidth: 0,
+          pointerEvents: "none",
         }}
       >
-        <MicWaveIcon size={26} active={isListening} />
+        {centerContent}
+      </div>
+
+      <button
+        className={`${isListening ? "btn mic-recording" : "btn-ghost glass-button"}`}
+        onClick={handleToggleListening}
+        aria-label={isListening ? "Stop listening" : "Start voice"}
+        style={{
+          width: buttonSize,
+          height: buttonSize,
+          borderRadius: 9999,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <MicWaveIcon size={22} active={isListening} />
       </button>
     </div>
   );
 };
 
 export default React.memo(VoiceOverlayControls);
-
-

@@ -1,11 +1,10 @@
-import { useState, useRef, useEffect, Fragment } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
 import { Capacitor } from "@capacitor/core";
 import {
   FaPen,
-  FaStop,
   FaLightbulb,
   FaSyncAlt,
   FaPaperclip,
@@ -21,18 +20,22 @@ import type { ExperienceMode } from "../types";
 import { useToast } from "../contexts/ToastContext";
 import {
   getUserData,
-  getAuthHeaders,
   getAuthToken,
+  getAuthHeaders,
   isAuthenticated,
   removeAuthToken,
 } from "../utils/auth";
+import { chatAPI } from "../utils/answerEngine";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
 import { getChatDateLabel, isDifferentChatDay } from "../utils/chatDates";
+import {
+  CHAT_EXCHANGE_SCROLL_OFFSET,
+  scheduleScrollExchangeToTop,
+} from "../utils/chatScroll";
 import { ChatDateDivider } from "../components/ChatDateDivider";
-import { getUserLocalContext } from "../utils/userLocalContext";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 
 interface Message {
@@ -194,19 +197,17 @@ export default function AIFriendPage() {
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
 
-  // ChatGPT-style UX: scroll once per new user message (not on every token/render).
-  useEffect(() => {
+  // ChatGPT-style UX: pin the new user message at the top; AI response streams below.
+  useLayoutEffect(() => {
     if (!isLoading) return;
     if (!pendingScrollToMessageIdRef.current) return;
-    if (!pendingScrollToMessageElRef.current) return;
-
     const el = pendingScrollToMessageElRef.current;
+    if (!el) return;
+
     pendingScrollToMessageIdRef.current = null;
     pendingScrollToMessageElRef.current = null;
 
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ block: "start", behavior: "smooth" });
-    });
+    scheduleScrollExchangeToTop(messagesContainerRef.current, el);
   }, [isLoading, messages.length]);
 
   // Focus input on mount
@@ -601,8 +602,6 @@ export default function AIFriendPage() {
             role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
             content: m.content,
           }));
-      const userContextPayload = getUserLocalContext();
-
       // Handle group chat vs individual chat
       if (isGroupChat && isLoggedIn && aiFriends.length > 0) {
         // Group chat: parse @ mentions
@@ -624,62 +623,21 @@ export default function AIFriendPage() {
         }
 
         // Send message to each friend in parallel
+        const fileUploads = fileToSend
+          ? [{ id: 'f0', file: fileToSend, type: 'image' as const }]
+          : [];
+
         const responses = await Promise.allSettled(
           friendsToMessage.map(async (friend) => {
-            // Prepare request body (FormData if image, JSON otherwise)
-            let body: FormData | string;
-            const headers: Record<string, string> = getAuthHeaders() as Record<string, string>;
-            
-            if (fileToSend) {
-              // Send as FormData with image
-              const formData = new FormData();
-              formData.append('message', messageText);
-              formData.append('model', selectedModel);
-              formData.append('newConversation', 'false');
-              formData.append('chatMode', 'ai_friend');
-              formData.append('aiFriendId', friend.id);
-              formData.append('conversationHistory', JSON.stringify(buildHistoryForFriend(friend.id)));
-              formData.append('userContext', JSON.stringify(userContextPayload));
-              formData.append('image', fileToSend);
-              body = formData;
-              // Remove Content-Type header to let browser set it with boundary
-              delete headers['Content-Type'];
-            } else {
-              // Send as JSON
-              body = JSON.stringify({
-                message: messageText,
-                model: selectedModel,
-                newConversation: false,
-                chatMode: "ai_friend",
-                aiFriendId: friend.id,
-                conversationHistory: buildHistoryForFriend(friend.id),
-                userContext: userContextPayload,
-              });
-            }
-
-            const response = await fetch(`${API_URL}/api/chat`, {
-        method: "POST",
-              headers: headers,
-              body: body,
-            });
-
-            // Handle 401 - user logged out, continue as free user
-            if (response.status === 401) {
-              removeAuthToken();
-              // Skip this friend's response, continue with others
-              throw new Error("Session expired");
-            }
-
-            if (!response.ok) {
-              const errorData = await response
-                .json()
-                .catch(() => ({ error: "Unknown error" }));
-              throw new Error(
-                errorData.error || `Failed to get response from ${friend.name}`
-              );
-            }
-
-            const data = await response.json();
+            const data = await chatAPI(
+              messageText,
+              selectedModel,
+              'ai_friend',
+              fileUploads,
+              null,
+              buildHistoryForFriend(friend.id),
+              friend.id,
+            );
             return {
               friendId: friend.id,
               friendName: friend.name,
@@ -730,80 +688,34 @@ export default function AIFriendPage() {
         });
       } else {
         // Individual chat: send to selected friend or default
-        // Prepare request body (FormData if image, JSON otherwise)
-        let body: FormData | string;
-        const headers: Record<string, string> = getAuthHeaders() as Record<string, string>;
-        
-        if (fileToSend) {
-          // Send as FormData with image
-          const formData = new FormData();
-          formData.append('message', messageText);
-          formData.append('model', selectedModel);
-          formData.append('newConversation', newConversation.toString());
-          formData.append('chatMode', 'ai_friend');
-          if (selectedFriendId) {
-            formData.append('aiFriendId', selectedFriendId);
-          }
-          formData.append('conversationHistory', JSON.stringify(buildHistoryForFriend(selectedFriendId || undefined)));
-          formData.append('userContext', JSON.stringify(userContextPayload));
-          formData.append('image', fileToSend);
-          body = formData;
-          // Remove Content-Type header to let browser set it with boundary
-          delete headers['Content-Type'];
-        } else {
-          // Send as JSON
-          body = JSON.stringify({
-          message: messageText,
-          model: selectedModel,
-          newConversation: newConversation,
-            chatMode: "ai_friend",
-            aiFriendId: selectedFriendId || undefined,
-            conversationHistory: buildHistoryForFriend(selectedFriendId || undefined),
-            userContext: userContextPayload,
-          });
-        }
-        
-        const response = await fetch(`${API_URL}/api/chat`, {
-          method: "POST",
-          headers: headers,
-          body: body,
-        });
+        const fileUploads = fileToSend
+          ? [{ id: 'f0', file: fileToSend, type: 'image' as const }]
+          : [];
 
-        // Handle 401 - user logged out, continue as free user
-        if (response.status === 401) {
-          removeAuthToken();
-          // Continue with free user experience - don't redirect
-          return;
-        }
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(
-            errorData.error ||
-            `API request failed with status ${response.status}`
+        const data = await chatAPI(
+          messageText,
+          selectedModel,
+          'ai_friend',
+          fileUploads,
+          null,
+          buildHistoryForFriend(selectedFriendId || undefined),
+          selectedFriendId || undefined,
         );
-      }
 
-      const data = await response.json();
+        if (!data.message || data.message.trim().length === 0) {
+          throw new Error("AI returned an empty response. Please try again.");
+        }
 
-      // Check if response is empty or invalid
-      if (!data.message || data.message.trim().length === 0) {
-        throw new Error("AI returned an empty response. Please try again.");
-      }
+        const aiResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "ai",
+          content: data.message,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiResponse]);
 
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "ai",
-        content: data.message,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, aiResponse]);
-
-      // Reset newConversation flag after first message
-      if (newConversation) {
-        setNewConversation(false);
+        if (newConversation) {
+          setNewConversation(false);
         }
       }
     } catch (error: any) {
@@ -1362,7 +1274,7 @@ export default function AIFriendPage() {
       </div>
 
       {/* Messages Area */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-5 flex flex-col">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-5 flex flex-col">
         {messages.map((message, index) => {
           const showDateDivider =
             index === 0 ||
@@ -1401,7 +1313,7 @@ export default function AIFriendPage() {
           <div
               className={`flex items-end gap-3 mb-4 ${message.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
-              style={{ scrollMarginTop: 90 }}
+              style={{ scrollMarginTop: CHAT_EXCHANGE_SCROLL_OFFSET }}
               ref={(el) => {
                 if (message.id === pendingScrollToMessageIdRef.current) {
                   pendingScrollToMessageElRef.current = el;
@@ -1477,7 +1389,7 @@ export default function AIFriendPage() {
       </div>
 
       {/* Input Area */}
-      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+      <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0 input-bar-safe-bottom">
         <div className="mb-2">
           <ExperienceModeButtons
             experienceMode={experienceMode}
@@ -1621,24 +1533,14 @@ export default function AIFriendPage() {
 
           <div className="flex w-full items-center justify-between gap-3">
             <div className="flex gap-2">
-              {isListening ? (
-                <button
-                  className="btn w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-[#EF4444] glass-button"
-                  onClick={stopVoiceInput}
-                  aria-label="Stop recording"
-                >
-                  <FaStop size={16} />
-                </button>
-              ) : (
-                <button
-                  className="btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center"
-                  onClick={startVoiceInput}
-                  aria-label="Voice input"
-                  disabled={isLoading}
-                >
-                  <MicWaveIcon size={19} active={false} />
-                </button>
-              )}
+              <button
+                className={`btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center${isListening ? " mic-recording" : ""}`}
+                onClick={isListening ? stopVoiceInput : startVoiceInput}
+                aria-label={isListening ? "Stop recording" : "Voice input"}
+                disabled={!isListening && isLoading}
+              >
+                <MicWaveIcon size={19} active={isListening} />
+              </button>
 
               <button
                 className={`btn-ghost glass-button w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
@@ -1966,14 +1868,13 @@ export default function AIFriendPage() {
               ref={friendSelectorSheetRef}
               role="dialog"
               aria-label="Switch character"
-              className="fixed left-0 right-0 bottom-0 z-[100002]"
+              className="fixed left-0 right-0 bottom-0 z-[100002] bottom-sheet-safe-bottom"
               style={{
                 background: "var(--bg)",
                 color: "var(--text)",
                 borderTop: "1px solid var(--border)",
                 borderRadius: "16px 16px 0 0",
                 padding: "12px 16px",
-                paddingBottom: "max(20px, env(safe-area-inset-bottom))",
                 maxHeight: "70vh",
                 overflowY: "auto",
                 boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.25)",

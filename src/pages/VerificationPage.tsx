@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
-import { setAuthCredentials, setUserData, getPostAuthNavigation } from '../utils/auth';
+import { setAuthCredentials, setUserData, getPostAuthNavigation, login } from '../utils/auth';
 import { getLocalItem, removeLocalItem, setLocalItem, STORAGE_KEYS } from '../utils/storage';
 import { IoIosArrowBack } from 'react-icons/io';
 
@@ -125,9 +125,24 @@ export default function VerificationPage() {
         return;
       }
 
-      // Save token and user data
-      setAuthCredentials(data.token, data.refreshToken);
+      // Save initial token from OTP verify
+      setAuthCredentials(data.token, data.refreshToken, data.expiresAt);
       setUserData(data.user);
+
+      // If OTP verify didn't return a refreshToken, try to get a full session via login.
+      // We store the password temporarily only in memory for this one-time call.
+      if (!data.refreshToken) {
+        const storedPassword = (window as any).__signupPassword as string | undefined;
+        if (storedPassword && email) {
+          try {
+            await login(email, storedPassword);
+          } catch {
+            // Best-effort — continue even if login fails
+          } finally {
+            delete (window as any).__signupPassword;
+          }
+        }
+      }
 
       // Clear verification email
       removeLocalItem(STORAGE_KEYS.verificationEmail);

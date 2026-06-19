@@ -129,6 +129,7 @@
   --touch-target: 44px;
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --input-bar-bottom: max(12px, env(safe-area-inset-bottom, 0px));
   --font-xs: 0.75rem;
   --font-sm: 0.875rem;
   --font-md: 1rem;
@@ -162,6 +163,15 @@ body,
   margin: 0;
   padding: 0;
   overflow-x: hidden;
+  max-width: 100vw;
+}
+
+img,
+video,
+iframe,
+svg,
+canvas {
+  max-width: 100%;
 }
 
 :root {
@@ -199,10 +209,13 @@ body {
 /* Mobile-optimized container */
 .container {
   max-width: 100%;
+  width: 100%;
   margin: 0 auto;
   padding: 16px;
   padding-top: calc(16px + var(--safe-area-top));
   padding-bottom: calc(16px + var(--safe-area-bottom));
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 ::-webkit-scrollbar {
@@ -235,6 +248,9 @@ body {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .col {
@@ -286,6 +302,72 @@ body {
 
 .spacer-40 {
   height: 40px;
+}
+
+.thinking-dots {
+  display: inline-block;
+  letter-spacing: 0.05em;
+  animation: thinking-dots-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes thinking-dots-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* IEEE-style document layout for AI answers */
+.answer-document {
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+}
+
+.answer-document .answer-paragraph {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.answer-document h2,
+.answer-document h3,
+.answer-document h4 {
+  font-family: inherit;
+}
+
+.answer-document ul {
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+.answer-document ul li {
+  padding-left: 2px;
+}
+
+.answer-document hr {
+  opacity: 0.6;
+}
+
+/* Mic recording blink — applied to the mic button wrapper when isListening */
+@keyframes mic-recording-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); opacity: 1; }
+  50%       { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); opacity: 0.85; }
+}
+
+.mic-recording {
+  animation: mic-recording-pulse 1.2s ease-in-out infinite;
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #EF4444 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+/* Mic icon SVG color when recording */
+.mic-recording svg path,
+.mic-recording svg rect {
+  stroke: #EF4444;
+  fill: #EF4444;
 }
 
 /* Card component with enhanced mobile interactions */
@@ -627,6 +709,24 @@ body {
 .safe-area-padding {
   padding-top: var(--safe-area-top);
   padding-bottom: var(--safe-area-bottom);
+}
+
+/* iOS: env(safe-area-inset-bottom) is often 0 in Capacitor WKWebView — add minimum gap below text inputs */
+html.platform-ios {
+  --safe-area-bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));
+  --input-bar-bottom: var(--safe-area-bottom);
+}
+
+.input-bar-safe-bottom {
+  padding-bottom: var(--input-bar-bottom) !important;
+}
+
+.bottom-sheet-safe-bottom {
+  padding-bottom: max(20px, var(--input-bar-bottom)) !important;
+}
+
+html.platform-ios .voice-overlay-controls-bar {
+  padding-bottom: max(1.25rem, var(--input-bar-bottom)) !important;
 }
 
 /* Responsive breakpoints */

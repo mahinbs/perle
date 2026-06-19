@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "../contexts/ToastContext";
-import type { LLMModel, AnswerResult, ExperienceMode } from "../types";
+import type { LLMModel, AnswerResult, ExperienceMode, Mode } from "../types";
+import { searchAPI } from "../utils/answerEngine";
 import { Capacitor } from "@capacitor/core";
 import {
   getLocalItem,
@@ -23,6 +24,7 @@ import {
   FaDownload,
   FaImages,
   FaTools,
+  FaFileAlt,
 } from "react-icons/fa";
 import { IoIosSend } from "react-icons/io";
 import MicWaveIcon from "./MicWaveIcon";
@@ -58,13 +60,13 @@ interface SearchBarProps {
   onMediaGenerated?: (media: { type: 'image' | 'video'; url: string; prompt: string }) => void; // Callback when media is generated
   answer?: AnswerResult | null;
   currentAnswerText?: string;
-  /** Called once when follow-up is submitted (scroll to bottom only on submit, not during answer typing) */
-  onScrollToBottom?: () => void;
   experienceMode?: ExperienceMode;
   onExperienceModeChange?: (mode: ExperienceMode) => void;
   showModelSelector?: boolean;
   queryLimitReached?: boolean;
   onQueryLimitReached?: () => void;
+  /** home = default search; analyze = document analysis workspace */
+  pageContext?: "home" | "analyze";
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -82,14 +84,15 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   selectedModel,
   setSelectedModel,
   onModelChange,
-  answer = null,
-  onScrollToBottom,
   experienceMode = "normal",
   onExperienceModeChange,
   showModelSelector = true,
   queryLimitReached = false,
   onQueryLimitReached,
+  pageContext = "home",
 }) => {
+  const isAnalyzeContext = pageContext === "analyze";
+  const showQuickToolCards = !isAnalyzeContext;
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showAttachModal, setShowAttachModal] = useState<"menu" | "camera" | null>(null);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
@@ -116,7 +119,104 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
+  const [voiceAnswer, setVoiceAnswer] = useState<AnswerResult | null>(null);
+  const [voiceIsLoading, setVoiceIsLoading] = useState(false);
+  const [voiceQuery, setVoiceQuery] = useState("");
+  const voiceConversationIdRef = useRef<string | null>(null);
+  const voiceHistoryRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const { showToast } = useToast();
+
+  const clearVoiceSessionFlags = () => {
+    removeLocalItem(STORAGE_KEYS.keepVoiceOverlayOpen);
+    removeLocalItem(STORAGE_KEYS.voiceSessionActive);
+    removeLocalItem(STORAGE_KEYS.autoListenNext);
+    removeLocalItem(STORAGE_KEYS.speakNextAnswer);
+    removeLocalItem(STORAGE_KEYS.currentAnswerText);
+    removeLocalItem(STORAGE_KEYS.voiceOpenSpeakFirst);
+  };
+
+  const resetVoiceSession = () => {
+    setVoiceAnswer(null);
+    setVoiceQuery("");
+    setVoiceIsLoading(false);
+    voiceConversationIdRef.current = null;
+    voiceHistoryRef.current = [];
+    pendingVoiceSpeakRef.current = false;
+    clearVoiceSessionFlags();
+  };
+
+  const getVoiceSearchParams = () => {
+    const backendMode: Mode = experienceMode === "normal" ? "Ask" : "Research";
+    const backendSearchType: "auto" | "instant" | "deep" =
+      experienceMode === "normal"
+        ? "auto"
+        : experienceMode === "web_search"
+          ? "instant"
+          : "deep";
+    const isExaShortcutModel =
+      selectedModel === "exa-auto" ||
+      selectedModel === "exa-instant" ||
+      selectedModel === "exa-deep";
+    const effectiveSearchType: "auto" | "instant" | "deep" =
+      selectedModel === "exa-auto"
+        ? "auto"
+        : selectedModel === "exa-instant"
+          ? "instant"
+          : selectedModel === "exa-deep"
+            ? "deep"
+            : backendSearchType;
+    const effectiveModel: LLMModel = isExaShortcutModel ? "auto" : selectedModel;
+    return { backendMode, effectiveSearchType, effectiveModel };
+  };
+
+  const performVoiceSearch = async (transcript: string) => {
+    const q = transcript.trim();
+    if (!q) return;
+
+    if (queryLimitReached) {
+      onQueryLimitReached?.();
+      return;
+    }
+
+    setVoiceQuery(q);
+    setVoiceIsLoading(true);
+    setVoiceAnswer(null);
+
+    try {
+      const { backendMode, effectiveSearchType, effectiveModel } = getVoiceSearchParams();
+      const res = await searchAPI(
+        q,
+        backendMode,
+        effectiveModel,
+        false,
+        [],
+        voiceConversationIdRef.current,
+        voiceHistoryRef.current,
+        effectiveSearchType,
+      );
+
+      if (res.conversationId) {
+        voiceConversationIdRef.current = res.conversationId;
+      }
+
+      const answerText = res.chunks.map((c) => c.text).join("\n\n");
+      voiceHistoryRef.current = [
+        ...voiceHistoryRef.current,
+        { role: "user" as const, content: q },
+        { role: "assistant" as const, content: answerText },
+      ].slice(-20);
+
+      setVoiceAnswer(res);
+      localStorage.setItem("syntraiq-speak-next-answer", "1");
+      localStorage.setItem("syntraiq-keep-voice-overlay-open", "1");
+      localStorage.setItem("syntraiq-voice-session-active", "1");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Voice search failed";
+      showToast({ message, type: "error", duration: 3000 });
+    } finally {
+      setVoiceIsLoading(false);
+    }
+  };
 
   // Reopen voice overlay when answer text is written during an active voice session
   useEffect(() => {
@@ -124,8 +224,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       const shouldKeepOpen = getLocalItem(STORAGE_KEYS.keepVoiceOverlayOpen);
       const currentAnswerText = getLocalItem(STORAGE_KEYS.currentAnswerText);
 
-      if (shouldKeepOpen && currentAnswerText) {
-        setShowVoiceOverlay(true);
+      if (shouldKeepOpen && currentAnswerText && showVoiceOverlay) {
         setLocalItem(STORAGE_KEYS.voiceSessionActive, "1");
         removeLocalItem(STORAGE_KEYS.keepVoiceOverlayOpen);
       }
@@ -133,7 +232,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     reopenIfNeeded();
     return onStorageChange(reopenIfNeeded);
-  }, [isLoading, answer, showVoiceOverlay]);
+  }, [voiceIsLoading, voiceAnswer, showVoiceOverlay]);
   const { navigateTo } = useRouterNavigation();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -171,10 +270,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       input.removeAttribute("capture");
       input.multiple = true;
       if (kind === "image") {
-        input.accept = "image/*";
+        input.accept = "image/jpeg,image/png,image/gif,image/webp";
       } else {
         input.accept =
-          "image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+          "image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       }
       input.click();
     }, 120);
@@ -255,32 +354,25 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     navigateTo("/subscription");
   };
 
+  const canSubmitSearch =
+    Boolean(query.trim()) || uploadedFiles.length > 0;
+
   const triggerSearchWithScroll = () => {
-    const trimmed = query.trim();
-    if (!trimmed || isLoading) return;
+    if (!canSubmitSearch || isLoading) return;
     if (queryLimitReached) {
       onQueryLimitReached?.();
       return;
     }
     inputRef.current?.blur();
-    onSearch(trimmed);
+    const trimmed = query.trim();
+    onSearch(trimmed || undefined);
     setQuery("");
-    if (onScrollToBottom) {
-      requestAnimationFrame(() => onScrollToBottom());
-    } else {
-      requestAnimationFrame(() => {
-        const scrollContainer = document.querySelector(".flex-1.min-h-0.overflow-y-auto");
-        if (scrollContainer) {
-          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
-        }
-      });
-    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (query.trim()) {
+      if (query.trim() || uploadedFiles.length > 0) {
         triggerSearchWithScroll();
       }
     }
@@ -411,21 +503,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         return;
       }
 
-      // Auto-trigger search when voice recording stops using the final transcript
+      // Auto-trigger voice search when recording stops — isolated from home page chat
       if (finalTranscript.trim()) {
         console.log('🎤 Voice input complete, transcript:', finalTranscript);
-        // Show the transcript briefly before clearing
         setQuery(finalTranscript);
-        // Pass the transcript directly to onSearch to avoid state timing issues
-        onSearch(finalTranscript);
-        // tell AnswerCard to speak the next answer
-        localStorage.setItem("syntraiq-speak-next-answer", "1");
-        console.log('✅ Set syntraiq-speak-next-answer flag');
-        // Keep voice overlay open so the response can be shown
-        localStorage.setItem("syntraiq-keep-voice-overlay-open", "1");
-        localStorage.setItem("syntraiq-voice-session-active", "1");
-        console.log('✅ Set syntraiq-keep-voice-overlay-open flag');
-        // Always clear the query immediately after triggering search
+        void performVoiceSearch(finalTranscript);
         setTimeout(() => {
           setQuery("");
         }, 100);
@@ -542,24 +624,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   // When a voice query answer arrives, speak it directly from SearchBar.
-  // This avoids the multi-AnswerCard race where an old card consumes the flag first.
+  // Uses voice-only state so home page chat is never updated.
   const pendingVoiceSpeakRef = useRef(false);
   useEffect(() => {
-    // Pick up the flag when it's set (while loading)
     if (localStorage.getItem("syntraiq-speak-next-answer") === "1") {
       pendingVoiceSpeakRef.current = true;
     }
     if (!pendingVoiceSpeakRef.current) return;
-    // Wait until loading finishes and answer has content
-    if (isLoading) return;
-    const chunks = answer?.chunks;
+    if (voiceIsLoading) return;
+    const chunks = voiceAnswer?.chunks;
     if (!chunks || chunks.length === 0) return;
-    // Consume
     localStorage.removeItem("syntraiq-speak-next-answer");
     pendingVoiceSpeakRef.current = false;
     const answerText = chunks.map((c) => c.text).join("\n\n");
     speakTextImmediately(answerText);
-  }, [answer, isLoading]);
+  }, [voiceAnswer, voiceIsLoading]);
 
   // When an answer finishes in active voice session, start listening again automatically.
   useEffect(() => {
@@ -576,7 +655,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
     tryAutoListen();
     return onStorageChange(tryAutoListen);
-  }, [showVoiceOverlay, isListening, isLoading, answer]);
+  }, [showVoiceOverlay, isListening, voiceIsLoading, voiceAnswer]);
 
   const getFileType = (file: File): "image" | "document" | "other" => {
     if (file.type.startsWith("image/")) return "image";
@@ -762,6 +841,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         }
       );
 
+      if (res.status === 429) {
+        const limitData = await res.json().catch(() => ({}));
+        const msg = limitData.error || "Daily video generation limit reached.";
+        const used: number = limitData.used ?? 0;
+        const limit: number = limitData.limit ?? 0;
+        const tier: string = limitData.tier ?? '';
+        const upgradeHint = tier === 'pro'
+          ? " Upgrade to Max for 12 videos/day."
+          : "";
+        throw new Error(`${msg} (${used}/${limit} used)${upgradeHint}`);
+      }
+
       if (!res.ok) {
         const errorData = await res
           .json()
@@ -784,6 +875,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         body: JSON.stringify({ prompt, duration, aspectRatio }),
       }
     );
+
+    if (res.status === 429) {
+      const limitData = await res.json().catch(() => ({}));
+      const msg = limitData.error || "Daily video generation limit reached.";
+      const used: number = limitData.used ?? 0;
+      const limit: number = limitData.limit ?? 0;
+      const tier: string = limitData.tier ?? '';
+      const upgradeHint = tier === 'pro'
+        ? " Upgrade to Max for 12 videos/day."
+        : "";
+      throw new Error(`${msg} (${used}/${limit} used)${upgradeHint}`);
+    }
 
     if (!res.ok) {
       const errorData = await res
@@ -1283,7 +1386,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   return (
     <>
       {/* Tools Container - Responsive Layout */}
-      {!toolMode && !hasAnswer && (
+      {!toolMode && !hasAnswer && showQuickToolCards && (
         <>
           {/* Mobile horizontal scrollable container */}
           <div
@@ -1367,6 +1470,27 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <FaImage size={14} />
               <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
                 Generate Image
+              </span>
+            </button>
+            <button
+              className="btn-ghost glass-button btn-shadow !font-normal"
+              onClick={() => navigateTo("/analyze")}
+              disabled={isListening || isGenerating}
+              style={{
+                padding: "6px 10px",
+                opacity: isListening || isGenerating ? 0.5 : 1,
+                cursor: isListening || isGenerating ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                flexShrink: 0,
+                borderRadius: "20px",
+                background: "var(--card)",
+              }}
+            >
+              <FaFileAlt size={14} />
+              <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
+                Analyze Doc
               </span>
             </button>
             <button
@@ -1548,6 +1672,33 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     }}
                   >
                     <FaImage size={16} /> Generate Image
+                  </span>
+                </button>
+
+                <button
+                  className="btn-ghost glass-button btn-shadow"
+                  onClick={() => {
+                    setShowToolsMenu(false);
+                    navigateTo("/analyze");
+                  }}
+                  disabled={isListening || isGenerating}
+                  style={{
+                    width: "100%",
+                    justifyContent: "flex-start",
+                    marginBottom: 4,
+                    opacity: isListening || isGenerating ? 0.5 : 1,
+                    cursor:
+                      isListening || isGenerating ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <FaFileAlt size={16} /> Analyze Doc
                   </span>
                 </button>
 
@@ -1738,16 +1889,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             >
               Generated {generatedMedia.type === "image" ? "Image" : "Video"}
             </div>
-            <div className="glass-card" style={{ padding: 12, position: "relative" }}>
+            <div className="glass-card" style={{ padding: 12, position: "relative", maxWidth: "100%", overflow: "hidden" }}>
               {generatedMedia.type === "image" ? (
                 <img
                   src={generatedMedia.url}
                   alt={generatedMedia.prompt}
                   style={{
                     width: "100%",
+                    maxWidth: "100%",
                     maxHeight: "300px",
                     objectFit: "contain",
                     borderRadius: "8px",
+                    display: "block",
                   }}
                   onError={() => {
                     showToast({
@@ -1761,10 +1914,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <video
                   src={generatedMedia.url}
                   controls
+                  playsInline
                   style={{
                     width: "100%",
-                    maxHeight: "500px",
+                    maxWidth: "100%",
+                    maxHeight: "min(50vh, 400px)",
                     borderRadius: "8px",
+                    display: "block",
+                    objectFit: "contain",
                   }}
                   onError={() => {
                     showToast({
@@ -1827,8 +1984,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         <VoiceOverlay
           isOpen={showVoiceOverlay}
           isListening={isListening}
-          responseText={answer?.chunks.map(c => c.text).join(" ") || ""}
-          sources={answer?.sources || []}
+          isLoading={voiceIsLoading}
+          queryText={voiceQuery}
+          responseText={voiceAnswer?.chunks.map((c) => c.text).join(" ") || ""}
+          sources={voiceAnswer?.sources || []}
           onToggleListening={() => {
             if (isListening) {
               stopVoiceInput();
@@ -1838,17 +1997,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           }}
           onClose={() => {
             setShowVoiceOverlay(false);
-            // Reset all voice state on close so re-opening is always fresh
+            stopVoiceInput();
             try {
               if ("speechSynthesis" in window) window.speechSynthesis.cancel();
             } catch { }
             setIsSpeaking(false);
-            pendingVoiceSpeakRef.current = false;
-            localStorage.removeItem("syntraiq-keep-voice-overlay-open");
-            localStorage.removeItem("syntraiq-voice-session-active");
-            localStorage.removeItem("syntraiq-auto-listen-next");
-            localStorage.removeItem("syntraiq-speak-next-answer");
-            localStorage.removeItem("syntraiq-current-answer-text");
+            resetVoiceSession();
           }}
         />
 
@@ -2111,9 +2265,15 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               className="input search-input-scrollbar"
               aria-label="Search"
               placeholder={
-                hasAnswer
-                  ? "Ask follow-up..."
-                  : "Ask anything — we'll cite every answer"
+                isAnalyzeContext
+                  ? hasAnswer
+                    ? "Ask a follow-up about your files..."
+                    : uploadedFiles.length > 0
+                      ? "Ask about your uploaded files..."
+                      : "Attach PDFs, docs, or images — then ask your question"
+                  : hasAnswer
+                    ? "Ask follow-up..."
+                    : "Ask anything — we'll cite every answer"
               }
               value={query}
               onChange={(e) => {
@@ -2251,7 +2411,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 </button>
               ) : speechSupported ? (
                 <button
-                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                  className={`btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]${isListening && voiceInputModeRef.current === "dictation" ? " mic-recording" : ""}`}
                   onClick={() => {
                     if (isListening && voiceInputModeRef.current === "dictation") {
                       stopVoiceInput();
@@ -2265,14 +2425,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   style={{
                     padding: hasAnswer ? "4px 6px" : "4px 8px",
                     fontSize: "var(--font-md)",
-                    background:
-                      isListening && voiceInputModeRef.current === "dictation"
-                        ? "var(--accent)"
-                        : "transparent",
-                    color:
-                      isListening && voiceInputModeRef.current === "dictation"
-                        ? "white"
-                        : "inherit",
                   }}
                 >
                   <MicWaveIcon
@@ -2314,24 +2466,28 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             )}
 
+            {(query.trim() || uploadedFiles.length > 0) && (
             <button
               type="button"
               className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
               onClick={triggerSearchWithScroll}
-              disabled={isLoading || !query.trim()}
+              disabled={isLoading || !canSubmitSearch}
               aria-label={queryLimitReached ? "Upgrade to continue" : "Send message"}
               title={
                 queryLimitReached
                   ? "Daily limit reached — upgrade to continue"
                   : query.trim()
                     ? "Send"
-                    : "Type a message to send"
+                    : uploadedFiles.length > 0
+                      ? "Analyze attached files"
+                      : "Type a message to send"
               }
               style={{
                 padding: hasAnswer ? 6 : 8,
-                color: queryLimitReached && query.trim() ? "var(--accent)" : "",
-                opacity: isLoading || !query.trim() ? 0.45 : 1,
-                cursor: isLoading || !query.trim() ? "not-allowed" : "pointer",
+                color:
+                  queryLimitReached && canSubmitSearch ? "var(--accent)" : "",
+                opacity: isLoading || !canSubmitSearch ? 0.45 : 1,
+                cursor: isLoading || !canSubmitSearch ? "not-allowed" : "pointer",
                 marginRight: 4,
                 touchAction: "manipulation",
                 WebkitTapHighlightColor: "transparent",
@@ -2340,21 +2496,17 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             >
               {isLoading ? "…" : <IoIosSend size={hasAnswer ? 18 : 22} />}
             </button>
+            )}
 
-            {!query.trim() && speechSupported ? (
+            {!query.trim() && uploadedFiles.length === 0 && speechSupported ? (
               <button
                 className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                 onClick={() => {
-                  // Cancel any ongoing speech and reset all voice state for a fresh session
                   try {
                     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
                   } catch { }
                   setIsSpeaking(false);
-                  pendingVoiceSpeakRef.current = false;
-                  localStorage.removeItem("syntraiq-speak-next-answer");
-                  localStorage.removeItem("syntraiq-voice-open-speak-first");
-                  localStorage.removeItem("syntraiq-current-answer-text");
-                  localStorage.removeItem("syntraiq-auto-listen-next");
+                  resetVoiceSession();
                   localStorage.setItem("syntraiq-voice-session-active", "1");
                   setShowVoiceOverlay(true);
                 }}
@@ -2379,8 +2531,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           multiple
           accept={
             toolMode
-              ? "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml"
-              : "image/png,image/jpeg,image/jpg,image/webp,image/bmp,image/svg+xml,.pdf,.doc,.docx,.txt,.csv,.odt,.xls,.xlsx"
+              ? "image/jpeg,image/png,image/gif,image/webp"
+              : "image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           }
           onChange={(e) => {
             const input = e.target;
@@ -2499,9 +2651,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 borderTop: "1px solid var(--border)",
                 borderRadius: "16px 16px 0 0",
                 padding: "12px 16px",
-                paddingBottom: "max(20px, env(safe-area-inset-bottom))",
                 boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.25)",
               }}
+              className="bottom-sheet-safe-bottom"
             >
               <div
                 style={{

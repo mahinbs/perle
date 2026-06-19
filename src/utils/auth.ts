@@ -10,13 +10,16 @@ import {
   getLocalItem,
   getRefreshToken,
   getSessionAuthToken,
+  getTokenExpiresAt,
   migrateLegacyStorageKeys,
   removeLocalItem,
   removeRefreshToken,
   removeSessionAuthToken,
+  removeTokenExpiresAt,
   setLocalItem,
   setRefreshToken,
   setSessionAuthToken,
+  setTokenExpiresAt,
   STORAGE_KEYS,
 } from './storage';
 
@@ -45,6 +48,8 @@ export interface User {
 export interface AuthResponse {
   token?: string;
   refreshToken?: string;
+  expiresAt?: number;
+  expiresIn?: number;
   user?: User;
   requiresVerification?: boolean;
   email?: string;
@@ -60,10 +65,16 @@ export function setAuthToken(token: string): void {
   setSessionAuthToken(token);
 }
 
-export function setAuthCredentials(token: string, refreshToken?: string): void {
+export function setAuthCredentials(token: string, refreshToken?: string, expiresAt?: number): void {
   setAuthToken(token);
   if (refreshToken) {
     setRefreshToken(refreshToken);
+  }
+  if (expiresAt) {
+    setTokenExpiresAt(expiresAt);
+  } else {
+    // Default: 1 hour from now
+    setTokenExpiresAt(Math.floor(Date.now() / 1000) + 3600);
   }
 }
 
@@ -85,6 +96,7 @@ export function removeAuthToken(): void {
   if (typeof window === 'undefined') return;
   removeSessionAuthToken();
   removeRefreshToken();
+  removeTokenExpiresAt();
   removeLocalItem(USER_DATA_KEY);
   applyTheme(false);
 }
@@ -132,15 +144,71 @@ export function getPostAuthNavigation(
   return { path: '/' };
 }
 
-export function getAuthHeaders(): HeadersInit {
+export function getAuthHeaders(includeContentType = true): HeadersInit {
   const token = getAuthToken();
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
+  const refreshToken = getRefreshToken();
+  const headers: HeadersInit = {};
+  if (includeContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  if (refreshToken) {
+    headers['X-Refresh-Token'] = refreshToken;
+  }
   return headers;
+}
+
+/**
+ * Returns a valid access token, refreshing it proactively if it will expire within 5 minutes.
+ * Returns null if no session exists (caller should redirect to login).
+ */
+export async function getValidToken(): Promise<string | null> {
+  const expiresAt = getTokenExpiresAt();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  if (expiresAt - nowSeconds >= 300) {
+    return getAuthToken();
+  }
+
+  const rt = getRefreshToken();
+  if (!rt || !API_URL) {
+    return getAuthToken();
+  }
+
+  try {
+    const res = await fetch(`${API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: rt }),
+    });
+
+    if (!res.ok) {
+      return getAuthToken();
+    }
+
+    const data: AuthResponse = await res.json();
+    if (data.token) {
+      setAuthCredentials(data.token, data.refreshToken, data.expiresAt);
+      return data.token;
+    }
+  } catch {
+    // Network error — fall back to cached token
+  }
+  return getAuthToken();
+}
+
+/**
+ * Saves new tokens from API response headers (silent mid-request refresh).
+ */
+export function saveTokensFromResponseHeaders(res: Response): void {
+  const newAT = res.headers.get('X-New-Access-Token');
+  if (newAT) {
+    const newRT = res.headers.get('X-New-Refresh-Token') || getRefreshToken() || '';
+    const newExp = res.headers.get('X-New-Expires-At');
+    setAuthCredentials(newAT, newRT, newExp ? Number(newExp) : undefined);
+  }
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
@@ -161,7 +229,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
 
   const data: AuthResponse = await response.json();
   if (data.token) {
-    setAuthCredentials(data.token, data.refreshToken);
+    setAuthCredentials(data.token, data.refreshToken, data.expiresAt);
   }
   if (data.user) {
     setUserData(data.user);
@@ -213,7 +281,7 @@ export async function signup(name: string, email: string, password: string): Pro
   
   // If token and user provided, set them
   if (data.token && data.user) {
-    setAuthCredentials(data.token, data.refreshToken);
+    setAuthCredentials(data.token, data.refreshToken, data.expiresAt);
     setUserData(data.user);
   }
   
@@ -261,7 +329,7 @@ export async function refreshAuthSession(): Promise<boolean> {
 
       const data: AuthResponse = await response.json();
       if (data.token) {
-        setAuthCredentials(data.token, data.refreshToken);
+        setAuthCredentials(data.token, data.refreshToken, data.expiresAt);
         return true;
       }
       return false;
@@ -378,27 +446,33 @@ export async function authenticatedFetch(
   options: RequestInit = {},
   onUnauthorized?: () => void
 ): Promise<Response> {
+  const isFormData = options.body instanceof FormData;
+  // For FormData, don't include Content-Type (browser sets it with boundary)
+  const baseHeaders = getAuthHeaders(!isFormData);
+
   const makeRequest = () =>
     fetch(url, {
       ...options,
       headers: {
-        ...getAuthHeaders(),
+        ...baseHeaders,
         ...options.headers,
       },
     });
 
   let response = await makeRequest();
 
+  // Save any silently-refreshed tokens from response headers
+  saveTokensFromResponseHeaders(response);
+
   if (response.status === 401) {
     const refreshed = await refreshAuthSession();
     if (refreshed) {
       response = await makeRequest();
+      saveTokensFromResponseHeaders(response);
     }
   }
 
   if (response.status === 401) {
-    // Don't auto-wipe the session here — too aggressive for background calls.
-    // Callers with explicit onUnauthorized handlers can decide what to do.
     if (onUnauthorized) {
       onUnauthorized();
     }

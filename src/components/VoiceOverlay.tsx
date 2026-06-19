@@ -10,12 +10,191 @@ import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
 import type { Source } from "../types";
+import syntraGif from "../assets/gif/syntraiq.gif";
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
+const BOTTOM_GLOBE_SIZE = "clamp(72px, 22vmin, 110px)";
+const CENTER_GLOBE_SIZE = "clamp(120px, 38vmin, 200px)";
+const VOICE_OVERLAY_SAFE_TOP = "max(12px, env(safe-area-inset-top, 0px))";
+const VOICE_CONTENT_H_PADDING = "clamp(12px, 4vw, 28px)";
+
+function getSourceDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function getFaviconUrl(url: string): string {
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(getSourceDomain(url))}&sz=32`;
+}
+
+const VoiceSourcesPill: React.FC<{ sources: Source[] }> = ({ sources }) => {
+  const [expanded, setExpanded] = useState(false);
+  const pillRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (pillRef.current && !pillRef.current.contains(target)) {
+        setExpanded(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [expanded]);
+
+  if (sources.length === 0) return null;
+
+  const previewSources = sources.slice(0, 4);
+
+  return (
+    <div
+      ref={pillRef}
+      style={{
+        position: "relative",
+        display: "flex",
+        justifyContent: "center",
+        paddingTop: 4,
+        flexShrink: 0,
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        aria-label={`${sources.length} sources`}
+        className="glass-button"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "8px 16px",
+          borderRadius: 9999,
+          border: "1px solid var(--border)",
+          background: "var(--card)",
+          color: "var(--text)",
+          fontSize: "var(--font-sm)",
+          fontWeight: 500,
+          cursor: "pointer",
+          boxShadow: "var(--shadow)",
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center" }}>
+          {previewSources.map((source, index) => (
+            <img
+              key={source.id}
+              src={getFaviconUrl(source.url)}
+              alt=""
+              width={22}
+              height={22}
+              style={{
+                borderRadius: "50%",
+                border: "2px solid var(--bg)",
+                marginLeft: index > 0 ? -8 : 0,
+                background: "var(--card)",
+                objectFit: "cover",
+              }}
+            />
+          ))}
+        </span>
+        <span>
+          {sources.length} {sources.length === 1 ? "source" : "sources"}
+        </span>
+      </button>
+
+      {expanded && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            marginTop: 10,
+            width: "min(360px, 92vw)",
+            maxHeight: "min(50vh, 320px)",
+            overflowY: "auto",
+            borderRadius: 16,
+            border: "1px solid var(--border)",
+            background: "var(--card)",
+            boxShadow: "var(--shadow)",
+            zIndex: 20,
+            padding: 8,
+          }}
+        >
+          {sources.map((source, index) => (
+            <button
+              key={source.id}
+              type="button"
+              onClick={() => window.open(source.url, "_blank")}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "none",
+                background: "transparent",
+                color: "var(--text)",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--input-bg)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <img
+                src={getFaviconUrl(source.url)}
+                alt=""
+                width={20}
+                height={20}
+                style={{ borderRadius: 4, marginTop: 2, flexShrink: 0 }}
+              />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: "var(--font-sm)",
+                    fontWeight: 600,
+                    lineHeight: 1.35,
+                    marginBottom: 2,
+                  }}
+                >
+                  {index + 1}. {source.title}
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: "var(--font-xs)",
+                    opacity: 0.65,
+                  }}
+                >
+                  {source.domain || getSourceDomain(source.url)}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface VoiceOverlayProps {
   isOpen: boolean;
   isListening: boolean;
+  isLoading?: boolean;
+  queryText?: string;
   onToggleListening: () => void;
   onClose: () => void;
   responseText?: string;
@@ -38,8 +217,8 @@ const GlobeView = React.memo(function GlobeView({
         position: "relative",
         width: baseGlobeSize,
         height: baseGlobeSize,
-        maxWidth: "480px",
-        maxHeight: "480px",
+        maxWidth: "120px",
+        maxHeight: "120px",
         aspectRatio: "1 / 1",
         flexShrink: 0,
         display: "flex",
@@ -58,10 +237,12 @@ const GlobeView = React.memo(function GlobeView({
 export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
   isOpen,
   isListening,
+  isLoading = false,
+  queryText = "",
   onToggleListening,
   onClose,
   responseText,
-  sources: _sources = [],
+  sources = [],
 }) => {
   const [os, setOs] = useState("");
   const hasAutoStartedRef = useRef(false);
@@ -188,6 +369,8 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
 
   if (!isOpen) return null;
 
+  const globeAtBottom = isLoading || Boolean(queryText) || Boolean(responseText);
+
   const overlay = (
     <div
       style={{
@@ -197,36 +380,25 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
         zIndex: 10000,
         display: "flex",
         flexDirection: "column",
-        padding: 16,
+        padding: "0 16px 0",
         pointerEvents: "auto",
       }}
       role="dialog"
       aria-modal="true"
       aria-label="Voice assistant"
     >
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button
-          className="btn-ghost"
-          onClick={() => {
-            try {
-              if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-              localStorage.removeItem("syntraiq-current-answer-text");
-              localStorage.removeItem("syntraiq-current-word-index");
-              localStorage.removeItem("syntraiq-keep-voice-overlay-open");
-            } catch { }
-            onClose();
-          }}
-          aria-label="Close"
-          style={{
-            borderRadius: 9999,
-            color: "var(--text)",
-            borderColor: "var(--border)",
-            width: 48,
-            height: 48,
-          }}
-        >
-          ✕
-        </button>
+      {/* Always reserve top safe area (Dynamic Island / status bar) — sources pill sits here when ready */}
+      <div
+        style={{
+          flexShrink: 0,
+          paddingTop: VOICE_OVERLAY_SAFE_TOP,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "flex-start",
+          minHeight: isLoading && sources.length === 0 ? 52 : undefined,
+        }}
+      >
+        <VoiceSourcesPill sources={sources} />
       </div>
 
       <div
@@ -236,26 +408,52 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           flexDirection: "column",
           alignItems: "stretch",
           justifyContent: "flex-start",
-          gap: 16,
           overflow: "hidden",
-          paddingTop: 8,
-          paddingBottom: 92,
+          minHeight: 0,
+          paddingBottom: 8,
+          position: "relative",
         }}
       >
-        <SpeakingGradientCircle
-          isListening={isListening}
+        {!globeAtBottom && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          >
+            <VoiceGlobeOrb size={CENTER_GLOBE_SIZE} />
+          </div>
+        )}
+        <VoiceResponsePanel
           responseText={responseText}
+          isLoading={isLoading}
+          queryText={queryText}
           key={isOpen ? "open" : "closed"}
         />
       </div>
 
-      <div className="absolute left-0 bottom-0 w-full z-[1] p-2">
-        {/* Bottom actions */}
+      <div className="shrink-0 w-full z-[1]">
         <VoiceOverlayControls
           isListening={isListening}
-          onClose={onClose}
+          onClose={() => {
+            try {
+              if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+              localStorage.removeItem("syntraiq-current-answer-text");
+              localStorage.removeItem("syntraiq-current-word-index");
+              localStorage.removeItem("syntraiq-keep-voice-overlay-open");
+            } catch { }
+            onClose();
+          }}
           onToggleListening={onToggleListening}
           isMac={os === "mac"}
+          centerContent={
+            globeAtBottom ? <VoiceGlobeOrb size={BOTTOM_GLOBE_SIZE} /> : null
+          }
         />
       </div>
     </div>
@@ -264,49 +462,20 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
   return createPortal(overlay, document.body);
 };
 
-const SpeakingGradientCircle: React.FC<{
-  isListening: boolean;
+const VoiceResponsePanel: React.FC<{
   responseText?: string;
-}> = ({ responseText: propResponseText }) => {
+  isLoading?: boolean;
+  queryText?: string;
+}> = ({ responseText: propResponseText, isLoading = false, queryText = "" }) => {
   const [speaking, setSpeaking] = useState(false);
   const [displayText, setDisplayText] = useState<string>(propResponseText || "");
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isPinnedTop, setIsPinnedTop] = useState(false);
-  const hasResponse = Boolean(displayText?.trim());
-
-  const baseGlobeSize = hasResponse ? (isPinnedTop ? "24vmin" : "34vmin") : "40vmin";
-
-  // Keep globe centered briefly when response starts, then move it to top.
-  useEffect(() => {
-    if (!hasResponse) {
-      setIsPinnedTop(false);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setIsPinnedTop(true);
-    }, 700);
-    return () => window.clearTimeout(timer);
-  }, [hasResponse]);
-
-  // Detect theme (light or dark)
-  useEffect(() => {
-    const checkTheme = () => {
-      const isDark =
-        window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches;
-      setIsDarkMode(isDark);
-    };
-
-    checkTheme();
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    mediaQuery.addEventListener("change", checkTheme);
-
-    return () => mediaQuery.removeEventListener("change", checkTheme);
-  }, []);
 
   // Keep display text and speaking state in sync with live voice output text only.
-  // This avoids stale/placeholder prop text ("...undefined") appearing in overlay.
   useEffect(() => {
+    if (isLoading) {
+      setDisplayText("");
+      return;
+    }
     let raf = 0;
     const tick = () => {
       try {
@@ -337,6 +506,112 @@ const SpeakingGradientCircle: React.FC<{
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
+  }, [isLoading]);
+
+  if (isLoading) {
+    return (
+      <div
+        className="voice-overlay-loading"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          width: "100%",
+          maxWidth: "min(720px, 94vw)",
+          marginInline: "auto",
+          flex: 1,
+          minHeight: 0,
+          padding: `8px ${VOICE_CONTENT_H_PADDING} 12px`,
+          gap: 12,
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        {queryText && (
+          <p
+            style={{
+              fontSize: "var(--font-md)",
+              fontWeight: 500,
+              color: "var(--text)",
+              textAlign: "left",
+              margin: 0,
+              maxWidth: "100%",
+              wordBreak: "break-word",
+              alignSelf: "stretch",
+            }}
+          >
+            {queryText}
+          </p>
+        )}
+        <div className="flex items-start gap-1">
+          <img
+            src={syntraGif}
+            alt="IQ"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              objectFit: "cover",
+              flexShrink: 0,
+            }}
+          />
+          <div
+            className="flex items-center justify-center"
+            style={{ minHeight: 36, paddingRight: 8 }}
+          >
+            <p
+              style={{
+                fontSize: "var(--font-sm)",
+                fontWeight: 500,
+                color: "var(--sub)",
+                margin: 0,
+                textAlign: "center",
+                lineHeight: 1.3,
+              }}
+            >
+              IQ is thinking
+              <span className="thinking-dots" aria-hidden="true">.....</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        width: "100%",
+        flex: 1,
+        minHeight: 0,
+        padding: "0 8px",
+      }}
+    >
+      <VoiceResponseText text={displayText} speaking={speaking} />
+    </div>
+  );
+};
+
+const VoiceGlobeOrb: React.FC<{ size: string }> = ({ size }) => {
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const checkTheme = () => {
+      const isDark =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setIsDarkMode(isDark);
+    };
+
+    checkTheme();
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    mediaQuery.addEventListener("change", checkTheme);
+
+    return () => mediaQuery.removeEventListener("change", checkTheme);
   }, []);
 
   // Sample globe data for arcs - Multiple points across the globe
@@ -646,38 +921,11 @@ const SpeakingGradientCircle: React.FC<{
   }, [isDarkMode]);
 
   return (
-    <div
-      className="speaking-gradient-circle-container"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: isPinnedTop ? "flex-start" : "center",
-        gap: isPinnedTop ? 16 : "4vh",
-        width: "100%",
-        flex: 1,
-        minHeight: 0,
-        paddingTop: isPinnedTop ? 8 : 0,
-      }}
-    >
-      <div
-        style={{
-          transition: "all 0.5s ease",
-          transform: hasResponse ? "translateY(0)" : "translateY(0)",
-          flexShrink: 0,
-        }}
-      >
-        <GlobeView
-          baseGlobeSize={baseGlobeSize}
-          globeConfig={globeConfig}
-          globeData={globeData}
-        />
-      </div>
-
-      <div style={{ flex: 1, width: "100%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <VoiceResponseText text={displayText} speaking={speaking} />
-      </div>
-    </div>
+    <GlobeView
+      baseGlobeSize={size}
+      globeConfig={globeConfig}
+      globeData={globeData}
+    />
   );
 };
 

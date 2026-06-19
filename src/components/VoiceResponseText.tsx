@@ -160,17 +160,17 @@ const VoiceResponseTextComponent: React.FC<VoiceResponseTextProps> = ({
       ref={containerRef}
       className={`
         w-full text-left text-(--text)
-        text-[clamp(0.95rem,2.5vh,1.25rem)] leading-[1.65]
-        max-w-[min(800px,92vw)]
-        flex-1 min-h-[80px]
-        p-[1vh_2vw]
+        text-[clamp(1rem,2.8vh,1.35rem)] leading-[1.7]
+        max-w-[min(720px,94vw)]
+        flex-1 min-h-0
+        px-[clamp(12px,4vw,28px)] py-2
         overflow-x-hidden overflow-y-auto
         [scrollbar-width:thin]
         [-webkit-overflow-scrolling:touch]
         transition-opacity duration-300 ease-in-out
-        ${hasText ? (speaking ? "opacity-100" : "opacity-90") : "opacity-0"}
+        ${hasText ? (speaking ? "opacity-100" : "opacity-95") : "opacity-0"}
       `}
-      style={{ maxHeight: "min(52vh, 480px)" }}
+      style={{ maxHeight: "100%" }}
     >
       {hasText && (
         <div className="w-full whitespace-pre-wrap">
