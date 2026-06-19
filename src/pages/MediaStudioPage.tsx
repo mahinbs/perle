@@ -4,7 +4,13 @@ import { IoIosArrowBack } from "react-icons/io";
 import { FaImage, FaVideo, FaSpinner, FaTimes, FaPlus, FaArrowUp, FaDownload } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, isAuthenticated } from "../utils/auth";
+import {
+  hasReachedLifetimeMediaLimit,
+  incrementLifetimeMediaCount,
+  shouldEnforceUsageLimits,
+  type UsageLimitKind,
+} from "../utils/queryLimit";
+import { UsageLimitModal } from "../components/UsageLimitModal";
 import { generateImageApi, generateVideoApi } from "../utils/mediaApi";
 import type { UploadedFile } from "../types";
 import {
@@ -50,13 +56,6 @@ const VIDEO_TEMPLATES = [
   { id: "space", label: "Space journey", prompt: "Camera flying through a colorful nebula with stars and distant planets" },
 ];
 
-function hasVideoAccess(): boolean {
-  const user = getUserData();
-  if (!user) return false;
-  const tier = user.premiumTier || "free";
-  return Boolean(user.isPremium && (tier === "pro" || tier === "max"));
-}
-
 export default function MediaStudioPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
@@ -75,6 +74,12 @@ export default function MediaStudioPage() {
   const [activePrompt, setActivePrompt] = useState("");
   const [modalResultUrl, setModalResultUrl] = useState<string | null>(null);
   const [activeSourcePreviews, setActiveSourcePreviews] = useState<string[]>([]);
+  const [usageLimitModal, setUsageLimitModal] = useState<UsageLimitKind | null>(null);
+
+  const goToSubscriptionPlan = (plan: "pro" | "max") => {
+    setUsageLimitModal(null);
+    navigateTo("/subscription", { plan, limitReached: true });
+  };
 
   const hasStarted = conversation.length > 0;
 
@@ -171,13 +176,8 @@ export default function MediaStudioPage() {
     const text = prompt.trim();
     if (!text) return;
 
-    if (!isAuthenticated()) {
-      setModalView("auth");
-      return;
-    }
-
-    if (mediaMode === "video" && !hasVideoAccess()) {
-      setModalView("upgrade");
+    if (shouldEnforceUsageLimits() && hasReachedLifetimeMediaLimit()) {
+      setUsageLimitModal("media");
       return;
     }
 
@@ -223,6 +223,9 @@ export default function MediaStudioPage() {
           type: "success",
           duration: 3000,
         });
+        if (shouldEnforceUsageLimits()) {
+          incrementLifetimeMediaCount();
+        }
       } else {
         const result = await generateVideoApi(
           text,
@@ -238,6 +241,9 @@ export default function MediaStudioPage() {
           )
         );
         showToast({ message: "Video generated!", type: "success", duration: 3000 });
+        if (shouldEnforceUsageLimits()) {
+          incrementLifetimeMediaCount();
+        }
       }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Generation failed";
@@ -591,6 +597,14 @@ export default function MediaStudioPage() {
           });
         }}
       />
+
+      {usageLimitModal && (
+        <UsageLimitModal
+          kind={usageLimitModal}
+          onClose={() => setUsageLimitModal(null)}
+          onSelectPlan={goToSubscriptionPlan}
+        />
+      )}
 
       <MediaStudioModal
         view={modalView}

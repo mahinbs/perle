@@ -3,8 +3,14 @@ import { IoIosArrowBack } from "react-icons/io";
 import { FaVideo, FaSpinner } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, isAuthenticated } from "../utils/auth";
 import { generateVideoApi } from "../utils/mediaApi";
+import {
+  hasReachedLifetimeMediaLimit,
+  incrementLifetimeMediaCount,
+  shouldEnforceUsageLimits,
+  type UsageLimitKind,
+} from "../utils/queryLimit";
+import { UsageLimitModal } from "../components/UsageLimitModal";
 import {
   MediaStudioModal,
   type MediaStudioModalView,
@@ -19,13 +25,6 @@ const TEMPLATES = [
   { id: "space", label: "Space journey", prompt: "Camera flying through a colorful nebula with stars and distant planets" },
 ];
 
-function hasVideoAccess(): boolean {
-  const user = getUserData();
-  if (!user) return false;
-  const tier = user.premiumTier || "free";
-  return Boolean(user.isPremium && (tier === "pro" || tier === "max"));
-}
-
 export default function CreateVideoPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
@@ -34,18 +33,19 @@ export default function CreateVideoPage() {
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [modalView, setModalView] = useState<MediaStudioModalView | null>(null);
   const [activePrompt, setActivePrompt] = useState("");
+  const [usageLimitModal, setUsageLimitModal] = useState<UsageLimitKind | null>(null);
+
+  const goToSubscriptionPlan = (plan: "pro" | "max") => {
+    setUsageLimitModal(null);
+    navigateTo("/subscription", { plan, limitReached: true });
+  };
 
   const handleGenerate = async () => {
     const text = prompt.trim();
     if (!text) return;
 
-    if (!isAuthenticated()) {
-      setModalView("auth");
-      return;
-    }
-
-    if (!hasVideoAccess()) {
-      setModalView("upgrade");
+    if (shouldEnforceUsageLimits() && hasReachedLifetimeMediaLimit()) {
+      setUsageLimitModal("media");
       return;
     }
 
@@ -58,12 +58,15 @@ export default function CreateVideoPage() {
       const result = await generateVideoApi(text, 5, "16:9");
       setGeneratedUrl(result.url);
       setModalView("result");
+      if (shouldEnforceUsageLimits()) {
+        incrementLifetimeMediaCount();
+      }
       showToast({ message: "Video generated!", type: "success", duration: 3000 });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Video generation failed";
       setModalView(null);
       if (message.toLowerCase().includes("pro") || message.toLowerCase().includes("subscription")) {
-        setModalView("upgrade");
+        setUsageLimitModal("media");
       } else {
         showToast({ message, type: "error", duration: 5000 });
       }
@@ -102,19 +105,21 @@ export default function CreateVideoPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="sub text-sm font-semibold mb-3 uppercase tracking-wide opacity-70">Templates</div>
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          {TEMPLATES.map((t) => (
+      <div className="flex-1 overflow-y-auto p-4">
+        <div
+          className="flex gap-3 mb-6 overflow-x-auto pb-2 no-scrollbar"
+          style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+        >
+          {TEMPLATES.map((template) => (
             <button
-              key={t.id}
+              key={template.id}
               type="button"
-              onClick={() => setPrompt(t.prompt)}
-              className="glass-card border border-[var(--border)] rounded-xl p-4 text-left hover:border-[var(--accent)] transition-colors"
+              onClick={() => setPrompt(template.prompt)}
+              className="glass-card border border-[var(--border)] rounded-xl p-4 text-left shrink-0 hover:border-[var(--accent)] transition-colors"
+              style={{ width: 180, scrollSnapAlign: "start" }}
             >
-              <FaVideo size={18} className="text-[var(--accent)] mb-2" />
-              <div className="text-sm font-semibold mb-1">{t.label}</div>
-              <div className="text-xs opacity-60 line-clamp-2">{t.prompt}</div>
+              <FaVideo size={16} className="text-[var(--accent)] mb-2" />
+              <div className="text-sm font-semibold mb-1">{template.label}</div>
             </button>
           ))}
         </div>
@@ -145,6 +150,14 @@ export default function CreateVideoPage() {
           {isGenerating ? "Generating..." : "Generate Video"}
         </button>
       </div>
+
+      {usageLimitModal && (
+        <UsageLimitModal
+          kind={usageLimitModal}
+          onClose={() => setUsageLimitModal(null)}
+          onSelectPlan={goToSubscriptionPlan}
+        />
+      )}
 
       <MediaStudioModal
         view={modalView}

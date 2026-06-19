@@ -2,6 +2,12 @@ import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel, AnswerResult, ExperienceMode, Mode } from "../types";
+import {
+  hasReachedLifetimeMediaLimit,
+  incrementLifetimeMediaCount,
+  incrementLifetimeQueryCount,
+  shouldEnforceUsageLimits,
+} from "../utils/queryLimit";
 import { searchAPI } from "../utils/answerEngine";
 import { Capacitor } from "@capacitor/core";
 import {
@@ -65,6 +71,7 @@ interface SearchBarProps {
   showModelSelector?: boolean;
   queryLimitReached?: boolean;
   onQueryLimitReached?: () => void;
+  onMediaLimitReached?: () => void;
   /** home = default search; analyze = document analysis workspace */
   pageContext?: "home" | "analyze";
 }
@@ -89,6 +96,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   showModelSelector = true,
   queryLimitReached = false,
   onQueryLimitReached,
+  onMediaLimitReached,
   pageContext = "home",
 }) => {
   const isAnalyzeContext = pageContext === "analyze";
@@ -176,6 +184,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (queryLimitReached) {
       onQueryLimitReached?.();
       return;
+    }
+
+    if (shouldEnforceUsageLimits()) {
+      incrementLifetimeQueryCount();
     }
 
     setVoiceQuery(q);
@@ -917,6 +929,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // Handle tool generation
   const handleGenerateMedia = async () => {
+    if (shouldEnforceUsageLimits() && hasReachedLifetimeMediaLimit()) {
+      onMediaLimitReached?.();
+      return;
+    }
+
     // Check if we have a prompt
     if (!toolDescription.trim()) {
       showToast({
@@ -986,6 +1003,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           type: "success",
           duration: 3000,
         });
+        if (shouldEnforceUsageLimits()) {
+          incrementLifetimeMediaCount();
+        }
       } else if (toolMode === "video") {
         const result = await generateVideo(promptToUse, 5, "16:9", referencePayload);
         const mediaData = {
@@ -1008,6 +1028,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           type: "success",
           duration: 3000,
         });
+        if (shouldEnforceUsageLimits()) {
+          incrementLifetimeMediaCount();
+        }
       }
     } catch (error: any) {
       console.error("Media generation error:", error);
@@ -2327,8 +2350,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               </div>
             )}
 
-            {/* Model selector — premium only (keeps send button visible for free/guest users) */}
-            {!toolMode && showModelSelector && isPremium && (
+            {/* Model selector — free users see all models; premium models require upgrade */}
+            {!toolMode && showModelSelector && (
               <div>
                 <LLMModelSelector
                   selectedModel={selectedModel}
@@ -2475,7 +2498,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               aria-label={queryLimitReached ? "Upgrade to continue" : "Send message"}
               title={
                 queryLimitReached
-                  ? "Daily limit reached — upgrade to continue"
+                  ? "Limit reached — upgrade to continue"
                   : query.trim()
                     ? "Send"
                     : uploadedFiles.length > 0

@@ -314,7 +314,7 @@ export default function SubscriptionPage() {
             style={{ color: "var(--text)" }}
           >
             {navState.message ||
-              "Your daily free limit has been reached. Upgrade to continue."}
+              "You have reached your free limit. Upgrade to IQ Pro or IQ Max to continue."}
           </div>
         )}
         <h1 className="h1 justify-center mb-3 text-[40px] tracking-[-1px]">

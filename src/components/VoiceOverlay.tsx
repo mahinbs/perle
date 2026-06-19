@@ -9,7 +9,9 @@ import { createPortal } from "react-dom";
 import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
+import { SourceFavicon } from "./SourceFavicon";
 import type { Source } from "../types";
+import { getSourceDomain } from "../utils/sourceFavicon";
 import syntraGif from "../assets/gif/syntraiq.gif";
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
@@ -17,18 +19,6 @@ const BOTTOM_GLOBE_SIZE = "clamp(72px, 22vmin, 110px)";
 const CENTER_GLOBE_SIZE = "clamp(120px, 38vmin, 200px)";
 const VOICE_OVERLAY_SAFE_TOP = "max(12px, env(safe-area-inset-top, 0px))";
 const VOICE_CONTENT_H_PADDING = "clamp(12px, 4vw, 28px)";
-
-function getSourceDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
-
-function getFaviconUrl(url: string): string {
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(getSourceDomain(url))}&sz=32`;
-}
 
 const VoiceSourcesPill: React.FC<{ sources: Source[] }> = ({ sources }) => {
   const [expanded, setExpanded] = useState(false);
@@ -88,18 +78,16 @@ const VoiceSourcesPill: React.FC<{ sources: Source[] }> = ({ sources }) => {
       >
         <span style={{ display: "flex", alignItems: "center" }}>
           {previewSources.map((source, index) => (
-            <img
+            <SourceFavicon
               key={source.id}
-              src={getFaviconUrl(source.url)}
-              alt=""
-              width={22}
-              height={22}
+              url={source.url}
+              domain={source.domain}
+              size={22}
               style={{
-                borderRadius: "50%",
+                position: "relative",
+                zIndex: previewSources.length - index,
                 border: "2px solid var(--bg)",
                 marginLeft: index > 0 ? -8 : 0,
-                background: "var(--card)",
-                objectFit: "cover",
               }}
             />
           ))}
@@ -153,12 +141,12 @@ const VoiceSourcesPill: React.FC<{ sources: Source[] }> = ({ sources }) => {
                 e.currentTarget.style.background = "transparent";
               }}
             >
-              <img
-                src={getFaviconUrl(source.url)}
-                alt=""
-                width={20}
-                height={20}
-                style={{ borderRadius: 4, marginTop: 2, flexShrink: 0 }}
+              <SourceFavicon
+                url={source.url}
+                domain={source.domain}
+                size={20}
+                rounded="sm"
+                style={{ marginTop: 2 }}
               />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span

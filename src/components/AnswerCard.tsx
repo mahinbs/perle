@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
 import { SourceChip } from "./SourceChip";
@@ -229,6 +229,7 @@ interface AnswerCardProps {
   onSearch?: (query: string, mode?: Mode) => void;
   attachments?: UploadedFile[];
   skipTypewriter?: boolean; // Skip typewriter effect for old conversations
+  isStreamingAnswer?: boolean; // Progressive token display while SSE is active
   generatedMedia?: { type: 'image' | 'video'; url: string; prompt: string }; // Generated media to display
   hideSources?: boolean;
   suggestedQuestions?: string[];
@@ -254,6 +255,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   onSearch: _onSearch,
   attachments,
   skipTypewriter = false,
+  isStreamingAnswer = false,
   generatedMedia,
   hideSources = false,
   suggestedQuestions = [],
@@ -272,7 +274,15 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   const [dragCurrentY, setDragCurrentY] = useState(0);
   const [isClosing, setIsClosing] = useState(false);
   const [displayedTexts, setDisplayedTexts] = useState<Record<number, string>>(
-    {}
+    () => {
+      // Pre-populate if skipTypewriter is already true at mount (wasStreamed / restored)
+      if (skipTypewriter && chunks.length > 0) {
+        const init: Record<number, string> = {};
+        chunks.forEach((chunk, i) => { init[i] = chunk.text; });
+        return init;
+      }
+      return {};
+    }
   );
   const [isTypingComplete, setIsTypingComplete] = useState(false);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
@@ -457,19 +467,19 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     }
   };
 
-  // Typewriter effect for answer chunks
-  useEffect(() => {
+  // Sync visible text before paint (prevents one-frame full-answer flash).
+  useLayoutEffect(() => {
     if (isLoading || chunks.length === 0) {
       setDisplayedTexts({});
       setIsTypingComplete(false);
-      if (typewriterTimeoutRef.current) {
-        clearTimeout(typewriterTimeoutRef.current);
-        typewriterTimeoutRef.current = null;
-      }
       return;
     }
 
-    // If skipTypewriter is true, display all text immediately
+    if (isStreamingAnswer) {
+      setIsTypingComplete(false);
+      return;
+    }
+
     if (skipTypewriter) {
       const allTexts: Record<number, string> = {};
       chunks.forEach((chunk, index) => {
@@ -480,9 +490,20 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       return;
     }
 
-    // Reset state when chunks change
     setDisplayedTexts({});
     setIsTypingComplete(false);
+  }, [chunks, isLoading, skipTypewriter, isStreamingAnswer]);
+
+  // Typewriter effect for answer chunks (non-streamed responses only).
+  useEffect(() => {
+    if (isLoading || chunks.length === 0 || skipTypewriter || isStreamingAnswer) {
+      if (typewriterTimeoutRef.current) {
+        clearTimeout(typewriterTimeoutRef.current);
+        typewriterTimeoutRef.current = null;
+      }
+      return;
+    }
+
     if (typewriterTimeoutRef.current) {
       clearTimeout(typewriterTimeoutRef.current);
       typewriterTimeoutRef.current = null;
@@ -495,7 +516,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
     const typeNextChar = () => {
       if (currentChunkIndex >= chunks.length) {
-        // All chunks are complete
         setIsTypingComplete(true);
         return;
       }
@@ -504,7 +524,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       const currentText = currentChunk.text;
 
       if (currentCharIndex < currentText.length) {
-        // Type next character
         setDisplayedTexts((prev) => ({
           ...prev,
           [currentChunkIndex]: currentText.substring(0, currentCharIndex + 1),
@@ -512,14 +531,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         currentCharIndex++;
         typewriterTimeoutRef.current = window.setTimeout(typeNextChar, typingSpeed);
       } else {
-        // Move to next chunk
         currentChunkIndex++;
         currentCharIndex = 0;
         typewriterTimeoutRef.current = window.setTimeout(typeNextChar, typingSpeed);
       }
     };
 
-    // Start typing after a brief delay
     typewriterTimeoutRef.current = window.setTimeout(typeNextChar, 100);
 
     return () => {
@@ -528,7 +545,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         typewriterTimeoutRef.current = null;
       }
     };
-  }, [chunks, isLoading, skipTypewriter]);
+  }, [chunks, isLoading, skipTypewriter, isStreamingAnswer]);
 
   // Auto-scroll to follow typewriter effect — disabled
   // (Previously scrolled to last chunk during typing and to bottom when complete)
@@ -731,10 +748,16 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     );
   };
 
-  const formatText = (text: string, appendDot?: boolean): React.ReactNode => {
+  const formatText = (
+    text: string,
+    appendDot?: boolean,
+    streaming?: boolean
+  ): React.ReactNode => {
     if (!text) return null;
 
-    const processedText = preprocessAnswerText(text, mode, query);
+    const processedText = streaming
+      ? text
+      : preprocessAnswerText(text, mode, query);
     const lines = processedText.split("\n");
     const result: React.ReactNode[] = [];
     let currentParagraph: string[] = [];
@@ -1683,7 +1706,33 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 color: "var(--text)",
               }}
             >
-              {formatText(displayedTexts[index] || "", isTypingComplete && index === chunks.length - 1)}
+              {isStreamingAnswer ? (
+                <span
+                  className="answer-streaming-text"
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    lineHeight: 1.75,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {chunk.text}
+                  {index === chunks.length - 1 && (
+                    <span
+                      className="answer-streaming-cursor"
+                      aria-hidden
+                    />
+                  )}
+                </span>
+              ) : (
+                <div className={skipTypewriter ? "answer-formatted-fadein" : undefined}>
+                  {formatText(
+                    // Always fall back to chunk.text so there's never a blank frame
+                    // when displayedTexts hasn't been populated yet (e.g. wasStreamed transition)
+                    displayedTexts[index] !== undefined ? displayedTexts[index] : chunk.text,
+                    isTypingComplete && index === chunks.length - 1
+                  )}
+                </div>
+              )}
             </div>
 
             <div

@@ -94,6 +94,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const streamingTextRef = useRef("");
   const streamingSourcesRef = useRef<Source[]>([]);
+  const pendingStreamFlushRef = useRef<number | null>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
@@ -539,10 +540,21 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
 
               onToken: (text) => {
                 streamingTextRef.current += text;
-                setStreamingText((prev) => prev + text);
+                // Batch updates via rAF — avoids running formatText() on every
+                // single token (which caused expensive re-renders each keystroke).
+                if (pendingStreamFlushRef.current != null) return;
+                pendingStreamFlushRef.current = requestAnimationFrame(() => {
+                  pendingStreamFlushRef.current = null;
+                  setStreamingText(streamingTextRef.current);
+                });
               },
 
               onDone: (suggestedQuestions) => {
+                // Cancel any pending rAF flush before we commit the final answer
+                if (pendingStreamFlushRef.current != null) {
+                  cancelAnimationFrame(pendingStreamFlushRef.current);
+                  pendingStreamFlushRef.current = null;
+                }
                 setIsStreaming(false);
 
                 let finalSources = streamingSourcesRef.current;
@@ -575,9 +587,19 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                   mode: backendMode,
                   timestamp: Date.now(),
                   suggestedQuestions,
+                  // wasStreamed=true tells the history AnswerCard to skip typewriter
+                  // and show the full text immediately — prevents blank-frame flash.
+                  wasStreamed: true,
                   attachments:
                     filesToProcess.length > 0 ? filesToProcess : undefined,
                 };
+
+                // Clear streaming state AFTER finalAnswer is built so the
+                // streaming card content is still visible until the commit.
+                setStreamingText("");
+                setStreamingSources([]);
+                streamingTextRef.current = "";
+                streamingSourcesRef.current = [];
 
                 setAnswer(finalAnswer);
 
@@ -966,7 +988,10 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
               const shouldSkipTypewriter = isLoadingOldConversation ||
                 isFromLoadedConversation ||
                 skipTypewriterOnRestoreRef.current ||
-                !isLastItem;
+                !isLastItem ||
+                // Skip typewriter for answers that were streamed live —
+                // text was already shown progressively in the streaming card.
+                Boolean(prevAnswer.wasStreamed);
               const isActiveExchange = !isLoading && !isStreaming && isLastItem;
               const exchangeMinHeight =
                 isActiveExchange && scrollViewportHeight > 0
@@ -1041,6 +1066,10 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                   mode={mode}
                   query={searchedQuery}
                   skipTypewriter={true}
+                  // isStreamingAnswer=true → renders plain pre-wrap text + blinking cursor.
+                  // This is lightweight (no markdown parse on every token) and prevents
+                  // expensive formatText() calls for each incoming character.
+                  isStreamingAnswer={true}
                   suggestedQuestions={[]}
                   attachments={currentUploadedFiles}
                   hideSources={false}
