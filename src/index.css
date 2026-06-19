@@ -130,6 +130,7 @@
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --input-bar-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  --bottom-sheet-bottom: max(15px, calc(env(safe-area-inset-bottom, 0px) + 16px));
   --font-xs: 0.75rem;
   --font-sm: 0.875rem;
   --font-md: 1rem;
@@ -711,10 +712,11 @@ body {
   padding-bottom: var(--safe-area-bottom);
 }
 
-/* iOS: env(safe-area-inset-bottom) is often 0 in Capacitor WKWebView — add minimum gap below text inputs */
+/* iOS: cap home-indicator inset at 20px (env is often ~34px on notched iPhones) */
 html.platform-ios {
-  --safe-area-bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));
-  --input-bar-bottom: var(--safe-area-bottom);
+  --input-bar-bottom: clamp(8px, env(safe-area-inset-bottom, 8px), 20px);
+  --safe-area-bottom: var(--input-bar-bottom);
+  --bottom-sheet-bottom: clamp(12px, calc(env(safe-area-inset-bottom, 0px) + 8px), 24px);
 }
 
 .input-bar-safe-bottom {
@@ -722,11 +724,11 @@ html.platform-ios {
 }
 
 .bottom-sheet-safe-bottom {
-  padding-bottom: max(20px, var(--input-bar-bottom)) !important;
+  padding-bottom: var(--bottom-sheet-bottom) !important;
 }
 
 html.platform-ios .voice-overlay-controls-bar {
-  padding-bottom: max(1.25rem, var(--input-bar-bottom)) !important;
+  padding-bottom: max(0.75rem, var(--input-bar-bottom)) !important;
 }
 
 /* Responsive breakpoints */
@@ -1003,6 +1005,35 @@ html.platform-ios .voice-overlay-controls-bar {
   51%,
   100% {
     opacity: 0;
+  }
+}
+
+.answer-streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background-color: var(--text);
+  opacity: 0.75;
+  animation: blink 1s infinite;
+}
+
+.answer-streaming-text {
+  display: block;
+}
+
+/* Fade-in when formatted markdown replaces plain streaming text */
+.answer-formatted-fadein {
+  animation: answer-format-fade 0.25s ease-out forwards;
+}
+
+@keyframes answer-format-fade {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
   }
 }
 

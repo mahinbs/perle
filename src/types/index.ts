@@ -81,6 +81,10 @@ export interface AnswerResult {
   suggestedQuestions?: string[];
   conversationId?: string;
   images?: GeneratedImage[];
+  /** Set when answer text was already shown via streaming — skip typewriter on finalize. */
+  wasStreamed?: boolean;
+  /** True while tokens are still arriving for this answer. */
+  isStreaming?: boolean;
 }
 
 export interface ChatResult {

@@ -1,17 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import type { Source } from "../types";
-
-function getSourceDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
-
-function getFaviconUrl(url: string): string {
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(getSourceDomain(url))}&sz=32`;
-}
+import { SourceFavicon } from "./SourceFavicon";
+import { getSourceDomain } from "../utils/sourceFavicon";
 
 interface SourcesPillProps {
   sources: Source[];
@@ -78,18 +68,16 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
       >
         <span style={{ display: "flex", alignItems: "center" }}>
           {previewSources.map((source, index) => (
-            <img
+            <SourceFavicon
               key={source.id}
-              src={getFaviconUrl(source.url)}
-              alt=""
-              width={18}
-              height={18}
+              url={source.url}
+              domain={source.domain}
+              size={18}
               style={{
-                borderRadius: "50%",
+                position: "relative",
+                zIndex: previewSources.length - index,
                 border: "2px solid var(--bg)",
                 marginLeft: index > 0 ? -6 : 0,
-                background: "var(--card)",
-                objectFit: "cover",
               }}
             />
           ))}
@@ -145,17 +133,12 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
                 e.currentTarget.style.background = "transparent";
               }}
             >
-              <img
-                src={getFaviconUrl(source.url)}
-                alt=""
-                width={18}
-                height={18}
-                style={{
-                  borderRadius: 4,
-                  marginTop: 2,
-                  flexShrink: 0,
-                  objectFit: "cover",
-                }}
+              <SourceFavicon
+                url={source.url}
+                domain={source.domain}
+                size={18}
+                rounded="sm"
+                style={{ marginTop: 2 }}
               />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span

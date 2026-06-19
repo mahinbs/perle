@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { FaUserCircle, FaEllipsisV } from "react-icons/fa";
+import { IoIosArrowBack } from "react-icons/io";
 import { Link, useLocation } from "react-router-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getAllDiscoverItems } from "../services/discoverService";
@@ -7,9 +8,16 @@ import type { DiscoverItem } from "../types";
 
 interface HeaderProps {
   onOpenSidebar?: () => void;
+  /** Show a back arrow instead of the mobile sidebar toggle (e.g. Analyze Doc page). */
+  showBackButton?: boolean;
+  backTo?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
+export const Header: React.FC<HeaderProps> = ({
+  onOpenSidebar,
+  showBackButton = false,
+  backTo = "/",
+}) => {
   const { navigateTo } = useRouterNavigation();
   const location = useLocation();
   const [previewItems, setPreviewItems] = useState<DiscoverItem[]>([]);
@@ -45,12 +53,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
           }}
         >
           <div className="flex items-center min-w-0" style={{ gap: "clamp(2px, 1vw, 12px)", flexShrink: 0 }}>
-            {onOpenSidebar && (
+            {showBackButton ? (
               <button
                 type="button"
-                className="lg:hidden btn-ghost glass-button flex items-center justify-center rounded-xl"
-                onClick={onOpenSidebar}
-                aria-label="Open conversations"
+                className="btn-ghost glass-button flex items-center justify-center rounded-xl shrink-0"
+                onClick={() => navigateTo(backTo)}
+                aria-label="Back"
                 style={{
                   width: 40,
                   height: 40,
@@ -60,8 +68,27 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar }) => {
                   touchAction: "manipulation",
                 }}
               >
-                <FaEllipsisV size={18} />
+                <IoIosArrowBack size={24} />
               </button>
+            ) : (
+              onOpenSidebar && (
+                <button
+                  type="button"
+                  className="lg:hidden btn-ghost glass-button flex items-center justify-center rounded-xl"
+                  onClick={onOpenSidebar}
+                  aria-label="Open conversations"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    minWidth: 40,
+                    minHeight: 40,
+                    padding: 0,
+                    touchAction: "manipulation",
+                  }}
+                >
+                  <FaEllipsisV size={18} />
+                </button>
+              )
             )}
             <button
               type="button"

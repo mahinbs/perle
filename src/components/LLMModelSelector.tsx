@@ -4,6 +4,14 @@ import { FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import type { LLMModel, LLMModelInfo, ExperienceMode } from "../types";
 
+const FREE_TIER_MODEL: LLMModelInfo = {
+  id: "gemini-lite",
+  name: "Gemini Lite",
+  provider: "Google",
+  description: "Free tier model for everyday questions",
+  capabilities: ["Free", "Fast", "Efficient"],
+};
+
 // Premium models available to premium users
 const premiumModels: LLMModelInfo[] = [
   {
@@ -431,31 +439,44 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     'gpt-4o',
   ];
 
-  const filteredModels = isPremium
-    ? premiumModels.filter((model) => {
-        if (experienceMode === 'web_search') return true;
-        if (experienceMode === 'deep_research') {
-          return deepResearchIds.includes(model.id);
-        }
-        // normal: exclude deepest research-only models
-        return !deepResearchIds.includes(model.id as LLMModel);
-      })
-    : [];
+  const filteredModels = premiumModels.filter((model) => {
+    if (experienceMode === "web_search") return true;
+    if (experienceMode === "deep_research") {
+      return deepResearchIds.includes(model.id);
+    }
+    return !deepResearchIds.includes(model.id as LLMModel);
+  });
 
-  const availableModels =
-    experienceMode === 'normal' || experienceMode === 'web_search'
+  const premiumAvailableModels =
+    experienceMode === "normal" || experienceMode === "web_search"
       ? [
-          ...filteredModels.filter((model) => model.id === 'auto'),
-          ...filteredModels.filter((model) => model.id !== 'auto'),
+          ...filteredModels.filter((model) => model.id === "auto"),
+          ...filteredModels.filter((model) => model.id !== "auto"),
         ]
       : filteredModels;
 
+  const availableModels = isPremium
+    ? premiumAvailableModels
+    : [
+        FREE_TIER_MODEL,
+        ...premiumAvailableModels.filter((model) => model.id !== "gemini-lite"),
+      ];
+
+  const allModelCatalog = [FREE_TIER_MODEL, ...premiumModels, ...legacyModels];
+
   // Find selected model info from premium or legacy models
   const selectedModelInfo =
-    premiumModels.find((model) => model.id === selectedModel) ||
-    legacyModels.find((model) => model.id === selectedModel);
+    allModelCatalog.find((model) => model.id === selectedModel) || FREE_TIER_MODEL;
+
+  const isModelLocked = (modelId: LLMModel) =>
+    !isPremium && modelId !== "gemini-lite";
 
   const handleModelSelect = (modelId: LLMModel) => {
+    if (isModelLocked(modelId)) {
+      setIsOpen(false);
+      navigateTo("/subscription", { plan: "pro", limitReached: true });
+      return;
+    }
     onModelChange(modelId);
     setIsOpen(false);
   };
@@ -606,7 +627,9 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
 
   const currentSize = sizeStyles[size];
 
-  const renderModelButton = (model: LLMModelInfo, isMobileView: boolean) => (
+  const renderModelButton = (model: LLMModelInfo, isMobileView: boolean) => {
+    const locked = isModelLocked(model.id);
+    return (
     <button
       key={model.id}
       onMouseDown={
@@ -640,6 +663,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
         alignItems: "center",
         gap: isMobileView ? 8 : 12,
         transition: "background-color 0.2s ease",
+        opacity: locked ? 0.72 : 1,
       }}
       onMouseEnter={(e) => {
         if (!isMobileView) {
@@ -716,7 +740,20 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
             ))}
         </div>
       </div>
-      {selectedModel === model.id && (
+      {locked && (
+        <span
+          style={{
+            fontSize: "var(--font-xs)",
+            fontWeight: 600,
+            color: "var(--accent)",
+            flexShrink: 0,
+            whiteSpace: "nowrap",
+          }}
+        >
+          IQ Pro/Max
+        </span>
+      )}
+      {selectedModel === model.id && !locked && (
         <div
           style={{
             width: isMobileView ? 14 : 16,
@@ -735,7 +772,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
         </div>
       )}
     </button>
-  );
+    );
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -781,9 +819,9 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               }}
             />
             <span className="font-medium">
-              {isPremium
-                ? (selectedModelInfo?.name.slice(0, 8).concat(selectedModelInfo.name.length > 8 ? "…" : "") || "Model")
-                : "Free"}
+              {selectedModelInfo?.name.slice(0, 10).concat(
+                (selectedModelInfo?.name.length ?? 0) > 10 ? "…" : ""
+              ) || "Gemini Lite"}
             </span>
           </div>
           <span style={{ fontSize: currentSize.fontSize, opacity: 0.7 }}>
@@ -863,47 +901,17 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                   </button>
                 </div>
                 {!isPremium && (
-                  <button
-                    onClick={() => {
-                      setIsOpen(false);
-                      navigateTo("/subscription");
-                    }}
+                  <div
                     style={{
-                      width: "100%",
-                      padding: "12px 16px",
-                      border: "none",
-                      textAlign: "left",
-                      cursor: "pointer",
+                      padding: "10px 16px",
                       borderBottom: "1px solid var(--border)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      color: "var(--accent)",
-                      fontWeight: 600,
+                      fontSize: "var(--font-xs)",
+                      color: "var(--sub)",
+                      lineHeight: 1.45,
                     }}
                   >
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: "50%",
-                        backgroundColor: "var(--accent)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#fff",
-                        fontSize: "14px",
-                      }}
-                    >
-                      ★
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "var(--font-sm)" }}>Upgrade Plan</div>
-                      <div style={{ fontSize: "var(--font-xs)", opacity: 0.8, fontWeight: 400 }}>
-                        Unlock premium models
-                      </div>
-                    </div>
-                  </button>
+                    Gemini Lite is free. Tap any other model to upgrade to IQ Pro or IQ Max.
+                  </div>
                 )}
                 {availableModels.map((model) => renderModelButton(model, isMobile))}
               </div>

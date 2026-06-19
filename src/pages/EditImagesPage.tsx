@@ -3,8 +3,14 @@ import { IoIosArrowBack } from "react-icons/io";
 import { FaImage, FaSpinner, FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
-import { isAuthenticated } from "../utils/auth";
 import { generateImageApi } from "../utils/mediaApi";
+import {
+  hasReachedLifetimeMediaLimit,
+  incrementLifetimeMediaCount,
+  shouldEnforceUsageLimits,
+  type UsageLimitKind,
+} from "../utils/queryLimit";
+import { UsageLimitModal } from "../components/UsageLimitModal";
 import {
   MediaStudioModal,
   type MediaStudioModalView,
@@ -30,6 +36,12 @@ export default function EditImagesPage() {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [modalView, setModalView] = useState<MediaStudioModalView | null>(null);
   const [activePrompt, setActivePrompt] = useState("");
+  const [usageLimitModal, setUsageLimitModal] = useState<UsageLimitKind | null>(null);
+
+  const goToSubscriptionPlan = (plan: "pro" | "max") => {
+    setUsageLimitModal(null);
+    navigateTo("/subscription", { plan, limitReached: true });
+  };
 
   const handleFile = (file: File | undefined) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -47,8 +59,8 @@ export default function EditImagesPage() {
   const handleGenerate = async () => {
     if (!imageFile || !prompt.trim()) return;
 
-    if (!isAuthenticated()) {
-      setModalView("auth");
+    if (shouldEnforceUsageLimits() && hasReachedLifetimeMediaLimit()) {
+      setUsageLimitModal("media");
       return;
     }
 
@@ -62,6 +74,9 @@ export default function EditImagesPage() {
       const result = await generateImageApi(promptText, "1:1", imageFile);
       setResultUrl(result.url);
       setModalView("result");
+      if (shouldEnforceUsageLimits()) {
+        incrementLifetimeMediaCount();
+      }
       showToast({ message: "Image edited!", type: "success", duration: 3000 });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Image edit failed";
@@ -102,49 +117,64 @@ export default function EditImagesPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5">
-        {!preview ? (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full glass-card border-2 border-dashed border-[var(--border)] rounded-xl p-10 flex flex-col items-center gap-3 mb-6 hover:border-[var(--accent)] transition-colors"
-          >
-            <FaImage size={32} className="text-[var(--accent)]" />
-            <div className="text-sm font-semibold">Upload an image to edit</div>
-            <div className="text-xs opacity-60">PNG, JPG, WebP — up to 10MB</div>
-          </button>
-        ) : (
-          <div className="relative mb-6 inline-block w-full">
-            <img src={preview} alt="Upload preview" className="w-full max-h-[220px] object-contain rounded-xl border border-[var(--border)]" />
+      <div className="flex-1 overflow-y-auto p-4">
+        <div
+          className="flex gap-3 mb-6 overflow-x-auto pb-2 no-scrollbar"
+          style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+        >
+          {TEMPLATES.map((template) => (
             <button
+              key={template.id}
               type="button"
-              className="absolute top-2 right-2 btn-ghost glass-button p-2 rounded-full"
-              onClick={() => { setPreview(null); setImageFile(null); setResultUrl(null); }}
-              aria-label="Remove image"
+              onClick={() => setPrompt(template.prompt)}
+              className="glass-card border border-[var(--border)] rounded-xl p-4 text-left shrink-0 hover:border-[var(--accent)] transition-colors"
+              style={{ width: 180, scrollSnapAlign: "start" }}
             >
-              <FaTimes size={14} />
-            </button>
-          </div>
-        )}
-
-        <div className="sub text-sm font-semibold mb-3 uppercase tracking-wide opacity-70">Edit templates</div>
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          {TEMPLATES.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setPrompt(t.prompt)}
-              className="glass-card border border-[var(--border)] rounded-xl p-4 text-left hover:border-[var(--accent)] transition-colors"
-            >
-              <div className="text-sm font-semibold mb-1">{t.label}</div>
-              <div className="text-xs opacity-60 line-clamp-2">{t.prompt}</div>
+              <FaImage size={16} className="text-[var(--accent)] mb-2" />
+              <div className="text-sm font-semibold mb-1">{template.label}</div>
             </button>
           ))}
         </div>
 
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => handleFile(e.target.files?.[0])}
+        />
+
+        {!preview ? (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="glass-card border border-dashed border-[var(--border)] rounded-xl w-full p-8 flex flex-col items-center gap-3"
+          >
+            <FaImage size={28} className="text-[var(--accent)]" />
+            <span className="text-sm opacity-70">Tap to upload an image</span>
+          </button>
+        ) : (
+          <div className="relative mb-4">
+            <img src={preview} alt="Upload preview" className="w-full max-h-[280px] object-contain rounded-xl border border-[var(--border)]" />
+            <button
+              type="button"
+              className="absolute top-2 right-2 btn-ghost glass-button w-8 h-8 rounded-full flex items-center justify-center"
+              onClick={() => {
+                setPreview(null);
+                setImageFile(null);
+                setResultUrl(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+              aria-label="Remove image"
+            >
+              <FaTimes size={12} />
+            </button>
+          </div>
+        )}
+
         {resultUrl && !modalView && (
           <div className="glass-card border border-[var(--border)] rounded-xl overflow-hidden mb-6">
-            <img src={resultUrl} alt="Edited result" className="w-full object-contain" />
+            <img src={resultUrl} alt="Edited result" className="w-full max-h-[300px] object-contain" />
           </div>
         )}
       </div>
@@ -165,11 +195,17 @@ export default function EditImagesPage() {
           onClick={() => void handleGenerate()}
         >
           {isGenerating ? <FaSpinner className="animate-spin" /> : <FaImage />}
-          {isGenerating ? "Editing..." : "Edit Image"}
+          {isGenerating ? "Generating..." : "Edit Image"}
         </button>
       </div>
 
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+      {usageLimitModal && (
+        <UsageLimitModal
+          kind={usageLimitModal}
+          onClose={() => setUsageLimitModal(null)}
+          onSelectPlan={goToSubscriptionPlan}
+        />
+      )}
 
       <MediaStudioModal
         view={modalView}

@@ -574,4 +574,63 @@ router.delete('/search/history', optionalAuth, async (req: AuthRequest, res) => 
   }
 });
 
+/** Proxy favicons so web + Capacitor WebView always get a loadable image URL. */
+router.get('/favicon', async (req, res) => {
+  try {
+    const rawUrl = String(req.query.url || '').trim();
+    if (!rawUrl) {
+      return res.status(400).end();
+    }
+
+    let pageUrl = rawUrl.replace(/^[\s>*\-•#[\]()]+/, '').trim();
+    if (!/^https?:\/\//i.test(pageUrl)) {
+      pageUrl = `https://${pageUrl.replace(/^\/\//, '')}`;
+    }
+
+    let host = '';
+    try {
+      host = new URL(pageUrl).hostname.replace(/^www\./i, '');
+    } catch {
+      return res.status(400).end();
+    }
+
+    const encodedPage = encodeURIComponent(pageUrl);
+    const candidates = [
+      `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodedPage}&size=32`,
+      `https://icons.duckduckgo.com/ip3/${host}.ico`,
+      `https://external-content.duckduckgo.com/ip3/${host}.ico`,
+      `https://www.google.com/s2/favicons?domain_url=${encodedPage}&sz=64`,
+      `https://${host}/favicon.ico`,
+      `https://${host}/apple-touch-icon.png`,
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        const response = await fetch(candidate, {
+          headers: { Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' },
+          redirect: 'follow',
+        });
+        if (!response.ok) continue;
+
+        const contentType = response.headers.get('content-type') || 'image/png';
+        if (!/image|icon|octet-stream/i.test(contentType)) continue;
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        if (buffer.length < 16) continue;
+
+        res.set('Content-Type', contentType.split(';')[0] || 'image/png');
+        res.set('Cache-Control', 'public, max-age=604800');
+        return res.send(buffer);
+      } catch {
+        continue;
+      }
+    }
+
+    return res.status(404).end();
+  } catch (error) {
+    console.error('Favicon proxy error:', error);
+    return res.status(500).end();
+  }
+});
+
 export default router;
