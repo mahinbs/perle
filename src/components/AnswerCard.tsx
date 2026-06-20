@@ -73,34 +73,52 @@ function hasMarkdownTable(text: string): boolean {
  *   - Section headings keep their emoji + label (no leading "##").
  *   - Loose pipes mid-line get smoothed.
  */
+/**
+ * Hide raw markdown table syntax during streaming, but render COMPLETE rows
+ * progressively so the user always has a progress signal instead of a stuck
+ * "Building table…" placeholder.
+ *
+ *   - Complete rows (start & end with `|`) → rendered as a clean text grid.
+ *   - The single trailing in-progress row (starts with `|`, not yet closed)
+ *     is replaced with "⏳ Building row…".
+ *   - Markdown separator lines (`|---|---|`) are hidden entirely.
+ *   - Heading markers (`##`) stripped to plain heading text.
+ */
 function maskStreamingMarkdown(text: string): string {
   if (!text) return text;
   const lines = text.split("\n");
   const out: string[] = [];
-  let inTable = false;
-  for (const raw of lines) {
-    const line = raw;
-    const trimmed = line.trim();
-    // Detect any markdown table-like row. During streaming the FINAL row is
-    // still being written and may not yet have a trailing `|`, so we only
-    // require: starts with `|` AND has at least one column separator. This
-    // matches partial rows like `| Samsung Exynos 2600 | Samsung | 2nm |`
-    // AND `| Samsung Exynos 2600 | Samsung | 2nm | Xclipse 960 (RDNA`.
-    const isTableSeparator = /^\|?\s*[-:|\s]+\|?\s*$/.test(trimmed) && trimmed.includes("|");
-    const isTableLike =
-      isTableSeparator ||
-      (trimmed.startsWith("|") &&
-        trimmed.split("|").filter((s) => s.trim().length > 0).length >= 1);
-    if (isTableLike) {
-      if (!inTable) {
-        out.push("⏳ Building table…");
-        inTable = true;
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
+    const isSeparator =
+      /^\|?\s*[-:|\s]+\|?\s*$/.test(trimmed) && trimmed.includes("|") && /---/.test(trimmed);
+    if (isSeparator) {
+      // Skip "|---|---|" entirely
+      continue;
+    }
+    const startsWithPipe = trimmed.startsWith("|");
+    const endsWithPipe = trimmed.endsWith("|");
+    const hasColumns = trimmed.split("|").filter((s) => s.trim().length > 0).length >= 1;
+    if (startsWithPipe && endsWithPipe && hasColumns) {
+      // Fully-formed row — render as a clean visual line (no raw pipes).
+      const cells = trimmed
+        .slice(1, -1)
+        .split("|")
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (cells.length > 0) {
+        out.push(`• ${cells.join("  ·  ")}`);
       }
       continue;
     }
-    inTable = false;
+    if (startsWithPipe && hasColumns) {
+      // Partial trailing row mid-stream — show progress only for THIS line.
+      out.push("⏳ Building row…");
+      continue;
+    }
     // Strip leading markdown heading markers; keep heading text
-    out.push(line.replace(/^#{1,6}\s+/, ""));
+    out.push(raw.replace(/^#{1,6}\s+/, ""));
   }
   return out.join("\n");
 }
@@ -912,6 +930,30 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         if (parsedRows.length >= 1) {
           const headerCells = parsedRows[0];
           const bodyRows = parsedRows.slice(1);
+          // Defensive: empty-body tables (model output only headers, or a
+          // streamed response was truncated mid-table) render as a plain
+          // header line instead of an empty <table>. This matches what users
+          // expect — never show an empty table shell.
+          if (bodyRows.length === 0) {
+            const headerText = headerCells.filter((c) => c.trim()).join(" · ");
+            if (headerText) {
+              result.push(
+                <p
+                  key={`empty-table-header-${result.length}`}
+                  style={{
+                    marginTop: 12,
+                    marginBottom: 12,
+                    fontWeight: 600,
+                    color: "var(--text)",
+                  }}
+                >
+                  {renderWithMath(headerText)}
+                </p>
+              );
+            }
+            lineIndex = scanIndex - 1;
+            continue;
+          }
           result.push(
             renderMarkdownTable(
               headerCells,
