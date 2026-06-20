@@ -74,14 +74,14 @@ function hasMarkdownTable(text: string): boolean {
  *   - Loose pipes mid-line get smoothed.
  */
 /**
- * Hide raw markdown table syntax during streaming, but render COMPLETE rows
- * progressively so the user always has a progress signal instead of a stuck
- * "Building table…" placeholder.
+ * Hide raw markdown table syntax during streaming.
  *
- *   - Complete rows (start & end with `|`) → rendered as a clean text grid.
- *   - The single trailing in-progress row (starts with `|`, not yet closed)
- *     is replaced with "⏳ Building row…".
  *   - Markdown separator lines (`|---|---|`) are hidden entirely.
+ *   - Header row + complete body rows → rendered as clean text bullets so the
+ *     user sees the table fill in (no raw pipes).
+ *   - The trailing in-progress row is hidden silently (no placeholder) —
+ *     showing a placeholder for a long time looks like a frozen UI. As soon
+ *     as the row completes, it appears as a bullet.
  *   - Heading markers (`##`) stripped to plain heading text.
  */
 function maskStreamingMarkdown(text: string): string {
@@ -92,7 +92,7 @@ function maskStreamingMarkdown(text: string): string {
     const raw = lines[i];
     const trimmed = raw.trim();
     const isSeparator =
-      /^\|?\s*[-:|\s]+\|?\s*$/.test(trimmed) && trimmed.includes("|") && /---/.test(trimmed);
+      /^\|?\s*[-:|\s]+\|?\s*$/.test(trimmed) && trimmed.includes("|") && /-{2,}/.test(trimmed);
     if (isSeparator) {
       // Skip "|---|---|" entirely
       continue;
@@ -113,8 +113,7 @@ function maskStreamingMarkdown(text: string): string {
       continue;
     }
     if (startsWithPipe && hasColumns) {
-      // Partial trailing row mid-stream — show progress only for THIS line.
-      out.push("⏳ Building row…");
+      // Partial trailing row — hide silently. Will surface as a bullet on completion.
       continue;
     }
     // Strip leading markdown heading markers; keep heading text
@@ -930,27 +929,12 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         if (parsedRows.length >= 1) {
           const headerCells = parsedRows[0];
           const bodyRows = parsedRows.slice(1);
-          // Defensive: empty-body tables (model output only headers, or a
-          // streamed response was truncated mid-table) render as a plain
-          // header line instead of an empty <table>. This matches what users
-          // expect — never show an empty table shell.
+          // Defensive: empty-body tables (model output only headers, or
+          // streamed response was truncated mid-table) are hidden entirely.
+          // Rendering an empty <table> or stranded header text looks broken;
+          // skipping it lets the surrounding answer (intro, headings, related
+          // questions) flow naturally.
           if (bodyRows.length === 0) {
-            const headerText = headerCells.filter((c) => c.trim()).join(" · ");
-            if (headerText) {
-              result.push(
-                <p
-                  key={`empty-table-header-${result.length}`}
-                  style={{
-                    marginTop: 12,
-                    marginBottom: 12,
-                    fontWeight: 600,
-                    color: "var(--text)",
-                  }}
-                >
-                  {renderWithMath(headerText)}
-                </p>
-              );
-            }
             lineIndex = scanIndex - 1;
             continue;
           }
