@@ -16,6 +16,9 @@ import {
   incrementDailyQueryCount,
   shouldEnforceQueryLimit,
   getQueryLimitMessage,
+  hasReachedLifetimeDeepLimit,
+  incrementLifetimeDeepCount,
+  getDeepLimitMessage,
 } from "../utils/queryLimit";
 import {
   CHAT_EXCHANGE_SCROLL_OFFSET,
@@ -94,7 +97,41 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const streamingTextRef = useRef("");
   const streamingSourcesRef = useRef<Source[]>([]);
-  const pendingStreamFlushRef = useRef<number | null>(null);
+  const pendingBufferRef = useRef("");
+  const flushTimerRef = useRef<number | null>(null);
+
+  const startDrip = () => {
+    if (flushTimerRef.current) return;
+    flushTimerRef.current = window.setInterval(() => {
+      const pending = pendingBufferRef.current;
+      if (!pending) return;
+      // Adaptive reveal: keep a smooth word-by-word feel for a small backlog,
+      // but accelerate hard when the model dumps a lot so the text never lags
+      // behind generation (fast, Perplexity/Claude-style streaming).
+      const len = pending.length;
+      const take =
+        len > 600 ? 40 :
+        len > 300 ? 22 :
+        len > 120 ? 12 :
+        len > 40 ? 7 : 4;
+      const chunk = pending.slice(0, take);
+      pendingBufferRef.current = pending.slice(take);
+      streamingTextRef.current += chunk;
+      setStreamingText((s) => s + chunk);
+    }, 12);
+  };
+
+  const stopDripAndFlush = () => {
+    if (flushTimerRef.current) {
+      clearInterval(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    if (pendingBufferRef.current) {
+      streamingTextRef.current += pendingBufferRef.current;
+      setStreamingText((s) => s + pendingBufferRef.current);
+      pendingBufferRef.current = "";
+    }
+  };
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
@@ -365,6 +402,16 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         return;
       }
 
+      // Deep research: free users get ONE lifetime use (it's heavy + slow).
+      const isDeepSearch = experienceModeRef.current === "deep_research";
+      if (isDeepSearch && shouldEnforceQueryLimit() && hasReachedLifetimeDeepLimit()) {
+        navigateTo("/subscription", {
+          limitReached: true,
+          message: getDeepLimitMessage(),
+        });
+        return;
+      }
+
       // Prevent duplicate searches if already searching
       if (isSearchingRef.current) {
         return;
@@ -393,14 +440,19 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       pendingFollowUpRef.current = conversationHistory.length > 0;
       setIsLoading(true);
       setIsStreaming(false);
+      stopDripAndFlush();
       streamingTextRef.current = "";
       streamingSourcesRef.current = [];
+      pendingBufferRef.current = "";
       setStreamingText("");
       setStreamingSources([]);
       saveToHistory(q);
 
       if (shouldEnforceQueryLimit()) {
         incrementDailyQueryCount();
+        if (isDeepSearch) {
+          incrementLifetimeDeepCount();
+        }
       }
 
       setQuery(displayQuery);
@@ -434,12 +486,21 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         };
 
         console.log(`🚀 FRONTEND SENDING: conversationId=${activeConversationId}, newConversation=${newConversation}`);
+        // Build history for the backend. Skip exchanges with empty query or
+        // empty assistant text — empty content fails the server's zod min(1)
+        // check and surfaces as "Invalid request". (Happens when a prior stream
+        // ended without any tokens, e.g. transient Gemini 503.)
         const localConversationHistory = conversationHistory
           .slice(-10)
-          .flatMap((item) => [
-            { role: "user" as const, content: item.query },
-            { role: "assistant" as const, content: item.chunks.map((c) => c.text).join("\n\n") },
-          ]);
+          .flatMap((item) => {
+            const q = (item.query || "").trim();
+            const a = item.chunks.map((c) => c.text).join("\n\n").trim();
+            if (!q || !a) return [];
+            return [
+              { role: "user" as const, content: q },
+              { role: "assistant" as const, content: a },
+            ];
+          });
         const backendMode: Mode =
           activeExperienceMode === "normal" ? "Ask" : "Research";
         const backendSearchType: 'auto' | 'instant' | 'deep' =
@@ -539,22 +600,13 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
               },
 
               onToken: (text) => {
-                streamingTextRef.current += text;
-                // Batch updates via rAF — avoids running formatText() on every
-                // single token (which caused expensive re-renders each keystroke).
-                if (pendingStreamFlushRef.current != null) return;
-                pendingStreamFlushRef.current = requestAnimationFrame(() => {
-                  pendingStreamFlushRef.current = null;
-                  setStreamingText(streamingTextRef.current);
-                });
+                pendingBufferRef.current += text;
+                startDrip();
               },
 
               onDone: (suggestedQuestions) => {
-                // Cancel any pending rAF flush before we commit the final answer
-                if (pendingStreamFlushRef.current != null) {
-                  cancelAnimationFrame(pendingStreamFlushRef.current);
-                  pendingStreamFlushRef.current = null;
-                }
+                stopDripAndFlush();
+                skipTypewriterOnRestoreRef.current = true;
                 setIsStreaming(false);
 
                 let finalSources = streamingSourcesRef.current;
@@ -610,9 +662,16 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                     appendConversationAnswer(prev, finalAnswer)
                   );
                 }
+
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(() => {
+                    skipTypewriterOnRestoreRef.current = false;
+                  })
+                );
               },
 
               onError: (msg) => {
+                stopDripAndFlush();
                 throw new Error(msg);
               },
             }
@@ -620,11 +679,27 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         }
       } catch (error: any) {
         console.error("Search API error:", error);
+        stopDripAndFlush();
         setIsStreaming(false);
         streamingTextRef.current = "";
         streamingSourcesRef.current = [];
+        pendingBufferRef.current = "";
         setStreamingText("");
         setStreamingSources([]);
+
+        // Server-side free-tier limit hit (e.g. localStorage cleared to bypass the
+        // client gate) → route to the upgrade page with the server's message.
+        if (error?.limitReached) {
+          setIsLoading(false);
+          isSearchingRef.current = false;
+          navigateTo("/subscription", {
+            limitReached: true,
+            message:
+              error.limitKind === "deep" ? getDeepLimitMessage() : getQueryLimitMessage(),
+          });
+          return;
+        }
+
         // Show error to user - no mock fallback
         const backendMode: Mode =
           experienceMode === "normal" ? "Ask" : "Research";
@@ -1040,7 +1115,18 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
               );
             })}
 
-            {isStreaming && (
+            {isStreaming && streamingText.length === 0 && (
+              <AnswerCard
+                chunks={[]}
+                sources={streamingSources}
+                isLoading={true}
+                query={searchedQuery}
+                attachments={currentUploadedFiles}
+                // Sources reveal only on the final answer, after streaming completes.
+                hideSources={true}
+              />
+            )}
+            {isStreaming && streamingText.length > 0 && (
               <div
                 ref={streamingCardRef}
                 data-chat-exchange
@@ -1072,7 +1158,8 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                   isStreamingAnswer={true}
                   suggestedQuestions={[]}
                   attachments={currentUploadedFiles}
-                  hideSources={false}
+                  // Sources show only on the final answer, after streaming completes.
+                  hideSources={true}
                 />
               </div>
             )}

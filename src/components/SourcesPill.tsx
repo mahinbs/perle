@@ -82,9 +82,7 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
             />
           ))}
         </span>
-        <span>
-          {sources.length} {sources.length === 1 ? "source" : "sources"}
-        </span>
+        <span style={{ opacity: 0.7, fontSize: 12 }}>Sources</span>
       </button>
 
       {expanded && (

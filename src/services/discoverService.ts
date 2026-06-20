@@ -1,135 +1,9 @@
 import type { DiscoverItem } from '../types';
  
-const CACHE_KEY = 'syntraiq-discover-cache-v2';
-
-// -------------------------------------------------------------------
-// Full topic pool — 10-12 per category.
-// This is used as the primary source when no backend is available,
-// and also synced to the backend discover.json.
-// -------------------------------------------------------------------
-const TOPIC_POOL: DiscoverItem[] = [
-  // ─── Technology ─────────────────────────────────────────────────
-  { id: 'ai-healthcare', title: 'AI in Healthcare', tag: 'Trending', image: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=600&h=300&fit=crop', alt: 'AI in healthcare', description: 'How artificial intelligence is revolutionizing medical diagnosis and treatment', category: 'Technology' },
-  { id: 'quantum-computing', title: 'Quantum Computing Advances', tag: 'Breakthrough', image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600&h=300&fit=crop', alt: 'Quantum computing', description: 'How quantum computers are solving problems that classical computers cannot', category: 'Technology' },
-  { id: 'cybersecurity', title: 'Cybersecurity Essentials', tag: 'Brief', image: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&h=300&fit=crop', alt: 'Cybersecurity', description: 'Protecting your data and privacy in the digital age', category: 'Technology' },
-  { id: 'machine-learning', title: 'Machine Learning Explained', tag: 'Brief', image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&h=300&fit=crop', alt: 'Machine learning', description: 'How machines learn from data and make intelligent predictions', category: 'Technology' },
-  { id: 'blockchain', title: 'Blockchain Revolution', tag: 'Research', image: 'https://images.unsplash.com/photo-1639762681057-408e52192e55?w=600&h=300&fit=crop', alt: 'Blockchain', description: 'How decentralized ledgers are transforming trust and transactions', category: 'Technology' },
-  { id: 'augmented-reality', title: 'Augmented Reality Future', tag: 'Hot', image: 'https://images.unsplash.com/photo-1622979135225-d2ba269cf1ac?w=600&h=300&fit=crop', alt: 'Augmented reality', description: 'How AR is blending the digital and physical worlds', category: 'Technology' },
-  { id: '5g-tech', title: '5G Technology Impact', tag: 'Explain', image: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&h=300&fit=crop', alt: '5G network', description: 'The speed and connectivity revolution reshaping society', category: 'Technology' },
-  { id: 'robotics-manufacturing', title: 'Robotics in Manufacturing', tag: 'Research', image: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=600&h=300&fit=crop', alt: 'Robotics', description: 'Automation and robots are transforming factories and supply chains', category: 'Technology' },
-  { id: 'cloud-computing', title: 'Cloud Computing Fundamentals', tag: 'Brief', image: 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=600&h=300&fit=crop', alt: 'Cloud computing', description: 'How the cloud powers modern software and business', category: 'Technology' },
-  { id: 'natural-language-processing', title: 'Natural Language Processing', tag: 'Trending', image: 'https://images.unsplash.com/photo-1526378722484-bd91ca387e72?w=600&h=300&fit=crop', alt: 'NLP', description: 'Teaching computers to understand and generate human language', category: 'Technology' },
-  { id: 'computer-vision', title: 'Computer Vision Applications', tag: 'Popular', image: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&h=300&fit=crop', alt: 'Computer vision', description: 'How machines learn to see and interpret visual information', category: 'Technology' },
-  { id: 'edge-computing', title: 'Edge Computing Explained', tag: 'Explain', image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=600&h=300&fit=crop', alt: 'Edge computing', description: 'Processing data closer to its source for faster real-time decisions', category: 'Technology' },
-
-  // ─── Science ─────────────────────────────────────────────────────
-  { id: 'space-exploration', title: 'Space Exploration Breakthroughs', tag: 'New', image: 'https://images.unsplash.com/photo-1446776877081-d282a0f896e2?w=600&h=300&fit=crop', alt: 'Space exploration', description: 'Recent discoveries and missions expanding our understanding of the universe', category: 'Science' },
-  { id: 'climate-science', title: 'Climate Change Science', tag: 'Research', image: 'https://images.unsplash.com/photo-1569163138754-2c2e3e5a7190?w=600&h=300&fit=crop', alt: 'Climate science', description: 'Latest research on global warming, carbon cycles, and mitigation strategies', category: 'Science' },
-  { id: 'sleep-science', title: 'Science of Sleep', tag: 'Explain', image: 'https://images.unsplash.com/photo-1541783245831-57d6fb0926d3?w=600&h=300&fit=crop', alt: 'Sleep science', description: 'Why sleep matters and how to optimize it for health and performance', category: 'Science' },
-  { id: 'crispr-gene-editing', title: 'CRISPR Gene Editing', tag: 'Breakthrough', image: 'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=600&h=300&fit=crop', alt: 'Gene editing', description: 'How gene editing is opening new frontiers in medicine and biology', category: 'Science' },
-  { id: 'black-holes', title: 'Black Holes Explained', tag: 'Popular', image: 'https://images.unsplash.com/photo-1465101162946-4377e57745c3?w=600&h=300&fit=crop', alt: 'Black hole', description: 'The mysteries of the densest and most fascinating objects in the universe', category: 'Science' },
-  { id: 'neuroplasticity', title: 'Neuroplasticity Research', tag: 'Hot', image: 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=600&h=300&fit=crop', alt: 'Brain neuroplasticity', description: 'How the brain rewires itself with experience, learning, and therapy', category: 'Science' },
-  { id: 'particle-physics', title: 'Particle Physics Basics', tag: 'Brief', image: 'https://images.unsplash.com/photo-1635070041409-e63e783ce3c1?w=600&h=300&fit=crop', alt: 'Particle physics', description: 'The building blocks of the universe at the subatomic scale', category: 'Science' },
-  { id: 'ocean-exploration', title: 'Deep Ocean Exploration', tag: 'New', image: 'https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9?w=600&h=300&fit=crop', alt: 'Ocean exploration', description: 'Discovering life and geology in the deep ocean', category: 'Science' },
-  { id: 'nanotechnology', title: 'Nanotechnology Advances', tag: 'Research', image: 'https://images.unsplash.com/photo-1554475901-4538ddfbccc2?w=600&h=300&fit=crop', alt: 'Nanotechnology', description: 'Engineering at the scale of atoms for medicine and materials', category: 'Science' },
-  { id: 'astrobiology', title: 'Astrobiology and Life in Space', tag: 'Trending', image: 'https://images.unsplash.com/photo-1614728894747-a83421789f10?w=600&h=300&fit=crop', alt: 'Astrobiology', description: 'The search for life beyond Earth across the cosmos', category: 'Science' },
-  { id: 'volcano-earth-science', title: 'Volcanology and Earth Science', tag: 'Explain', image: 'https://images.unsplash.com/photo-1554244933-d876deb6b2ff?w=600&h=300&fit=crop', alt: 'Volcano', description: 'What eruptions and plate tectonics reveal about our planet', category: 'Science' },
-
-  // ─── Psychology ───────────────────────────────────────────────────
-  { id: 'cognitive-psychology', title: 'Cognitive Psychology', tag: 'Brief', image: 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=600&h=300&fit=crop', alt: 'Psychology', description: 'Understanding how the mind processes information and makes decisions', category: 'Psychology' },
-  { id: 'sports-psychology', title: 'Sports Psychology', tag: 'Compare', image: 'https://res.cloudinary.com/dknafpppp/image/upload/v1759865889/960x0_ywcais.webp', alt: 'Sports psychology', description: 'Mental training techniques for peak athletic performance', category: 'Psychology' },
-  { id: 'mental-resilience', title: 'Building Mental Resilience', tag: 'Research', image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=600&h=300&fit=crop', alt: 'Mental resilience', description: 'Strategies to build emotional strength and bounce back from adversity', category: 'Psychology' },
-  { id: 'science-of-happiness', title: 'The Science of Happiness', tag: 'Popular', image: 'https://images.unsplash.com/photo-1489710437720-ebb67ec84dd2?w=600&h=300&fit=crop', alt: 'Happiness', description: 'What research tells us about well-being, joy, and fulfillment', category: 'Psychology' },
-  { id: 'behavioral-economics', title: 'Behavioral Economics', tag: 'Explain', image: 'https://images.unsplash.com/photo-1543286386-713bdd548da4?w=600&h=300&fit=crop', alt: 'Behavioral economics', description: 'How psychology shapes economic decisions and markets', category: 'Psychology' },
-  { id: 'emotional-intelligence', title: 'Emotional Intelligence', tag: 'Hot', image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=300&fit=crop', alt: 'Emotional intelligence', description: 'Understanding and mastering emotions for better relationships', category: 'Psychology' },
-  { id: 'decision-making-biases', title: 'Decision Making and Biases', tag: 'Brief', image: 'https://images.unsplash.com/photo-1455849318743-b2233052fcff?w=600&h=300&fit=crop', alt: 'Decision making', description: 'The cognitive shortcuts and biases that shape every choice we make', category: 'Psychology' },
-  { id: 'mindfulness-research', title: 'Mindfulness Research', tag: 'Trending', image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=600&h=300&fit=crop', alt: 'Mindfulness', description: 'Evidence-based benefits of mindfulness and meditation', category: 'Psychology' },
-  { id: 'attachment-theory', title: 'Attachment Theory', tag: 'Research', image: 'https://images.unsplash.com/photo-1491438590914-bc09fcaaf77a?w=600&h=300&fit=crop', alt: 'Attachment', description: 'How early bonds shape our relationships throughout life', category: 'Psychology' },
-  { id: 'psychology-of-habits', title: 'The Psychology of Habits', tag: 'Explain', image: 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?w=600&h=300&fit=crop', alt: 'Habits', description: 'How habits form, break, and shape who we are', category: 'Psychology' },
-  { id: 'motivation-science', title: 'Motivation and Self-Determination', tag: 'Popular', image: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=600&h=300&fit=crop', alt: 'Motivation', description: 'What drives human motivation and how to sustain it', category: 'Psychology' },
-
-  // ─── Health Care ─────────────────────────────────────────────────
-  { id: 'mental-health-care', title: 'Mental Health Care', tag: 'Research', image: 'https://res.cloudinary.com/dknafpppp/image/upload/v1759865727/home-based-medical-care-bringing-healthcare-to-your-doorstep_tgkhkw.png', alt: 'Mental health', description: 'Modern approaches to mental health treatment and wellness', category: 'Health Care' },
-  { id: 'nutrition-science', title: 'Nutrition and Diet Science', tag: 'Explain', image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=600&h=300&fit=crop', alt: 'Nutrition', description: 'Evidence-based nutrition for optimal health and disease prevention', category: 'Health Care' },
-  { id: 'gut-microbiome', title: 'Gut Microbiome Health', tag: 'Hot', image: 'https://images.unsplash.com/photo-1576086213369-97a306d36557?w=600&h=300&fit=crop', alt: 'Gut health', description: 'How gut bacteria influence immunity, mood, and overall health', category: 'Health Care' },
-  { id: 'exercise-brain', title: 'Exercise and the Brain', tag: 'Trending', image: 'https://images.unsplash.com/photo-1594737625785-a6cbdabd333c?w=600&h=300&fit=crop', alt: 'Exercise brain health', description: 'How physical activity boosts cognition, mood, and mental health', category: 'Health Care' },
-  { id: 'cancer-immunotherapy', title: 'Cancer Immunotherapy', tag: 'Breakthrough', image: 'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=600&h=300&fit=crop', alt: 'Cancer therapy', description: 'How the immune system is being trained to fight cancer', category: 'Health Care' },
-  { id: 'telemedicine', title: 'Telemedicine Revolution', tag: 'New', image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=600&h=300&fit=crop', alt: 'Telemedicine', description: 'How remote healthcare is expanding access to quality treatment', category: 'Health Care' },
-  { id: 'precision-medicine', title: 'Precision Medicine', tag: 'Research', image: 'https://images.unsplash.com/photo-1530026186672-2cd00ffc50fe?w=600&h=300&fit=crop', alt: 'Precision medicine', description: 'Tailoring medical treatment to the individual genetic profile', category: 'Health Care' },
-  { id: 'longevity-science', title: 'Aging and Longevity Science', tag: 'Popular', image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=600&h=300&fit=crop', alt: 'Longevity', description: 'The science of slowing aging and living longer, healthier lives', category: 'Health Care' },
-  { id: 'vaccine-science', title: 'Vaccine Science', tag: 'Brief', image: 'https://images.unsplash.com/photo-1584036561566-baf8f5f1b144?w=600&h=300&fit=crop', alt: 'Vaccine', description: 'How vaccines work and the science behind immunization', category: 'Health Care' },
-  { id: 'heart-health', title: 'Heart Health Innovations', tag: 'Hot', image: 'https://images.unsplash.com/photo-1559757175-5700dde675bc?w=600&h=300&fit=crop', alt: 'Heart health', description: 'The latest advances in cardiovascular disease prevention and treatment', category: 'Health Care' },
-
-  // ─── Environment ─────────────────────────────────────────────────
-  { id: 'sustainable-energy', title: 'Sustainable Energy Solutions', tag: 'Hot', image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=600&h=300&fit=crop', alt: 'Solar panels', description: 'Latest innovations in renewable energy and their impact on climate change', category: 'Environment' },
-  { id: 'renewable-tech', title: 'Renewable Energy Technologies', tag: 'Compare', image: 'https://images.unsplash.com/photo-1509391366360-2e959784a276?w=600&h=300&fit=crop', alt: 'Renewable energy', description: 'Solar, wind, hydro, and other clean energy technologies compared', category: 'Environment' },
-  { id: 'biodiversity', title: 'Biodiversity Conservation', tag: 'Research', image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600&h=300&fit=crop', alt: 'Biodiversity', description: 'Why protecting species diversity is critical for planetary health', category: 'Environment' },
-  { id: 'plastic-pollution', title: 'Plastic Pollution Solutions', tag: 'Trending', image: 'https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=600&h=300&fit=crop', alt: 'Plastic pollution', description: 'Innovative approaches to reducing and reversing plastic pollution', category: 'Environment' },
-  { id: 'electric-vehicles', title: 'Electric Vehicles Impact', tag: 'New', image: 'https://images.unsplash.com/photo-1593941707874-ef25b8b4a92b?w=600&h=300&fit=crop', alt: 'Electric vehicles', description: 'How EVs are transforming transportation and reducing emissions', category: 'Environment' },
-  { id: 'coral-reefs', title: 'Coral Reef Restoration', tag: 'Popular', image: 'https://images.unsplash.com/photo-1546026423-cc4642628d2b?w=600&h=300&fit=crop', alt: 'Coral reef', description: 'Science-backed methods to restore dying coral reef ecosystems', category: 'Environment' },
-  { id: 'carbon-sequestration', title: 'Forest Carbon Sequestration', tag: 'Research', image: 'https://images.unsplash.com/photo-1448375240586-882707db888b?w=600&h=300&fit=crop', alt: 'Forest carbon', description: 'How forests absorb CO₂ and the role of reforestation', category: 'Environment' },
-  { id: 'water-conservation', title: 'Water Conservation Strategies', tag: 'Brief', image: 'https://images.unsplash.com/photo-1501630834273-4b5604d2ee31?w=600&h=300&fit=crop', alt: 'Water conservation', description: 'Managing the world\'s freshwater resources for a sustainable future', category: 'Environment' },
-  { id: 'circular-economy', title: 'The Circular Economy', tag: 'Explain', image: 'https://images.unsplash.com/photo-1542601906897-ffffb4853af0?w=600&h=300&fit=crop', alt: 'Circular economy', description: 'Redesigning production to eliminate waste and regenerate resources', category: 'Environment' },
-  { id: 'urban-sustainability', title: 'Urban Sustainability', tag: 'Hot', image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=600&h=300&fit=crop', alt: 'Smart city', description: 'How cities are being redesigned to become greener and smarter', category: 'Environment' },
-
-  // ─── Finance ──────────────────────────────────────────────────────
-  { id: 'personal-finance', title: 'Personal Finance Fundamentals', tag: 'Explain', image: 'https://res.cloudinary.com/dknafpppp/image/upload/v1759864459/Banner-image_10.2e16d0ba.fill-1600x900_aamymr.jpg', alt: 'Personal finance', description: 'Building wealth through smart financial planning and investment', category: 'Finance' },
-  { id: 'cryptocurrency', title: 'Cryptocurrency Explained', tag: 'Hot', image: 'https://images.unsplash.com/photo-1621761191319-c6fb62004040?w=600&h=300&fit=crop', alt: 'Cryptocurrency', description: 'Bitcoin, Ethereum, and the rise of digital currencies', category: 'Finance' },
-  { id: 'stock-market', title: 'Stock Market Basics', tag: 'Brief', image: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&h=300&fit=crop', alt: 'Stock market', description: 'How equity markets work and how to start investing', category: 'Finance' },
-  { id: 'behavioral-finance', title: 'Behavioral Finance', tag: 'Research', image: 'https://images.unsplash.com/photo-1543286386-713bdd548da4?w=600&h=300&fit=crop', alt: 'Behavioral finance', description: 'How psychology drives financial decisions and market behavior', category: 'Finance' },
-  { id: 'real-estate-investment', title: 'Real Estate Investment', tag: 'Popular', image: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=600&h=300&fit=crop', alt: 'Real estate', description: 'How to build wealth through property investment', category: 'Finance' },
-  { id: 'financial-independence', title: 'Financial Independence', tag: 'Trending', image: 'https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?w=600&h=300&fit=crop', alt: 'Financial independence', description: 'The path to financial freedom and retiring early', category: 'Finance' },
-  { id: 'impact-investing', title: 'Impact Investing', tag: 'New', image: 'https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=600&h=300&fit=crop', alt: 'Impact investing', description: 'Generating financial returns while driving positive social change', category: 'Finance' },
-  { id: 'startup-funding', title: 'Startup Funding Explained', tag: 'Explain', image: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=600&h=300&fit=crop', alt: 'Startup funding', description: 'From bootstrapping and angel investors to venture capital and IPOs', category: 'Finance' },
-  { id: 'inflation-money', title: 'Inflation and Your Money', tag: 'Brief', image: 'https://images.unsplash.com/photo-1554774853-719586f82d77?w=600&h=300&fit=crop', alt: 'Inflation', description: 'How inflation erodes purchasing power and strategies to protect your wealth', category: 'Finance' },
-  { id: 'retirement-planning', title: 'Retirement Planning', tag: 'Compare', image: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=600&h=300&fit=crop', alt: 'Retirement planning', description: 'Building a secure retirement through smart planning and investing', category: 'Finance' },
-
-  // ─── Sports ───────────────────────────────────────────────────────
-  { id: 'sports-science', title: 'Sports Science Innovations', tag: 'Popular', image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&h=300&fit=crop', alt: 'Sports science', description: 'How technology and science improve athletic performance and safety', category: 'Sports' },
-  { id: 'recovery-science', title: 'Recovery Science in Sports', tag: 'Research', image: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=600&h=300&fit=crop', alt: 'Sports recovery', description: 'How elite athletes use science to recover faster and perform better', category: 'Sports' },
-  { id: 'athlete-nutrition', title: 'Nutrition for Athletes', tag: 'Explain', image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=600&h=300&fit=crop', alt: 'Athlete nutrition', description: 'Fueling peak performance through sports nutrition and diet', category: 'Sports' },
-  { id: 'wearable-sports-tech', title: 'Wearable Tech in Sports', tag: 'Hot', image: 'https://images.unsplash.com/photo-1576243345690-4e4b79b63288?w=600&h=300&fit=crop', alt: 'Wearable tech', description: 'How smartwatches and sensors are revolutionizing training', category: 'Sports' },
-  { id: 'esports', title: 'The Rise of eSports', tag: 'Trending', image: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&h=300&fit=crop', alt: 'eSports', description: 'How competitive gaming became a global billion-dollar industry', category: 'Sports' },
-  { id: 'olympic-training', title: 'Olympic Training Methods', tag: 'Brief', image: 'https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=600&h=300&fit=crop', alt: 'Olympic training', description: 'The science and discipline behind elite Olympic athlete preparation', category: 'Sports' },
-  { id: 'cricket-analytics', title: 'Cricket Analytics', tag: 'New', image: 'https://images.unsplash.com/photo-1531415074968-036ba1b575da?w=600&h=300&fit=crop', alt: 'Cricket', description: 'Data analytics transforming how cricket is played and coached', category: 'Sports' },
-  { id: 'football-tactics', title: 'Football Tactics Evolution', tag: 'Compare', image: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=600&h=300&fit=crop', alt: 'Football tactics', description: 'How modern football tactics have evolved with data and science', category: 'Sports' },
-  { id: 'swimming-biomechanics', title: 'Swimming Biomechanics', tag: 'Research', image: 'https://images.unsplash.com/photo-1530549387789-4c1017266635?w=600&h=300&fit=crop', alt: 'Swimming', description: 'The physics and physiology behind elite swimming performance', category: 'Sports' },
-  { id: 'mental-performance-sports', title: 'Mental Performance in Sports', tag: 'Popular', image: 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=600&h=300&fit=crop', alt: 'Mental performance', description: 'The psychology behind clutch performance and focus under pressure', category: 'Sports' },
-];
-
-// Nation-wise news for "For You" tab
-const NATION_NEWS_POOL: DiscoverItem[] = [
-  { id: 'news-in-tech', title: 'India Tech Policy Updates', tag: 'News', image: 'https://images.unsplash.com/photo-1526378722484-bd91ca387e72?w=600&h=300&fit=crop', alt: 'India tech news', description: 'Latest regulatory and startup developments across India', category: 'For You', nation: 'India', nationCode: 'IN' },
-  { id: 'news-in-economy', title: 'Indian Markets Today', tag: 'Breaking', image: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&h=300&fit=crop', alt: 'India markets', description: 'Sensex, Nifty, and key economic headlines from India', category: 'For You', nation: 'India', nationCode: 'IN' },
-  { id: 'news-in-health', title: 'Healthcare News India', tag: 'Health', image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=600&h=300&fit=crop', alt: 'India health', description: 'Public health updates and medical breakthroughs in India', category: 'For You', nation: 'India', nationCode: 'IN' },
-  { id: 'news-us-tech', title: 'US Tech Giants Headlines', tag: 'News', image: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&h=300&fit=crop', alt: 'US tech', description: 'Silicon Valley and AI industry news from the United States', category: 'For You', nation: 'United States', nationCode: 'US' },
-  { id: 'news-us-finance', title: 'Wall Street Briefing', tag: 'Finance', image: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&h=300&fit=crop', alt: 'US finance', description: 'Markets, Fed policy, and corporate earnings in the US', category: 'For You', nation: 'United States', nationCode: 'US' },
-  { id: 'news-us-science', title: 'NASA & Space News', tag: 'Science', image: 'https://images.unsplash.com/photo-1446776877081-d282a0f896e2?w=600&h=300&fit=crop', alt: 'US space', description: 'Space missions and scientific discoveries from the US', category: 'For You', nation: 'United States', nationCode: 'US' },
-  { id: 'news-gb-politics', title: 'UK Parliament Updates', tag: 'Politics', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=600&h=300&fit=crop', alt: 'UK politics', description: 'Policy and political developments across the United Kingdom', category: 'For You', nation: 'United Kingdom', nationCode: 'GB' },
-  { id: 'news-gb-tech', title: 'London Tech Scene', tag: 'Tech', image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=600&h=300&fit=crop', alt: 'UK tech', description: 'Fintech and AI startups making waves in the UK', category: 'For You', nation: 'United Kingdom', nationCode: 'GB' },
-  { id: 'news-au-climate', title: 'Australia Climate Action', tag: 'Environment', image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=600&h=300&fit=crop', alt: 'Australia climate', description: 'Renewable energy and climate policy news from Australia', category: 'For You', nation: 'Australia', nationCode: 'AU' },
-  { id: 'news-au-sports', title: 'Australian Sports Roundup', tag: 'Sports', image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&h=300&fit=crop', alt: 'Australia sports', description: 'Cricket, AFL, and major sporting events across Australia', category: 'For You', nation: 'Australia', nationCode: 'AU' },
-  { id: 'news-jp-innovation', title: 'Japan Innovation Watch', tag: 'Tech', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=600&h=300&fit=crop', alt: 'Japan tech', description: 'Robotics, electronics, and R&D headlines from Japan', category: 'For You', nation: 'Japan', nationCode: 'JP' },
-  { id: 'news-jp-culture', title: 'Japan Culture & Society', tag: 'Culture', image: 'https://images.unsplash.com/photo-1493976040374-85c8e712f1f9?w=600&h=300&fit=crop', alt: 'Japan culture', description: 'Social trends and cultural stories from across Japan', category: 'For You', nation: 'Japan', nationCode: 'JP' },
-  { id: 'news-de-industry', title: 'German Industry News', tag: 'Business', image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600&h=300&fit=crop', alt: 'Germany industry', description: 'Manufacturing, automotive, and energy updates from Germany', category: 'For You', nation: 'Germany', nationCode: 'DE' },
-  { id: 'news-de-green', title: 'Germany Green Transition', tag: 'Energy', image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=600&h=300&fit=crop', alt: 'Germany energy', description: 'Clean energy and sustainability news from Germany', category: 'For You', nation: 'Germany', nationCode: 'DE' },
-  { id: 'news-ca-ai', title: 'Canada AI Research', tag: 'AI', image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&h=300&fit=crop', alt: 'Canada AI', description: 'AI research hubs and policy updates from Canada', category: 'For You', nation: 'Canada', nationCode: 'CA' },
-  { id: 'news-sg-finance', title: 'Singapore Finance Hub', tag: 'Finance', image: 'https://images.unsplash.com/photo-1525621486887-28a93e024d13?w=600&h=300&fit=crop', alt: 'Singapore finance', description: 'Banking, fintech, and trade headlines from Singapore', category: 'For You', nation: 'Singapore', nationCode: 'SG' },
-];
-
-const NATION_LABELS: Record<string, string> = {
-  IN: 'India',
-  US: 'United States',
-  GB: 'United Kingdom',
-  AU: 'Australia',
-  JP: 'Japan',
-  DE: 'Germany',
-  CA: 'Canada',
-  SG: 'Singapore',
-};
 
 export const DISCOVER_CATEGORIES = [
   'For You',
+  'Politics',
   'Technology',
   'Science',
   'Psychology',
@@ -146,129 +20,239 @@ export function mapDiscoverCategory(item: DiscoverItem): string {
   return item.category || 'Other';
 }
 
+// "For You" is curated to ~12 items mixed across categories — NOT the full firehose.
+// Picks the freshest story from each category in round-robin order so the user
+// sees variety (1 Tech, 1 Sports, 1 Finance, 1 Health, …) instead of a long
+// monotonous list of one topic.
+const FOR_YOU_MAX = 12;
+function buildForYouMix(newsOnly: DiscoverItem[]): DiscoverItem[] {
+  const byCat = new Map<string, DiscoverItem[]>();
+  for (const it of newsOnly) {
+    const cat = mapDiscoverCategory(it);
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat)!.push(it);
+  }
+  // Round-robin: take one from each non-empty bucket, in turn, until we hit FOR_YOU_MAX.
+  const result: DiscoverItem[] = [];
+  let added = true;
+  while (added && result.length < FOR_YOU_MAX) {
+    added = false;
+    for (const list of byCat.values()) {
+      if (result.length >= FOR_YOU_MAX) break;
+      const next = list.shift();
+      if (next) {
+        result.push(next);
+        added = true;
+      }
+    }
+  }
+  return result;
+}
+
 export function filterByDiscoverCategory(
   items: DiscoverItem[],
   category: DiscoverCategory
 ): DiscoverItem[] {
-  if (category === 'For You') return items.filter((i) => i.category === 'For You' || i.nation);
-  // Topic tabs — exclude nation news rows
-  const topicsOnly = items.filter((i) => !i.nation);
-  if (category === 'Health') {
-    return topicsOnly.filter((i) => mapDiscoverCategory(i) === 'Health');
+  // Only real news items (those carry `nation`).
+  const newsOnly = items.filter((i) => !!i.nation);
+  if (category === 'For You') {
+    // "For You" = user's own region headlines only, mixed across topics.
+    const userCode = getUserNationCode();
+    const mine = newsOnly.filter((i) => i.nationCode === userCode);
+    const pool = mine.length > 0 ? mine : newsOnly;
+    return buildForYouMix(pool);
   }
-  return topicsOnly.filter((i) => mapDiscoverCategory(i) === category);
+  return newsOnly.filter((i) => mapDiscoverCategory(i) === category);
 }
 
+// Map an IANA timezone to an ISO 3166-1 alpha-2 country code.
+// This is how Perplexity / NYT / most web apps detect physical location without
+// asking for permission — `Intl.DateTimeFormat().resolvedOptions().timeZone`
+// reflects the OS's configured zone, which is set to wherever the device
+// physically is. Coverage spans every populated IANA zone we can mention.
+const TZ_TO_COUNTRY: Record<string, string> = {
+  // South Asia
+  'asia/kolkata': 'IN', 'asia/calcutta': 'IN',
+  'asia/karachi': 'PK', 'asia/dhaka': 'BD', 'asia/colombo': 'LK',
+  'asia/kathmandu': 'NP', 'asia/thimphu': 'BT', 'asia/kabul': 'AF',
+  // East/Southeast Asia
+  'asia/tokyo': 'JP', 'asia/seoul': 'KR',
+  'asia/shanghai': 'CN', 'asia/chongqing': 'CN', 'asia/urumqi': 'CN', 'asia/harbin': 'CN', 'asia/kashgar': 'CN',
+  'asia/hong_kong': 'HK', 'asia/macau': 'MO', 'asia/taipei': 'TW',
+  'asia/singapore': 'SG', 'asia/kuala_lumpur': 'MY', 'asia/jakarta': 'ID', 'asia/makassar': 'ID', 'asia/jayapura': 'ID',
+  'asia/manila': 'PH', 'asia/bangkok': 'TH', 'asia/ho_chi_minh': 'VN', 'asia/saigon': 'VN', 'asia/phnom_penh': 'KH', 'asia/vientiane': 'LA', 'asia/yangon': 'MM', 'asia/rangoon': 'MM',
+  'asia/ulaanbaatar': 'MN',
+  // Middle East
+  'asia/dubai': 'AE', 'asia/abu_dhabi': 'AE',
+  'asia/riyadh': 'SA', 'asia/qatar': 'QA', 'asia/kuwait': 'KW', 'asia/bahrain': 'BH', 'asia/muscat': 'OM',
+  'asia/tehran': 'IR', 'asia/baghdad': 'IQ', 'asia/beirut': 'LB', 'asia/damascus': 'SY', 'asia/amman': 'JO',
+  'asia/jerusalem': 'IL', 'asia/tel_aviv': 'IL', 'asia/gaza': 'PS', 'asia/hebron': 'PS',
+  'asia/istanbul': 'TR', 'europe/istanbul': 'TR',
+  // Central Asia
+  'asia/almaty': 'KZ', 'asia/aqtau': 'KZ', 'asia/aqtobe': 'KZ', 'asia/atyrau': 'KZ', 'asia/oral': 'KZ', 'asia/qostanay': 'KZ', 'asia/qyzylorda': 'KZ',
+  'asia/tashkent': 'UZ', 'asia/samarkand': 'UZ',
+  'asia/bishkek': 'KG', 'asia/dushanbe': 'TJ', 'asia/ashgabat': 'TM', 'asia/baku': 'AZ', 'asia/yerevan': 'AM', 'asia/tbilisi': 'GE',
+  // Europe
+  'europe/london': 'GB',
+  'europe/dublin': 'IE',
+  'europe/paris': 'FR', 'europe/madrid': 'ES', 'europe/lisbon': 'PT', 'atlantic/madeira': 'PT', 'atlantic/azores': 'PT',
+  'europe/berlin': 'DE', 'europe/busingen': 'DE',
+  'europe/rome': 'IT', 'europe/vatican': 'VA',
+  'europe/amsterdam': 'NL', 'europe/brussels': 'BE', 'europe/luxembourg': 'LU',
+  'europe/zurich': 'CH', 'europe/vienna': 'AT',
+  'europe/stockholm': 'SE', 'europe/oslo': 'NO', 'europe/copenhagen': 'DK', 'europe/helsinki': 'FI', 'europe/reykjavik': 'IS',
+  'europe/warsaw': 'PL', 'europe/prague': 'CZ', 'europe/bratislava': 'SK', 'europe/budapest': 'HU',
+  'europe/athens': 'GR', 'europe/bucharest': 'RO', 'europe/sofia': 'BG', 'europe/belgrade': 'RS', 'europe/zagreb': 'HR', 'europe/sarajevo': 'BA', 'europe/ljubljana': 'SI', 'europe/skopje': 'MK', 'europe/podgorica': 'ME', 'europe/tirane': 'AL', 'europe/chisinau': 'MD',
+  'europe/kyiv': 'UA', 'europe/kiev': 'UA', 'europe/simferopol': 'UA', 'europe/zaporozhye': 'UA', 'europe/uzhgorod': 'UA',
+  'europe/minsk': 'BY', 'europe/vilnius': 'LT', 'europe/riga': 'LV', 'europe/tallinn': 'EE',
+  'europe/moscow': 'RU', 'europe/samara': 'RU', 'europe/kaliningrad': 'RU', 'europe/saratov': 'RU', 'europe/volgograd': 'RU', 'europe/astrakhan': 'RU', 'europe/ulyanovsk': 'RU', 'europe/kirov': 'RU',
+  'asia/yekaterinburg': 'RU', 'asia/omsk': 'RU', 'asia/novosibirsk': 'RU', 'asia/krasnoyarsk': 'RU', 'asia/irkutsk': 'RU', 'asia/yakutsk': 'RU', 'asia/vladivostok': 'RU', 'asia/magadan': 'RU', 'asia/kamchatka': 'RU', 'asia/sakhalin': 'RU', 'asia/anadyr': 'RU', 'asia/chita': 'RU', 'asia/khandyga': 'RU', 'asia/srednekolymsk': 'RU', 'asia/ust-nera': 'RU', 'asia/barnaul': 'RU', 'asia/novokuznetsk': 'RU', 'asia/tomsk': 'RU',
+  'europe/valletta': 'MT', 'europe/nicosia': 'CY', 'europe/monaco': 'MC', 'europe/andorra': 'AD', 'europe/gibraltar': 'GI',
+  // Africa
+  'africa/lagos': 'NG', 'africa/cairo': 'EG', 'africa/johannesburg': 'ZA', 'africa/nairobi': 'KE',
+  'africa/casablanca': 'MA', 'africa/algiers': 'DZ', 'africa/tunis': 'TN', 'africa/tripoli': 'LY',
+  'africa/accra': 'GH', 'africa/addis_ababa': 'ET', 'africa/dar_es_salaam': 'TZ', 'africa/kampala': 'UG', 'africa/kigali': 'RW',
+  'africa/khartoum': 'SD', 'africa/juba': 'SS', 'africa/mogadishu': 'SO',
+  'africa/abidjan': 'CI', 'africa/dakar': 'SN', 'africa/bamako': 'ML', 'africa/ouagadougou': 'BF', 'africa/niamey': 'NE', 'africa/conakry': 'GN', 'africa/freetown': 'SL', 'africa/monrovia': 'LR', 'africa/lome': 'TG', 'africa/porto-novo': 'BJ', 'africa/sao_tome': 'ST', 'africa/malabo': 'GQ', 'africa/libreville': 'GA', 'africa/brazzaville': 'CG', 'africa/kinshasa': 'CD', 'africa/lubumbashi': 'CD', 'africa/luanda': 'AO', 'africa/windhoek': 'NA', 'africa/gaborone': 'BW', 'africa/maputo': 'MZ', 'africa/harare': 'ZW', 'africa/lusaka': 'ZM', 'africa/blantyre': 'MW', 'africa/maseru': 'LS', 'africa/mbabane': 'SZ', 'africa/djibouti': 'DJ', 'africa/asmara': 'ER', 'africa/bissau': 'GW', 'africa/banjul': 'GM', 'africa/nouakchott': 'MR', 'africa/bujumbura': 'BI',
+  // North America
+  'america/new_york': 'US', 'america/detroit': 'US', 'america/chicago': 'US', 'america/denver': 'US', 'america/los_angeles': 'US', 'america/phoenix': 'US', 'america/anchorage': 'US', 'america/juneau': 'US', 'america/sitka': 'US', 'america/metlakatla': 'US', 'america/yakutat': 'US', 'america/nome': 'US', 'america/adak': 'US', 'pacific/honolulu': 'US', 'america/boise': 'US', 'america/indianapolis': 'US', 'america/indiana/indianapolis': 'US', 'america/kentucky/louisville': 'US', 'america/menominee': 'US', 'america/north_dakota/center': 'US',
+  'america/toronto': 'CA', 'america/vancouver': 'CA', 'america/edmonton': 'CA', 'america/winnipeg': 'CA', 'america/halifax': 'CA', 'america/st_johns': 'CA', 'america/regina': 'CA', 'america/moncton': 'CA', 'america/whitehorse': 'CA', 'america/yellowknife': 'CA', 'america/dawson': 'CA', 'america/dawson_creek': 'CA', 'america/iqaluit': 'CA', 'america/rankin_inlet': 'CA', 'america/resolute': 'CA', 'america/cambridge_bay': 'CA',
+  'america/mexico_city': 'MX', 'america/cancun': 'MX', 'america/merida': 'MX', 'america/monterrey': 'MX', 'america/matamoros': 'MX', 'america/chihuahua': 'MX', 'america/hermosillo': 'MX', 'america/tijuana': 'MX', 'america/mazatlan': 'MX', 'america/bahia_banderas': 'MX', 'america/ojinaga': 'MX',
+  'america/havana': 'CU', 'america/jamaica': 'JM', 'america/port-au-prince': 'HT', 'america/santo_domingo': 'DO', 'america/puerto_rico': 'PR', 'america/nassau': 'BS', 'america/barbados': 'BB', 'america/curacao': 'CW', 'america/aruba': 'AW', 'america/martinique': 'MQ', 'america/guadeloupe': 'GP', 'america/grenada': 'GD', 'america/dominica': 'DM', 'america/st_lucia': 'LC', 'america/st_vincent': 'VC', 'america/st_kitts': 'KN', 'america/antigua': 'AG', 'america/montserrat': 'MS', 'america/st_thomas': 'VI', 'america/cayman': 'KY', 'america/tortola': 'VG', 'america/anguilla': 'AI',
+  // Central / South America
+  'america/guatemala': 'GT', 'america/belize': 'BZ', 'america/el_salvador': 'SV', 'america/tegucigalpa': 'HN', 'america/managua': 'NI', 'america/costa_rica': 'CR', 'america/panama': 'PA',
+  'america/bogota': 'CO', 'america/caracas': 'VE', 'america/lima': 'PE', 'america/la_paz': 'BO', 'america/asuncion': 'PY', 'america/montevideo': 'UY',
+  'america/sao_paulo': 'BR', 'america/manaus': 'BR', 'america/recife': 'BR', 'america/fortaleza': 'BR', 'america/bahia': 'BR', 'america/belem': 'BR', 'america/boa_vista': 'BR', 'america/campo_grande': 'BR', 'america/cuiaba': 'BR', 'america/maceio': 'BR', 'america/porto_velho': 'BR', 'america/rio_branco': 'BR', 'america/araguaina': 'BR', 'america/eirunepe': 'BR', 'america/noronha': 'BR', 'america/santarem': 'BR',
+  'america/argentina/buenos_aires': 'AR', 'america/argentina/cordoba': 'AR', 'america/argentina/mendoza': 'AR', 'america/argentina/jujuy': 'AR', 'america/argentina/tucuman': 'AR', 'america/argentina/catamarca': 'AR', 'america/argentina/la_rioja': 'AR', 'america/argentina/rio_gallegos': 'AR', 'america/argentina/salta': 'AR', 'america/argentina/san_juan': 'AR', 'america/argentina/san_luis': 'AR', 'america/argentina/ushuaia': 'AR',
+  'america/santiago': 'CL', 'america/punta_arenas': 'CL', 'pacific/easter': 'CL',
+  'america/guayaquil': 'EC', 'pacific/galapagos': 'EC',
+  'america/cayenne': 'GF', 'america/paramaribo': 'SR', 'america/guyana': 'GY',
+  // Oceania
+  'australia/sydney': 'AU', 'australia/melbourne': 'AU', 'australia/brisbane': 'AU', 'australia/perth': 'AU', 'australia/adelaide': 'AU', 'australia/darwin': 'AU', 'australia/hobart': 'AU', 'australia/canberra': 'AU', 'australia/broken_hill': 'AU', 'australia/lord_howe': 'AU', 'australia/lindeman': 'AU', 'australia/eucla': 'AU', 'australia/currie': 'AU',
+  'pacific/auckland': 'NZ', 'pacific/chatham': 'NZ',
+  'pacific/fiji': 'FJ', 'pacific/guam': 'GU', 'pacific/saipan': 'MP', 'pacific/port_moresby': 'PG', 'pacific/bougainville': 'PG', 'pacific/noumea': 'NC', 'pacific/tahiti': 'PF', 'pacific/marquesas': 'PF', 'pacific/gambier': 'PF', 'pacific/samoa': 'WS', 'pacific/pago_pago': 'AS', 'pacific/apia': 'WS', 'pacific/tongatapu': 'TO', 'pacific/kiritimati': 'KI', 'pacific/tarawa': 'KI', 'pacific/enderbury': 'KI', 'pacific/majuro': 'MH', 'pacific/kwajalein': 'MH', 'pacific/ponape': 'FM', 'pacific/truk': 'FM', 'pacific/kosrae': 'FM', 'pacific/palau': 'PW', 'pacific/nauru': 'NR', 'pacific/funafuti': 'TV', 'pacific/wallis': 'WF', 'pacific/efate': 'VU', 'pacific/guadalcanal': 'SB', 'pacific/niue': 'NU', 'pacific/rarotonga': 'CK', 'pacific/pitcairn': 'PN', 'pacific/norfolk': 'NF', 'pacific/fakaofo': 'TK',
+};
+
+function nationCodeFromTimeZone(tz: string): string | null {
+  if (!tz) return null;
+  const lower = tz.toLowerCase();
+  // 1) Exact IANA match (covers the comprehensive table above).
+  const exact = TZ_TO_COUNTRY[lower];
+  if (exact) return exact;
+  // 2) Defensive prefix fallbacks for any rare IANA zone we missed.
+  if (lower.startsWith('australia/')) return 'AU';
+  if (lower.startsWith('europe/')) return 'GB'; // best effort
+  if (lower.startsWith('america/argentina/')) return 'AR';
+  if (lower.startsWith('america/indiana/')) return 'US';
+  if (lower.startsWith('america/kentucky/')) return 'US';
+  if (lower.startsWith('america/north_dakota/')) return 'US';
+  if (lower.startsWith('america/')) return 'US';
+  if (lower.startsWith('africa/')) return null; // too varied — let locale decide
+  if (lower.startsWith('asia/')) return null;   // too varied — let locale decide
+  return null;
+}
+
+// Detect the user's region — ANY country, not a fixed list.
+// Priority: TIMEZONE → explicit locale region → US. Timezone reflects PHYSICAL
+// location (e.g. Asia/Kolkata in India), which is more reliable than
+// navigator.language — macOS Chrome often defaults to en-US/en-GB regardless of
+// where the user actually is.
 export function getUserNationCode(): string {
+  // 1) Timezone (most reliable — set by the OS to physical location)
   try {
-    const locale = navigator.language || 'en-US';
-    const code = locale.split('-')[1]?.toUpperCase();
-    if (code && NATION_LABELS[code]) return code;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const tzCode = nationCodeFromTimeZone(tz);
+    if (tzCode) return tzCode;
   } catch { /* ignore */ }
+
+  // 2) Locale region as a secondary signal
+  try {
+    const langs: string[] = [
+      ...(Array.isArray(navigator.languages) ? navigator.languages : []),
+      navigator.language || 'en-US',
+    ];
+    for (const locale of langs) {
+      const code = locale.split('-')[1]?.toUpperCase();
+      if (code && /^[A-Z]{2}$/.test(code)) return code;
+    }
+  } catch { /* ignore */ }
+
   return 'US';
 }
 
-const FOR_YOU_NATION_CODES = ['IN', 'US'] as const;
+// Region request order (client hint): the user's region only — no auto-add of
+// US/IN. The backend serves real news from whichever region we ask for.
+export function getUserRegionOrder(): string[] {
+  const primary = getUserNationCode();
+  return /^[A-Z]{2}$/.test(primary) ? [primary] : ['US'];
+}
 
 export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
   const userCode = getUserNationCode();
   const newsOnly = items.filter(
-    (i) =>
-      (i.nation || i.category === 'For You') &&
-      i.nationCode &&
-      FOR_YOU_NATION_CODES.includes(i.nationCode as (typeof FOR_YOU_NATION_CODES)[number])
+    (i) => (i.nation || i.category === 'For You') && i.nationCode
   );
 
-  const india = newsOnly.filter((i) => i.nationCode === 'IN');
-  const us = newsOnly.filter((i) => i.nationCode === 'US');
-
-  // User's region first when IN or US; otherwise India then US
-  if (userCode === 'US') return [...us, ...india];
-  return [...india, ...us];
+  // "For You" = user's region headlines only. Fall back to all regions
+  // only if nothing matches (so the tab is never empty).
+  const mine = newsOnly.filter((i) => i.nationCode === userCode);
+  return mine.length > 0 ? mine : newsOnly;
 }
 
-export const getNationNewsItems = (): DiscoverItem[] => {
-  const pool = NATION_NEWS_POOL.filter((i) =>
-    i.nationCode && FOR_YOU_NATION_CODES.includes(i.nationCode as (typeof FOR_YOU_NATION_CODES)[number])
-  );
-  return seededShuffle(pool, todaySeed());
-};
-
 // -------------------------------------------------------------------
-// Deterministic shuffle seeded by date (same order for 24h)
+// Live news ("For You" + region-localized category tabs) — real only.
 // -------------------------------------------------------------------
-function seededShuffle<T>(arr: T[], seed: string): T[] {
-  const a = [...arr];
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h << 5) - h + seed.charCodeAt(i) | 0;
-  // mulberry32 prng
-  const rand = (s: number) => { let t = s + 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rand((h + i) >>> 0) * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+// NO frontend localStorage cache. The backend already has L1 in-memory (60s)
+// and L2 Redis (30 min) caches, plus per-country "last known good" persistence.
+// A second cache layer in the browser only adds staleness without buying any
+// real speed (the L1+L2 hit is sub-millisecond from the backend's perspective).
+//
+// Eagerly drop any older cache keys from past deploys so users never see stale
+// data on first load after this change ships.
+if (typeof localStorage !== 'undefined') {
+  for (const oldKey of [
+    'syntraiq-live-news-cache-v1',
+    'syntraiq-live-news-cache-v2',
+    'syntraiq-live-news-cache-v3',
+    'syntraiq-live-news-cache-v4',
+  ]) {
+    try { localStorage.removeItem(oldKey); } catch { /* ignore */ }
   }
-  return a;
 }
 
-function todaySeed(): string {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-}
-
-// -------------------------------------------------------------------
-// Cache helpers
-// -------------------------------------------------------------------
-interface DiscoverCache { items: DiscoverItem[]; date: string; }
-
-function getCached(): DiscoverItem[] | null {
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(CACHE_KEY) : null;
-    if (!raw) return null;
-    const cache: DiscoverCache = JSON.parse(raw);
-    // Expire when the date changes (24h rotation)
-    if (cache.date !== todaySeed()) return null;
-    return cache.items;
-  } catch { return null; }
-}
-
-function setCache(items: DiscoverItem[]) {
-  try {
-    if (typeof localStorage !== 'undefined')
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ items, date: todaySeed() }));
-  } catch { /* ignore */ }
-}
-
-// Returns today's shuffled topic pool (from cache, API, or local pool)
-async function fetchAndCache(): Promise<DiscoverItem[]> {
-  const baseUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
-
-  if (baseUrl) {
-  try {
-    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/discover`);
-      if (res.ok) {
-        const items = await res.json();
-        if (Array.isArray(items) && items.length > 0) {
-          setCache(items);
-          return items;
-        }
-      }
-    } catch { /* fall through to local pool */ }
+export async function fetchLiveNewsItems(forceRefresh = false): Promise<DiscoverItem[]> {
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
+  if (!baseUrl) {
+    console.error('[discover/news] VITE_API_URL not set — no news available.');
+    return [];
   }
-
-  // Backend unavailable — use local TOPIC_POOL with daily shuffle
-  const shuffled = seededShuffle(TOPIC_POOL, todaySeed());
-  setCache(shuffled);
-  return shuffled;
+  try {
+    const order = getUserRegionOrder().join(',');
+    const refreshParam = forceRefresh ? '&refresh=1' : '';
+    const url = `${baseUrl.replace(/\/+$/, '')}/api/discover/news?country=${encodeURIComponent(order)}${refreshParam}`;
+    const res = await fetch(url, forceRefresh ? { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } } : undefined);
+    if (!res.ok) {
+      console.error(`[discover/news] backend ${res.status}. URL=${url}`);
+      return [];
+    }
+    const items = await res.json();
+    if (!Array.isArray(items) || items.length === 0) {
+      console.error('[discover/news] backend returned empty.');
+      return [];
+    }
+    console.log(`[discover/news] ✅ loaded ${items.length} real items from backend (regions=${order}, refresh=${forceRefresh})`);
+    return items;
+  } catch (err) {
+    console.error('[discover/news] fetch failed:', err);
+    return [];
+  }
 }
 
-export const getAllDiscoverItems = async (): Promise<DiscoverItem[]> => {
-  const cached = getCached();
-  const newsItems = getNationNewsItems();
-  if (cached && cached.length > 0) {
-    const merged = [...newsItems, ...cached.filter((i) => !i.nation)];
-    return merged;
-  }
-  const topics = await fetchAndCache();
-  return [...newsItems, ...topics];
+
+export const getAllDiscoverItems = async (forceRefresh = false): Promise<DiscoverItem[]> => {
+  // Real region-localized news only — backend categorizes them so they appear
+  // in their respective category tabs (Tech, Finance, Health, Science, etc.).
+  return await fetchLiveNewsItems(forceRefresh);
 };
 
 export const getDiscoverItemById = async (id: string): Promise<DiscoverItem | null> => {
