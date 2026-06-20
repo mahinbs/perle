@@ -73,53 +73,173 @@ function hasMarkdownTable(text: string): boolean {
  *   - Section headings keep their emoji + label (no leading "##").
  *   - Loose pipes mid-line get smoothed.
  */
+function isStreamTableSeparator(line: string): boolean {
+  const t = line.trim();
+  return /^\|?\s*[-:|\s]+\|?\s*$/.test(t) && t.includes("|") && /-{2,}/.test(t);
+}
+
+function isStreamTableRowComplete(line: string): boolean {
+  const t = line.trim();
+  return (
+    t.startsWith("|") &&
+    t.endsWith("|") &&
+    t.split("|").filter((s) => s.trim().length > 0).length >= 1
+  );
+}
+
+function isStreamTableRowPartial(line: string): boolean {
+  const t = line.trim();
+  return t.startsWith("|") && !t.endsWith("|") && t.length > 1;
+}
+
+function splitStreamTableCells(line: string): string[] {
+  const t = line.trim();
+  // Remove leading + trailing pipe, then split
+  const inner = t.startsWith("|") ? t.slice(1) : t;
+  const trimmed = inner.endsWith("|") ? inner.slice(0, -1) : inner;
+  return trimmed.split("|").map((c) => c.trim());
+}
+
 /**
- * Hide raw markdown table syntax during streaming.
- *
- *   - Markdown separator lines (`|---|---|`) are hidden entirely.
- *   - Header row + complete body rows → rendered as clean text bullets so the
- *     user sees the table fill in (no raw pipes).
- *   - The trailing in-progress row is hidden silently (no placeholder) —
- *     showing a placeholder for a long time looks like a frozen UI. As soon
- *     as the row completes, it appears as a bullet.
- *   - Heading markers (`##`) stripped to plain heading text.
+ * Render streaming text as a sequence of React nodes:
+ *   - Plain text segments are rendered as <span> with pre-wrap whitespace
+ *   - Markdown tables are rendered as REAL HTML <table>s that grow live —
+ *     complete rows appear immediately, the trailing partial row is hidden
+ *     (so the user sees rows fill in smoothly like ChatGPT/Gemini)
  */
-function maskStreamingMarkdown(text: string): string {
-  if (!text) return text;
+function renderStreamingContent(text: string): React.ReactNode[] {
+  if (!text) return [];
   const lines = text.split("\n");
-  const out: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    const trimmed = raw.trim();
-    const isSeparator =
-      /^\|?\s*[-:|\s]+\|?\s*$/.test(trimmed) && trimmed.includes("|") && /-{2,}/.test(trimmed);
-    if (isSeparator) {
-      // Skip "|---|---|" entirely
-      continue;
+  const nodes: React.ReactNode[] = [];
+
+  let textBuffer: string[] = [];
+  let tableLines: string[] = [];
+  let mode: "text" | "table" = "text";
+
+  const flushText = () => {
+    if (textBuffer.length === 0) return;
+    const txt = textBuffer.join("\n").replace(/^#{1,6}\s+/gm, "");
+    if (txt.length > 0) {
+      nodes.push(
+        <span
+          key={`stxt-${nodes.length}`}
+          style={{ whiteSpace: "pre-wrap" }}
+        >
+          {txt}
+        </span>
+      );
     }
-    const startsWithPipe = trimmed.startsWith("|");
-    const endsWithPipe = trimmed.endsWith("|");
-    const hasColumns = trimmed.split("|").filter((s) => s.trim().length > 0).length >= 1;
-    if (startsWithPipe && endsWithPipe && hasColumns) {
-      // Fully-formed row — render as a clean visual line (no raw pipes).
-      const cells = trimmed
-        .slice(1, -1)
-        .split("|")
-        .map((c) => c.trim())
-        .filter(Boolean);
-      if (cells.length > 0) {
-        out.push(`• ${cells.join("  ·  ")}`);
+    textBuffer = [];
+  };
+
+  const flushTable = () => {
+    if (tableLines.length === 0) return;
+    // Parse the buffered table lines: skip separators + partial trailing row
+    const completeRows: string[][] = [];
+    for (const ln of tableLines) {
+      if (isStreamTableSeparator(ln)) continue;
+      if (isStreamTableRowComplete(ln)) {
+        completeRows.push(splitStreamTableCells(ln));
       }
-      continue;
+      // Partial trailing rows are dropped — they'll appear in a later flush.
     }
-    if (startsWithPipe && hasColumns) {
-      // Partial trailing row — hide silently. Will surface as a bullet on completion.
-      continue;
+    if (completeRows.length >= 1) {
+      const header = completeRows[0];
+      const body = completeRows.slice(1);
+      nodes.push(
+        <div
+          key={`stbl-${nodes.length}`}
+          className="answer-table-wrap"
+          style={{
+            marginTop: 12,
+            marginBottom: 12,
+            overflowX: "auto",
+            borderRadius: "var(--radius-sm)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <table
+            className="answer-table"
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "var(--font-sm)",
+            }}
+          >
+            <thead>
+              <tr>
+                {header.map((cell, ci) => (
+                  <th
+                    key={`sth-${ci}`}
+                    style={{
+                      padding: "10px 12px",
+                      textAlign: "left",
+                      fontWeight: 600,
+                      borderBottom: "1px solid var(--border)",
+                      background: "var(--input-bg)",
+                      color: "var(--text)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {cell}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((row, ri) => (
+                <tr key={`str-${ri}`}>
+                  {header.map((_, ci) => (
+                    <td
+                      key={`std-${ri}-${ci}`}
+                      style={{
+                        padding: "10px 12px",
+                        borderBottom:
+                          ri < body.length - 1
+                            ? "1px solid var(--border)"
+                            : undefined,
+                        verticalAlign: "top",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {row[ci] ?? ""}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
     }
-    // Strip leading markdown heading markers; keep heading text
-    out.push(raw.replace(/^#{1,6}\s+/, ""));
+    tableLines = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isAnyTableLine =
+      isStreamTableSeparator(line) ||
+      isStreamTableRowComplete(line) ||
+      isStreamTableRowPartial(line);
+
+    if (isAnyTableLine) {
+      if (mode === "text") {
+        flushText();
+        mode = "table";
+      }
+      tableLines.push(line);
+    } else {
+      if (mode === "table") {
+        flushTable();
+        mode = "text";
+      }
+      textBuffer.push(line);
+    }
   }
-  return out.join("\n");
+  if (mode === "table") flushTable();
+  else flushText();
+
+  return nodes;
 }
 
 function isComparisonContext(mode?: ModeType, query?: string): boolean {
@@ -1739,22 +1859,21 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               }}
             >
               {isStreamingAnswer ? (
-                <span
+                <div
                   className="answer-streaming-text"
                   style={{
-                    whiteSpace: "pre-wrap",
                     lineHeight: 1.75,
                     wordBreak: "break-word",
                   }}
                 >
-                  {maskStreamingMarkdown(chunk.text)}
+                  {renderStreamingContent(chunk.text)}
                   {index === chunks.length - 1 && (
                     <span
                       className="answer-streaming-cursor"
                       aria-hidden
                     />
                   )}
-                </span>
+                </div>
               ) : (
                 <div className={skipTypewriter ? "answer-formatted-fadein" : undefined}>
                   {formatText(
