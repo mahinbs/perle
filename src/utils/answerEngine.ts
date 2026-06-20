@@ -227,9 +227,14 @@ export async function searchAPI(
   
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(errorData.error || `API request failed with status ${res.status}`);
+    const err = new Error(errorData.error || `API request failed with status ${res.status}`);
+    if (res.status === 403 && errorData.limitReached) {
+      (err as any).limitReached = true;
+      (err as any).limitKind = errorData.kind;
+    }
+    throw err;
   }
-  
+
   const data = await res.json();
   // Normalise: if backend returns chunks[], use them; if it returns message (chat fallback), wrap it
   if (!data.chunks && data.message) {
@@ -356,11 +361,16 @@ export async function searchAPIStream(
   });
 
   if (!response.ok || !response.body) {
-    const err = await response
+    const errData = await response
       .json()
       .catch(() => ({ error: 'Stream failed' }));
 
-    throw new Error(err.error || 'Stream failed');
+    const err = new Error(errData.error || 'Stream failed');
+    if (response.status === 403 && errData.limitReached) {
+      (err as any).limitReached = true;
+      (err as any).limitKind = errData.kind;
+    }
+    throw err;
   }
 
   const reader = response.body.getReader();

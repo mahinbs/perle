@@ -11,6 +11,7 @@ import {
   type UsageLimitKind,
 } from "../utils/queryLimit";
 import { UsageLimitModal } from "../components/UsageLimitModal";
+import { downloadMedia } from "../utils/downloadMedia";
 import { generateImageApi, generateVideoApi } from "../utils/mediaApi";
 import type { UploadedFile } from "../types";
 import {
@@ -265,14 +266,8 @@ export default function MediaStudioPage() {
 
   const handleDownload = async (url: string, type: MediaMode) => {
     try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = `${type}-${Date.now()}.${type === "image" ? "png" : "mp4"}`;
-      a.click();
-      URL.revokeObjectURL(objectUrl);
+      const filename = `${type}-${Date.now()}.${type === "image" ? "png" : "mp4"}`;
+      await downloadMedia(url, filename);
     } catch {
       showToast({ message: "Download failed", type: "error", duration: 3000 });
     }

@@ -5,12 +5,11 @@ export function normalizeCitationText(text: string): string {
   return text.replace(/source\s*\((\d+)\)/gi, "[$1]");
 }
 
-/** Strip decorative emojis from headings — answers should stay clean and text-only. */
+/** Keep heading text intact, including the leading topic emoji (intended formatting). */
 export function stripHeadingEmojis(text: string): string {
-  return text
-    .replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u, "")
-    .replace(/[\s\p{Extended_Pictographic}\uFE0F\u200D]+$/u, "")
-    .trim();
+  // Keep the leading topic emoji (part of the intended formatting); only trim
+  // whitespace and any dangling trailing emoji.
+  return text.replace(/[\s\p{Extended_Pictographic}\uFE0F\u200D]+$/u, "").trim();
 }
 
 export function parseMarkdownHeading(

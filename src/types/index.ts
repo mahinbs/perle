@@ -111,6 +111,9 @@ export interface DiscoverItem {
   category?: string;
   nation?: string;
   nationCode?: string;
+  /** Live-news items carry the original article URL + source domain. */
+  url?: string;
+  sourceDomain?: string;
 }
 
 export interface LibraryItem {

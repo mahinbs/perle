@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Source } from '../types';
+import { SourceFavicon } from './SourceFavicon';
 
 interface SourceChipProps {
   source: Source;
@@ -51,21 +52,12 @@ export const SourceChip: React.FC<SourceChipProps> = ({ source, onClick, citatio
         e.currentTarget.style.boxShadow = "0 2px 4px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.1)";
       }}
     >
-      <span style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minWidth: 18,
-        height: 18,
-        borderRadius: 999,
-        background: "rgba(223, 183, 104, 0.35)",
-        color: "var(--text)",
-        fontSize: 11,
-        fontWeight: 700,
-        flexShrink: 0,
-      }}>
-        {citationNumber ?? "•"}
-      </span>
+      <SourceFavicon url={source.url} domain={source.domain} size={18} rounded="sm" />
+      {citationNumber !== undefined && (
+        <span style={{ opacity: 0.45, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+          {citationNumber}
+        </span>
+      )}
       <span style={{
         maxWidth: "150px",
         overflow: "hidden",

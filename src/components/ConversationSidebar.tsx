@@ -235,11 +235,11 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                       </p>
                     </div>
 
-                    {/* Delete Button */}
+                    {/* Delete Button — always visible (tappable on mobile, no hover there) */}
                     <button
                       onClick={(e) => handleDelete(e, conv.id)}
                       className="
-                        opacity-0 group-hover:opacity-100
+                        opacity-60 hover:opacity-100
                         p-2 rounded-lg hover:bg-red-500 hover:bg-opacity-20
                         transition-all duration-200
                         text-[var(--sub)] hover:text-red-500

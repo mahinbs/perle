@@ -38,7 +38,7 @@ export async function generateDiscoverArticle(
   const cached = getArticleCache(id);
   if (cached) return cached;
 
-  const baseUrl = (import.meta as any).env?.VITE_API_URL as string | undefined;
+  const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) throw new Error('API URL not configured');
 
   const controller = new AbortController();

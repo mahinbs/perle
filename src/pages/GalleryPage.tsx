@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
 import { getAuthHeaders, isAuthenticated, removeAuthToken } from "../utils/auth";
+import { downloadMedia } from "../utils/downloadMedia";
 import { IoIosArrowBack } from "react-icons/io";
 import { FaImage, FaVideo, FaDownload, FaSpinner } from "react-icons/fa";
 
@@ -92,18 +93,10 @@ export default function GalleryPage() {
 
   const handleDownload = async (mediaItem: GeneratedMedia) => {
     try {
-      const response = await fetch(mediaItem.url);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${mediaItem.media_type}-${mediaItem.id}.${mediaItem.media_type === "image" ? "png" : "mp4"}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const filename = `${mediaItem.media_type}-${mediaItem.id}.${mediaItem.media_type === "image" ? "png" : "mp4"}`;
+      await downloadMedia(mediaItem.url, filename);
       showToast({
-        message: "Download started",
+        message: "Saved",
         type: "success",
         duration: 2000,
       });

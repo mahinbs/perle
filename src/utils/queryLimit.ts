@@ -10,6 +10,30 @@ export const FREE_LIFETIME_QUERY_LIMIT = 4;
 export const FREE_LIFETIME_ANALYZE_LIMIT = 2;
 export const FREE_LIFETIME_MEDIA_LIMIT = 2;
 
+// Deep research is heavy/slow → free users get ONE lifetime use (like other limits).
+export const FREE_LIFETIME_DEEP_LIMIT = 1;
+const LIFETIME_DEEP_KEY = "syntraiq-lifetime-deep-count";
+
+export function getLifetimeDeepCount(): number {
+  return readCount(LIFETIME_DEEP_KEY);
+}
+
+export function hasReachedLifetimeDeepLimit(): boolean {
+  if (isPremiumUser()) return false;
+  return getLifetimeDeepCount() >= FREE_LIFETIME_DEEP_LIMIT;
+}
+
+export function incrementLifetimeDeepCount(): number {
+  if (isPremiumUser()) return 0;
+  const next = getLifetimeDeepCount() + 1;
+  writeCount(LIFETIME_DEEP_KEY, next);
+  return next;
+}
+
+export function getDeepLimitMessage(): string {
+  return `Free plan includes ${FREE_LIFETIME_DEEP_LIMIT} deep research. Upgrade to IQ Pro or IQ Max for unlimited deep research.`;
+}
+
 /** @deprecated use FREE_LIFETIME_QUERY_LIMIT */
 export const FREE_DAILY_QUERY_LIMIT = FREE_LIFETIME_QUERY_LIMIT;
 

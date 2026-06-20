@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
-import { SourceChip } from "./SourceChip";
 import { SourcesPill } from "./SourcesPill";
 import {
   AnswerBulletDot,
@@ -16,41 +15,6 @@ import {
   stripHeadingEmojis,
 } from "../utils/answerFormatting";
 
-function CitationBadge({
-  number,
-  source,
-}: {
-  number: number;
-  source?: Source;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => source && window.open(source.url, "_blank")}
-      title={source?.title || `Source ${number}`}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minWidth: 18,
-        height: 18,
-        padding: "0 5px",
-        margin: "0 2px",
-        borderRadius: 999,
-        background: "var(--accent)",
-        color: "var(--bg)",
-        fontSize: 11,
-        fontWeight: 700,
-        lineHeight: 1,
-        verticalAlign: "super",
-        border: "none",
-        cursor: source ? "pointer" : "default",
-      }}
-    >
-      {number}
-    </button>
-  );
-}
 import { copyToClipboard, shareContent } from "../utils/helpers";
 import { useToast } from "../contexts/ToastContext";
 
@@ -99,6 +63,46 @@ function hasMarkdownTable(text: string): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Hide raw markdown syntax during streaming so the user never sees half-formed
+ * `| Feature | Apple |` rows or a lone `|---|---|` separator while typing.
+ *   - A markdown TABLE in progress is replaced with a brief "Building table…"
+ *     placeholder until the renderer takes over on completion.
+ *   - Section headings keep their emoji + label (no leading "##").
+ *   - Loose pipes mid-line get smoothed.
+ */
+function maskStreamingMarkdown(text: string): string {
+  if (!text) return text;
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let inTable = false;
+  for (const raw of lines) {
+    const line = raw;
+    const trimmed = line.trim();
+    // Detect any markdown table-like row. During streaming the FINAL row is
+    // still being written and may not yet have a trailing `|`, so we only
+    // require: starts with `|` AND has at least one column separator. This
+    // matches partial rows like `| Samsung Exynos 2600 | Samsung | 2nm |`
+    // AND `| Samsung Exynos 2600 | Samsung | 2nm | Xclipse 960 (RDNA`.
+    const isTableSeparator = /^\|?\s*[-:|\s]+\|?\s*$/.test(trimmed) && trimmed.includes("|");
+    const isTableLike =
+      isTableSeparator ||
+      (trimmed.startsWith("|") &&
+        trimmed.split("|").filter((s) => s.trim().length > 0).length >= 1);
+    if (isTableLike) {
+      if (!inTable) {
+        out.push("⏳ Building table…");
+        inTable = true;
+      }
+      continue;
+    }
+    inTable = false;
+    // Strip leading markdown heading markers; keep heading text
+    out.push(line.replace(/^#{1,6}\s+/, ""));
+  }
+  return out.join("\n");
 }
 
 function isComparisonContext(mode?: ModeType, query?: string): boolean {
@@ -728,9 +732,13 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
   // Format text with markdown-like formatting
   const renderTextContent = (text: string): React.ReactNode => {
-    const normalized = normalizeCitationText(text);
+    // Inline citation markers ([1], [2, 3] …) are removed entirely — sources are
+    // shown only as logos at the bottom. Tidy up spacing left behind.
+    const normalized = normalizeCitationText(text)
+      .replace(/\s*\[\d[\d,\s]*\]/g, "")
+      .replace(/\s+([.,;:!?)])/g, "$1")
+      .replace(/[ \t]{2,}/g, " ");
     const hasRichInline =
-      /\[\d+\]/.test(normalized) ||
       /\*\*[^*]+\*\*/.test(normalized) ||
       /(?<!\*)\*[^*]+\*(?!\*)/.test(normalized);
 
@@ -742,9 +750,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       normalized,
       sources,
       renderWithMath,
-      (number) => (
-        <CitationBadge number={number} source={sources[number - 1]} />
-      )
+      () => null
     );
   };
 
@@ -1715,7 +1721,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     wordBreak: "break-word",
                   }}
                 >
-                  {chunk.text}
+                  {maskStreamingMarkdown(chunk.text)}
                   {index === chunks.length - 1 && (
                     <span
                       className="answer-streaming-cursor"
@@ -1743,27 +1749,8 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 gap: 12,
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 6,
-                  flex: 1,
-                }}
-              >
-                {!hideSources &&
-                  chunk.citationIds.map((id) => {
-                    const sourceIndex = sources.findIndex((s) => s.id === id);
-                    const source = sourceIndex >= 0 ? sources[sourceIndex] : undefined;
-                    return source ? (
-                      <SourceChip
-                        key={`${id}-${index}`}
-                        source={source}
-                        citationNumber={sourceIndex + 1}
-                      />
-                    ) : null;
-                  })}
-              </div>
+              {/* Per-chunk source chips removed — sources show as a clean logo row below. */}
+              <div style={{ flex: 1 }} />
 
               <button
                 className="btn-ghost"
@@ -1808,9 +1795,9 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         </div>
       )}
 
-      {/* Sources pill — collapsed favicon stack + count, expands on tap, opens in new tab */}
+      {/* Sources — compact favicon-stack pill ("N sources"); tap to expand the list. */}
       {!hideSources && sources.length > 0 && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 12 }}>
           <SourcesPill sources={sources} />
         </div>
       )}
