@@ -135,7 +135,7 @@ export default function AIFriendPage() {
     )}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
   };
   // Generate greeting based on selected friend or default
-  const getGreeting = (): string => {
+  const getGreeting = () => {
     // Group chat greeting
     if (isGroupChat) {
       return isLoggedIn
@@ -154,6 +154,55 @@ export default function AIFriendPage() {
       return "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊";
     }
     return "Hey! I'm SyntraIQ Friend. How can I help you today? Feel free to ask me anything or just chat! 😊";
+  };
+
+  const buildHistoryApiUrl = (before?: string) => {
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return "";
+    const params = new URLSearchParams({
+      chatMode: "ai_friend",
+      limit: String(HISTORY_PAGE_SIZE),
+    });
+    if (isGroupChat) {
+      params.set("groupChat", "true");
+    } else if (selectedFriendId) {
+      params.set("aiFriendId", selectedFriendId);
+    }
+    if (before) params.set("before", before);
+    return `${API_URL}/api/chat/history?${params.toString()}`;
+  };
+
+  const mapHistoryToMessages = (
+    raw: Array<{ role: string; content: string; timestamp: string; friendId?: string }>,
+    idPrefix: string
+  ): Message[] =>
+    raw.map((msg, index) => {
+      const friend = msg.friendId
+        ? aiFriends.find((f) => f.id === msg.friendId)
+        : undefined;
+      return {
+        id: `${idPrefix}-${index}-${msg.timestamp || index}`,
+        role: msg.role === "user" ? "user" : "ai",
+        content: msg.content,
+        timestamp: new Date(msg.timestamp),
+        ...(msg.friendId
+          ? { friendId: msg.friendId, friendName: friend?.name }
+          : {}),
+      };
+    });
+
+  const startNewConversation = () => {
+    setNewConversation(true);
+    historyHasMoreRef.current = false;
+    historyOldestRef.current = null;
+    setMessages([
+      {
+        id: "1",
+        role: "ai",
+        content: getGreeting(),
+        timestamp: new Date(),
+      },
+    ]);
   };
 
   const [messages, setMessages] = useState<Message[]>([
@@ -358,9 +407,7 @@ export default function AIFriendPage() {
         // are fetched on scroll-up via loadOlderHistory.
         historyHasMoreRef.current = false;
         historyOldestRef.current = null;
-        const historyUrl = selectedFriendId
-          ? `${API_URL}/api/chat/history?chatMode=ai_friend&aiFriendId=${selectedFriendId}&limit=${HISTORY_PAGE_SIZE}`
-          : `${API_URL}/api/chat/history?chatMode=ai_friend&limit=${HISTORY_PAGE_SIZE}`;
+        const historyUrl = buildHistoryApiUrl();
 
         console.log('📚 Loading history from:', historyUrl);
         
@@ -386,15 +433,7 @@ export default function AIFriendPage() {
           if (data.messages && data.messages.length > 0) {
             console.log(`📚 Loaded ${data.messages.length} messages from history`);
             
-            // Convert to Message format
-            const historyMessages: Message[] = data.messages.map(
-              (msg: any, index: number) => ({
-                id: `history-${index}`,
-                role: msg.role === "user" ? "user" : "ai",
-                content: msg.content,
-                timestamp: new Date(msg.timestamp),
-              })
-            );
+            const historyMessages = mapHistoryToMessages(data.messages, "history");
 
             // Append history to existing greeting
             setMessages((prev) => {
@@ -443,19 +482,11 @@ export default function AIFriendPage() {
     const prevScrollTop = container?.scrollTop ?? 0;
 
     try {
-      const base = selectedFriendId
-        ? `${API_URL}/api/chat/history?chatMode=ai_friend&aiFriendId=${selectedFriendId}`
-        : `${API_URL}/api/chat/history?chatMode=ai_friend`;
-      const url = `${base}&limit=${HISTORY_PAGE_SIZE}&before=${encodeURIComponent(before)}`;
+      const url = buildHistoryApiUrl(before);
       const response = await fetch(url, { method: 'GET', headers: getAuthHeaders() });
       if (!response.ok) return;
       const data = await response.json();
-      const older: Message[] = (data.messages || []).map((msg: any, index: number) => ({
-        id: `history-older-${before}-${index}`,
-        role: msg.role === 'user' ? 'user' : 'ai',
-        content: msg.content,
-        timestamp: new Date(msg.timestamp),
-      }));
+      const older = mapHistoryToMessages(data.messages || [], `history-older-${before}`);
       if (older.length > 0) {
         setMessages((prev) => {
           if (prev.length > 0 && prev[0]?.id === '1' && prev[0]?.role === 'ai') {
@@ -477,7 +508,7 @@ export default function AIFriendPage() {
     } finally {
       setIsLoadingOlderHistory(false);
     }
-  }, [isLoadingOlderHistory, selectedFriendId]);
+  }, [isLoadingOlderHistory, isGroupChat, selectedFriendId, aiFriends]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -658,15 +689,16 @@ export default function AIFriendPage() {
 
     try {
       const contextMessageLimit = !isLoggedIn ? 5 : isPremium ? 20 : 10;
+      const freshThread = newConversation;
       const buildHistoryForFriend = (friendId?: string) =>
         messages
           .slice(-contextMessageLimit)
-          .filter(
-            (m) =>
-              m.role === "user" ||
-              !m.friendId ||
-              (friendId && m.friendId === friendId)
-          )
+          .filter((m) => {
+            if (m.role === "user") return true;
+            // Group thread: every friend's reply is shared context.
+            if (isGroupChat) return m.role === "ai";
+            return !m.friendId || (friendId && m.friendId === friendId);
+          })
           .map((m) => ({
             role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
             content: m.content,
@@ -706,6 +738,9 @@ export default function AIFriendPage() {
               null,
               buildHistoryForFriend(friend.id),
               friend.id,
+              undefined,
+              freshThread,
+              true,
             );
             return {
               friendId: friend.id,
@@ -755,6 +790,10 @@ export default function AIFriendPage() {
             setMessages((prev) => [...prev, errorResponse]);
           }
         });
+
+        if (freshThread) {
+          setNewConversation(false);
+        }
       } else {
         // Individual chat: send to selected friend or default
         const fileUploads = fileToSend
@@ -769,6 +808,9 @@ export default function AIFriendPage() {
           null,
           buildHistoryForFriend(selectedFriendId || undefined),
           selectedFriendId || undefined,
+          undefined,
+          freshThread,
+          false,
         );
 
         if (!data.message || data.message.trim().length === 0) {
@@ -1308,17 +1350,51 @@ export default function AIFriendPage() {
             <div className="flex items-center gap-1.5 shrink-0">
             {isLoggedIn && aiFriends.length > 0 && (
             <button
-                className={`btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors text-xs whitespace-nowrap ${isGroupChat ? "bg-[rgba(199,168,105,0.15)] glass-panel" : ""
-                  }`}
+                className={`btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors text-xs whitespace-nowrap max-w-[120px] ${
+                  isGroupChat || selectedFriendId
+                    ? "bg-[rgba(199,168,105,0.15)] glass-panel"
+                    : ""
+                }`}
                 onClick={() => {
-                  setIsGroupChat(!isGroupChat);
-                  setSelectedFriendId(null);
-                  setNewConversation(true);
+                  if (isGroupChat) {
+                    setIsGroupChat(false);
+                    if (!selectedFriendId) {
+                      setShowFriendSelector(true);
+                    }
+                  } else {
+                    setIsGroupChat(true);
+                  }
                 }}
-                aria-label={isGroupChat ? "Switch to individual chat" : "Switch to group chat"}
-                title={isGroupChat ? "Individual Chat" : "Group Chat"}
+                aria-label={
+                  isGroupChat
+                    ? "Group chat — switch to individual"
+                    : `Individual chat with ${selectedFriend?.name ?? "friend"} — switch to group`
+                }
+                title={
+                  isGroupChat
+                    ? "Group chat (tap to switch to individual)"
+                    : "Individual chat (tap for group)"
+                }
               >
-                <span className={isGroupChat ? "text-[var(--accent)]" : "text-[var(--text)]"}>Group</span>
+                <span
+                  className={
+                    isGroupChat || selectedFriendId
+                      ? "text-[var(--accent)]"
+                      : "text-[var(--text)]"
+                  }
+                  style={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                >
+                  {isGroupChat ? "Group" : selectedFriend?.name ?? "Friend"}
+                </span>
+              </button>
+            )}
+            {isLoggedIn && (
+              <button
+                className="btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors hover:bg-[var(--input-bg)] text-xs whitespace-nowrap"
+                onClick={startNewConversation}
+                title="Start a new conversation"
+              >
+                <span>New</span>
               </button>
             )}
             {isLoggedIn && (
@@ -1344,6 +1420,9 @@ export default function AIFriendPage() {
 
       {/* Messages Area */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-5 flex flex-col">
+        {isLoadingOlderHistory && (
+          <div className="text-center sub text-sm py-2 mb-2">Loading older messages…</div>
+        )}
         {messages.map((message, index) => {
           const showDateDivider =
             index === 0 ||

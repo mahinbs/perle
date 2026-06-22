@@ -165,6 +165,7 @@ function buildSearchFormData(
     chatMode?: string;
     aiFriendId?: string;
     spaceId?: string;
+    groupChat?: boolean;
   },
   uploadedFiles: UploadedFile[] = []
 ): FormData {
@@ -181,6 +182,7 @@ function buildSearchFormData(
   if (params.chatMode) formData.append('chatMode', params.chatMode);
   if (params.aiFriendId) formData.append('aiFriendId', params.aiFriendId);
   if (params.spaceId) formData.append('spaceId', params.spaceId);
+  if (params.groupChat) formData.append('groupChat', 'true');
 
   // Images, PDFs, and documents for analysis — all under the 'files' field
   for (const uploaded of uploadedFiles) {
@@ -252,6 +254,8 @@ export async function chatAPI(
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
   aiFriendId?: string,
   spaceId?: string,
+  newConversation: boolean = false,
+  groupChat: boolean = false,
 ): Promise<ChatResult> {
   const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
@@ -262,7 +266,7 @@ export async function chatAPI(
   const userContext = getUserLocalContext();
 
   const formData = buildSearchFormData(
-    { message, model, chatMode, conversationId, conversationHistory, userContext, aiFriendId, spaceId },
+    { message, model, chatMode, conversationId, conversationHistory, userContext, aiFriendId, spaceId, newConversation, groupChat },
     uploadedFiles
   );
 
