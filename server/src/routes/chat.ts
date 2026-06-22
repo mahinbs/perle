@@ -1,12 +1,20 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import multer from 'multer';
 import { generateAIAnswer } from '../utils/aiProviders.js';
-import type { LLMModel, ConversationMessage, ChatMode } from '../types.js';
+import type { LLMModel, ConversationMessage, ChatMode, FileAttachment } from '../types.js';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 import { buildUserLocalContext } from '../utils/requestLocalContext.js';
 import { extractMemoryFromUserMessage, formatAIFriendMemoryContext, mergeAIFriendMemory, type AIFriendMemory } from '../utils/aiFriendMemory.js';
+import { uploadSearchFiles } from '../utils/uploadConfig.js';
+import { LLM_MODEL_ENUM } from '../utils/modelRegistry.js';
+import {
+  collectUploadedFiles,
+  processUploadedFiles,
+  enforceAttachmentLimit,
+  fileToDataUrl,
+  resolveQueryWithAttachments,
+} from '../utils/fileAttachments.js';
 
 const router = Router();
 
@@ -58,80 +66,53 @@ const buildFallbackSuggestedQuestions = (message: string, chatMode: ChatMode): s
   ];
 };
 
-// Configure multer for file uploads (images and documents)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB max
-  },
-  fileFilter: (req, file, cb) => {
-    // Allow images and common document types
-    const allowedTypes = [
-      'image/', // All image types
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-      'text/plain',
-      'text/csv',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' // .xlsx
-    ];
-    
-    if (allowedTypes.some(type => file.mimetype.startsWith(type) || file.mimetype === type)) {
-      cb(null, true);
-    } else {
-      cb(new Error('File type not supported. Allowed: images, PDF, Word, Excel, text files'));
-    }
-  },
-});
+const stripInlineCitations = (text: string): string =>
+  String(text || '')
+    .replace(/\s*\[\d+(?:\s*,\s*\d+)*\]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+const COMPANION_RECENT_MESSAGE_LIMIT = 10; // last 10 messages for model context
+const COMPANION_CONTEXT_FETCH_EXCHANGES = 60; // enough history to summarize older context
+const HISTORY_PAGE_DEFAULT = 20; // exchanges per page (each = user + assistant bubble)
+const HISTORY_PAGE_MAX = 100;
+
+const truncate = (s: string, n: number): string =>
+  s.length > n ? `${s.slice(0, n - 1)}…` : s;
+
+function buildCompanionContextSummary(olderMessages: ConversationMessage[]): string | null {
+  if (!olderMessages || olderMessages.length === 0) return null;
+  const userNotes = olderMessages
+    .filter((m) => m.role === 'user')
+    .slice(-8)
+    .map((m) => `- User: ${truncate(m.content.replace(/\s+/g, ' ').trim(), 180)}`);
+  const assistantNotes = olderMessages
+    .filter((m) => m.role === 'assistant')
+    .slice(-6)
+    .map((m) => `- Assistant: ${truncate(stripInlineCitations(m.content).replace(/\s+/g, ' ').trim(), 180)}`);
+
+  const lines = [...userNotes, ...assistantNotes].slice(-12);
+  if (lines.length === 0) return null;
+  return `Companion memory summary:\n${lines.join('\n')}`;
+}
 
 const chatSchema = z.object({
-  message: z.string().min(1, 'Message cannot be empty').max(2000, 'Message too long'),
-  model: z.enum([
-    'auto',
-    'gpt-5',
-    'gpt-5.1',
-    'gpt-5.2',
-    'gpt-5.3',
-    'gpt-4o',
-    'gpt-4o-mini',
-    'gpt-4-turbo',
-    'gpt-4',
-    'gpt-3.5-turbo',
-    'gemini-2.0-latest',
-    'gemini-3.0',
-    'gemini-3.1',
-    'gemini-3.1-flash',
-    'gemini-lite',
-    'claude-4.5-sonnet',
-    'claude-4.5-opus',
-    'claude-4.6-sonnet',
-    'claude-4.6-opus',
-    'claude-4.5-haiku',
-    'claude-4-sonnet',
-    'claude-4-opus',
-    'claude-4.1-opus',
-    'claude-3-haiku',
-    'grok-3',
-    'grok-3-mini',
-    // 'grok-4', // COMMENTED OUT
-    'grok-4-heavy',
-    'grok-4-fast',
-    'grok-code-fast-1',
-    'grok-beta',
-    'gemini-pro',
-    'gemini-pro-vision',
-    'llama-2',
-    'mistral-7b'
-  ]).optional().default('gemini-lite'),
+  message: z.string().max(2000, 'Message too long').default(''),
+  model: z.enum(LLM_MODEL_ENUM).optional().default('gemini-lite'),
   newConversation: z.boolean().optional().default(false),
   conversationHistory: z
-    .array(
-      z.object({
-        role: z.enum(['user', 'assistant']),
-        content: z.string().min(1).max(6000),
-      })
-    )
+    .preprocess((val) => {
+      if (!Array.isArray(val)) return [];
+      return val
+        .map((m: any) => {
+          const role = m?.role === 'assistant' ? 'assistant' : 'user';
+          const raw = typeof m?.content === 'string' ? m.content : (m?.content == null ? '' : String(m.content));
+          const content = raw.trim().slice(0, 12000);
+          return { role, content };
+        })
+        .filter((m) => m.content.length > 0)
+        .slice(-40);
+    }, z.array(z.object({ role: z.enum(['user','assistant']), content: z.string() })))
     .optional()
     .default([]),
   userContext: z.object({
@@ -150,7 +131,7 @@ const chatSchema = z.object({
 });
 
 // Chat endpoint for AI Friend (supports both JSON and multipart/form-data with image)
-router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthRequest, res) => {
+router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, res) => {
   try {
     // Handle both JSON and form-data
     let bodyData = req.body;
@@ -174,8 +155,15 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
       }
     }
     
+    if (Array.isArray(bodyData?.conversationHistory)) {
+      bodyData.conversationHistory = bodyData.conversationHistory
+        .filter((m: any) => m && typeof m.content === 'string' && m.content.trim().length > 0
+          && (m.role === 'user' || m.role === 'assistant'));
+    }
+
     const parse = chatSchema.safeParse(bodyData);
     if (!parse.success) {
+      console.warn('chat: invalid request', JSON.stringify(parse.error.flatten().fieldErrors));
       return res.status(400).json({ 
         error: 'Invalid request', 
         details: parse.error.flatten().fieldErrors 
@@ -183,7 +171,8 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
     }
 
     const { message, model, newConversation, conversationHistory: clientConversationHistory, userContext, searchType, chatMode, aiFriendId, mentionedFriendIds, spaceId } = parse.data;
-    const trimmedMessage = message.trim();
+    const uploadedFilesEarly = collectUploadedFiles(req);
+    const trimmedMessage = resolveQueryWithAttachments(message, uploadedFilesEarly.length);
     const effectiveUserContext = buildUserLocalContext(req, userContext);
 
     if (!trimmedMessage) {
@@ -269,6 +258,7 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
 
     // Check premium status
     let isPremium = false;
+    let premiumTier = 'free';
     if (req.userId) {
       try {
         const { data: profile } = await supabase
@@ -279,11 +269,12 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
 
         if (profile) {
           // Check if premium and subscription is active
-          const hasActiveSubscription = profile.subscription_status === 'active' && 
-            profile.subscription_end_date && 
+          const hasActiveSubscription = profile.subscription_status === 'active' &&
+            profile.subscription_end_date &&
             new Date(profile.subscription_end_date) > new Date();
-          
+
           isPremium = (profile.is_premium === true || profile.premium_tier === 'pro' || profile.premium_tier === 'max') && hasActiveSubscription;
+          if (hasActiveSubscription) premiumTier = profile.premium_tier || 'free';
         }
       } catch (e) {
         console.warn('Failed to fetch premium status, defaulting to free:', e);
@@ -309,11 +300,19 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
 
     // Fetch conversation history for context - ISOLATED BY CHAT MODE, SPACE, AND AI FRIEND
     // Non-logged: 5 messages (from client fallback only)
-    // Free logged: 10 messages
-    // Premium logged: 20 messages
-    const contextMessageLimit = req.userId ? (isPremium ? 20 : 10) : 5;
+    // Verbatim window: Free 5 / Pro 10 / Max 15. Summary-of-older path lives in
+    // /search; chat threads here keep just the tighter window for now (chat
+    // history isn't always keyed to a single conversations.id, so summary
+    // compression would need its own scoping pass — kept as a follow-up).
+    const contextMessageLimit = !req.userId
+      ? 5
+      : premiumTier === 'max' ? 15
+      : premiumTier === 'pro' ? 10
+      : 5;
     // Context is isolated per user, chat mode, space, AND ai_friend_id (no mixing between friends)
+    const isCompanionMode = chatMode === 'ai_friend' || chatMode === 'ai_psychologist';
     let conversationHistory: ConversationMessage[] = [];
+    let priorSummary: string | undefined = undefined;
     if (req.userId && !newConversation) {
       try {
         let query = supabase
@@ -340,16 +339,26 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
           query = query.is('ai_friend_id', null);
         }
         
+        const historyLimit = isCompanionMode ? COMPANION_CONTEXT_FETCH_EXCHANGES : contextMessageLimit;
         const { data: history } = await query
           .order('created_at', { ascending: false })
-          .limit(contextMessageLimit);
+          .limit(historyLimit);
         
         if (history && history.length > 0) {
           // Convert to conversation format (reverse to get chronological order)
-          conversationHistory = history.reverse().flatMap((item: any) => [
+          const fullHistory = history.reverse().flatMap((item: any) => [
             { role: 'user' as const, content: item.query },
             { role: 'assistant' as const, content: item.answer }
           ]);
+          if (isCompanionMode) {
+            const splitIndex = Math.max(0, fullHistory.length - COMPANION_RECENT_MESSAGE_LIMIT);
+            const older = fullHistory.slice(0, splitIndex);
+            const recent = fullHistory.slice(splitIndex);
+            priorSummary = buildCompanionContextSummary(older) || undefined;
+            conversationHistory = recent;
+          } else {
+            conversationHistory = fullHistory;
+          }
         }
       } catch (historyError) {
         console.warn('Failed to fetch conversation history:', historyError);
@@ -359,7 +368,15 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
 
     // Fallback context: if server-side history isn't available, use client-provided history
     if ((!conversationHistory || conversationHistory.length === 0) && clientConversationHistory.length > 0) {
-      conversationHistory = clientConversationHistory.slice(-contextMessageLimit);
+      if (isCompanionMode) {
+        const splitIndex = Math.max(0, clientConversationHistory.length - COMPANION_RECENT_MESSAGE_LIMIT);
+        const older = clientConversationHistory.slice(0, splitIndex);
+        const recent = clientConversationHistory.slice(splitIndex);
+        priorSummary = buildCompanionContextSummary(older) || undefined;
+        conversationHistory = recent;
+      } else {
+        conversationHistory = clientConversationHistory.slice(-contextMessageLimit);
+      }
     }
     
     // If starting new conversation, clear existing history for this user, chat mode, space, and ai friend
@@ -395,54 +412,40 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
       }
     }
 
-    // Process uploaded file (image/document) if present
+    // Process uploaded files (images + documents)
     let imageDataUrl: string | undefined = undefined;
-    if (req.file && req.userId) {
+    let attachments: FileAttachment[] | undefined;
+    const uploadedFiles = collectUploadedFiles(req);
+    if (uploadedFiles.length > 0 && req.userId) {
       try {
-        const fileType = req.file.mimetype.startsWith('image/') ? 'image' : 'document';
-        console.log(`📎 ${fileType} attached: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
-        
-        // Step 1: Upload to Supabase 'files' bucket (supports all MIME types)
-        const fileExtension = req.file.originalname?.split('.').pop() || 'bin';
-        const fileName = `chat-attachments/${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('files')
-          .upload(fileName, req.file.buffer, {
-            contentType: req.file.mimetype,
-            upsert: false
-          });
-        
-        if (uploadError) {
-          console.error('Failed to upload file to Supabase:', uploadError);
-          // Fallback: use buffer directly
-          const base64File = req.file.buffer.toString('base64');
-          imageDataUrl = `data:${req.file.mimetype};base64,${base64File}`;
-          console.log(`⚠️  Using direct buffer fallback for ${fileType}`);
-        } else {
-          // Step 2: Get public URL
-          const { data: urlData } = supabase.storage
-            .from('files')
-            .getPublicUrl(fileName);
-          
-          console.log(`✅ ${fileType} uploaded to Supabase: ${fileName}`);
-          
-          // Step 3: Convert to base64 for AI (after successful upload)
-          const base64File = req.file.buffer.toString('base64');
-          imageDataUrl = `data:${req.file.mimetype};base64,${base64File}`;
-          
-          console.log(`✅ ${fileType} converted to base64 (${base64File.length} chars) for AI`);
+        console.log(`📎 ${uploadedFiles.length} file(s) attached in chat`);
+        const processed = await processUploadedFiles(uploadedFiles, req.userId, 'chat-attachments');
+        attachments = enforceAttachmentLimit(processed, actualModel, isPremium);
+        if (attachments.length > 1) {
+          console.log(`📎 Multi-file chat analysis (${attachments.length}): ${attachments.map((a) => a.filename).join(', ')}`);
         }
+        const firstImage = attachments.find((a) => a.mimeType.startsWith('image/'));
+        if (firstImage) imageDataUrl = firstImage.dataUrl;
       } catch (fileError) {
-        console.error('Failed to process file:', fileError);
-        // Continue without file if processing fails
+        console.error('Failed to process attachments:', fileError);
       }
+    } else if (uploadedFiles.length > 0) {
+      attachments = uploadedFiles.map((f) => ({
+        dataUrl: fileToDataUrl(f),
+        mimeType: f.mimetype,
+        filename: f.originalname,
+      }));
+      attachments = enforceAttachmentLimit(attachments, actualModel, isPremium);
+      if (attachments.length > 1) {
+        console.log(`📎 Multi-file chat analysis (${attachments.length}): ${attachments.map((a) => a.filename).join(', ')}`);
+      }
+      const firstImage = attachments.find((a) => a.mimeType.startsWith('image/'));
+      if (firstImage) imageDataUrl = firstImage.dataUrl;
     }
 
     // Generate answer using AI provider with chat mode
     let result;
     try {
-      // Pass chat mode, AI friend description, space context, and optional image to AI provider
       result = await generateAIAnswer(
         trimmedMessage, 
         'Ask', 
@@ -455,9 +458,11 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
         aiFriendMemoryContext,
         spaceTitle, 
         spaceDescription,
-        imageDataUrl ? [imageDataUrl] : undefined,
+        imageDataUrl,
         effectiveUserContext,
-        searchType as any
+        searchType as any,
+        attachments,
+        priorSummary
       );
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
@@ -475,7 +480,10 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
     // History is isolated by chat mode
     if (req.userId) {
       try {
-        const answerText = result.chunks.map(c => c.text).join('\n\n');
+        const rawAnswerText = result.chunks.map(c => c.text).join('\n\n');
+        const answerText = (chatMode === 'ai_friend' || chatMode === 'ai_psychologist')
+          ? stripInlineCitations(rawAnswerText)
+          : rawAnswerText;
         let insertData: any = {
           user_id: req.userId,
           query: trimmedMessage,
@@ -565,7 +573,10 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
     }
 
     // Return answer text with optional images
-    const answerText = result.chunks.map(c => c.text).join('\n\n');
+    const rawAnswerText = result.chunks.map(c => c.text).join('\n\n');
+    const answerText = (chatMode === 'ai_friend' || chatMode === 'ai_psychologist')
+      ? stripInlineCitations(rawAnswerText)
+      : rawAnswerText;
     const resolvedSuggestions = Array.isArray((result as any).suggestedQuestions)
       ? (result as any).suggestedQuestions.filter((s: any) => typeof s === 'string' && s.trim().length > 0).slice(0, 3)
       : [];
@@ -576,7 +587,7 @@ router.post('/chat', optionalAuth, upload.single('image'), async (req: AuthReque
       message: answerText,
       model: actualModel,
       images: result.images || [], // Include generated images if any
-      sources: chatMode === 'ai_psychologist' ? [] : (result.sources || []), // No sources in psychology mode
+      sources: (chatMode === 'ai_psychologist' || chatMode === 'ai_friend') ? [] : (result.sources || []),
       suggestedQuestions: shouldDisableSuggestions
         ? []
         : (
@@ -603,29 +614,14 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
     
     console.log(`📚 Loading chat history for user ${req.userId}, mode: ${chatMode}`);
 
-    // Check premium status to determine limit
-    let isPremium = false;
-    try {
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('is_premium, premium_tier, subscription_status, subscription_end_date')
-        .eq('user_id', req.userId)
-        .single();
-
-      if (profile) {
-        const hasActiveSubscription = profile.subscription_status === 'active' && 
-          profile.subscription_end_date && 
-          new Date(profile.subscription_end_date) > new Date();
-        
-        isPremium = (profile.is_premium === true || profile.premium_tier === 'pro' || profile.premium_tier === 'max') && hasActiveSubscription;
-      }
-    } catch (e) {
-      console.warn('Failed to fetch premium status for history:', e);
-    }
-
-    // Free: 10 messages, Premium: 20 messages
-    // Context is isolated per user AND chat mode (no mixing between modes)
-    const messageLimit = isPremium ? 20 : 10;
+    const isCompanionMode = chatMode === 'ai_friend' || chatMode === 'ai_psychologist';
+    // Perplexity-style pagination: load a small page fast, fetch older on scroll.
+    // `limit` = number of exchanges (query+answer pairs), not individual bubbles.
+    const parsedLimit = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const messageLimit = Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(parsedLimit, HISTORY_PAGE_MAX)
+      : HISTORY_PAGE_DEFAULT;
+    const beforeIso = typeof req.query.before === 'string' ? req.query.before : undefined;
 
     // Get spaceId and aiFriendId from query parameters if provided
     const spaceId = req.query.spaceId as string | undefined;
@@ -655,25 +651,49 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
       historyQuery = historyQuery.is('ai_friend_id', null);
     }
     
-    const { data: history } = await historyQuery
-      .order('created_at', { ascending: true })
+    if (beforeIso) {
+      historyQuery = historyQuery.lt('created_at', beforeIso);
+    }
+
+    // Order descending so we always take the newest N up to `before` (when
+    // paginating older pages). We re-sort to ascending before returning so
+    // the UI gets oldest → newest naturally.
+    const { data: rawHistory } = await historyQuery
+      .order('created_at', { ascending: false })
       .limit(messageLimit);
+    const history = (rawHistory || []).slice().reverse();
 
     console.log(`📚 Found ${history?.length || 0} history items for mode ${chatMode}, aiFriendId: ${aiFriendId || 'none'}`);
 
     if (!history || history.length === 0) {
       console.log(`📚 No history found, returning empty array`);
-      return res.json({ messages: [] });
+      return res.json({ messages: [], hasMore: false, oldestTimestamp: null, summary: null, pageSize: messageLimit });
     }
 
     // Convert to chat message format
+    const sanitizeForMode = (text: string) =>
+      (chatMode === 'ai_friend' || chatMode === 'ai_psychologist')
+        ? stripInlineCitations(text)
+        : text;
     const messages = history.flatMap((item: any) => [
       { role: 'user' as const, content: item.query, timestamp: item.created_at },
-      { role: 'assistant' as const, content: item.answer, timestamp: item.created_at }
+      { role: 'assistant' as const, content: sanitizeForMode(item.answer), timestamp: item.created_at }
     ]);
 
-    console.log(`📚 Returning ${messages.length} messages`);
-    res.json({ messages });
+    const historySummary = isCompanionMode
+      ? buildCompanionContextSummary(
+          messages
+            .slice(0, Math.max(0, messages.length - COMPANION_RECENT_MESSAGE_LIMIT))
+            .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.content || '') }))
+        )
+      : null;
+
+    // Pagination cursor: pass this as `before` to fetch the next older page.
+    const oldestIso = history[0]?.created_at || null;
+    const hasMore = history.length === messageLimit;
+
+    console.log(`📚 Returning ${messages.length} messages (hasMore=${hasMore}, pageSize=${messageLimit})`);
+    res.json({ messages, summary: historySummary, hasMore, oldestTimestamp: oldestIso, pageSize: messageLimit });
   } catch (error) {
     console.error('Chat history error:', error);
     res.status(500).json({ error: 'Failed to fetch chat history' });

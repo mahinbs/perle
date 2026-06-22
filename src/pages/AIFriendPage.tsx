@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, Fragment } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
@@ -14,7 +14,6 @@ import {
   FaEdit,
   FaTrash,
 } from "react-icons/fa";
-import { ExperienceModeButtons } from "../components/ExperienceModeButtons";
 import { isImageFile } from "../utils/imagePicker";
 import type { ExperienceMode } from "../types";
 import { useToast } from "../contexts/ToastContext";
@@ -72,7 +71,9 @@ export default function AIFriendPage() {
   // AI Friends state
   const [aiFriends, setAiFriends] = useState<AIFriend[]>([]);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
-  const [isGroupChat, setIsGroupChat] = useState(false); // Toggle between individual and group chat
+  // Default landing surface is the group chat — individual friend chats are
+  // an opt-in from the friend picker.
+  const [isGroupChat, setIsGroupChat] = useState(true);
   const [showFriendSelector, setShowFriendSelector] = useState(false);
   const [showFriendModal, setShowFriendModal] = useState(false);
   const [editingFriend, setEditingFriend] = useState<AIFriend | null>(null);
@@ -188,6 +189,11 @@ export default function AIFriendPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const pendingScrollToMessageIdRef = useRef<string | null>(null);
   const pendingScrollToMessageElRef = useRef<HTMLDivElement | null>(null);
+  // Pagination state for chat history (latest 20 first, older 20 on scroll-up).
+  const HISTORY_PAGE_SIZE = 20;
+  const historyHasMoreRef = useRef<boolean>(false);
+  const historyOldestRef = useRef<string | null>(null);
+  const [isLoadingOlderHistory, setIsLoadingOlderHistory] = useState(false);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -296,10 +302,9 @@ export default function AIFriendPage() {
       if (response.ok) {
         const data = await response.json();
         setAiFriends(data.friends || []);
-        // Auto-select first friend if available and none selected
-        if (data.friends && data.friends.length > 0 && !selectedFriendId) {
-          setSelectedFriendId(data.friends[0].id);
-        }
+        // Do not auto-select a friend — we land in group chat by default.
+        // Switching to an individual friend is an explicit user action from
+        // the picker.
       }
     } catch (error) {
       console.error("Failed to load AI friends:", error);
@@ -312,19 +317,10 @@ export default function AIFriendPage() {
   useEffect(() => {
     const greeting = getGreeting();
 
-    // Update greeting immediately (synchronously) for instant feedback
-    // For group chat: always show only the greeting
-    if (isGroupChat) {
-      setMessages([
-        {
-          id: "1",
-          role: "ai",
-          content: greeting,
-          timestamp: new Date(),
-        },
-      ]);
-      return;
-    }
+    // Update greeting immediately (synchronously) for instant feedback, then
+    // load persisted history below for both group and individual chats. We
+    // previously short-circuited group chat here, which wiped the group
+    // conversation every time the user navigated back to the screen.
 
     // For individual chat: show greeting immediately, then load history
     // Wait for friend data if a friend is selected but data isn't loaded yet
@@ -357,10 +353,14 @@ export default function AIFriendPage() {
       if (!API_URL) return;
 
       try {
-        // Load history for specific friend if selected, otherwise load default
+        // Load history for specific friend if selected, otherwise load default.
+        // Paginated: take the latest HISTORY_PAGE_SIZE exchanges; older pages
+        // are fetched on scroll-up via loadOlderHistory.
+        historyHasMoreRef.current = false;
+        historyOldestRef.current = null;
         const historyUrl = selectedFriendId
-          ? `${API_URL}/api/chat/history?chatMode=ai_friend&aiFriendId=${selectedFriendId}`
-          : `${API_URL}/api/chat/history?chatMode=ai_friend`;
+          ? `${API_URL}/api/chat/history?chatMode=ai_friend&aiFriendId=${selectedFriendId}&limit=${HISTORY_PAGE_SIZE}`
+          : `${API_URL}/api/chat/history?chatMode=ai_friend&limit=${HISTORY_PAGE_SIZE}`;
 
         console.log('📚 Loading history from:', historyUrl);
         
@@ -381,6 +381,8 @@ export default function AIFriendPage() {
           const data = await response.json();
           console.log('📚 History data:', data);
           
+          historyHasMoreRef.current = Boolean(data.hasMore);
+          historyOldestRef.current = data.oldestTimestamp || null;
           if (data.messages && data.messages.length > 0) {
             console.log(`📚 Loaded ${data.messages.length} messages from history`);
             
@@ -425,6 +427,73 @@ export default function AIFriendPage() {
     loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGroupChat, selectedFriendId, selectedFriend, aiFriends]);
+
+  // Fetch the previous HISTORY_PAGE_SIZE exchanges and prepend, preserving
+  // scroll position so the view doesn't jump.
+  const loadOlderHistory = useCallback(async () => {
+    if (!historyHasMoreRef.current || isLoadingOlderHistory) return;
+    const before = historyOldestRef.current;
+    if (!before) return;
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return;
+
+    setIsLoadingOlderHistory(true);
+    const container = messagesContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight ?? 0;
+    const prevScrollTop = container?.scrollTop ?? 0;
+
+    try {
+      const base = selectedFriendId
+        ? `${API_URL}/api/chat/history?chatMode=ai_friend&aiFriendId=${selectedFriendId}`
+        : `${API_URL}/api/chat/history?chatMode=ai_friend`;
+      const url = `${base}&limit=${HISTORY_PAGE_SIZE}&before=${encodeURIComponent(before)}`;
+      const response = await fetch(url, { method: 'GET', headers: getAuthHeaders() });
+      if (!response.ok) return;
+      const data = await response.json();
+      const older: Message[] = (data.messages || []).map((msg: any, index: number) => ({
+        id: `history-older-${before}-${index}`,
+        role: msg.role === 'user' ? 'user' : 'ai',
+        content: msg.content,
+        timestamp: new Date(msg.timestamp),
+      }));
+      if (older.length > 0) {
+        setMessages((prev) => {
+          if (prev.length > 0 && prev[0]?.id === '1' && prev[0]?.role === 'ai') {
+            return [prev[0], ...older, ...prev.slice(1)];
+          }
+          return [...older, ...prev];
+        });
+      }
+      historyHasMoreRef.current = Boolean(data.hasMore);
+      historyOldestRef.current = data.oldestTimestamp || historyOldestRef.current;
+
+      requestAnimationFrame(() => {
+        const c = messagesContainerRef.current;
+        if (!c) return;
+        c.scrollTop = prevScrollTop + (c.scrollHeight - prevScrollHeight);
+      });
+    } catch (e) {
+      console.warn('Failed to load older history:', e);
+    } finally {
+      setIsLoadingOlderHistory(false);
+    }
+  }, [isLoadingOlderHistory, selectedFriendId]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        if (container.scrollTop < 200) void loadOlderHistory();
+      });
+    };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, [loadOlderHistory]);
 
   // Speech recognition setup
   useEffect(() => {
@@ -1388,16 +1457,8 @@ export default function AIFriendPage() {
         )}
       </div>
 
-      {/* Input Area */}
+      {/* Input Area — no search-mode buttons here; this is conversational chat. */}
       <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0 input-bar-safe-bottom">
-        <div className="mb-2">
-          <ExperienceModeButtons
-            experienceMode={experienceMode}
-            onExperienceModeChange={setExperienceMode}
-            disabled={isLoading}
-            size="small"
-          />
-        </div>
         {/* Model Selector and New Chat Button (Premium Users) - Moved to bottom */}
         {/* <div className="flex-1">
           <LLMModelSelector

@@ -145,6 +145,11 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Sidebar toggle (auto-hide)
   const [isLoadingOldConversation, setIsLoadingOldConversation] = useState(false); // Flag to disable animations
   const lastLoadedConversationIdRef = useRef<string | null>(null); // Track which conversation was loaded from sidebar
+  // Pagination state for the loaded conversation. We start with the latest 20
+  // messages and pull older 20 each time the user scrolls to the top.
+  const hasMoreOlderRef = useRef<boolean>(false);
+  const oldestTimestampRef = useRef<string | null>(null);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const answerCardRef = useRef<HTMLDivElement>(null);
   const loadingCardRef = useRef<HTMLDivElement>(null);
   const streamingCardRef = useRef<HTMLDivElement>(null);
@@ -604,7 +609,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                 startDrip();
               },
 
-              onDone: (suggestedQuestions) => {
+              onDone: (suggestedQuestions, cleanText) => {
                 stopDripAndFlush();
                 skipTypewriterOnRestoreRef.current = true;
                 setIsStreaming(false);
@@ -626,11 +631,31 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                   setNewConversation(false);
                 }
 
+                // The backend's `cleanText` is the authoritative full answer.
+                // If the streamed text is shorter (e.g. model leaked the
+                // SUGGESTED_FOLLOWUPS marker mid-stream and we stopped
+                // emitting tokens, or a network blip dropped the tail),
+                // prefer cleanText so the UI shows the complete answer.
+                const streamed = streamingTextRef.current || "";
+                const useCleanText =
+                  cleanText &&
+                  cleanText.trim().length > 0 &&
+                  cleanText.length > streamed.length + 50; // 50-char fudge for trivial diffs
+                const finalText = useCleanText ? cleanText : streamed;
+                if (useCleanText) {
+                  console.warn(
+                    `[stream] streamed text (${streamed.length}) shorter than cleanText (${cleanText.length}) — using cleanText`,
+                  );
+                  // Also reflect on screen so the user sees the full version
+                  setStreamingText(cleanText);
+                  streamingTextRef.current = cleanText;
+                }
+
                 const finalAnswer: AnswerResult = {
                   sources: finalSources,
                   chunks: [
                     {
-                      text: streamingTextRef.current,
+                      text: finalText,
                       citationIds: finalSources.slice(0, 2).map((s) => s.id),
                       confidence: 0.9,
                     },
@@ -874,55 +899,116 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     }
   }, [isLoading, isStreaming, conversationHistory.length, pinActiveExchange]);
 
-  // Load specific conversation (no animations)
+  // Load latest page (20) of a specific conversation. Older pages are pulled
+  // on scroll via loadOlderMessages.
+  const PAGE_SIZE = 20;
   const loadConversation = useCallback(async (conversationId: string) => {
     try {
       setIsLoadingOldConversation(true); // Disable animations
+      hasMoreOlderRef.current = false;
+      oldestTimestampRef.current = null;
 
       const baseUrl = import.meta.env.VITE_API_URL as string;
       const { getAuthHeaders } = await import('../utils/auth');
 
-      const response = await fetch(`${baseUrl}/api/conversations/${conversationId}`, {
-        headers: getAuthHeaders()
-      });
+      const response = await fetch(
+        `${baseUrl}/api/conversations/${conversationId}?limit=${PAGE_SIZE}`,
+        { headers: getAuthHeaders() },
+      );
 
       if (response.ok) {
         const data = await response.json();
         setActiveConversationId(conversationId);
-
-        // Mark that we loaded this conversation from sidebar
         lastLoadedConversationIdRef.current = conversationId;
 
-        // Convert messages to AnswerResult format with proper chunk structure
         const history: AnswerResult[] = data.messages.map((msg: any) => ({
           query: msg.query,
-          chunks: [{
-            text: msg.answer,
-            sourceIds: [],
-            citationIds: []
-          }],
+          chunks: [{ text: msg.answer, sourceIds: [], citationIds: [] }],
           sources: [],
           mode: 'Ask' as Mode,
-          timestamp: new Date(msg.created_at).getTime()
+          timestamp: new Date(msg.created_at).getTime(),
         }));
 
         setConversationHistory(history);
+        // Track pagination cursor for "load older on scroll-up".
+        hasMoreOlderRef.current = Boolean(data.hasMore);
+        oldestTimestampRef.current = data.oldestTimestamp || null;
+
         setAnswer(null);
         setQuery("");
         setSearchedQuery("");
-
-        // Close sidebar on mobile after selection
         setIsSidebarOpen(false);
       }
     } catch (error) {
       console.error('Failed to load conversation:', error);
     } finally {
-      // Re-enable animations after a brief moment
-      setTimeout(() => {
-        setIsLoadingOldConversation(false);
-      }, 100);
+      setTimeout(() => setIsLoadingOldConversation(false), 100);
     }
   }, []);
+
+  // Pull the previous 20 messages, prepend them to the in-memory list, and
+  // preserve the user's current scroll position so the view doesn't jump.
+  const loadOlderMessages = useCallback(async () => {
+    const convId = lastLoadedConversationIdRef.current;
+    const before = oldestTimestampRef.current;
+    if (!convId || !before || !hasMoreOlderRef.current || isLoadingOlder) return;
+    setIsLoadingOlder(true);
+
+    const container = scrollContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight ?? 0;
+    const prevScrollTop = container?.scrollTop ?? 0;
+
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL as string;
+      const { getAuthHeaders } = await import('../utils/auth');
+      const url = `${baseUrl}/api/conversations/${convId}?limit=${PAGE_SIZE}&before=${encodeURIComponent(before)}`;
+      const response = await fetch(url, { headers: getAuthHeaders() });
+      if (!response.ok) return;
+      const data = await response.json();
+      const older: AnswerResult[] = (data.messages || []).map((msg: any) => ({
+        query: msg.query,
+        chunks: [{ text: msg.answer, sourceIds: [], citationIds: [] }],
+        sources: [],
+        mode: 'Ask' as Mode,
+        timestamp: new Date(msg.created_at).getTime(),
+      }));
+      if (older.length > 0) {
+        setConversationHistory((prev) => [...older, ...prev]);
+      }
+      hasMoreOlderRef.current = Boolean(data.hasMore);
+      oldestTimestampRef.current = data.oldestTimestamp || oldestTimestampRef.current;
+
+      // Restore scroll position so the just-loaded items appear above the
+      // user's current view rather than yanking them to the top.
+      requestAnimationFrame(() => {
+        const c = scrollContainerRef.current;
+        if (!c) return;
+        const newScrollHeight = c.scrollHeight;
+        c.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
+      });
+    } catch (e) {
+      console.warn('Failed to load older messages:', e);
+    } finally {
+      setIsLoadingOlder(false);
+    }
+  }, [isLoadingOlder]);
+
+  // Scroll listener: when user scrolls within ~200px of the top, fetch older.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    let ticking = false;
+    const handler = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        if (container.scrollTop < 200) void loadOlderMessages();
+      });
+    };
+    container.addEventListener('scroll', handler, { passive: true });
+    return () => container.removeEventListener('scroll', handler);
+  }, [loadOlderMessages]);
 
   // Handle new conversation
   const handleNewConversation = useCallback(() => {

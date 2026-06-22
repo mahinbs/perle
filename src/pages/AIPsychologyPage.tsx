@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, Fragment } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, Fragment } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
 import { Capacitor } from "@capacitor/core";
@@ -15,7 +15,6 @@ import { useToast } from "../contexts/ToastContext";
 import { getUserData, getAuthHeaders, removeAuthToken } from "../utils/auth";
 import { chatAPI } from "../utils/answerEngine";
 import { LLMModelSelector } from "../components/LLMModelSelector";
-import { ExperienceModeButtons } from "../components/ExperienceModeButtons";
 import type { LLMModel, ExperienceMode } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
@@ -80,6 +79,11 @@ export default function AIPsychologyPage() {
   const [dailySuggestionUses, setDailySuggestionUses] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  // Pagination for chat history (latest 20 first, older 20 on scroll-up).
+  const PSYCH_HISTORY_PAGE_SIZE = 20;
+  const historyHasMoreRef = useRef<boolean>(false);
+  const historyOldestRef = useRef<string | null>(null);
+  const [isLoadingOlderHistory, setIsLoadingOlderHistory] = useState(false);
   const pendingScrollToMessageIdRef = useRef<string | null>(null);
   const pendingScrollToMessageElRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -136,9 +140,12 @@ export default function AIPsychologyPage() {
       if (!API_URL) return;
 
       try {
-        console.log('📚 [Psychology] Loading history from:', `${API_URL}/api/chat/history?chatMode=ai_psychologist`);
-        
-        const response = await fetch(`${API_URL}/api/chat/history?chatMode=ai_psychologist`, {
+        historyHasMoreRef.current = false;
+        historyOldestRef.current = null;
+        const historyUrl = `${API_URL}/api/chat/history?chatMode=ai_psychologist&limit=${PSYCH_HISTORY_PAGE_SIZE}`;
+        console.log('📚 [Psychology] Loading history from:', historyUrl);
+
+        const response = await fetch(historyUrl, {
           method: "GET",
           headers: getAuthHeaders(),
         });
@@ -156,6 +163,8 @@ export default function AIPsychologyPage() {
           const data = await response.json();
           console.log('📚 [Psychology] History data:', data);
           
+          historyHasMoreRef.current = Boolean(data.hasMore);
+          historyOldestRef.current = data.oldestTimestamp || null;
           if (data.messages && data.messages.length > 0) {
             console.log(`📚 [Psychology] Loaded ${data.messages.length} messages from history`);
             // Convert to Message format
@@ -188,6 +197,70 @@ export default function AIPsychologyPage() {
 
     loadHistory();
   }, [isPremium]);
+
+  // Fetch older chat history on scroll-up and prepend, preserving scroll
+  // position so the view doesn't jump.
+  const loadOlderHistory = useCallback(async () => {
+    if (!historyHasMoreRef.current || isLoadingOlderHistory) return;
+    const before = historyOldestRef.current;
+    if (!before) return;
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return;
+
+    setIsLoadingOlderHistory(true);
+    const container = messagesContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight ?? 0;
+    const prevScrollTop = container?.scrollTop ?? 0;
+
+    try {
+      const url = `${API_URL}/api/chat/history?chatMode=ai_psychologist&limit=${PSYCH_HISTORY_PAGE_SIZE}&before=${encodeURIComponent(before)}`;
+      const response = await fetch(url, { method: 'GET', headers: getAuthHeaders() });
+      if (!response.ok) return;
+      const data = await response.json();
+      const older: Message[] = (data.messages || []).map((msg: any, index: number) => ({
+        id: `history-older-${before}-${index}`,
+        role: msg.role === 'user' ? 'user' : 'ai',
+        content: msg.content,
+        timestamp: new Date(msg.timestamp),
+      }));
+      if (older.length > 0) {
+        setMessages((prev) => {
+          if (prev.length > 0 && prev[0]?.id === '1' && prev[0]?.role === 'ai') {
+            return [prev[0], ...older, ...prev.slice(1)];
+          }
+          return [...older, ...prev];
+        });
+      }
+      historyHasMoreRef.current = Boolean(data.hasMore);
+      historyOldestRef.current = data.oldestTimestamp || historyOldestRef.current;
+
+      requestAnimationFrame(() => {
+        const c = messagesContainerRef.current;
+        if (!c) return;
+        c.scrollTop = prevScrollTop + (c.scrollHeight - prevScrollHeight);
+      });
+    } catch (e) {
+      console.warn('Failed to load older history:', e);
+    } finally {
+      setIsLoadingOlderHistory(false);
+    }
+  }, [isLoadingOlderHistory]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        if (container.scrollTop < 200) void loadOlderHistory();
+      });
+    };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, [loadOlderHistory]);
 
   // Speech recognition setup
   useEffect(() => {
@@ -554,16 +627,8 @@ export default function AIPsychologyPage() {
         )}
       </div>
 
-      {/* Input Area */}
+      {/* Input Area — therapeutic chat, no search-mode buttons. */}
       <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0 input-bar-safe-bottom">
-        <div className="mb-2">
-          <ExperienceModeButtons
-            experienceMode={experienceMode}
-            onExperienceModeChange={setExperienceMode}
-            disabled={isLoading}
-            size="small"
-          />
-        </div>
         {attachedFileName && (
           <div className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3">
             <div className="flex items-center gap-2.5 text-[length:var(--font-sm)] text-[var(--text)] flex-1 min-w-0">

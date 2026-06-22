@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import cors from 'cors';
+import cors, { type CorsOptions } from 'cors';
 import searchRouter from './routes/search.js';
 import discoverRouter from './routes/discover.js';
 import authRouter from './routes/auth.js';
@@ -8,7 +8,6 @@ import profileRouter from './routes/profile.js';
 import libraryRouter from './routes/library.js';
 import paymentRouter from './routes/payment.js';
 import stripeRouter from './routes/stripe.js';
-import iapRouter from './routes/iap.js';
 import adminRouter from './routes/admin.js';
 import chatRouter from './routes/chat.js';
 import mediaRouter from './routes/media.js';
@@ -21,27 +20,38 @@ import { cleanupExpiredSessions } from './utils/auth.js';
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3333;
 
-// Allow multiple origins for CORS (development + production)
+// Read CORS origins from env only (comma-separated supported).
 const allowedOrigins = [
   process.env.CORS_ORIGIN,
-  'http://localhost:3001' // Add custom origin from env if provided
-].filter(Boolean); // Remove undefined values
+  process.env.CORS_ORIGINS
+]
+  .filter(Boolean)
+  .flatMap((value) => (value as string).split(','))
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
-app.use(cors({ 
+if (allowedOrigins.length === 0) {
+  console.warn('⚠️  No CORS origins configured. Set CORS_ORIGIN or CORS_ORIGINS in env.');
+}
+
+const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (mobile apps, server-to-server, curl).
     if (!origin) return callback(null, true);
-    
+
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      // Log for debugging
-      console.warn(`⚠️  CORS blocked origin: ${origin}`);
-      callback(null, true); // Allow anyway for development (you can change to false in production)
+      return callback(null, true);
     }
+
+    console.warn(`⚠️  CORS blocked origin: ${origin}`);
+    return callback(new Error(`CORS origin not allowed: ${origin}`));
   },
-  credentials: true
-}));
+  credentials: true,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Stripe webhook needs raw body for signature verification
 // This MUST be before express.json()
@@ -62,7 +72,6 @@ app.use('/api', profileRouter);
 app.use('/api', libraryRouter);
 app.use('/api', paymentRouter);
 app.use('/api', stripeRouter);
-app.use('/api', iapRouter);
 app.use('/api', adminRouter);
 app.use('/api', chatRouter);
 app.use('/api/media', mediaRouter);

@@ -135,7 +135,7 @@ router.post('/payment/stripe/webhook', async (req, res) => {
         const subscriptionId = session.subscription as string;
 
         if (userId && tier) {
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any;
+          const subscription: any = await stripe.subscriptions.retrieve(subscriptionId);
           
           await supabase
             .from('user_profiles')

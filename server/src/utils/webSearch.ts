@@ -1,9 +1,13 @@
+import type { Mode, ChatMode, ConversationMessage } from '../types.js';
+
 export interface SearchResult {
   title: string;
   url: string;
   content: string;
   score: number;
 }
+
+export type WebSearchType = 'auto' | 'instant' | 'deep';
 
 /**
  * Detect if a query requires current/latest information
@@ -391,6 +395,74 @@ export function isSmallTalkQuery(query: string): boolean {
  * This supports prompts like "search the web for..." even when
  * regular freshness heuristics might not trigger.
  */
+/**
+ * Detect comparison-style questions (vs, compare, difference between, etc.)
+ */
+export function isComparisonQuery(query: string): boolean {
+  const lower = query.toLowerCase().trim();
+  if (!lower) return false;
+
+  const comparisonPatterns = [
+    /\bvs\.?\b/,
+    /\bversus\b/,
+    /\bcompare\b/,
+    /\bcomparison\b/,
+    /\bcomparing\b/,
+    /\bdifference between\b/,
+    /\bdifferences between\b/,
+    /\bwhich is better\b/,
+    /\bwhich one is better\b/,
+    /\bwhich should i (?:choose|pick|buy|get)\b/,
+    /\bbetter than\b/,
+    /\bpros and cons\b/,
+    /\badvantages and disadvantages\b/,
+    /\bhow does .+ compare\b/,
+    /\bhead[- ]to[- ]head\b/,
+    /\bside[- ]by[- ]side\b/,
+  ];
+
+  return comparisonPatterns.some((pattern) => pattern.test(lower));
+}
+
+/**
+ * Detect list-style questions that should be answered as a markdown table.
+ * e.g. "list of cyclones in Andhra Pradesh", "all countries in Europe", "name every planet"
+ */
+export function isListQuery(query: string): boolean {
+  const lower = query.toLowerCase().trim();
+  if (!lower) return false;
+  // Comparisons use their own table format — don't double-trigger
+  if (isComparisonQuery(lower)) return false;
+
+  const listPatterns = [
+    /\blist of\b/,
+    /\blists of\b/,
+    /\blist all\b/,
+    /\blist down\b/,
+    /\bname all\b/,
+    /\bname every\b/,
+    /\bname each\b/,
+    /\benumerate\b/,
+    /\bgive me (?:a |the )?list\b/,
+    /\bshow me (?:a |the )?list\b/,
+    /\bshow (?:a |the )?list\b/,
+    /\bcomplete list\b/,
+    /\bfull list\b/,
+    /\bwhat are (?:all |the )?(?:the )?[\w-]+/,
+    /\bwhat (?:is|are) (?:the )?(?:latest|best|top|newest|current|leading) [\w\- ]+/i,
+    /\bwhich (?:is|are) (?:the )?(?:latest|best|top|newest|current|leading) [\w\- ]+/i,
+    /\bbest [\w\- ]+ (?:in|of|for) (?:20\d{2}|the world|now)\b/i,
+    /\ball (?:the )?[\w-]+(?:\s+[\w-]+){0,4}\s+in\b/,  // all cyclones in Andhra Pradesh
+    /\ball [\w-]+s\b/,                                   // all cyclones, all countries
+    /\btable of\b/,
+    /\bin tabular form\b/,
+    /\bas a table\b/,
+    /\btimeline of\b/,
+  ];
+
+  return listPatterns.some((pattern) => pattern.test(lower));
+}
+
 export function isExplicitWebSearchRequest(query: string): boolean {
   const lower = query.toLowerCase().trim();
   if (!lower) return false;
@@ -520,6 +592,51 @@ export function isContextLinkedFollowUpQuery(
     lower.includes('source');
 
   return hasBridge || hasPronounRef || (shortFollowUp && detailIntent);
+}
+
+function isSubstantiveSearchQuery(query: string): boolean {
+  const trimmed = query.trim();
+  if (trimmed.length < 3) return false;
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  return words.length >= 3 || trimmed.includes('?');
+}
+
+/**
+ * Decide whether to run web search and attach sources.
+ * Ask/auto mode: search for substantive questions (not only "latest news" heuristics).
+ * Web/deep modes and Research always search.
+ */
+export function shouldPerformWebSearch(
+  query: string,
+  mode: Mode,
+  chatMode: ChatMode,
+  conversationHistory: ConversationMessage[],
+  searchType?: WebSearchType,
+  hasAttachments = false
+): boolean {
+  if (chatMode === 'ai_psychologist') return false;
+  if (isSmallTalkQuery(query)) return false;
+
+  // Uploaded files are primary context (ChatGPT/Gemini behavior) — skip web unless clearly needed
+  if (hasAttachments) {
+    return isExplicitWebSearchRequest(query) || requiresCurrentInfo(query);
+  }
+
+  if (searchType === 'instant' || searchType === 'deep') return true;
+  if (mode === 'Research' || mode === 'Compare') return true;
+  if (isComparisonQuery(query)) return true;
+
+  const continuationFollowUp = isContinuationFollowUpQuery(query);
+  const contextLinkedFollowUp = isContextLinkedFollowUpQuery(query, conversationHistory);
+
+  return (
+    isExplicitWebSearchRequest(query) ||
+    requiresCurrentInfo(query) ||
+    isLikelyFollowUpNeedingSearch(query, conversationHistory) ||
+    continuationFollowUp ||
+    contextLinkedFollowUp ||
+    isSubstantiveSearchQuery(query)
+  );
 }
 
 /**

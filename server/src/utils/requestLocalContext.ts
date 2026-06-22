@@ -75,6 +75,11 @@ function readHeader(req: Request, name: string): string | undefined {
   return undefined;
 }
 
+/** Resolve the request's 2-letter country code from IP/geo headers (or accept-language). */
+export function resolveRequestCountry(req: Request): string | undefined {
+  return parseCountryCode(req);
+}
+
 function parseCountryCode(req: Request): string | undefined {
   const candidates = [
     readHeader(req, 'cf-ipcountry'),

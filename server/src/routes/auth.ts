@@ -30,10 +30,6 @@ const resendOTPSchema = z.object({
   email: z.string().email('Invalid email format')
 });
 
-const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required')
-});
-
 // Signup using Supabase Auth
 router.post('/auth/signup', async (req, res) => {
   try {
@@ -156,7 +152,6 @@ router.post('/auth/verify-otp', async (req, res) => {
 
     res.json({
       token: sessionToken,
-      refreshToken: verifyData.session?.refresh_token,
       user: {
         id: verifyData.user.id,
         name: name,
@@ -321,6 +316,8 @@ router.post('/auth/login', async (req, res) => {
     res.json({
       token: authData.session.access_token,
       refreshToken: authData.session.refresh_token,
+      expiresAt: authData.session.expires_at,   // Unix timestamp (seconds)
+      expiresIn: authData.session.expires_in,   // Seconds until expiry
       user: {
         id: authData.user.id,
         name: name,
@@ -345,57 +342,54 @@ router.post('/auth/login', async (req, res) => {
   }
 });
 
-// Refresh access token using Supabase refresh token
-router.post('/auth/refresh', async (req, res) => {
+// Logout
+router.post('/auth/logout', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const parse = refreshTokenSchema.safeParse(req.body);
-    if (!parse.success) {
-      return res.status(400).json({
-        error: 'Validation failed',
-        details: parse.error.flatten().fieldErrors
-      });
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (token) {
+      // Sign out from Supabase Auth
+      await supabase.auth.signOut();
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return res.status(500).json({ error: 'Auth service not configured' });
-    }
-
-    const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: supabaseAnonKey,
-        Authorization: `Bearer ${supabaseAnonKey}`,
-      },
-      body: JSON.stringify({ refresh_token: parse.data.refreshToken }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok || !data.access_token) {
-      return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    }
-
-    res.json({
-      token: data.access_token,
-      refreshToken: data.refresh_token,
-    });
-  } catch (error) {
-    console.error('Token refresh error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Logout — client clears tokens; no server-side global sign-out (avoids invalidating other sessions)
-router.post('/auth/logout', authenticateToken, async (_req: AuthRequest, res) => {
-  try {
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Refresh token — silent re-issue of access token ──────────────────────────
+// Called automatically by the frontend when the access token is about to expire.
+// Returns a fresh access_token + new refresh_token (Supabase rotates on use).
+// No auth middleware here — the refresh_token IS the credential.
+router.post('/auth/refresh', async (req, res) => {
+  try {
+    const refreshToken =
+      req.body?.refreshToken ||
+      req.body?.refresh_token ||
+      req.headers['x-refresh-token'];
+
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      return res.status(400).json({ error: 'refreshToken is required' });
+    }
+
+    const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+
+    if (error || !data.session) {
+      return res.status(401).json({ error: 'Refresh token invalid or expired. Please log in again.' });
+    }
+
+    return res.json({
+      token: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt: data.session.expires_at,
+      expiresIn: data.session.expires_in,
+    });
+  } catch (err) {
+    console.error('Token refresh error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

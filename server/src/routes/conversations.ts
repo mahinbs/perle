@@ -14,11 +14,16 @@ router.get('/conversations', optionalAuth, async (req: AuthRequest, res) => {
 
     const chatMode = (req.query.chatMode as string) || 'normal';
 
+    // Pinned conversations bubble to the top; rest by most-recently-updated.
+    // Postgres orders NULLs last by default with desc, so unpinned (is_pinned=false)
+    // naturally fall below pinned ones.
     const { data: conversations, error } = await supabase
       .from('conversations')
-      .select('id, title, chat_mode, created_at, updated_at')
+      .select('id, title, chat_mode, created_at, updated_at, is_pinned, pinned_at')
       .eq('user_id', req.userId)
       .eq('chat_mode', chatMode)
+      .order('is_pinned', { ascending: false, nullsFirst: false })
+      .order('pinned_at', { ascending: false, nullsFirst: false })
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -89,6 +94,11 @@ router.get('/conversations/:id', optionalAuth, async (req: AuthRequest, res) => 
     }
 
     const conversationId = req.params.id;
+    const parsedLimit = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const pageSize = Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(parsedLimit, 100)
+      : 20;
+    const beforeIso = typeof req.query.before === 'string' ? req.query.before : undefined;
 
     // Get conversation metadata
     const { data: conversation, error: convError } = await supabase
@@ -102,21 +112,36 @@ router.get('/conversations/:id', optionalAuth, async (req: AuthRequest, res) => 
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    // Get conversation history
-    const { data: history, error: historyError } = await supabase
+    // Get conversation history (paginated — newest page first, scroll up for older)
+    let historyQuery = supabase
       .from('conversation_history')
       .select('query, answer, created_at, model')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true });
+      .eq('conversation_id', conversationId);
+
+    if (beforeIso) {
+      historyQuery = historyQuery.lt('created_at', beforeIso);
+    }
+
+    const { data: rawHistory, error: historyError } = await historyQuery
+      .order('created_at', { ascending: false })
+      .limit(pageSize);
+
+    const history = (rawHistory || []).slice().reverse();
 
     if (historyError) {
       console.error('Failed to fetch conversation history:', historyError);
       return res.status(500).json({ error: 'Failed to fetch conversation history' });
     }
 
+    const oldestTimestamp = history[0]?.created_at || null;
+    const hasMore = history.length === pageSize;
+
     res.json({
       conversation,
-      messages: history || []
+      messages: history || [],
+      hasMore,
+      oldestTimestamp,
+      pageSize,
     });
   } catch (error) {
     console.error('Get conversation error:', error);
@@ -132,8 +157,13 @@ router.patch('/conversations/:id', optionalAuth, async (req: AuthRequest, res) =
     }
 
     const conversationId = req.params.id;
+    // Either field is optional — pass `title` to rename, `pinned` to pin/unpin,
+    // or both. Frontend uses this for both rename + pin actions.
     const schema = z.object({
-      title: z.string().min(1).max(200)
+      title: z.string().min(1).max(200).optional(),
+      pinned: z.boolean().optional(),
+    }).refine((d) => d.title !== undefined || d.pinned !== undefined, {
+      message: 'At least one of `title` or `pinned` must be provided',
     });
 
     const parse = schema.safeParse(req.body);
@@ -144,11 +174,75 @@ router.patch('/conversations/:id', optionalAuth, async (req: AuthRequest, res) =
       });
     }
 
-    const { title } = parse.data;
+    const update: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (parse.data.title !== undefined) update.title = parse.data.title;
+
+    // Tiered pin limit — pinning everything makes "pin" meaningless. Only
+    // enforced when going from unpinned → pinned (unpin is always allowed).
+    if (parse.data.pinned === true) {
+      try {
+        // Resolve the user's tier (best-effort; defaults to free).
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('premium_tier, is_premium, subscription_status, subscription_end_date')
+          .eq('user_id', req.userId)
+          .single();
+        let tier = 'free';
+        if (profile) {
+          const status = (profile as any)?.subscription_status || 'inactive';
+          const endDate = (profile as any)?.subscription_end_date;
+          const active = status === 'active' && endDate && new Date(endDate) > new Date();
+          tier = active ? ((profile as any)?.premium_tier || 'free') : 'free';
+        }
+        // Pinning is a PAID feature — Pro 20 / Max 50. Caps are generous
+        // enough that most users never hit them, but tight enough that the
+        // pin feature stays meaningful (when everything is pinned, nothing
+        // stands out). Free users get a clear upgrade prompt.
+        const PIN_LIMIT: Record<string, number> = { free: 0, pro: 20, max: 50 };
+        const limit = PIN_LIMIT[tier] ?? 0;
+
+        if (limit === 0) {
+          return res.status(403).json({
+            error: 'Pinning conversations is a Pro / Max feature. Upgrade to pin your favourite chats to the top.',
+            limitReached: true,
+            limit: 0,
+            tier,
+          });
+        }
+
+        // Count currently-pinned conversations for this user (excluding this one,
+        // in case they re-pin an already-pinned conversation, which is a no-op).
+        const { count } = await supabase
+          .from('conversations')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', req.userId)
+          .eq('is_pinned', true)
+          .neq('id', conversationId);
+
+        if (count !== null && count >= limit) {
+          const tierLabel = tier === 'pro' ? 'Pro' : 'Max';
+          return res.status(409).json({
+            error: `${tierLabel} plan allows up to ${limit} pinned conversations. Unpin one first${tier === 'pro' ? ', or upgrade to Max' : ''}.`,
+            limitReached: true,
+            limit,
+            tier,
+          });
+        }
+      } catch (pinLimitErr) {
+        // If the limit check fails (e.g. column missing pre-migration), don't
+        // block the pin — fail open.
+        console.warn('Pin limit check failed (continuing):', pinLimitErr);
+      }
+    }
+
+    if (parse.data.pinned !== undefined) {
+      update.is_pinned = parse.data.pinned;
+      update.pinned_at = parse.data.pinned ? new Date().toISOString() : null;
+    }
 
     const { data: conversation, error } = await supabase
       .from('conversations')
-      .update({ title, updated_at: new Date().toISOString() })
+      .update(update)
       .eq('id', conversationId)
       .eq('user_id', req.userId)
       .select()

@@ -334,7 +334,14 @@ export async function searchAPIStream(
     onMeta: (conversationId: string | null) => void;
     onSources: (sources: Source[]) => void;
     onToken: (text: string) => void;
-    onDone: (suggestedQuestions: string[]) => void;
+    /**
+     * `cleanText` is the backend's authoritative final answer. When the stream
+     * gets truncated mid-flight (e.g. model leaks the SUGGESTED_FOLLOWUPS
+     * marker early, network hiccup), the sum of token events can be SHORTER
+     * than `cleanText` — the UI should fall back to `cleanText` so the user
+     * sees the complete answer.
+     */
+    onDone: (suggestedQuestions: string[], cleanText?: string) => void;
     onError: (message: string) => void;
   }
 ): Promise<void> {
@@ -403,7 +410,7 @@ export async function searchAPIStream(
           } else if (currentEvent === 'token') {
             callbacks.onToken(data.text ?? '');
           } else if (currentEvent === 'done') {
-            callbacks.onDone(data.suggestedQuestions ?? []);
+            callbacks.onDone(data.suggestedQuestions ?? [], data.cleanText);
           } else if (currentEvent === 'error') {
             callbacks.onError(data.message ?? 'Error');
           }

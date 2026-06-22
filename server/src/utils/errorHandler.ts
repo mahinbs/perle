@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import multer from 'multer';
 
 export class AppError extends Error {
   constructor(
@@ -22,6 +23,15 @@ export function errorHandler(
       error: err.message,
       statusCode: err.statusCode
     });
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    const message =
+      err.code === 'LIMIT_UNEXPECTED_FILE'
+        ? `Unexpected upload field "${err.field}". Use "files" for attachments (legacy: "image" or "images").`
+        : err.message;
+    res.status(400).json({ error: message, statusCode: 400 });
     return;
   }
 

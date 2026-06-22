@@ -1,12 +1,22 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import multer from 'multer';
-import { generateAIAnswer } from '../utils/aiProviders.js';
-import type { AnswerResult, Mode, LLMModel } from '../types.js';
+import { generateAIAnswer, streamAIAnswer, type GeminiStreamEvent } from '../utils/aiProviders.js';
+import type { AnswerResult, Mode, LLMModel, FileAttachment } from '../types.js';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 import { buildUserLocalContext } from '../utils/requestLocalContext.js';
-import { getUploadedImageFiles, uploadedFilesToDataUrls } from '../utils/mediaHelpers.js';
+import { uploadSearchFiles } from '../utils/uploadConfig.js';
+import { LLM_MODEL_ENUM } from '../utils/modelRegistry.js';
+import { enforceConversationLimit } from '../utils/conversationLimits.js';
+import { checkFreeSearchAllowed, recordFreeSearchUsage } from '../utils/usageLimits.js';
+import { buildCompressedContext } from '../utils/contextCompression.js';
+import {
+  collectUploadedFiles,
+  processUploadedFiles,
+  enforceAttachmentLimit,
+  fileToDataUrl,
+  resolveQueryWithAttachments,
+} from '../utils/fileAttachments.js';
 
 const router = Router();
 
@@ -50,45 +60,24 @@ const buildFallbackSuggestedQuestions = (query: string): string[] => {
   ];
 };
 
-// Configure multer for file uploads (images and documents)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB max
-  },
-  fileFilter: (req, file, cb) => {
-    // Allow images and common document types
-    const allowedTypes = [
-      'image/', // All image types
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-      'text/plain',
-      'text/csv',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' // .xlsx
-    ];
-    
-    if (allowedTypes.some(type => file.mimetype.startsWith(type) || file.mimetype === type)) {
-      cb(null, true);
-    } else {
-      cb(new Error('File type not supported. Allowed: images, PDF, Word, Excel, text files'));
-    }
-  },
-});
-
 const searchSchema = z.object({
-  query: z.string().min(1, 'Query cannot be empty').max(500, 'Query too long'),
+  query: z.string().max(500, 'Query too long').default(''),
   mode: z.enum(['Ask', 'Research', 'Summarize', 'Compare']).default('Ask'),
   newConversation: z.boolean().optional().default(false), // Flag to start new conversation
   conversationId: z.union([z.string().uuid(), z.null()]).optional(), // Optional conversation ID to continue existing conversation (can be null)
   conversationHistory: z
-    .array(
-      z.object({
-        role: z.enum(['user', 'assistant']),
-        content: z.string().min(1).max(6000),
-      })
-    )
+    .preprocess((val) => {
+      if (!Array.isArray(val)) return [];
+      return val
+        .map((m: any) => {
+          const role = m?.role === 'assistant' ? 'assistant' : 'user';
+          const raw = typeof m?.content === 'string' ? m.content : (m?.content == null ? '' : String(m.content));
+          const content = raw.trim().slice(0, 12000);
+          return { role, content };
+        })
+        .filter((m) => m.content.length > 0)
+        .slice(-40);
+    }, z.array(z.object({ role: z.enum(['user','assistant']), content: z.string() })))
     .optional()
     .default([]),
   userContext: z.object({
@@ -99,58 +88,12 @@ const searchSchema = z.object({
     currencyCode: z.string().min(3).max(3).optional(),
     utcOffsetMinutes: z.number().int().min(-840).max(840).optional(),
   }).optional(),
-  model: z.enum([
-    'auto',
-    'gpt-5',
-    'gpt-5.1',
-    'gpt-5.2',
-    'gpt-5.3',
-    'gpt-4o',
-    'gpt-4o-mini',
-    'gpt-4-turbo',
-    'gpt-4',
-    'gpt-3.5-turbo',
-    'gemini-2.0-latest',
-    'gemini-3.0',
-    'gemini-3.1',
-    'gemini-3.1-flash',
-    'gemini-lite',
-    'claude-4.5-sonnet',
-    'claude-4.5-opus',
-    'claude-4.6-sonnet',
-    'claude-4.6-opus',
-    'claude-4.5-haiku',
-    'claude-4-sonnet',
-    'claude-4-opus',
-    'claude-4.1-opus',
-    'claude-3-haiku',
-    'grok-3',
-    'grok-3-mini',
-    // 'grok-4', // COMMENTED OUT - temporarily disabled
-    'grok-4-heavy',
-    'grok-4-fast',
-    'grok-code-fast-1',
-    'grok-beta',
-    // 'claude-4.5',
-    // 'claude-3-opus',
-    // 'claude-3-sonnet',
-    // 'claude-3-haiku',
-    'gemini-pro',
-    'gemini-pro-vision',
-    'llama-2',
-    'mistral-7b'
-  ]).default('gemini-lite'),
+  model: z.enum(LLM_MODEL_ENUM).default('gemini-lite'),
   searchType: z.enum(['auto', 'instant', 'deep']).optional()
 });
 
-const searchFileUpload = upload.fields([
-  { name: 'image', maxCount: 1 },
-  { name: 'images', maxCount: 5 },
-  { name: 'files', maxCount: 5 },
-]);
-
 // Main search endpoint (supports file uploads)
-router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, res) => {
+router.post('/search', optionalAuth, uploadSearchFiles, async (req: AuthRequest, res) => {
   try {
     // Handle both JSON and form-data
     let bodyData = req.body;
@@ -174,8 +117,15 @@ router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, 
       }
     }
     
+    if (Array.isArray(bodyData?.conversationHistory)) {
+      bodyData.conversationHistory = bodyData.conversationHistory
+        .filter((m: any) => m && typeof m.content === 'string' && m.content.trim().length > 0
+          && (m.role === 'user' || m.role === 'assistant'));
+    }
+
     const parse = searchSchema.safeParse(bodyData);
     if (!parse.success) {
+      console.warn('search: invalid request', JSON.stringify(parse.error.flatten().fieldErrors));
       return res.status(400).json({ 
         error: 'Invalid request', 
         details: parse.error.flatten().fieldErrors 
@@ -183,7 +133,8 @@ router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, 
     }
 
     const { query, mode, model, newConversation, conversationId, conversationHistory: clientConversationHistory, userContext, searchType } = parse.data;
-    const trimmedQuery = query.trim();
+    const uploadedFilesEarly = collectUploadedFiles(req);
+    const trimmedQuery = resolveQueryWithAttachments(query, uploadedFilesEarly.length);
     const effectiveUserContext = buildUserLocalContext(req, userContext);
 
     if (!trimmedQuery) {
@@ -194,7 +145,8 @@ router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, 
 
     // Handle conversation management
     let currentConversationId = conversationId;
-    
+    let createdNewConversation = false;
+
     // Create new conversation ONLY if:
     // 1. User explicitly clicks "New Chat" (newConversation=true)
     // 2. OR no conversationId provided (frontend will save it and send it next time)
@@ -210,9 +162,10 @@ router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, 
           })
           .select()
           .single();
-        
+
         if (!convError && newConv) {
           currentConversationId = newConv.id;
+          createdNewConversation = true;
           console.log(`✨ Created new conversation: ${currentConversationId}`);
         }
       } catch (convError) {
@@ -264,9 +217,23 @@ router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, 
       }
     }
 
+    // Server-side free-tier enforcement (logged-in users; anon keeps client gate).
+    if (req.userId && !isPremium) {
+      const block = await checkFreeSearchAllowed(req.userId, searchType === 'deep');
+      if (block) {
+        return res.status(403).json({ error: block.message, limitReached: true, kind: block.kind });
+      }
+    }
+
+    // Auto-prune old conversations beyond the user's plan limit (free:20, pro:500,
+    // max:5000). Only when a NEW conversation was just created; non-blocking.
+    if (req.userId && createdNewConversation) {
+      void enforceConversationLimit(req.userId, isPremium ? premiumTier : 'free');
+    }
+
     // Determine actual model to use
     let actualModel: LLMModel = model as LLMModel;
-    
+
     if (!isPremium) {
       // Free users always use gemini-lite
       actualModel = 'gemini-lite';
@@ -281,85 +248,82 @@ router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, 
 
     // Fetch conversation history for context
     // Non-logged: 5 messages (from client fallback only)
-    // Free logged: 10 messages
-    // Premium logged: 20 messages
-    const contextMessageLimit = req.userId ? (isPremium ? 20 : 10) : 5;
+    // Verbatim window: Free 5 / Pro 10 / Max 15 most-recent messages. Everything
+    // older is folded into a persisted summary so long chats don't lose context
+    // (see buildCompressedContext). Anon users keep the 5-msg client-history path.
+    const contextMessageLimit = !req.userId
+      ? 5
+      : premiumTier === 'max' ? 15
+      : premiumTier === 'pro' ? 10
+      : 5;
     let conversationHistory: any[] = [];
+    let priorSummary: string | null = null;
     if (req.userId && currentConversationId && !newConversation) {
       try {
-        const { data: history } = await supabase
-          .from('conversation_history')
-          .select('query, answer')
-          .eq('conversation_id', currentConversationId)
-          .order('created_at', { ascending: false })
-          .limit(contextMessageLimit);
-        
-        if (history && history.length > 0) {
-          // Convert to conversation format (reverse to get chronological order)
-          conversationHistory = history.reverse().flatMap((item: any) => [
-            { role: 'user' as const, content: item.query },
-            { role: 'assistant' as const, content: item.answer }
-          ]);
-        }
+        const compressed = await buildCompressedContext(req.userId, currentConversationId, contextMessageLimit);
+        conversationHistory = compressed.recent;
+        priorSummary = compressed.summary;
       } catch (historyError) {
-        console.warn('Failed to fetch conversation history:', historyError);
+        console.warn('Failed to fetch compressed context:', historyError);
         // Continue without history if fetch fails
       }
     }
-    
-    // If starting new conversation, clear existing history for this user
-    if (req.userId && newConversation) {
-      try {
-        await supabase
-          .from('conversation_history')
-          .delete()
-          .eq('user_id', req.userId);
-      } catch (clearError) {
-        console.warn('Failed to clear conversation history:', clearError);
-        // Continue even if clear fails
-      }
-    }
+
+    // NOTE: Do NOT delete conversation_history on newConversation. History is
+    // scoped per conversation_id, so a new chat simply gets its own id. The old
+    // code here wiped ALL of the user's history across every conversation, which
+    // destroyed past chats (that's why old conversations loaded empty).
 
     // Fallback context: if server-side history isn't available, use client-provided history
     if ((!conversationHistory || conversationHistory.length === 0) && clientConversationHistory.length > 0) {
       conversationHistory = clientConversationHistory.slice(-contextMessageLimit);
     }
 
-    // Process uploaded files (images/documents) if present
-    const uploadedFiles = getUploadedImageFiles(req);
-    let imageDataUrls: string[] | undefined;
-    if (uploadedFiles.length > 0) {
-      // Guard: skip files that are too large for inline_data (Gemini limit ~4MB per file).
-      // Large PDFs degrade gracefully — model answers from prompt only.
-      const MAX_INLINE_BYTES = 4 * 1024 * 1024; // 4 MB
-      const acceptableFiles = uploadedFiles.filter((f) => {
-        if (f.buffer.length > MAX_INLINE_BYTES) {
-          console.warn(`⚠️ File too large for inline AI (${(f.buffer.length / 1024 / 1024).toFixed(1)}MB), skipping: ${f.originalname || f.mimetype}`);
-          return false;
-        }
-        return true;
-      });
-      if (acceptableFiles.length > 0) {
-        imageDataUrls = uploadedFilesToDataUrls(acceptableFiles);
-        console.log(`📎 ${acceptableFiles.length}/${uploadedFiles.length} file(s) attached in search`);
-      } else {
-        console.warn('⚠️ All attached files exceeded inline size limit — proceeding with text-only query');
+    // Process uploaded files (images + documents) — multi-file supported
+    let imageDataUrl: string | undefined = undefined;
+    let attachments: FileAttachment[] | undefined;
+    const uploadedFiles = collectUploadedFiles(req);
+    if (uploadedFiles.length > 0 && req.userId) {
+      try {
+        console.log(`📎 ${uploadedFiles.length} file(s) attached in search`);
+        const processed = await processUploadedFiles(uploadedFiles, req.userId, 'search-attachments');
+      attachments = enforceAttachmentLimit(processed, actualModel, isPremium);
+      if (attachments.length > 1) {
+        console.log(`📎 Multi-file analysis (${attachments.length}): ${attachments.map((a) => a.filename).join(', ')}`);
       }
+      const firstImage = attachments.find((a) => a.mimeType.startsWith('image/'));
+        if (firstImage) imageDataUrl = firstImage.dataUrl;
+      } catch (fileError) {
+        console.error('Failed to process attachments:', fileError);
+      }
+    } else if (uploadedFiles.length > 0) {
+      attachments = uploadedFiles.map((f) => ({
+        dataUrl: fileToDataUrl(f),
+        mimeType: f.mimetype,
+        filename: f.originalname,
+      }));
+      attachments = enforceAttachmentLimit(attachments, actualModel, isPremium);
+      const firstImage = attachments.find((a) => a.mimeType.startsWith('image/'));
+      if (firstImage) imageDataUrl = firstImage.dataUrl;
     }
 
-    // Generate answer using real AI provider only - no fallbacks
+    // Generate answer (silent model failover handled in generateAIAnswer)
     let result: AnswerResult;
     try {
-      result = await generateAIAnswer(trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory, 'normal', null, null, null, null, null, imageDataUrls, effectiveUserContext, searchType as any);
+      result = await generateAIAnswer(
+        trimmedQuery, mode as Mode, actualModel, isPremium, conversationHistory,
+        'normal', null, null, null, null, null,
+        imageDataUrl, effectiveUserContext, searchType as any, attachments, priorSummary
+      );
     } catch (apiError: any) {
       console.error('AI provider error:', apiError);
       const errorMessage = apiError?.message || 'Failed to generate answer';
+      // Return specific error message to help debug
       return res.status(500).json({ 
-        error: errorMessage.includes('API_KEY') 
-          ? 'API configuration error. Please contact support.'
-          : errorMessage.length > 200 
-            ? 'Failed to generate answer. Please try again.' 
-            : errorMessage,
+        error: errorMessage,
+        details: apiError?.message?.includes('API_KEY') 
+          ? 'API key is missing or invalid. Please check your GOOGLE_API_KEY_FREE in .env file.'
+          : undefined
       });
     }
 
@@ -405,14 +369,17 @@ router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, 
           
           // Keep only last N messages per conversation (aligned with context limits)
           // Free: 10 messages, Premium: 20 messages per conversation
-          const maxHistory = isPremium ? 20 : 10;
+          // Keep a generous amount of stored history per conversation so the full
+          // chat reloads when reopened. (LLM *context* is limited separately above
+          // via contextMessageLimit — this cap is only to bound storage growth.)
+          const maxHistory = 200;
           if (currentConversationId) {
             const { data: convHistory } = await supabase
               .from('conversation_history')
               .select('id')
               .eq('conversation_id', currentConversationId)
               .order('created_at', { ascending: false });
-            
+
             if (convHistory && convHistory.length > maxHistory) {
               const idsToDelete = convHistory.slice(maxHistory).map((h: any) => h.id);
               await supabase
@@ -425,6 +392,11 @@ router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, 
         // Log but don't fail the request if conversation history save fails
         console.error('Failed to save conversation history:', convError);
       }
+    }
+
+    // Record free-tier usage server-side (lifetime counters).
+    if (req.userId && !isPremium) {
+      void recordFreeSearchUsage(req.userId, searchType === 'deep');
     }
 
     console.log(`📤 Sending back: conversationId=${currentConversationId}`);
@@ -444,6 +416,200 @@ router.post('/search', optionalAuth, searchFileUpload, async (req: AuthRequest, 
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── SSE Streaming search endpoint (/api/stream) ─────────────────────────────
+router.post('/stream', optionalAuth, uploadSearchFiles, async (req: AuthRequest, res) => {
+  // ── Parse & validate body (same as /search) ───────────────────────────────
+  let bodyData = req.body;
+  if (bodyData.newConversation === 'true' || bodyData.newConversation === 'false') {
+    bodyData.newConversation = bodyData.newConversation === 'true';
+  }
+  if (typeof bodyData.conversationHistory === 'string') {
+    try { bodyData.conversationHistory = JSON.parse(bodyData.conversationHistory); }
+    catch { bodyData.conversationHistory = []; }
+  }
+  if (typeof bodyData.userContext === 'string') {
+    try { bodyData.userContext = JSON.parse(bodyData.userContext); }
+    catch { bodyData.userContext = undefined; }
+  }
+
+  if (Array.isArray(bodyData?.conversationHistory)) {
+    bodyData.conversationHistory = bodyData.conversationHistory
+      .filter((m: any) => m && typeof m.content === 'string' && m.content.trim().length > 0
+        && (m.role === 'user' || m.role === 'assistant'));
+  }
+
+  const parse = searchSchema.safeParse(bodyData);
+  if (!parse.success) {
+    console.warn('stream: invalid request', JSON.stringify(parse.error.flatten().fieldErrors));
+    return res.status(400).json({ error: 'Invalid request', details: parse.error.flatten().fieldErrors });
+  }
+
+  const { query, mode, model, newConversation, conversationId, conversationHistory: clientConversationHistory, userContext, searchType } = parse.data;
+  const uploadedFilesEarly = collectUploadedFiles(req);
+  const trimmedQuery = resolveQueryWithAttachments(query, uploadedFilesEarly.length);
+  const effectiveUserContext = buildUserLocalContext(req, userContext);
+
+  if (!trimmedQuery) return res.status(400).json({ error: 'Query cannot be empty' });
+
+  // ── Premium check (BEFORE SSE headers so we can return a clean 403) ─────────
+  let isPremium = false;
+  let premiumTier = 'free';
+  if (req.userId) {
+    try {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('premium_tier, is_premium, subscription_status, subscription_end_date')
+        .eq('user_id', req.userId).single();
+      if (profile) {
+        premiumTier = (profile as any)?.premium_tier || 'free';
+        const status = (profile as any)?.subscription_status || 'inactive';
+        const endDate = (profile as any)?.subscription_end_date;
+        if (status === 'active' && endDate) {
+          isPremium = new Date(endDate) > new Date() && premiumTier !== 'free';
+        } else {
+          isPremium = (profile as any)?.is_premium ?? (premiumTier !== 'free');
+        }
+      }
+    } catch { /* default free */ }
+  }
+
+  // ── Server-side free-tier enforcement (logged-in users) ─────────────────────
+  // Anonymous users can't be tracked server-side; they keep the client-side gate.
+  if (req.userId && !isPremium) {
+    const block = await checkFreeSearchAllowed(req.userId, searchType === 'deep');
+    if (block) {
+      return res.status(403).json({ error: block.message, limitReached: true, kind: block.kind });
+    }
+  }
+
+  // ── SSE headers ────────────────────────────────────────────────────────────
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+  res.flushHeaders();
+
+  const send = (event: string, data: object) => {
+    if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // ── Conversation management ────────────────────────────────────────────────
+  let currentConversationId = conversationId;
+  let createdNewConversation = false;
+  if (req.userId && !currentConversationId) {
+    try {
+      const { data: newConv } = await supabase
+        .from('conversations')
+        .insert({ user_id: req.userId, title: trimmedQuery.substring(0, 50), chat_mode: 'normal' })
+        .select().single();
+      if (newConv) { currentConversationId = (newConv as any).id; createdNewConversation = true; }
+    } catch { /* continue */ }
+  }
+
+  // Auto-prune old conversations beyond the user's plan limit (non-blocking).
+  if (req.userId && createdNewConversation) {
+    void enforceConversationLimit(req.userId, isPremium ? premiumTier : 'free');
+  }
+
+  let actualModel: LLMModel = (!isPremium || model === 'auto') ? 'gemini-lite' : model as LLMModel;
+
+  // ── Conversation history (compressed: verbatim window + rolling summary) ──
+  const contextMessageLimit = !req.userId
+    ? 5
+    : premiumTier === 'max' ? 15
+    : premiumTier === 'pro' ? 10
+    : 5;
+  let conversationHistory: any[] = [];
+  let priorSummary: string | null = null;
+  if (req.userId && currentConversationId && !newConversation) {
+    try {
+      const compressed = await buildCompressedContext(req.userId, currentConversationId, contextMessageLimit);
+      conversationHistory = compressed.recent;
+      priorSummary = compressed.summary;
+    } catch { /* continue */ }
+  }
+  if ((!conversationHistory || conversationHistory.length === 0) && clientConversationHistory.length > 0) {
+    conversationHistory = clientConversationHistory.slice(-contextMessageLimit);
+  }
+
+  // ── File attachments ───────────────────────────────────────────────────────
+  let imageDataUrl: string | undefined;
+  let attachments: import('../types.js').FileAttachment[] | undefined;
+  const uploadedFiles = collectUploadedFiles(req);
+  if (uploadedFiles.length > 0) {
+    try {
+      if (req.userId) {
+        const processed = await processUploadedFiles(uploadedFiles, req.userId, 'search-attachments');
+        attachments = enforceAttachmentLimit(processed, actualModel, isPremium);
+      } else {
+        attachments = enforceAttachmentLimit(
+          uploadedFiles.map((f) => ({ dataUrl: fileToDataUrl(f), mimeType: f.mimetype, filename: f.originalname })),
+          actualModel, isPremium
+        );
+      }
+      const firstImage = attachments?.find((a) => a.mimeType.startsWith('image/'));
+      if (firstImage) imageDataUrl = firstImage.dataUrl;
+    } catch (e) { console.error('File processing error:', e); }
+  }
+
+  // Send conversationId before streaming starts
+  send('meta', { conversationId: currentConversationId });
+
+  // ── Stream ─────────────────────────────────────────────────────────────────
+  let fullCleanText = '';
+  let suggestedQuestions: string[] = [];
+
+  try {
+    for await (const event of streamAIAnswer(
+      trimmedQuery, mode as import('../types.js').Mode, actualModel, isPremium, conversationHistory,
+      'normal', null, null, null, null, null,
+      imageDataUrl, effectiveUserContext, searchType as any, attachments, priorSummary
+    )) {
+      if (event.type === 'sources') {
+        send('sources', { sources: event.sources });
+      } else if (event.type === 'token') {
+        send('token', { text: event.text });
+      } else if (event.type === 'done') {
+        fullCleanText = event.cleanText;
+        suggestedQuestions = event.suggestedQuestions;
+        const finalSuggestions = suggestedQuestions.length >= 3
+          ? suggestedQuestions
+          : buildFallbackSuggestedQuestions(trimmedQuery);
+        send('done', { suggestedQuestions: finalSuggestions });
+      }
+      if (res.writableEnded) break;
+    }
+  } catch (error: any) {
+    console.error('Stream error:', error);
+    send('error', { message: error.message || 'Streaming failed' });
+  } finally {
+    if (!res.writableEnded) res.end();
+  }
+
+  // ── Persist to DB (non-blocking, after response ends) ─────────────────────
+  if (req.userId && fullCleanText) {
+    (async () => {
+      try {
+        await supabase.from('search_history').insert({
+          user_id: req.userId!, query: trimmedQuery, mode, timestamp: new Date().toISOString()
+        });
+        await supabase.from('conversation_history').insert({
+          user_id: req.userId!, query: trimmedQuery, answer: fullCleanText,
+          mode, model: actualModel, chat_mode: 'normal',
+          conversation_id: currentConversationId || null
+        });
+        if (currentConversationId) {
+          await supabase.from('conversations')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('id', currentConversationId);
+        }
+        // Record free-tier usage server-side (lifetime counters).
+        if (!isPremium) await recordFreeSearchUsage(req.userId!, searchType === 'deep');
+      } catch { /* don't fail after stream is done */ }
+    })();
   }
 });
 
@@ -571,65 +737,6 @@ router.delete('/search/history', optionalAuth, async (req: AuthRequest, res) => 
   } catch (error) {
     console.error('Delete search history error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/** Proxy favicons so web + Capacitor WebView always get a loadable image URL. */
-router.get('/favicon', async (req, res) => {
-  try {
-    const rawUrl = String(req.query.url || '').trim();
-    if (!rawUrl) {
-      return res.status(400).end();
-    }
-
-    let pageUrl = rawUrl.replace(/^[\s>*\-•#[\]()]+/, '').trim();
-    if (!/^https?:\/\//i.test(pageUrl)) {
-      pageUrl = `https://${pageUrl.replace(/^\/\//, '')}`;
-    }
-
-    let host = '';
-    try {
-      host = new URL(pageUrl).hostname.replace(/^www\./i, '');
-    } catch {
-      return res.status(400).end();
-    }
-
-    const encodedPage = encodeURIComponent(pageUrl);
-    const candidates = [
-      `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodedPage}&size=32`,
-      `https://icons.duckduckgo.com/ip3/${host}.ico`,
-      `https://external-content.duckduckgo.com/ip3/${host}.ico`,
-      `https://www.google.com/s2/favicons?domain_url=${encodedPage}&sz=64`,
-      `https://${host}/favicon.ico`,
-      `https://${host}/apple-touch-icon.png`,
-    ];
-
-    for (const candidate of candidates) {
-      try {
-        const response = await fetch(candidate, {
-          headers: { Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' },
-          redirect: 'follow',
-        });
-        if (!response.ok) continue;
-
-        const contentType = response.headers.get('content-type') || 'image/png';
-        if (!/image|icon|octet-stream/i.test(contentType)) continue;
-
-        const buffer = Buffer.from(await response.arrayBuffer());
-        if (buffer.length < 16) continue;
-
-        res.set('Content-Type', contentType.split(';')[0] || 'image/png');
-        res.set('Cache-Control', 'public, max-age=604800');
-        return res.send(buffer);
-      } catch {
-        continue;
-      }
-    }
-
-    return res.status(404).end();
-  } catch (error) {
-    console.error('Favicon proxy error:', error);
-    return res.status(500).end();
   }
 });
 

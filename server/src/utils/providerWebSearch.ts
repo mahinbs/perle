@@ -18,7 +18,8 @@ function normalizeUrl(url: string): string | null {
   }
 }
 
-function dedupeResults(results: SearchResult[], maxResults: number): SearchResult[] {
+/** Deduplicates by URL — no count cap, returns all unique results. */
+function dedupeResults(results: SearchResult[]): SearchResult[] {
   const seen = new Set<string>();
   const unique: SearchResult[] = [];
   for (const r of results) {
@@ -26,7 +27,6 @@ function dedupeResults(results: SearchResult[], maxResults: number): SearchResul
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     unique.push({ ...r, url: normalized });
-    if (unique.length >= maxResults) break;
   }
   return unique;
 }
@@ -72,10 +72,10 @@ function toSearchResults(items: JsonSource[], maxResults: number): SearchResult[
     })
     .filter((r) => r.url && r.content);
 
-  return dedupeResults(mapped, maxResults);
+  return dedupeResults(mapped);
 }
 
-function parseUrlResultsFromText(text: string, maxResults: number): SearchResult[] {
+function parseUrlResultsFromText(text: string): SearchResult[] {
   if (!text) return [];
   const urlMatches = text.match(/https?:\/\/[^\s)\]}>"']+/g) || [];
   const raw = urlMatches.map((url, idx) => {
@@ -92,7 +92,7 @@ function parseUrlResultsFromText(text: string, maxResults: number): SearchResult
       score: Math.max(0.1, 1 - idx * 0.05),
     } as SearchResult;
   });
-  return dedupeResults(raw, maxResults);
+  return dedupeResults(raw);
 }
 
 function getResponseOutputText(data: any): string {
@@ -111,7 +111,7 @@ function getResponseOutputText(data: any): string {
 export async function searchWithGeminiGrounding(
   query: string,
   apiKey: string,
-  maxResults: number = 10,
+  _maxResults: number = 10, // kept for backwards compat — no longer caps results
   modelName: string = 'gemini-2.5-flash-lite'
 ): Promise<SearchResult[]> {
   try {
@@ -120,7 +120,6 @@ export async function searchWithGeminiGrounding(
 
     const response = await model.generateContent({
       contents: [{ role: 'user', parts: [{ text: `Find current, reliable web sources for: ${query}` }] }],
-      // Grounding with Google Search
       tools: [{ googleSearch: {} } as any],
       generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
     } as any);
@@ -142,7 +141,7 @@ export async function searchWithGeminiGrounding(
       })
       .filter((r: SearchResult) => r.url);
 
-    return dedupeResults(results, maxResults);
+    return dedupeResults(results); // no count cap — return everything Gemini grounding found
   } catch (error) {
     console.warn('Gemini grounding search failed:', error);
     return [];
@@ -152,7 +151,7 @@ export async function searchWithGeminiGrounding(
 export async function searchWithOpenAIWebTool(
   query: string,
   apiKey: string,
-  maxResults: number = 10
+  _maxResults: number = 10 // kept for backwards compat — no hard cap on return
 ): Promise<SearchResult[]> {
   if (!apiKey) return [];
   try {
@@ -165,11 +164,11 @@ export async function searchWithOpenAIWebTool(
       body: JSON.stringify({
         model: 'gpt-4o',
         input: `Search the web for latest information on: "${query}".
-Return ONLY JSON array with max ${maxResults} items, each item as:
+Return ALL relevant sources as a JSON array, each item as:
 {"title":"...","url":"...","snippet":"..."}
 No markdown, no additional text.`,
         tools: [{ type: 'web_search' }],
-        max_output_tokens: 700,
+        max_output_tokens: 1200, // increased so more sources can be returned
       }),
     });
 
@@ -177,8 +176,8 @@ No markdown, no additional text.`,
     const data: any = await response.json();
     const text = getResponseOutputText(data);
     const parsed = extractJsonArray(text);
-    const jsonResults = toSearchResults(parsed, maxResults);
-    return jsonResults.length > 0 ? jsonResults : parseUrlResultsFromText(text, maxResults);
+    const jsonResults = toSearchResults(parsed, 100); // high cap so nothing is trimmed
+    return jsonResults.length > 0 ? jsonResults : parseUrlResultsFromText(text);
   } catch (error) {
     console.warn('OpenAI web search failed:', error);
     return [];
@@ -188,7 +187,7 @@ No markdown, no additional text.`,
 export async function searchWithGrokWebTool(
   query: string,
   apiKey: string,
-  maxResults: number = 10
+  _maxResults: number = 10 // kept for backwards compat — no hard cap on return
 ): Promise<SearchResult[]> {
   if (!apiKey) return [];
   try {
@@ -201,11 +200,11 @@ export async function searchWithGrokWebTool(
       body: JSON.stringify({
         model: 'grok-3',
         input: `Search web and current trends for: "${query}".
-Return ONLY JSON array with max ${maxResults} items, each item:
+Return ALL relevant sources as a JSON array, each item:
 {"title":"...","url":"...","snippet":"..."}
 No markdown, no extra text.`,
         tools: [{ type: 'web_search' }],
-        max_output_tokens: 700,
+        max_output_tokens: 1200,
       }),
     });
 
@@ -213,8 +212,8 @@ No markdown, no extra text.`,
     const data: any = await response.json();
     const text = getResponseOutputText(data);
     const parsed = extractJsonArray(text);
-    const jsonResults = toSearchResults(parsed, maxResults);
-    return jsonResults.length > 0 ? jsonResults : parseUrlResultsFromText(text, maxResults);
+    const jsonResults = toSearchResults(parsed, 100);
+    return jsonResults.length > 0 ? jsonResults : parseUrlResultsFromText(text);
   } catch (error) {
     console.warn('Grok web search failed:', error);
     return [];
@@ -225,7 +224,7 @@ export async function searchWithExa(
   query: string,
   apiKey: string,
   type: ExaSearchType = 'auto',
-  maxResults: number = 10
+  _maxResults: number = 10 // kept for backwards compat — Exa API max is 25
 ): Promise<SearchResult[]> {
   if (!apiKey) return [];
 
@@ -233,7 +232,7 @@ export async function searchWithExa(
     const payload: any = {
       query,
       type,
-      numResults: Math.max(1, Math.min(maxResults, 25)),
+      numResults: 25, // always request Exa's maximum
       useAutoprompt: true,
     };
 
@@ -280,7 +279,7 @@ export async function searchWithExa(
       })
       .filter((r: SearchResult) => r.url);
 
-    return dedupeResults(mapped, maxResults);
+    return dedupeResults(mapped); // no count cap — return all unique Exa results
   } catch (error) {
     console.warn('Exa search failed:', error);
     return [];

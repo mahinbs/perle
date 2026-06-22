@@ -1,6 +1,4 @@
-// Video generation using Google Gemini Veo API
-// Note: OpenAI Sora is not yet available via API (as of Dec 2025)
-// Gemini Veo is currently the primary option with NO fallback
+// Video generation using Google Gemini Veo API with OpenAI fallback
 
 export interface GeneratedVideo {
   url: string;
@@ -10,6 +8,20 @@ export interface GeneratedVideo {
   height: number;
   /** Gemini File API URI for this video (use as reference for video-to-video / "make it better") */
   fileUri?: string;
+}
+
+export class VideoGenerationError extends Error {
+  statusCode: number;
+  provider: 'gemini' | 'openai' | 'unknown';
+  errorCode: string;
+
+  constructor(message: string, statusCode: number, provider: 'gemini' | 'openai' | 'unknown', errorCode: string) {
+    super(message);
+    this.name = 'VideoGenerationError';
+    this.statusCode = statusCode;
+    this.provider = provider;
+    this.errorCode = errorCode;
+  }
 }
 
 const BASE_URL = 'https://generativelanguage.googleapis.com';
@@ -102,9 +114,13 @@ export async function generateVideoWithGemini(
   prompt: string, 
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  referenceImageDataUrl?: string | string[], // Optional reference image(s) for style/content guidance
+  referenceImageDataUrl?: string, // Optional reference image for style/content guidance
   referenceVideoFileUri?: string  // Optional: file_uri from File API for video-to-video / "make it better"
 ): Promise<GeneratedVideo | null> {
+  let sawRateLimit = false;
+  let sawPermissionDenied = false;
+  let lastProviderMessage = '';
+
   // Always use the free Gemini API key for video generation
   const apiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
   
@@ -124,10 +140,6 @@ export async function generateVideoWithGemini(
     width = 720;
     height = 720;
   }
-
-  const referenceImages = referenceImageDataUrl
-    ? (Array.isArray(referenceImageDataUrl) ? referenceImageDataUrl : [referenceImageDataUrl])
-    : [];
   
   // Try models in order: Veo 3.1 (preview with reference image support)
   const models = [
@@ -143,8 +155,8 @@ export async function generateVideoWithGemini(
       console.log(`   Prompt: "${prompt}"`);
       console.log(`   Duration: ${duration}s`);
       console.log(`   Aspect Ratio: ${aspectRatio}`);
-      if (referenceImages.length > 0 && model.api === 'gemini') {
-        console.log(`   📎 Using ${referenceImages.length} reference image(s) for style guidance (Veo 3.1)`);
+      if (referenceImageDataUrl && model.api === 'gemini') {
+        console.log(`   📎 Using reference image for style guidance (Veo 3.1)`);
       }
       if (referenceVideoFileUri && model.api === 'gemini') {
         console.log(`   🎬 Using reference VIDEO (file_uri) for video-to-video / extension (Veo 3.1)`);
@@ -166,26 +178,29 @@ export async function generateVideoWithGemini(
            instance.video = { uri: referenceVideoFileUri };
          }
          
-         // Reference IMAGE: use the first image as the starting frame for image-to-video.
-         // Veo expects instance.image with bytesBase64Encoded (same format as generateVideoFromImage).
-         if (referenceImages.length > 0) {
-           const firstImage = referenceImages[0];
-           let imageBase64 = firstImage;
+         if (referenceImageDataUrl) {
+           let imageBase64 = referenceImageDataUrl;
            let mimeType = 'image/jpeg';
-
-           if (firstImage.startsWith('data:')) {
-             const matches = firstImage.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+           
+           if (referenceImageDataUrl.startsWith('data:')) {
+             const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
              if (matches) {
                mimeType = matches[1];
                imageBase64 = matches[2];
              }
            }
-
-           console.log(`   📷 Reference image for I2V (${(imageBase64.length / 1024).toFixed(1)}KB, type: ${mimeType})`);
-           instance.image = {
-             bytesBase64Encoded: imageBase64,
-             mimeType,
-           };
+           
+           // CORRECT STRUCTURE from official Vertex AI docs:
+           // https://docs.cloud.google.com/vertex-ai/generative-ai/docs/video/use-reference-images-to-guide-video-generation
+           instance.referenceImages = [{
+             image: {
+               bytesBase64Encoded: imageBase64,
+               mimeType: mimeType
+             },
+             referenceType: 'style'  // Can be 'style' or other types
+           }];
+           
+           console.log(`   📷 Reference image added (${(imageBase64.length / 1024).toFixed(1)}KB, type: ${mimeType})`);
          }
          
          const requestBody = {
@@ -223,10 +238,18 @@ export async function generateVideoWithGemini(
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`${model.displayName} error (${response.status}):`, errorText);
+        lastProviderMessage = errorText;
         
         // Check if it's a rate limit error - if so, try next model
         if (response.status === 429 || errorText.includes('quota') || errorText.includes('rate limit')) {
+          sawRateLimit = true;
           console.log(`⚠️ ${model.displayName} rate limit hit, trying next model...`);
+          continue;
+        }
+
+        if (response.status === 403 || errorText.includes('PERMISSION_DENIED') || errorText.includes('denied access')) {
+          sawPermissionDenied = true;
+          console.log(`⚠️ ${model.displayName} permission denied, trying next model...`);
           continue;
         }
         
@@ -256,7 +279,6 @@ export async function generateVideoWithGemini(
       
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-        attempts++; // Always increment so the loop doesn't run forever
         
         const statusResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${apiKey}`, {
           headers: {
@@ -269,13 +291,25 @@ export async function generateVideoWithGemini(
       if (statusData.done) {
         if (statusData.error) {
           console.error(`${model.displayName} generation failed:`, statusData.error);
+          const errorMessage = String(statusData.error.message || '');
+          lastProviderMessage = errorMessage || lastProviderMessage;
+
+          if (statusData.error.code === 403 || errorMessage.includes('PERMISSION_DENIED') || errorMessage.includes('denied access')) {
+            sawPermissionDenied = true;
+            console.log(`⚠️ ${model.displayName} permission denied, trying next model...`);
+            break;
+          }
           // If rate limit error OR internal error, try next model
           if (
-            statusData.error.message?.includes('quota') || 
-            statusData.error.message?.includes('rate limit') ||
+            errorMessage.includes('quota') || 
+            errorMessage.includes('rate limit') ||
             statusData.error.code === 13 || // Internal server error
-            statusData.error.message?.includes('internal server')
+            errorMessage.includes('RESOURCE_EXHAUSTED') ||
+            errorMessage.includes('internal server')
           ) {
+            if (errorMessage.includes('quota') || errorMessage.includes('rate limit') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+              sawRateLimit = true;
+            }
             console.log(`⚠️ ${model.displayName} error (code ${statusData.error.code}), trying next model...`);
             break;
           }
@@ -316,66 +350,160 @@ export async function generateVideoWithGemini(
   
   // All Gemini models failed
   console.error('❌ All Gemini Veo models failed or hit rate limits');
+  if (sawPermissionDenied) {
+    throw new VideoGenerationError(
+      'Video generation provider denied project access. Please check Google project permissions/billing.',
+      403,
+      'gemini',
+      'PERMISSION_DENIED'
+    );
+  }
+
+  if (sawRateLimit) {
+    throw new VideoGenerationError(
+      'Video generation quota exceeded. Please retry in a few minutes.',
+      429,
+      'gemini',
+      'RESOURCE_EXHAUSTED'
+    );
+  }
+
+  if (lastProviderMessage) {
+    throw new VideoGenerationError(
+      'Video provider returned an error. Please retry shortly.',
+      502,
+      'gemini',
+      'PROVIDER_ERROR'
+    );
+  }
   return null;
 }
 
-// Alternative: OpenAI Sora (NOT YET AVAILABLE via API)
-// Keeping this as a placeholder for when Sora API becomes available
 export async function generateVideoWithOpenAI(
   prompt: string,
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9'
 ): Promise<GeneratedVideo | null> {
   const apiKey = process.env.OPENAI_API_KEY;
-  
+
   if (!apiKey) {
     console.warn('⚠️ OpenAI API key not configured.');
     return null;
   }
-  
-  // NOTE: OpenAI Sora is NOT yet available via public API as of Dec 2025
-  // When it becomes available, this endpoint will be something like:
-  // POST https://api.openai.com/v1/videos/generations
-  
-  console.warn('⚠️ OpenAI Sora video generation is not yet available via API');
-  console.warn('   Waiting for official Sora API release from OpenAI');
-  console.warn('   Current alternatives: Gemini Veo, Runway ML, Stability AI');
-  
-  return null;
+
+  // OpenAI supports specific durations; map requested duration to nearest valid value.
+  const supportedSeconds = [4, 8, 12];
+  const seconds = supportedSeconds.reduce((closest, value) =>
+    Math.abs(value - duration) < Math.abs(closest - duration) ? value : closest
+  , supportedSeconds[0]);
+
+  // OpenAI supports portrait/landscape sizes; 1:1 falls back to landscape.
+  const size = aspectRatio === '9:16' ? '720x1280' : '1280x720';
+  const model = process.env.OPENAI_VIDEO_MODEL || 'sora-2';
+
+  console.log('═'.repeat(60));
+  console.log('🎥 [OPENAI SORA] Generating video (fallback)');
+  console.log(`   Prompt: "${prompt}"`);
+  console.log(`   Duration: ${seconds}s`);
+  console.log(`   Size: ${size}`);
+  console.log(`   Model: ${model}`);
+  console.log('═'.repeat(60));
+
+  const createRes = await fetch('https://api.openai.com/v1/videos', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      seconds: String(seconds),
+      size
+    }),
+    signal: AbortSignal.timeout(120000)
+  });
+
+  const createText = await createRes.text();
+  let createData: any = null;
+  try {
+    createData = createText ? JSON.parse(createText) : null;
+  } catch {
+    createData = null;
+  }
+
+  if (!createRes.ok) {
+    const message = createData?.error?.message || createText || 'OpenAI video creation failed';
+    const code = createData?.error?.code || 'OPENAI_VIDEO_CREATE_FAILED';
+    throw new VideoGenerationError(message, createRes.status, 'openai', code);
+  }
+
+  const videoId = createData?.id as string | undefined;
+  if (!videoId) {
+    throw new VideoGenerationError('OpenAI did not return a video ID', 502, 'openai', 'OPENAI_VIDEO_ID_MISSING');
+  }
+
+  console.log(`✅ OpenAI video job created: ${videoId} (async)`);
+
+  // Return internal marker URL immediately; proxy endpoint will wait for completion and stream content.
+  const proxyMarkerUrl = `openai://video/${videoId}`;
+  return {
+    url: proxyMarkerUrl,
+    prompt,
+    duration: seconds,
+    width: size === '720x1280' ? 720 : 1280,
+    height: size === '720x1280' ? 1280 : 720
+  };
 }
 
-// Main function - uses Gemini Veo (no OpenAI fallback yet)
+// Main function - Gemini first, OpenAI as fallback
 export async function generateVideo(
   prompt: string,
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  referenceImageDataUrl?: string | string[],
+  referenceImageDataUrl?: string,
   referenceVideoFileUri?: string // file_uri from File API for video-to-video / "make it better"
 ): Promise<GeneratedVideo | null> {
+  let geminiError: VideoGenerationError | null = null;
+
   // Try Gemini Veo first (with optional reference image or reference video)
   try {
     const geminiVideo = await generateVideoWithGemini(prompt, duration, aspectRatio, referenceImageDataUrl, referenceVideoFileUri);
     if (geminiVideo) {
       return geminiVideo;
     }
-  } catch (error) {
-    console.error('⚠️ Gemini Veo video generation failed:', error);
+  } catch (error: unknown) {
+    if (error instanceof VideoGenerationError) {
+      geminiError = error;
+      console.warn(`⚠️ Gemini failed (${error.errorCode}), trying OpenAI fallback...`);
+    } else {
+      console.error('⚠️ Gemini Veo video generation failed:', error);
+    }
   }
-  
-  // Try OpenAI Sora fallback (when available)
-  // Currently not available, so this will return null
-  console.log('🔄 Checking OpenAI Sora availability...');
-  const openaiVideo = await generateVideoWithOpenAI(prompt, duration, aspectRatio);
-  if (openaiVideo) {
-    return openaiVideo;
+
+  // Try OpenAI fallback
+  try {
+    console.log('🔄 Trying OpenAI fallback...');
+    const openaiVideo = await generateVideoWithOpenAI(prompt, duration, aspectRatio);
+    if (openaiVideo) {
+      return openaiVideo;
+    }
+  } catch (error: unknown) {
+    if (error instanceof VideoGenerationError) {
+      throw error;
+    }
+    console.error('⚠️ OpenAI video generation failed:', error);
   }
-  
+
   // No video providers available
   console.error('❌ All video generation providers failed or unavailable');
-  console.error('   - Gemini Veo: Failed (quota exceeded or error)');
-  console.error('   - OpenAI Sora: Not yet available via API');
-  console.error('   Please check API quotas or wait for Sora API release');
-  
+  console.error('   - Gemini Veo: Failed');
+  console.error('   - OpenAI Sora: Failed or unavailable');
+
+  if (geminiError) {
+    throw geminiError;
+  }
+
   return null;
 }
 
@@ -404,9 +532,8 @@ export async function generateVideoFromImage(
     height = 720;
   }
   
-  // Veo 3.0 models support the instances[0].image format for image-to-video.
-  // veo-3.1-generate-preview does NOT support this I2V format — it ignores the image and
-  // generates text-to-video instead, producing an unrelated video.
+  // Try models in order: fast -> standard (based on your quota)
+  // These are the actual available model names from Google AI
   const models = [
     { name: 'veo-3.0-fast-generate-001', displayName: 'Veo 3.0 Fast I2V' },
     { name: 'veo-3.0-generate-001', displayName: 'Veo 3.0 Standard I2V' },
@@ -435,13 +562,11 @@ export async function generateVideoFromImage(
       }
       
       // Try Gemini Veo with image input (predictLongRunning method)
-      // mimeType is required by the Veo API alongside bytesBase64Encoded
       const requestBody = {
         instances: [{
           prompt: prompt || 'Animate this image with smooth, natural motion',
           image: {
-            bytesBase64Encoded: imageBase64,
-            mimeType: imageMimeType,
+            bytesBase64Encoded: imageBase64
           }
         }],
         parameters: {}
