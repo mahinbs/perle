@@ -15,7 +15,6 @@ import {
   FaTrash,
 } from "react-icons/fa";
 import { isImageFile } from "../utils/imagePicker";
-import type { ExperienceMode } from "../types";
 import { useToast } from "../contexts/ToastContext";
 import {
   getUserData,
@@ -24,9 +23,7 @@ import {
   isAuthenticated,
   removeAuthToken,
 } from "../utils/auth";
-import { chatAPI } from "../utils/answerEngine";
-import { LLMModelSelector } from "../components/LLMModelSelector";
-import type { LLMModel } from "../types";
+import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
 import { getChatDateLabel, isDifferentChatDay } from "../utils/chatDates";
@@ -57,6 +54,54 @@ interface AIFriend {
   custom_greeting: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function friendAvatarUrl(name: string, logoUrl?: string | null): string {
+  if (logoUrl) return logoUrl;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    name
+  )}&background=C7A869&color=111&size=120&bold=true`;
+}
+
+function GroupAvatarStack({
+  friends,
+  size = 40,
+}: {
+  friends: AIFriend[];
+  size?: number;
+}) {
+  if (friends.length === 0) {
+    return (
+      <img
+        src={friendAvatarUrl("Group")}
+        alt="Group chat"
+        className="rounded-full object-cover border-2 border-[var(--accent)]"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  const shown = friends.slice(0, 4);
+  return (
+    <div
+      className="relative flex items-center shrink-0"
+      style={{ width: size + (shown.length - 1) * (size * 0.52), height: size }}
+    >
+      {shown.map((friend, index) => (
+        <img
+          key={friend.id}
+          src={friendAvatarUrl(friend.name, friend.logo_url)}
+          alt={friend.name}
+          className="rounded-full object-cover border-2 border-[var(--accent)] absolute"
+          style={{
+            width: size,
+            height: size,
+            left: index * (size * 0.52),
+            zIndex: shown.length - index,
+          }}
+        />
+      ))}
+    </div>
+  );
 }
 
 export default function AIFriendPage() {
@@ -104,20 +149,27 @@ export default function AIFriendPage() {
     )}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
   };
 
-  // Use selected friend's info, group chat label, or default
+  // Use selected friend's info, group chat label, or default (logged-out only)
   const aiProfile = isGroupChat
     ? {
         name: "Group Chat",
         handle: `${aiFriends.length} friend${aiFriends.length === 1 ? "" : "s"}`,
-        avatar: defaultAiProfile.avatar,
+        avatar: friendAvatarUrl("Group"),
       }
     : selectedFriend
       ? {
           name: selectedFriend.name,
           handle: `@${selectedFriend.username || selectedFriend.name.toLowerCase().replace(/\s+/g, "")}`,
-          avatar: selectedFriend.logo_url || defaultAiProfile.avatar,
+          avatar: friendAvatarUrl(selectedFriend.name, selectedFriend.logo_url),
         }
       : defaultAiProfile;
+
+  // Never land in a nameless individual chat — group is the default surface.
+  useEffect(() => {
+    if (isLoggedIn && !isGroupChat && !selectedFriendId) {
+      setIsGroupChat(true);
+    }
+  }, [isLoggedIn, isGroupChat, selectedFriendId]);
 
   const handleHeaderProfileClick = () => {
     if (aiFriends.length === 0) {
@@ -218,8 +270,6 @@ export default function AIFriendPage() {
   const [isListening, setIsListening] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite");
-  const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
   const [newConversation, setNewConversation] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([
     "I'll heat up the dal if you promise to share how your day's been going.",
@@ -312,27 +362,13 @@ export default function AIFriendPage() {
     }
   };
 
-  // Load user premium status and model preference
+  // Load user premium status (suggestions / context limits only — model is fixed).
   useEffect(() => {
     const user = getUserData();
     if (user) {
-      const premium = user.isPremium ?? false;
-      setIsPremium(premium);
-
-      // Load saved model preference
-      const savedModel = localStorage.getItem(
-        "syntraiq-ai-friend-model"
-      ) as LLMModel | null;
-      if (savedModel && premium) {
-        setSelectedModel(savedModel);
-      } else if (premium) {
-        setSelectedModel("auto");
-      } else {
-        setSelectedModel("gemini-lite");
-      }
+      setIsPremium(user.isPremium ?? false);
     } else {
       setIsPremium(false);
-      setSelectedModel("gemini-lite");
     }
   }, []);
 
@@ -361,6 +397,18 @@ export default function AIFriendPage() {
       setIsLoadingFriends(false);
     }
   };
+
+  // Backfill friend names on history bubbles once friends list is loaded.
+  useEffect(() => {
+    if (aiFriends.length === 0) return;
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (!m.friendId || m.friendName) return m;
+        const friend = aiFriends.find((f) => f.id === m.friendId);
+        return friend ? { ...m, friendName: friend.name } : m;
+      })
+    );
+  }, [aiFriends]);
 
   // Handle greeting and history loading when chat mode or friend selection changes
   useEffect(() => {
@@ -433,7 +481,11 @@ export default function AIFriendPage() {
           if (data.messages && data.messages.length > 0) {
             console.log(`📚 Loaded ${data.messages.length} messages from history`);
             
-            const historyMessages = mapHistoryToMessages(data.messages, "history");
+            const historyMessages = mapHistoryToMessages(data.messages, "history").filter(
+              (m) =>
+                // In group chat, only show AI bubbles that belong to a real friend.
+                !isGroupChat || m.role !== "ai" || Boolean(m.friendId)
+            );
 
             // Append history to existing greeting
             setMessages((prev) => {
@@ -648,6 +700,16 @@ export default function AIFriendPage() {
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
+    if (isLoggedIn && !isGroupChat && !selectedFriendId) {
+      showToast({
+        message: "Select a friend from the list to chat one-on-one.",
+        type: "info",
+        duration: 3000,
+      });
+      setShowFriendSelector(true);
+      return;
+    }
+
     const fileToSend = attachedFile;
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -687,8 +749,10 @@ export default function AIFriendPage() {
       return;
     }
 
+    let groupChatManagesLoading = false;
+
     try {
-      const contextMessageLimit = !isLoggedIn ? 5 : isPremium ? 20 : 10;
+      const contextMessageLimit = !isLoggedIn ? 5 : isPremium ? 10 : 8;
       const freshThread = newConversation;
       const buildHistoryForFriend = (friendId?: string) =>
         messages
@@ -723,86 +787,79 @@ export default function AIFriendPage() {
           return;
         }
 
-        // Send message to each friend in parallel
+        // Send to each friend in parallel — show each reply as soon as it arrives.
         const fileUploads = fileToSend
           ? [{ id: 'f0', file: fileToSend, type: 'image' as const }]
           : [];
 
-        const responses = await Promise.allSettled(
-          friendsToMessage.map(async (friend) => {
-            const data = await chatAPI(
-              messageText,
-              selectedModel,
-              'ai_friend',
-              fileUploads,
-              null,
-              buildHistoryForFriend(friend.id),
-              friend.id,
-              undefined,
-              freshThread,
-              true,
-            );
-            return {
-              friendId: friend.id,
-              friendName: friend.name,
-              friendAvatar: friend.logo_url || defaultAiProfile.avatar,
-              message: data.message || "No response",
-            };
-          })
-        );
+        groupChatManagesLoading = true;
+        let pendingReplies = friendsToMessage.length;
 
-        // Add all responses to messages
-        // Check if any error is a 401 (session expired)
-        const has401Error = responses.some(
-          (result) =>
-            result.status === "rejected" &&
-            result.reason?.message?.includes("Session expired")
-        );
-
-        if (has401Error) {
-          removeAuthToken();
-          // Continue as free user - show remaining responses if any
-        }
-
-        responses.forEach((result, index) => {
-          if (result.status === "fulfilled") {
-            const aiResponse: Message = {
-              id: `${Date.now()}-${index}`,
-              role: "ai",
-              content: result.value.message,
-              timestamp: new Date(),
-              friendId: result.value.friendId,
-              friendName: result.value.friendName,
-            };
-            setMessages((prev) => [...prev, aiResponse]);
-          } else {
-            // Error response
-            const friendName = friendsToMessage[index]?.name || "Unknown";
-            const errorResponse: Message = {
-              id: `${Date.now()}-error-${index}`,
-              role: "ai",
-              content: `Sorry, ${friendName} encountered an error: ${result.reason?.message || "Failed to connect"
-                }.`,
-              timestamp: new Date(),
-              friendId: friendsToMessage[index]?.id,
-              friendName: friendName,
-            };
-            setMessages((prev) => [...prev, errorResponse]);
-          }
+        friendsToMessage.forEach((friend, index) => {
+          chatAPI(
+            messageText,
+          COMPANION_CHAT_MODEL,
+          'ai_friend',
+            fileUploads,
+            null,
+            buildHistoryForFriend(friend.id),
+            friend.id,
+            undefined,
+            freshThread,
+            true,
+          )
+            .then((data) => {
+              const aiResponse: Message = {
+                id: `${Date.now()}-${friend.id}-${index}`,
+                role: "ai",
+                content: data.message || "No response",
+                timestamp: new Date(),
+                friendId: friend.id,
+                friendName: friend.name,
+              };
+              setMessages((prev) => [...prev, aiResponse]);
+              if (freshThread) {
+                setNewConversation(false);
+              }
+            })
+            .catch((error: any) => {
+              if (error?.message?.includes("Session expired")) {
+                removeAuthToken();
+              }
+              const errorResponse: Message = {
+                id: `${Date.now()}-error-${friend.id}`,
+                role: "ai",
+                content: `Sorry, ${friend.name} encountered an error: ${error?.message || "Failed to connect"}.`,
+                timestamp: new Date(),
+                friendId: friend.id,
+                friendName: friend.name,
+              };
+              setMessages((prev) => [...prev, errorResponse]);
+            })
+            .finally(() => {
+              pendingReplies -= 1;
+              if (pendingReplies <= 0) {
+                setIsLoading(false);
+              }
+            });
         });
 
-        if (freshThread) {
-          setNewConversation(false);
-        }
+        return;
       } else {
-        // Individual chat: send to selected friend or default
+        // Individual chat: must have a selected friend — never the default SyntraIQ bot.
+        if (!selectedFriendId) {
+          setIsLoading(false);
+          setShowFriendSelector(true);
+          return;
+        }
+
         const fileUploads = fileToSend
           ? [{ id: 'f0', file: fileToSend, type: 'image' as const }]
           : [];
 
         const data = await chatAPI(
           messageText,
-          selectedModel,
+          COMPANION_CHAT_MODEL,
           'ai_friend',
           fileUploads,
           null,
@@ -822,6 +879,12 @@ export default function AIFriendPage() {
           role: "ai",
           content: data.message,
           timestamp: new Date(),
+          ...(selectedFriendId
+            ? {
+                friendId: selectedFriendId,
+                friendName: selectedFriend?.name,
+              }
+            : {}),
         };
         setMessages((prev) => [...prev, aiResponse]);
 
@@ -845,7 +908,9 @@ export default function AIFriendPage() {
       };
       setMessages((prev) => [...prev, errorResponse]);
     } finally {
-      setIsLoading(false);
+      if (!groupChatManagesLoading) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -1311,11 +1376,15 @@ export default function AIFriendPage() {
                     aria-label="Switch character"
                   >
                     <div className="relative shrink-0">
-                      <img
-                        src={aiProfile.avatar}
-                        alt={`${aiProfile.name} avatar`}
-                        className="w-10 h-10 min-w-10 rounded-full object-cover border-2 border-[var(--accent)]"
-                      />
+                      {isGroupChat && aiFriends.length > 0 ? (
+                        <GroupAvatarStack friends={aiFriends} size={40} />
+                      ) : (
+                        <img
+                          src={aiProfile.avatar}
+                          alt={`${aiProfile.name} avatar`}
+                          className="w-10 h-10 min-w-10 rounded-full object-cover border-2 border-[var(--accent)]"
+                        />
+                      )}
                       <div className="w-2 h-2 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
                     </div>
                     <div className="text-left min-w-0">
@@ -1351,29 +1420,28 @@ export default function AIFriendPage() {
             {isLoggedIn && aiFriends.length > 0 && (
             <button
                 className={`btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors text-xs whitespace-nowrap max-w-[120px] ${
-                  isGroupChat || selectedFriendId
+                  isGroupChat
                     ? "bg-[rgba(199,168,105,0.15)] glass-panel"
-                    : ""
+                    : selectedFriendId
+                      ? "bg-[rgba(199,168,105,0.15)] glass-panel"
+                      : ""
                 }`}
                 onClick={() => {
-                  if (isGroupChat) {
-                    setIsGroupChat(false);
-                    if (!selectedFriendId) {
-                      setShowFriendSelector(true);
-                    }
-                  } else {
+                  // Group is the home surface — only switch back to group from individual.
+                  if (!isGroupChat) {
                     setIsGroupChat(true);
+                    setSelectedFriendId(null);
                   }
                 }}
                 aria-label={
                   isGroupChat
-                    ? "Group chat — switch to individual"
-                    : `Individual chat with ${selectedFriend?.name ?? "friend"} — switch to group`
+                    ? "Group chat"
+                    : `Individual chat with ${selectedFriend?.name ?? "friend"} — tap to return to group`
                 }
                 title={
                   isGroupChat
-                    ? "Group chat (tap to switch to individual)"
-                    : "Individual chat (tap for group)"
+                    ? "Group chat with all friends"
+                    : "Tap to return to group chat"
                 }
               >
                 <span
@@ -1445,11 +1513,22 @@ export default function AIFriendPage() {
                 : userProfile.name
               : aiProfile.name;
 
-          if (message.role === "ai" && message.friendId && isGroupChat) {
-            const friend = aiFriends.find((f) => f.id === message.friendId);
+          if (message.role === "ai") {
+            const friendFromId = message.friendId
+              ? aiFriends.find((f) => f.id === message.friendId)
+              : undefined;
+            const friend =
+              friendFromId ||
+              (!isGroupChat && selectedFriend ? selectedFriend : undefined);
             if (friend) {
-              messageAvatar = friend.logo_url || defaultAiProfile.avatar;
+              messageAvatar = friendAvatarUrl(friend.name, friend.logo_url);
               messageName = friend.name;
+            } else if (message.id === "1") {
+              // Welcome / greeting bubble — neutral system styling in group.
+              messageAvatar = isGroupChat
+                ? friendAvatarUrl("Group")
+                : aiProfile.avatar;
+              messageName = isGroupChat ? "Group Chat" : aiProfile.name;
             }
           }
 
@@ -1482,10 +1561,12 @@ export default function AIFriendPage() {
                   : "glass-panel text-[var(--text)] border border-[rgba(255,255,255,0.1)]"
               }`}
             >
-                {/* Show friend name in group chat */}
-                {message.role === "ai" && message.friendName && isGroupChat && (
+                {/* Friend name on AI replies (group + individual) */}
+                {message.role === "ai" &&
+                  message.id !== "1" &&
+                  (message.friendName || (!isGroupChat && messageName)) && (
                   <div className="text-[length:var(--font-xs)] font-semibold mb-1 opacity-80 self-start">
-                    {message.friendName}
+                    {message.friendName || messageName}
                   </div>
                 )}
                 {message.imageUrl && message.attachmentType === "video" ? (
@@ -1517,14 +1598,24 @@ export default function AIFriendPage() {
         })}
         {isLoading && (
           <div className="flex items-end gap-3 mb-4">
-            <img
-              src={aiProfile.avatar}
-              alt={`${aiProfile.name} avatar`}
-              className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(16,163,127,0.5)]"
-            />
+            {isGroupChat && aiFriends.length > 0 ? (
+              <GroupAvatarStack friends={aiFriends} size={36} />
+            ) : (
+              <img
+                src={
+                  selectedFriend
+                    ? friendAvatarUrl(selectedFriend.name, selectedFriend.logo_url)
+                    : aiProfile.avatar
+                }
+                alt="Thinking"
+                className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(16,163,127,0.5)]"
+              />
+            )}
             <div className="px-4 py-3 rounded-[var(--radius-sm)] glass-panel border border-[rgba(255,255,255,0.1)]">
               <div className="text-[length:var(--font-md)] font-semibold mb-1">
-                Thinking...
+                {isGroupChat
+                  ? `Waiting for ${aiFriends.map((f) => f.name).join(", ")}…`
+                  : "Thinking..."}
               </div>
               <div className="flex gap-1 items-center">
                 <span className="w-2 h-2 rounded-full bg-[var(--sub)] animate-[pulse_1.4s_ease-in-out_infinite]" />
@@ -1538,41 +1629,6 @@ export default function AIFriendPage() {
 
       {/* Input Area — no search-mode buttons here; this is conversational chat. */}
       <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0 input-bar-safe-bottom">
-        {/* Model Selector and New Chat Button (Premium Users) - Moved to bottom */}
-        {/* <div className="flex-1">
-          <LLMModelSelector
-            selectedModel={selectedModel}
-            onModelChange={(model) => {
-              setSelectedModel(model);
-              localStorage.setItem("syntraiq-ai-friend-model", model);
-            }}
-            isPremium={isPremium}
-            size="large"
-          />
-        </div> */}
-        {/* {isPremium && (
-          <div className="flex justify-between items-center mb-2 gap-2">
-            <button
-              className="btn-ghost px-3 py-1.5 text-[length:var(--font-xs)] whitespace-nowrap"
-              onClick={() => {
-                setNewConversation(true);
-                setMessages([
-                  {
-                    id: "1",
-                    role: "ai",
-                    content:
-                      "Hey! I'm your AI Friend. How can I help you today? Feel free to ask me anything or just chat! 😊",
-                    timestamp: new Date(),
-                  },
-                ]);
-              }}
-              title="Start a new conversation"
-            >
-              New Chat
-            </button>
-          </div>
-        )} */}
-
         {attachedFile && (
           <div className="mb-2 flex items-start justify-end gap-2">
             <div className="relative inline-block">
@@ -1671,7 +1727,7 @@ export default function AIFriendPage() {
             />
           </div>
 
-          <div className="flex w-full items-center justify-between gap-3">
+          <div className="flex w-full items-center gap-2">
             <div className="flex gap-2">
               <button
                 className={`btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center${isListening ? " mic-recording" : ""}`}
@@ -1743,19 +1799,6 @@ export default function AIFriendPage() {
                   <IoIosSend />
                 </span>
               </button>
-            </div>
-            <div className="w-fit">
-              <LLMModelSelector
-                selectedModel={selectedModel}
-                onModelChange={(model) => {
-                  setSelectedModel(model);
-                  localStorage.setItem("syntraiq-ai-friend-model", model);
-                }}
-                isPremium={isPremium}
-                size="small"
-                experienceMode={experienceMode}
-                onExperienceModeChange={setExperienceMode}
-              />
             </div>
           </div>
         </div>
@@ -2052,7 +2095,7 @@ export default function AIFriendPage() {
                     setShowFriendSelector(false);
                   }}
                 >
-                  <FaComments size={18} className="text-[var(--accent)] shrink-0" />
+                  <GroupAvatarStack friends={aiFriends} size={36} />
                   <div className="min-w-0">
                     <div className="font-semibold text-sm">Group Chat</div>
                     <div className="text-xs opacity-70">

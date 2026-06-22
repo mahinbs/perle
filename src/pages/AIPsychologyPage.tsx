@@ -13,9 +13,7 @@ import {
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
 import { getUserData, getAuthHeaders, removeAuthToken } from "../utils/auth";
-import { chatAPI } from "../utils/answerEngine";
-import { LLMModelSelector } from "../components/LLMModelSelector";
-import type { LLMModel, ExperienceMode } from "../types";
+import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
 import { getChatDateLabel, isDifferentChatDay } from "../utils/chatDates";
@@ -67,8 +65,6 @@ export default function AIPsychologyPage() {
   const [isListening, setIsListening] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<LLMModel>("gemini-lite");
-  const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
   const [newConversation, setNewConversation] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
   const [suggestions, setSuggestions] = useState<string[]>([
@@ -109,28 +105,10 @@ export default function AIPsychologyPage() {
     inputRef.current?.focus();
   }, []);
 
-  // Load user premium status and model preference
+  // Load user premium status (context limits only — model is fixed).
   useEffect(() => {
     const user = getUserData();
-    if (user) {
-      const premium = user.isPremium ?? false;
-      setIsPremium(premium);
-
-      // Load saved model preference
-      const savedModel = localStorage.getItem(
-        "syntraiq-ai-psychologist-model"
-      ) as LLMModel | null;
-      if (savedModel && premium) {
-        setSelectedModel(savedModel);
-      } else if (premium) {
-        setSelectedModel("auto");
-      } else {
-        setSelectedModel("gemini-lite");
-      }
-    } else {
-      setIsPremium(false);
-      setSelectedModel("gemini-lite");
-    }
+    setIsPremium(user?.isPremium ?? false);
   }, []);
 
   // Load conversation history on mount (for both free and premium users)
@@ -390,7 +368,7 @@ export default function AIPsychologyPage() {
         }));
       const data = await chatAPI(
         messageText,
-        selectedModel,
+        COMPANION_CHAT_MODEL,
         'ai_psychologist',
         [],
         null,
@@ -685,7 +663,7 @@ export default function AIPsychologyPage() {
             />
           </div>
 
-          <div className="flex w-full items-center justify-between gap-3">
+          <div className="flex w-full items-center gap-2">
             <div className="flex gap-2">
               <button
                 className={`btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center${isListening ? " mic-recording" : ""}`}
@@ -764,19 +742,6 @@ export default function AIPsychologyPage() {
                   <IoIosSend />
                 </span>
               </button>
-            </div>
-            <div className="w-fit">
-              <LLMModelSelector
-                selectedModel={selectedModel}
-                onModelChange={(model) => {
-                  setSelectedModel(model);
-                  localStorage.setItem("syntraiq-ai-psychologist-model", model);
-                }}
-                isPremium={isPremium}
-                size="small"
-                experienceMode={experienceMode}
-                onExperienceModeChange={setExperienceMode}
-              />
             </div>
           </div>
         </div>

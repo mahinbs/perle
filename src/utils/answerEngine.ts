@@ -6,6 +6,9 @@ import { getUserLocalContext } from './userLocalContext';
 /** Sent to the API when the user submits attachments without typing a prompt. */
 export const FILE_ONLY_DEFAULT_QUERY = 'Review the attached files.';
 
+/** AI Friend + AI Psychology always use this model (server enforces the same). */
+export const COMPANION_CHAT_MODEL: LLMModel = 'gemini-lite';
+
 interface UploadedFile {
   id: string;
   file: File;
