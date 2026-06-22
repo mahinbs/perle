@@ -40,9 +40,11 @@ export function isColonHeading(line: string): boolean {
   if (trimmed.startsWith("#")) return false;
   // Normal colon-terminated heading: "Section Heading:"
   if (trimmed.endsWith(":")) return true;
-  // Emoji-prefixed short title without trailing colon: "💡 Key Takeaways"
-  // Treat as a heading so it renders bold, like a section divider.
-  if (LEADING_EMOJI_RE.test(trimmed) && trimmed.length <= 70 && !/[.?!]$/.test(trimmed)) {
+  // Emoji-prefixed short title — treat as a heading regardless of terminal
+  // punctuation. Models frequently write rhetorical-question headings like
+  // "🎯 Which One Should You Pick?" or exclamatory ones like "🚀 The Future!".
+  // Only exclude lines ending in "." (those look like sentences, not titles).
+  if (LEADING_EMOJI_RE.test(trimmed) && trimmed.length <= 80 && !trimmed.endsWith(".")) {
     return true;
   }
   return false;
