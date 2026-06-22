@@ -16,6 +16,7 @@ import {
 } from "../utils/answerFormatting";
 
 import { copyToClipboard, shareContent } from "../utils/helpers";
+import { sanitizeForSpeech } from "../utils/voiceText";
 import { useToast } from "../contexts/ToastContext";
 
 import {
@@ -1251,7 +1252,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     // Clear the trigger flag if it exists
     localStorage.removeItem("syntraiq-trigger-voice-output");
 
-    const answerText = chunks.map((c) => c.text).join(" ");
+    const rawAnswerText = chunks.map((c) => c.text).join(" ");
+    // Strip citation markers [1], markdown noise, URLs, emoji, question marks,
+    // table pipes etc. so the synth voice doesn't read them literally.
+    const answerText = sanitizeForSpeech(rawAnswerText);
     console.log('🎤 Answer text length:', answerText.length);
 
     // Even if speech is not supported, show the text

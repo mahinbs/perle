@@ -29,15 +29,23 @@ export function isSectionDivider(line: string): boolean {
   return /^(-{3,}|\*{3,}|_{3,})$/.test(line.trim());
 }
 
+/** Match a leading emoji at the very start of a line (any pictographic glyph + optional VS-16 + optional ZWJ sequence). */
+const LEADING_EMOJI_RE = /^[\p{Extended_Pictographic}](️|‍[\p{Extended_Pictographic}])*\s+/u;
+
 export function isColonHeading(line: string): boolean {
   const trimmed = line.trim();
-  return (
-    trimmed.endsWith(":") &&
-    trimmed.length < 150 &&
-    !trimmed.includes("•") &&
-    !trimmed.match(/^[-•\d]/) &&
-    !trimmed.startsWith("#")
-  );
+  if (trimmed.length === 0 || trimmed.length > 150) return false;
+  if (trimmed.includes("•")) return false;
+  if (trimmed.match(/^[-•\d]/)) return false;
+  if (trimmed.startsWith("#")) return false;
+  // Normal colon-terminated heading: "Section Heading:"
+  if (trimmed.endsWith(":")) return true;
+  // Emoji-prefixed short title without trailing colon: "💡 Key Takeaways"
+  // Treat as a heading so it renders bold, like a section divider.
+  if (LEADING_EMOJI_RE.test(trimmed) && trimmed.length <= 70 && !/[.?!]$/.test(trimmed)) {
+    return true;
+  }
+  return false;
 }
 
 type RenderMathFn = (text: string) => React.ReactNode[];
@@ -139,22 +147,24 @@ export function renderAnswerHeading(
     },
     2: {
       fontSize: "1.12rem",
-      fontWeight: 700,
+      fontWeight: 800,
       marginTop: 28,
       marginBottom: 12,
       lineHeight: 1.35,
       color: "var(--text)",
       paddingBottom: 6,
       borderBottom: "1px solid var(--border)",
+      letterSpacing: "-0.01em",
     },
     3: {
-      fontSize: "1rem",
-      fontWeight: 600,
+      fontSize: "1.02rem",
+      fontWeight: 800,
       marginTop: 20,
       marginBottom: 8,
       lineHeight: 1.4,
       color: "var(--text)",
       fontStyle: "normal",
+      letterSpacing: "-0.01em",
     },
   };
 

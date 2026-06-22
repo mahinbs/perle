@@ -9,6 +9,7 @@ import {
   shouldEnforceUsageLimits,
 } from "../utils/queryLimit";
 import { searchAPI } from "../utils/answerEngine";
+import { sanitizeForSpeech } from "../utils/voiceText";
 import { Capacitor } from "@capacitor/core";
 import {
   getLocalItem,
@@ -588,7 +589,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         return;
       }
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(content);
+      const utterance = new SpeechSynthesisUtterance(sanitizeForSpeech(content));
       utterance.rate = 0.92;
       utterance.pitch = 1;
       utterance.volume = 0.9;

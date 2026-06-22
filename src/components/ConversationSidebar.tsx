@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { FaPlus, FaTrash, FaComments, FaTimes } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaComments, FaTimes, FaThumbtack } from 'react-icons/fa';
 import { formatTimestampIST } from '../utils/helpers';
+import { getUserData } from '../utils/auth';
 
 interface Conversation {
   id: string;
@@ -8,6 +9,8 @@ interface Conversation {
   chat_mode: string;
   created_at: string;
   updated_at: string;
+  is_pinned?: boolean;
+  pinned_at?: string | null;
 }
 
 interface ConversationSidebarProps {
@@ -30,6 +33,18 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const isClosingRef = useRef(false);
+  // Pin is a paid feature (Pro 5 / Max 10). Hide the button entirely for free
+  // and anonymous users — no point showing UI that always errors out.
+  const [canPin, setCanPin] = useState<boolean>(() => Boolean(getUserData()?.isPremium));
+  useEffect(() => {
+    const refresh = () => setCanPin(Boolean(getUserData()?.isPremium));
+    window.addEventListener('storage', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener('storage', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
 
   const fetchConversations = async () => {
     try {
@@ -75,7 +90,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
   const handleDelete = async (e: React.MouseEvent, conversationId: string) => {
     e.stopPropagation(); // Prevent selecting the conversation
-    
+
     if (!confirm('Delete this conversation? This cannot be undone.')) {
       return;
     }
@@ -83,7 +98,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     try {
       const baseUrl = import.meta.env.VITE_API_URL as string;
       const { getAuthHeaders } = await import('../utils/auth');
-      
+
       const response = await fetch(`${baseUrl}/api/conversations/${conversationId}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
@@ -98,6 +113,58 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     } catch (error) {
       console.error('Failed to delete conversation:', error);
       alert('Failed to delete conversation');
+    }
+  };
+
+  const handleTogglePin = async (
+    e: React.MouseEvent,
+    conversationId: string,
+    currentlyPinned: boolean,
+  ) => {
+    e.stopPropagation();
+    // Optimistic update — flip the bit locally so the chip moves to the top
+    // immediately, then revert if the server rejects.
+    setConversations((prev) =>
+      [...prev]
+        .map((c) =>
+          c.id === conversationId
+            ? { ...c, is_pinned: !currentlyPinned, pinned_at: !currentlyPinned ? new Date().toISOString() : null }
+            : c,
+        )
+        .sort((a, b) => {
+          // Pinned first (most-recently pinned first), then by updated_at desc.
+          const pa = a.is_pinned ? 1 : 0;
+          const pb = b.is_pinned ? 1 : 0;
+          if (pa !== pb) return pb - pa;
+          if (a.is_pinned && b.is_pinned) {
+            return (b.pinned_at || '').localeCompare(a.pinned_at || '');
+          }
+          return (b.updated_at || '').localeCompare(a.updated_at || '');
+        }),
+    );
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL as string;
+      const { getAuthHeaders } = await import('../utils/auth');
+      const response = await fetch(`${baseUrl}/api/conversations/${conversationId}`, {
+        method: 'PATCH',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: !currentlyPinned }),
+      });
+      if (!response.ok) {
+        // Roll back the optimistic update
+        fetchConversations();
+        // Surface the right message for the two pin-related rejections.
+        try {
+          const errData = await response.json();
+          // 403 = paid-only feature; 409 = at the per-tier cap.
+          if ((response.status === 403 || response.status === 409) && errData?.limitReached) {
+            alert(errData.error || 'Pin limit reached.');
+          }
+        } catch { /* ignore parse failure */ }
+      }
+    } catch (error) {
+      console.error('Failed to toggle pin:', error);
+      fetchConversations();
     }
   };
 
@@ -220,7 +287,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                     <div className="flex-1 min-w-0">
                       <h4
                         className={`
-                          text-sm font-semibold truncate mb-1
+                          text-sm font-semibold truncate mb-1 flex items-center gap-1
                           ${
                             activeConversationId === conv.id
                               ? 'text-[var(--accent)]'
@@ -228,27 +295,54 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                           }
                         `}
                       >
-                        {conv.title}
+                        {conv.is_pinned && (
+                          <FaThumbtack
+                            size={10}
+                            className="text-[var(--accent)] flex-shrink-0"
+                            aria-label="Pinned"
+                          />
+                        )}
+                        <span className="truncate">{conv.title}</span>
                       </h4>
                       <p className="text-xs text-[var(--sub)]">
                         {formatDate(conv.updated_at)}
                       </p>
                     </div>
 
-                    {/* Delete Button — always visible (tappable on mobile, no hover there) */}
-                    <button
-                      onClick={(e) => handleDelete(e, conv.id)}
-                      className="
-                        opacity-60 hover:opacity-100
-                        p-2 rounded-lg hover:bg-red-500 hover:bg-opacity-20
-                        transition-all duration-200
-                        text-[var(--sub)] hover:text-red-500
-                        flex-shrink-0
-                      "
-                      aria-label="Delete conversation"
-                    >
-                      <FaTrash size={14} />
-                    </button>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {/* Pin / unpin — paid feature, hidden for free / anon users.
+                          Already-pinned ones always show (so a downgraded user can still unpin). */}
+                      {(canPin || conv.is_pinned) && (
+                        <button
+                          onClick={(e) => handleTogglePin(e, conv.id, !!conv.is_pinned)}
+                          className={`
+                            p-2 rounded-lg
+                            transition-all duration-200
+                            ${conv.is_pinned
+                              ? 'text-[var(--accent)] opacity-100 hover:bg-[var(--accent)] hover:bg-opacity-15'
+                              : 'opacity-60 hover:opacity-100 text-[var(--sub)] hover:text-[var(--accent)] hover:bg-[var(--accent)] hover:bg-opacity-10'}
+                          `}
+                          aria-label={conv.is_pinned ? 'Unpin conversation' : 'Pin conversation'}
+                          title={conv.is_pinned ? 'Unpin' : 'Pin to top'}
+                        >
+                          <FaThumbtack size={14} />
+                        </button>
+                      )}
+
+                      {/* Delete — always visible (tappable on mobile, no hover there) */}
+                      <button
+                        onClick={(e) => handleDelete(e, conv.id)}
+                        className="
+                          opacity-60 hover:opacity-100
+                          p-2 rounded-lg hover:bg-red-500 hover:bg-opacity-20
+                          transition-all duration-200
+                          text-[var(--sub)] hover:text-red-500
+                        "
+                        aria-label="Delete conversation"
+                      >
+                        <FaTrash size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
