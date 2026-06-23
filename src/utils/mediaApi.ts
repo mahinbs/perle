@@ -55,10 +55,18 @@ function appendReferenceImages(formData: FormData, referenceImages?: File | File
   }
 }
 
+export type ImageModelChoice =
+  | 'auto'
+  | 'nano-banana'
+  | 'imagen-4'
+  | 'gpt-image-1'
+  | 'grok-image';
+
 export async function generateImageApi(
   prompt: string,
   aspectRatio: string = "1:1",
-  referenceImages?: File | File[]
+  referenceImages?: File | File[],
+  imageModel: ImageModelChoice = 'auto'
 ): Promise<GeneratedImageResult> {
   const baseUrl = getBaseUrl();
   const hasReferenceImages = Array.isArray(referenceImages)
@@ -69,6 +77,7 @@ export async function generateImageApi(
     const formData = new FormData();
     formData.append("prompt", prompt);
     formData.append("aspectRatio", aspectRatio);
+    formData.append("imageModel", imageModel);
     appendReferenceImages(formData, referenceImages);
 
     const res = await fetch(`${baseUrl}/api/media/generate-image`, {
@@ -86,7 +95,7 @@ export async function generateImageApi(
   const res = await fetch(`${baseUrl}/api/media/generate-image`, {
     method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify({ prompt, aspectRatio }),
+    body: JSON.stringify({ prompt, aspectRatio, imageModel }),
   });
 
   if (!res.ok) await parseApiError(res, "Image generation failed");

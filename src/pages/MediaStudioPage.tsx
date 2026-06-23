@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { IoIosArrowBack } from "react-icons/io";
 import { FaImage, FaVideo, FaSpinner, FaTimes, FaPlus, FaArrowUp, FaDownload } from "react-icons/fa";
@@ -12,8 +13,10 @@ import {
 } from "../utils/queryLimit";
 import { UsageLimitModal } from "../components/UsageLimitModal";
 import { downloadMedia } from "../utils/downloadMedia";
-import { generateImageApi, generateVideoApi } from "../utils/mediaApi";
+import { generateImageApi, generateVideoApi, type ImageModelChoice } from "../utils/mediaApi";
+import { getUserData } from "../utils/auth";
 import type { UploadedFile } from "../types";
+import { ProviderLogo } from "../components/ProviderLogos";
 import {
   MediaStudioModal,
   type MediaStudioModalView,
@@ -48,6 +51,47 @@ const IMAGE_TEMPLATES = [
   { id: "cartoon", label: "Cartoonify", prompt: "Convert this image into a vibrant cartoon illustration style" },
 ];
 
+// Image-gen model picker — user-facing labels only (no internal pipeline names).
+type ImageModelOption = {
+  value: ImageModelChoice;
+  label: string;
+  provider: string;
+  description: string;
+};
+
+const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
+  {
+    value: "auto",
+    label: "Auto",
+    provider: "SyntraIQ",
+    description: "Best model for your prompt",
+  },
+  {
+    value: "nano-banana",
+    label: "Nano Banana",
+    provider: "Google",
+    description: "Vivid, creative images",
+  },
+  {
+    value: "imagen-4",
+    label: "Imagen 4",
+    provider: "Google",
+    description: "Photorealistic quality",
+  },
+  {
+    value: "gpt-image-1",
+    label: "GPT Image",
+    provider: "OpenAI",
+    description: "Strong text-to-image and edits",
+  },
+  {
+    value: "grok-image",
+    label: "Grok Imagine",
+    provider: "xAI",
+    description: "Fast, stylized images",
+  },
+];
+
 const VIDEO_TEMPLATES = [
   { id: "cinematic", label: "Cinematic scene", prompt: "A cinematic drone shot over misty mountains at sunrise, golden light, 4K quality" },
   { id: "product", label: "Product showcase", prompt: "Smooth rotating product showcase on a minimalist white studio background with soft lighting" },
@@ -76,6 +120,64 @@ export default function MediaStudioPage() {
   const [modalResultUrl, setModalResultUrl] = useState<string | null>(null);
   const [activeSourcePreviews, setActiveSourcePreviews] = useState<string[]>([]);
   const [usageLimitModal, setUsageLimitModal] = useState<UsageLimitKind | null>(null);
+  // Image model selection (premium only). Free users always run on 'auto'
+  // and the backend silently picks the chain it can authenticate against.
+  const [imageModel, setImageModel] = useState<ImageModelChoice>("auto");
+  const [imageModelOpen, setImageModelOpen] = useState(false);
+  const imageModelBtnRef = useRef<HTMLButtonElement>(null);
+  const [imageModelMenuStyle, setImageModelMenuStyle] = useState<React.CSSProperties | null>(null);
+  const isPremiumUser = Boolean(getUserData()?.isPremium);
+  const selectedImageModelOption =
+    IMAGE_MODEL_OPTIONS.find((o) => o.value === imageModel) ?? IMAGE_MODEL_OPTIONS[0];
+
+  useLayoutEffect(() => {
+    if (!imageModelOpen || !imageModelBtnRef.current) {
+      setImageModelMenuStyle(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const btn = imageModelBtnRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const menuWidth = Math.min(320, Math.max(280, rect.width + 40));
+      const right = Math.max(12, window.innerWidth - rect.right);
+      const bottom = Math.max(12, window.innerHeight - rect.top + 8);
+
+      setImageModelMenuStyle({
+        position: "fixed",
+        right,
+        bottom,
+        width: menuWidth,
+        maxHeight: "min(340px, 50vh)",
+        overflowY: "auto",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        borderRadius: 14,
+        boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
+        padding: 6,
+        zIndex: 10050,
+        WebkitOverflowScrolling: "touch",
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [imageModelOpen]);
+
+  useEffect(() => {
+    if (!imageModelOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setImageModelOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [imageModelOpen]);
 
   const goToSubscriptionPlan = (plan: "pro" | "max") => {
     setUsageLimitModal(null);
@@ -211,6 +313,7 @@ export default function MediaStudioPage() {
           text,
           "1:1",
           attachedFiles.length > 0 ? attachedFiles : undefined,
+          isPremiumUser ? imageModel : "auto",
         );
         setModalResultUrl(result.url);
         setModalView("result");
@@ -555,7 +658,113 @@ export default function MediaStudioPage() {
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative">
+              {/* Image-model picker — premium only. Free users get the
+                  default auto chain silently. Custom dropdown shows each
+                  provider's brand logo + description so users can pick
+                  by recognising the icon, not just the name. */}
+              {mediaMode === "image" && isPremiumUser && (
+                <>
+                  <button
+                    ref={imageModelBtnRef}
+                    type="button"
+                    onClick={() => setImageModelOpen((o) => !o)}
+                    aria-label="Image model"
+                    aria-expanded={imageModelOpen}
+                    aria-haspopup="listbox"
+                    className="flex items-center gap-1.5 text-xs rounded-full px-2.5 py-1.5 outline-none border-none shrink-0"
+                    style={{ background: "var(--input-bg)", color: "var(--text)" }}
+                  >
+                    <ProviderLogo
+                      provider={selectedImageModelOption.provider}
+                      modelId={selectedImageModelOption.value === "auto" ? "auto" : undefined}
+                      size={20}
+                    />
+                    <span className="font-medium max-w-[120px] truncate">{selectedImageModelOption.label}</span>
+                    <span style={{ opacity: 0.6, fontSize: 10 }} aria-hidden>▾</span>
+                  </button>
+                  {imageModelOpen && imageModelMenuStyle &&
+                    createPortal(
+                      <>
+                        <div
+                          onClick={() => setImageModelOpen(false)}
+                          style={{ position: "fixed", inset: 0, zIndex: 10040 }}
+                          aria-hidden
+                        />
+                        <div role="listbox" aria-label="Image models" style={imageModelMenuStyle}>
+                          <div
+                            style={{
+                              padding: "8px 10px 6px",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "var(--text)",
+                              borderBottom: "1px solid var(--border)",
+                              marginBottom: 4,
+                            }}
+                          >
+                            Image model
+                          </div>
+                          {IMAGE_MODEL_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              role="option"
+                              aria-selected={imageModel === opt.value}
+                              onClick={() => {
+                                setImageModel(opt.value);
+                                setImageModelOpen(false);
+                              }}
+                              className="w-full text-left flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg transition-colors"
+                              style={{
+                                background: imageModel === opt.value ? "var(--input-bg)" : "transparent",
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = "var(--input-bg)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background =
+                                  imageModel === opt.value ? "var(--input-bg)" : "transparent";
+                              }}
+                            >
+                              <ProviderLogo
+                                provider={opt.provider}
+                                modelId={opt.value === "auto" ? "auto" : undefined}
+                                size={28}
+                              />
+                              <span style={{ minWidth: 0, flex: 1 }}>
+                                <span
+                                  style={{
+                                    display: "block",
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    color: "var(--text)",
+                                  }}
+                                >
+                                  {opt.label}
+                                </span>
+                                <span
+                                  style={{
+                                    display: "block",
+                                    fontSize: 11,
+                                    color: "var(--sub)",
+                                    lineHeight: 1.35,
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  {opt.description}
+                                </span>
+                              </span>
+                              {imageModel === opt.value && (
+                                <span style={{ color: "var(--accent)", fontSize: 14, flexShrink: 0 }}>✓</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </>,
+                      document.body
+                    )}
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => void handleGenerate()}

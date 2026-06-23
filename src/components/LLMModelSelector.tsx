@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import type { LLMModel, LLMModelInfo, ExperienceMode } from "../types";
+import { ProviderLogo } from "./ProviderLogos";
 
 const FREE_TIER_MODEL: LLMModelInfo = {
   id: "gemini-lite",
@@ -334,6 +335,93 @@ const premiumModels: LLMModelInfo[] = [
     description: "xAI's beta language model with real-time capabilities",
     capabilities: ["Real-time Data", "Fast Response", "Beta Features"],
   },
+  // DeepSeek
+  {
+    id: "deepseek-v3.2",
+    name: "DeepSeek V3.2",
+    provider: "DeepSeek",
+    description: "Next-gen foundation model — strong general reasoning + coding",
+    capabilities: ["Reasoning", "Coding", "Cost Effective"],
+  },
+  {
+    id: "deepseek-v3.2-exp",
+    name: "DeepSeek V3.2 Exp",
+    provider: "DeepSeek",
+    description: "Experimental DeepSeek V3.2 with sparse attention",
+    capabilities: ["Experimental", "Long Context", "Reasoning"],
+  },
+  {
+    id: "deepseek-v3.1",
+    name: "DeepSeek V3.1",
+    provider: "DeepSeek",
+    description: "Hybrid thinking / non-thinking general model",
+    capabilities: ["Hybrid Thinking", "General Purpose"],
+  },
+  {
+    id: "deepseek-r1",
+    name: "DeepSeek R1",
+    provider: "DeepSeek",
+    description: "Reasoning-focused — math, code, multi-step problems",
+    capabilities: ["Deep Reasoning", "Math", "Code"],
+  },
+  // Kimi / Moonshot
+  {
+    id: "kimi-k2.5",
+    name: "Kimi K2.5",
+    provider: "Moonshot",
+    description: "Moonshot AI's flagship agentic LLM — SOTA open model",
+    capabilities: ["Agentic", "Long Context", "Tool Use"],
+  },
+  {
+    id: "kimi-k2-thinking",
+    name: "Kimi K2 Thinking",
+    provider: "Moonshot",
+    description: "General-purpose agentic reasoning — strong multi-step thinking",
+    capabilities: ["Deep Thinking", "Agentic", "Reasoning"],
+  },
+  {
+    id: "kimi-k2",
+    name: "Kimi K2",
+    provider: "Moonshot",
+    description: "Mixture-of-experts language model — fast and capable",
+    capabilities: ["MoE", "Fast", "General Purpose"],
+  },
+  // Perplexity Sonar
+  {
+    id: "perplexity-sonar-pro",
+    name: "Perplexity Sonar Pro",
+    provider: "Perplexity",
+    description: "Agentic researcher — autonomous real-time web search",
+    capabilities: ["Web Search", "Agentic", "Cited Answers"],
+  },
+  {
+    id: "perplexity-sonar",
+    name: "Perplexity Sonar",
+    provider: "Perplexity",
+    description: "Real-time, web-connected answers with citations",
+    capabilities: ["Web Search", "Real-time", "Cited Answers"],
+  },
+  {
+    id: "perplexity-sonar-reasoning-pro",
+    name: "Perplexity Sonar Reasoning Pro",
+    provider: "Perplexity",
+    description: "R1-based reasoning model with live web grounding",
+    capabilities: ["Deep Reasoning", "Web Search", "Cited Answers"],
+  },
+  {
+    id: "perplexity-adv-deep-research",
+    name: "Perplexity Advanced Deep Research",
+    provider: "Perplexity",
+    description: "Institutional-grade inquiry — long, sourced research reports",
+    capabilities: ["Deep Research", "Long Reports", "Cited Answers"],
+  },
+  {
+    id: "perplexity-deep-research",
+    name: "Perplexity Deep Research",
+    provider: "Perplexity",
+    description: "Multi-source long-form research with citations",
+    capabilities: ["Deep Research", "Multi-source", "Cited Answers"],
+  },
 ];
 
 // Legacy models (kept for backward compatibility, but not shown in selector)
@@ -437,6 +525,14 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     'gemini-3.1', 'gemini-3.1-flash', 'gemini-3.5-flash', 'gemini-pro',
     // OpenAI mid
     'gpt-4o',
+    // DeepSeek / Kimi / Perplexity — reasoning- and research-leaning models
+    // belong in the deep_research filter. Sonar (live web search) stays out so
+    // it surfaces in Web mode, not Deep.
+    'deepseek-r1', 'deepseek-v3.2-exp',
+    'kimi-k2-thinking', 'kimi-k2.5',
+    'perplexity-sonar-reasoning-pro',
+    'perplexity-deep-research',
+    'perplexity-adv-deep-research',
   ];
 
   const filteredModels = premiumModels.filter((model) => {
@@ -571,29 +667,6 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     handleModelSelect(modelId);
   };
 
-  const getProviderColor = (provider?: string) => {
-    switch (provider) {
-      case "OpenAI":
-        return "#10A37F";
-      case "Anthropic":
-        return "#D97706";
-      case "Google":
-        return "#4285F4";
-      case "xAI":
-        return "#000000";
-      case "SyntraIQ":
-        return "#6366F1";
-      case "Exa":
-        return "#22C55E";
-      case "Meta":
-        return "#1877F2";
-      case "Mistral AI":
-        return "#7C3AED";
-      default:
-        return "#6B7280";
-    }
-  };
-
   // Size-based styles
   const sizeStyles = {
     small: {
@@ -676,15 +749,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
         }
       }}
     >
-      <div
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          backgroundColor: getProviderColor(model.provider),
-          flexShrink: 0,
-        }}
-      />
+      <ProviderLogo provider={model.provider} modelId={model.id} size={isMobileView ? 24 : 26} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -810,13 +875,10 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               gap: currentSize.gap,
             }}
           >
-            <div
-              style={{
-                width: currentSize.iconSize,
-                height: currentSize.iconSize,
-                borderRadius: "50%",
-                backgroundColor: getProviderColor(selectedModelInfo?.provider),
-              }}
+            <ProviderLogo
+              provider={selectedModelInfo?.provider}
+              modelId={selectedModel}
+              size={Math.max(currentSize.iconSize + 8, 16)}
             />
             <span className="font-medium">
               {selectedModelInfo?.name.slice(0, 10).concat(

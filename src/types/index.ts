@@ -24,6 +24,13 @@ export type LLMModel =
   // Grok
   | 'grok-4.3' | 'grok-4.20' | 'grok-3' | 'grok-3-mini'
   | 'grok-4-heavy' | 'grok-4-fast' | 'grok-code-fast-1' | 'grok-beta'
+  // DeepSeek
+  | 'deepseek-v3.2' | 'deepseek-v3.2-exp' | 'deepseek-v3.1' | 'deepseek-r1'
+  // Kimi / Moonshot
+  | 'kimi-k2' | 'kimi-k2.5' | 'kimi-k2-thinking'
+  // Perplexity (Sonar family)
+  | 'perplexity-sonar' | 'perplexity-sonar-pro' | 'perplexity-sonar-reasoning-pro'
+  | 'perplexity-deep-research' | 'perplexity-adv-deep-research'
   // Others
   | 'llama-2' | 'mistral-7b';
 

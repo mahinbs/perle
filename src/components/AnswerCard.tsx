@@ -1863,21 +1863,63 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               }}
             >
               {isStreamingAnswer ? (
-                <div
-                  className="answer-streaming-text"
-                  style={{
-                    lineHeight: 1.75,
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {renderStreamingContent(chunk.text)}
-                  {index === chunks.length - 1 && (
-                    <span
-                      className="answer-streaming-cursor"
-                      aria-hidden
-                    />
-                  )}
-                </div>
+                // Streaming render strategy: feed COMPLETED lines (everything
+                // up to the last newline) into the same `formatText` pipeline
+                // we use post-stream, so headings / bullets / bold appear in
+                // their final styled form the moment the line finishes — no
+                // visible "raw → formatted" snap at the end of streaming.
+                // The actively-typing trailing line is rendered as plain
+                // pre-wrap text so partial markdown (a `## ` waiting for its
+                // word, an unbalanced `**`, a `|---|` table separator) never
+                // flickers into half-styled form.
+                //
+                // Tables remain handled by renderStreamingContent for the
+                // in-flight portion only — partial table rows look ugly when
+                // styled mid-row, so we keep that buffer-then-render behaviour.
+                (() => {
+                  const text = chunk.text || "";
+                  const lastNl = text.lastIndexOf("\n");
+                  const completed = lastNl >= 0 ? text.slice(0, lastNl) : "";
+                  const partial = lastNl >= 0 ? text.slice(lastNl + 1) : text;
+                  const partialIsTableLike =
+                    isStreamTableSeparator(partial) ||
+                    isStreamTableRowComplete(partial) ||
+                    isStreamTableRowPartial(partial);
+                  // Only when the *currently-typing* line is part of a table
+                  // do we hand the whole chunk to the buffered renderer —
+                  // it already drops partial rows and shows complete ones.
+                  // Completed tables sitting above the cursor go through
+                  // formatText just fine (it has its own renderMarkdownTable).
+                  if (partialIsTableLike) {
+                    return (
+                      <div
+                        className="answer-streaming-text"
+                        style={{ lineHeight: 1.75, wordBreak: "break-word" }}
+                      >
+                        {renderStreamingContent(chunk.text)}
+                        {index === chunks.length - 1 && (
+                          <span className="answer-streaming-cursor" aria-hidden />
+                        )}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      className="answer-streaming-text"
+                      style={{ lineHeight: 1.75, wordBreak: "break-word" }}
+                    >
+                      {completed && formatText(completed, false, true)}
+                      {partial && (
+                        <span style={{ whiteSpace: "pre-wrap" }}>
+                          {partial.replace(/^#{1,6}\s+/, "")}
+                        </span>
+                      )}
+                      {index === chunks.length - 1 && (
+                        <span className="answer-streaming-cursor" aria-hidden />
+                      )}
+                    </div>
+                  );
+                })()
               ) : (
                 <div className={skipTypewriter ? "answer-formatted-fadein" : undefined}>
                   {formatText(
