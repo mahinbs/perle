@@ -1,9 +1,18 @@
-import React, { useEffect, useState } from "react";
-import { FaUserCircle, FaEllipsisV } from "react-icons/fa";
+import React, { useEffect, useState, useCallback } from "react";
+import { FaEllipsisV } from "react-icons/fa";
 import { IoIosArrowBack } from "react-icons/io";
 import { Link, useLocation } from "react-router-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getAllDiscoverItems } from "../services/discoverService";
+import {
+  getUserProfilePictureUrl,
+  getUserAvatarFallbackUrl,
+  onAuthChange,
+  isLoggedIn,
+  setUserData,
+  authFetch,
+} from "../utils/auth";
+import { onStorageChange } from "../utils/storage";
 import type { DiscoverItem } from "../types";
 
 interface HeaderProps {
@@ -21,6 +30,13 @@ export const Header: React.FC<HeaderProps> = ({
   const { navigateTo } = useRouterNavigation();
   const location = useLocation();
   const [previewItems, setPreviewItems] = useState<DiscoverItem[]>([]);
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(() =>
+    getUserProfilePictureUrl()
+  );
+
+  const refreshProfileImage = useCallback(() => {
+    setProfileImageUrl(getUserProfilePictureUrl());
+  }, []);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -28,6 +44,42 @@ export const Header: React.FC<HeaderProps> = ({
     getAllDiscoverItems()
       .then((items) => setPreviewItems(Array.isArray(items) ? items.slice(0, 2) : []))
       .catch(() => setPreviewItems([]));
+  }, []);
+
+  useEffect(() => {
+    refreshProfileImage();
+    const offAuth = onAuthChange(refreshProfileImage);
+    const offStorage = onStorageChange(refreshProfileImage);
+    return () => {
+      offAuth();
+      offStorage();
+    };
+  }, [refreshProfileImage]);
+
+  // Load profile picture from API when missing from cache (e.g. right after login).
+  useEffect(() => {
+    if (!isLoggedIn() || getUserProfilePictureUrl()) return;
+
+    const API_URL = import.meta.env.VITE_API_URL as string | undefined;
+    if (!API_URL) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await authFetch(`${API_URL}/api/profile`);
+        if (!response.ok || cancelled) return;
+        const profile = await response.json();
+        if (cancelled) return;
+        setUserData(profile);
+        setProfileImageUrl(profile.dp || profile.displayPictureUrl || null);
+      } catch {
+        // Non-critical — fallback avatar still shows
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const img1 = previewItems[0]?.image;
@@ -144,7 +196,7 @@ export const Header: React.FC<HeaderProps> = ({
             </Link>
             <button
               type="button"
-              className={`header-profile-btn btn-ghost glass-button flex items-center justify-center rounded-xl ${isActive("/profile") ? "active" : ""}`}
+              className={`header-profile-btn btn-ghost glass-button flex items-center justify-center rounded-xl overflow-hidden ${isActive("/profile") ? "active" : ""}`}
               onClick={() => navigateTo("/profile")}
               aria-label="Profile"
               style={{
@@ -154,7 +206,22 @@ export const Header: React.FC<HeaderProps> = ({
                 zIndex: 1,
               }}
             >
-              <FaUserCircle className="header-profile-icon" />
+              {profileImageUrl ? (
+                <img
+                  src={profileImageUrl}
+                  alt="Your profile"
+                  className="header-profile-avatar"
+                  draggable={false}
+                  onError={() => setProfileImageUrl(null)}
+                />
+              ) : (
+                <img
+                  src={getUserAvatarFallbackUrl(80)}
+                  alt="Your profile"
+                  className="header-profile-avatar"
+                  draggable={false}
+                />
+              )}
             </button>
           </div>
         </div>
@@ -243,6 +310,14 @@ export const Header: React.FC<HeaderProps> = ({
             min-height: 40px;
             padding: 0 !important;
             flex-shrink: 0;
+          }
+
+          .header-profile-avatar {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: inherit;
+            display: block;
           }
 
           .header-profile-icon {
