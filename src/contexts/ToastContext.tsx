@@ -31,15 +31,15 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       <div
         style={{
           position: 'fixed',
-          bottom: 20,
-          right: 20,
+          bottom: 'max(20px, env(safe-area-inset-bottom, 0px))',
+          right: 'max(16px, env(safe-area-inset-right, 0px))',
           left: 'auto',
           display: 'flex',
           flexDirection: 'column-reverse',
           gap: 12,
-          zIndex: 10000,
+          zIndex: 100000,
           pointerEvents: 'none',
-          maxWidth: 'calc(100vw - 40px)'
+          maxWidth: 'min(400px, calc(100vw - 32px))',
         }}
       >
         {toasts.map(toast => (

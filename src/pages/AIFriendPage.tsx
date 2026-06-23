@@ -19,10 +19,10 @@ import { useToast } from "../contexts/ToastContext";
 import {
   getUserData,
   getAuthToken,
-  getAuthHeaders,
-  isAuthenticated,
+  authFetch,
   removeAuthToken,
 } from "../utils/auth";
+import { useAuthSession } from "../hooks/useAuthSession";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
@@ -108,9 +108,9 @@ export default function AIFriendPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
   // Get user data for avatar
-  const userData = getUserData();
+  const { isLoggedIn, user: sessionUser } = useAuthSession();
+  const userData = sessionUser ?? getUserData();
   const userName = userData?.name || "You";
-  const isLoggedIn = isAuthenticated();
 
   const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
   // AI Friends state
@@ -348,9 +348,8 @@ export default function AIFriendPage() {
     if (!API_URL || !isLoggedIn) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/ai-friends/default-logos`, {
+      const response = await authFetch(`${API_URL}/api/ai-friends/default-logos`, {
         method: "GET",
-        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -379,9 +378,8 @@ export default function AIFriendPage() {
 
     setIsLoadingFriends(true);
     try {
-      const response = await fetch(`${API_URL}/api/ai-friends`, {
+      const response = await authFetch(`${API_URL}/api/ai-friends`, {
         method: "GET",
-        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -459,10 +457,7 @@ export default function AIFriendPage() {
 
         console.log('📚 Loading history from:', historyUrl);
         
-        const response = await fetch(historyUrl, {
-          method: "GET",
-          headers: getAuthHeaders(),
-        });
+        const response = await authFetch(historyUrl, { method: "GET" });
         
         console.log('📚 History response status:', response.status);
 
@@ -535,7 +530,7 @@ export default function AIFriendPage() {
 
     try {
       const url = buildHistoryApiUrl(before);
-      const response = await fetch(url, { method: 'GET', headers: getAuthHeaders() });
+      const response = await authFetch(url, { method: 'GET' });
       if (!response.ok) return;
       const data = await response.json();
       const older = mapHistoryToMessages(data.messages || [], `history-older-${before}`);
@@ -1180,9 +1175,9 @@ export default function AIFriendPage() {
     if (!API_URL) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/ai-friends`, {
+      const response = await authFetch(`${API_URL}/api/ai-friends`, {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: friendName.trim(),
           description: friendDescription.trim(),
@@ -1232,11 +1227,11 @@ export default function AIFriendPage() {
       // Determine if logo should be removed (both are empty/null)
       const shouldRemoveLogo = !friendLogoUrl && !selectedDefaultLogo;
       
-      const response = await fetch(
+      const response = await authFetch(
         `${API_URL}/api/ai-friends/${editingFriend.id}`,
         {
           method: "PUT",
-          headers: getAuthHeaders(),
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: friendName.trim(),
             description: friendDescription.trim(),
@@ -1282,9 +1277,8 @@ export default function AIFriendPage() {
     if (!API_URL) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/ai-friends/${friendId}`, {
+      const response = await authFetch(`${API_URL}/api/ai-friends/${friendId}`, {
         method: "DELETE",
-        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
