@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
-import { getAuthHeaders, isAuthenticated, removeAuthToken } from "../utils/auth";
+import { getAuthHeaders, isAuthenticated, tryRecoverAuthOrLogout } from "../utils/auth";
 import { downloadMedia } from "../utils/downloadMedia";
 import { IoIosArrowBack } from "react-icons/io";
 import { FaImage, FaVideo, FaDownload, FaSpinner } from "react-icons/fa";
@@ -61,8 +61,9 @@ export default function GalleryPage() {
       );
 
       if (response.status === 401) {
-        // User is logged out - clear auth and show free user experience
-        removeAuthToken();
+        // Try silent refresh first; only fall back to "free user" UX if
+        // the session is genuinely gone (refresh token rejected too).
+        void tryRecoverAuthOrLogout();
         setMedia([]);
         return;
       }

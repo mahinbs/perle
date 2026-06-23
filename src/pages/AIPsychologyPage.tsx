@@ -12,7 +12,7 @@ import {
   FaComments,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, authFetch, removeAuthToken } from "../utils/auth";
+import { getUserData, authFetch, tryRecoverAuthOrLogout } from "../utils/auth";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
@@ -127,10 +127,11 @@ export default function AIPsychologyPage() {
 
         console.log('📚 [Psychology] History response status:', response.status);
 
-        // Handle 401 - user logged out
+        // Handle 401 — try to silently refresh the session before logging
+        // the user out. Most "logouts" were really just an expired access
+        // token whose refresh token was still valid.
         if (response.status === 401) {
-          removeAuthToken();
-          // Silently handle - don't show error for history loading
+          void tryRecoverAuthOrLogout();
           return;
         }
 

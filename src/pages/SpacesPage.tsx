@@ -17,7 +17,7 @@ import {
   getAuthHeaders,
   getAuthToken,
   isAuthenticated,
-  removeAuthToken,
+  tryRecoverAuthOrLogout,
 } from "../utils/auth";
 import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
@@ -219,10 +219,10 @@ export default function SpacesPage() {
         },
       );
 
-      // Handle 401 - user logged out
+      // Handle 401 — soft recovery; only treat as logged out if refresh
+      // token is also rejected by tryRecoverAuthOrLogout.
       if (response.status === 401) {
-        removeAuthToken();
-        // Silently handle - don't show error for history loading
+        void tryRecoverAuthOrLogout();
         return;
       }
 
@@ -466,10 +466,10 @@ export default function SpacesPage() {
         }),
       });
 
-      // Handle 401 - user logged out, continue as free user
+      // Handle 401 — soft recovery; only fall through to free experience
+      // if the refresh token is genuinely gone.
       if (response.status === 401) {
-        removeAuthToken();
-        // Continue with free user experience - don't redirect
+        void tryRecoverAuthOrLogout();
         return;
       }
 

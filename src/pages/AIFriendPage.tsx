@@ -20,7 +20,7 @@ import {
   getUserData,
   getAuthToken,
   authFetch,
-  removeAuthToken,
+  tryRecoverAuthOrLogout,
 } from "../utils/auth";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
@@ -461,9 +461,11 @@ export default function AIFriendPage() {
         
         console.log('📚 History response status:', response.status);
 
-        // Handle 401 - user logged out
+        // Handle 401 — attempt silent refresh first so an expired access
+        // token doesn't punt the user back to the login screen when their
+        // refresh token is still valid.
         if (response.status === 401) {
-          removeAuthToken();
+          void tryRecoverAuthOrLogout();
           return;
         }
 
@@ -819,7 +821,8 @@ export default function AIFriendPage() {
             })
             .catch((error: any) => {
               if (error?.message?.includes("Session expired")) {
-                removeAuthToken();
+                // Soft recovery — refresh once before nuking the session.
+                void tryRecoverAuthOrLogout();
               }
               const errorResponse: Message = {
                 id: `${Date.now()}-error-${friend.id}`,

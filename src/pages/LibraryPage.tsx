@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import { getAuthHeaders, isAuthenticated, removeAuthToken } from "../utils/auth";
+import { getAuthHeaders, isAuthenticated, tryRecoverAuthOrLogout } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
 
 const API_URL = import.meta.env.VITE_API_URL as string | undefined;
@@ -118,10 +118,10 @@ export default function LibraryPage() {
         headers: getAuthHeaders(),
       });
 
-      // Handle 401 - user logged out
+      // Handle 401 — soft recovery first; the user is only really logged
+      // out if the refresh token is also rejected.
       if (response.status === 401) {
-        removeAuthToken();
-        // Silently handle - item will be removed from local state
+        void tryRecoverAuthOrLogout();
         setLibraryItems((prev) => prev.filter((item) => item.id !== id));
         return;
       }

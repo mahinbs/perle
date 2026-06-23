@@ -96,6 +96,17 @@ export function initializeTheme(): void {
   applyTheme(getStoredDarkModePreference());
 }
 
+/**
+ * Hard logout — clears every token + user record. Call this only from the
+ * intentional "log out" button or when we've already proven the session
+ * cannot be recovered (refresh token rejected).
+ *
+ * Most page-level "if (status === 401) { removeAuthToken() }" handlers
+ * were silently kicking users out the moment their access token aged
+ * past TTL, even though the refresh token was still good. To stop that,
+ * those callers now go through `tryRecoverAuthOrLogout` instead, which
+ * attempts a refresh first and only hard-logs-out when refresh fails.
+ */
 export function removeAuthToken(): void {
   if (typeof window === 'undefined') return;
   removeSessionAuthToken();
@@ -104,6 +115,29 @@ export function removeAuthToken(): void {
   removeLocalItem(USER_DATA_KEY);
   applyTheme(false);
   notifyAuthChange();
+}
+
+/**
+ * Soft 401 handler: if a refresh token is present, attempt to refresh the
+ * session. Returns true if the session was recovered (caller should retry
+ * the request) and false if it's genuinely gone (caller's request stays
+ * failed; we've already hard-logged-out so the UI updates).
+ *
+ * Use this from every page-level 401 handler instead of removeAuthToken().
+ */
+export async function tryRecoverAuthOrLogout(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  // No refresh token to try — this user is genuinely signed out.
+  if (!getRefreshToken()) {
+    removeAuthToken();
+    return false;
+  }
+  const refreshed = await refreshAuthSession();
+  if (!refreshed) {
+    removeAuthToken();
+    return false;
+  }
+  return true;
 }
 
 export function getUserData(): User | null {
