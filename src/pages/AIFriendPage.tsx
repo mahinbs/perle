@@ -25,8 +25,13 @@ import {
 import { useAuthSession } from "../hooks/useAuthSession";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
-import { formatTimestampIST } from "../utils/helpers";
-import { getChatDateLabel, isDifferentChatDay } from "../utils/chatDates";
+import {
+  getChatDateLabel,
+  isDifferentChatDay,
+  formatChatMessageTime,
+  isChatGreetingMessage,
+  sortMessagesByTime,
+} from "../utils/chatDates";
 import {
   CHAT_EXCHANGE_SCROLL_OFFSET,
   scheduleScrollExchangeToTop,
@@ -484,22 +489,9 @@ export default function AIFriendPage() {
                 !isGroupChat || m.role !== "ai" || Boolean(m.friendId)
             );
 
-            // Append history to existing greeting
-            setMessages((prev) => {
-              // Keep the greeting and append history
-              if (prev.length > 0 && prev[0]?.id === "1" && prev[0]?.role === "ai") {
-                return [prev[0], ...historyMessages];
-              }
-              return [
-              {
-                id: "1",
-                role: "ai",
-                  content: greeting,
-                timestamp: new Date(),
-              },
-              ...historyMessages,
-              ];
-            });
+            // Real history replaces the placeholder greeting (greeting uses
+            // today's date and breaks Today → Sunday dividers when prepended).
+            setMessages(sortMessagesByTime(historyMessages));
           } else {
             console.log('📚 No history messages found');
           }
@@ -537,12 +529,12 @@ export default function AIFriendPage() {
       const data = await response.json();
       const older = mapHistoryToMessages(data.messages || [], `history-older-${before}`);
       if (older.length > 0) {
-        setMessages((prev) => {
-          if (prev.length > 0 && prev[0]?.id === '1' && prev[0]?.role === 'ai') {
-            return [prev[0], ...older, ...prev.slice(1)];
-          }
-          return [...older, ...prev];
-        });
+        setMessages((prev) =>
+          sortMessagesByTime([
+            ...older,
+            ...prev.filter((m) => !isChatGreetingMessage(m)),
+          ])
+        );
       }
       historyHasMoreRef.current = Boolean(data.hasMore);
       historyOldestRef.current = data.oldestTimestamp || historyOldestRef.current;
@@ -1586,7 +1578,7 @@ export default function AIFriendPage() {
                   className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${message.role === "user" ? "text-right" : "text-left"
                     }`}
                 >
-                  {formatTimestampIST(message.timestamp)}
+                  {formatChatMessageTime(message.timestamp)}
               </div>
             </div>
           </div>

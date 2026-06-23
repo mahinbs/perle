@@ -1,5 +1,6 @@
 import React from "react";
 import type { Source } from "../types";
+import { normalizeInlineAnswerStructure } from "./normalizeAnswerStructure";
 
 export function normalizeCitationText(text: string): string {
   return text.replace(/source\s*\((\d+)\)/gi, "[$1]");
@@ -240,7 +241,7 @@ export function renderLeadBoldContent(
 export function enhanceDocumentStructure(text: string): string {
   if (!text) return text;
 
-  let result = text.replace(/\r\n/g, "\n");
+  let result = normalizeInlineAnswerStructure(text);
 
   // Promote short ALL-CAPS lines (3–60 chars) to level-2 headings
   result = result

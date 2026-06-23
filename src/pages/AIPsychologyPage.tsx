@@ -15,8 +15,13 @@ import { useToast } from "../contexts/ToastContext";
 import { getUserData, authFetch, tryRecoverAuthOrLogout } from "../utils/auth";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
-import { formatTimestampIST } from "../utils/helpers";
-import { getChatDateLabel, isDifferentChatDay } from "../utils/chatDates";
+import {
+  getChatDateLabel,
+  isDifferentChatDay,
+  formatChatMessageTime,
+  isChatGreetingMessage,
+  sortMessagesByTime,
+} from "../utils/chatDates";
 import {
   CHAT_EXCHANGE_SCROLL_OFFSET,
   scheduleScrollExchangeToTop,
@@ -153,17 +158,8 @@ export default function AIPsychologyPage() {
               })
             );
 
-            // Replace initial greeting with history
-            setMessages([
-              {
-                id: "1",
-                role: "ai",
-                content:
-                  "Hello, I'm Dr. Maya, your AI psychologist. I'm here to provide a safe, supportive space for you to explore your thoughts and feelings. How are you doing today?",
-                timestamp: new Date(),
-              },
-              ...historyMessages,
-            ]);
+            // History only — no greeting pinned to "Today" above older messages.
+            setMessages(sortMessagesByTime(historyMessages));
           }
         }
       } catch (error) {
@@ -200,12 +196,12 @@ export default function AIPsychologyPage() {
         timestamp: new Date(msg.timestamp),
       }));
       if (older.length > 0) {
-        setMessages((prev) => {
-          if (prev.length > 0 && prev[0]?.id === '1' && prev[0]?.role === 'ai') {
-            return [prev[0], ...older, ...prev.slice(1)];
-          }
-          return [...older, ...prev];
-        });
+        setMessages((prev) =>
+          sortMessagesByTime([
+            ...older,
+            ...prev.filter((m) => !isChatGreetingMessage(m)),
+          ])
+        );
       }
       historyHasMoreRef.current = Boolean(data.hasMore);
       historyOldestRef.current = data.oldestTimestamp || historyOldestRef.current;
@@ -575,7 +571,7 @@ export default function AIPsychologyPage() {
                   message.role === "user" ? "text-right" : "text-left"
                 }`}
               >
-                {formatTimestampIST(message.timestamp)}
+                {formatChatMessageTime(message.timestamp)}
               </div>
             </div>
           </div>

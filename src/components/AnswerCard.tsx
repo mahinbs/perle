@@ -14,6 +14,7 @@ import {
   enhanceDocumentStructure,
   stripHeadingEmojis,
 } from "../utils/answerFormatting";
+import { normalizeInlineAnswerStructure } from "../utils/normalizeAnswerStructure";
 
 import { copyToClipboard, shareContent } from "../utils/helpers";
 import { sanitizeForSpeech } from "../utils/voiceText";
@@ -119,7 +120,10 @@ function renderStreamingContent(text: string): React.ReactNode[] {
 
   const flushText = () => {
     if (textBuffer.length === 0) return;
-    const txt = textBuffer.join("\n").replace(/^#{1,6}\s+/gm, "");
+    const txt = normalizeInlineAnswerStructure(textBuffer.join("\n")).replace(
+      /^#{1,6}\s+/gm,
+      ""
+    );
     if (txt.length > 0) {
       nodes.push(
         <span
@@ -900,7 +904,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
     if (!text) return null;
 
     const processedText = streaming
-      ? text
+      ? enhanceDocumentStructure(text)
       : preprocessAnswerText(text, mode, query);
     const lines = processedText.split("\n");
     const result: React.ReactNode[] = [];
