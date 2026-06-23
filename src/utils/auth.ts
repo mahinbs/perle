@@ -43,6 +43,9 @@ export interface User {
     endDate: string | null;
     autoRenew: boolean;
   };
+  /** Uploaded profile picture URL (from /api/profile). */
+  dp?: string | null;
+  displayPictureUrl?: string | null;
 }
 
 export interface AuthResponse {
@@ -107,6 +110,19 @@ export function getUserData(): User | null {
   if (typeof window === 'undefined') return null;
   const data = getLocalItem(USER_DATA_KEY);
   return data ? JSON.parse(data) : null;
+}
+
+/** User's uploaded profile photo, if they set one in Profile. */
+export function getUserProfilePictureUrl(): string | null {
+  const user = getUserData();
+  if (!user) return null;
+  const url = user.dp || user.displayPictureUrl;
+  return typeof url === 'string' && url.trim().length > 0 ? url.trim() : null;
+}
+
+export function getUserAvatarFallbackUrl(size = 80): string {
+  const name = getUserData()?.name?.trim() || 'User';
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=C7A869&color=111&size=${size}&bold=true&font-size=0.45`;
 }
 
 export function setUserData(user: User): void {
