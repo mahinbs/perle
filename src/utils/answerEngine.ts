@@ -212,23 +212,18 @@ export async function searchAPI(
     throw new Error('API URL not configured. Please set VITE_API_URL in your .env file.');
   }
   
-  const { getAuthHeaders, saveTokensFromResponseHeaders } = await import('./auth');
+  const { authFetch } = await import('./auth');
   const userContext = getUserLocalContext();
 
   const formData = buildSearchFormData(
     { query, mode, model, newConversation, conversationId, conversationHistory, searchType, userContext },
     uploadedFiles
   );
-
-  const headers = getAuthHeaders(false); // no Content-Type for FormData
   
-  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
+  const res = await authFetch(`${baseUrl.replace(/\/+$/, '')}/api/search`, {
     method: 'POST',
-    headers,
-    body: formData
+    body: formData,
   });
-
-  saveTokensFromResponseHeaders(res);
   
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
@@ -265,7 +260,7 @@ export async function chatAPI(
     throw new Error('API URL not configured. Please set VITE_API_URL in your .env file.');
   }
 
-  const { getAuthHeaders, saveTokensFromResponseHeaders } = await import('./auth');
+  const { authFetch } = await import('./auth');
   const userContext = getUserLocalContext();
 
   const formData = buildSearchFormData(
@@ -273,15 +268,10 @@ export async function chatAPI(
     uploadedFiles
   );
 
-  const headers = getAuthHeaders(false);
-
-  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/chat`, {
+  const res = await authFetch(`${baseUrl.replace(/\/+$/, '')}/api/chat`, {
     method: 'POST',
-    headers,
-    body: formData
+    body: formData,
   });
-
-  saveTokensFromResponseHeaders(res);
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));

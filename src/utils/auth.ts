@@ -76,6 +76,7 @@ export function setAuthCredentials(token: string, refreshToken?: string, expires
     // Default: 1 hour from now
     setTokenExpiresAt(Math.floor(Date.now() / 1000) + 3600);
   }
+  notifyAuthChange();
 }
 
 export function applyTheme(darkMode: boolean): void {
@@ -99,6 +100,7 @@ export function removeAuthToken(): void {
   removeTokenExpiresAt();
   removeLocalItem(USER_DATA_KEY);
   applyTheme(false);
+  notifyAuthChange();
 }
 
 export function getUserData(): User | null {
@@ -113,6 +115,7 @@ export function setUserData(user: User): void {
   if (user && typeof user.darkMode === 'boolean') {
     applyTheme(user.darkMode);
   }
+  notifyAuthChange();
 }
 
 export function hasPaidPremiumPlan(
@@ -167,14 +170,16 @@ export function getAuthHeaders(includeContentType = true): HeadersInit {
 export async function getValidToken(): Promise<string | null> {
   const expiresAt = getTokenExpiresAt();
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const token = getAuthToken();
 
-  if (expiresAt - nowSeconds >= 300) {
-    return getAuthToken();
+  // Token still fresh for 5+ minutes — use as-is.
+  if (token && expiresAt > 0 && expiresAt - nowSeconds >= 300) {
+    return token;
   }
 
   const rt = getRefreshToken();
   if (!rt || !API_URL) {
-    return getAuthToken();
+    return token;
   }
 
   try {
@@ -185,7 +190,11 @@ export async function getValidToken(): Promise<string | null> {
     });
 
     if (!res.ok) {
-      return getAuthToken();
+      if (res.status === 401) {
+        removeAuthToken();
+        return null;
+      }
+      return token;
     }
 
     const data: AuthResponse = await res.json();
@@ -196,7 +205,15 @@ export async function getValidToken(): Promise<string | null> {
   } catch {
     // Network error — fall back to cached token
   }
-  return getAuthToken();
+  return token;
+}
+
+/**
+ * Build auth headers after proactively refreshing an expiring access token.
+ */
+export async function getAuthHeadersAsync(includeContentType = true): Promise<HeadersInit> {
+  await getValidToken();
+  return getAuthHeaders(includeContentType);
 }
 
 /**
@@ -324,6 +341,9 @@ export async function refreshAuthSession(): Promise<boolean> {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          removeAuthToken();
+        }
         return false;
       }
 
@@ -344,10 +364,7 @@ export async function refreshAuthSession(): Promise<boolean> {
 }
 
 async function fetchVerifiedUser(): Promise<User | null> {
-  const response = await fetch(`${API_URL}/api/auth/verify`, {
-    method: 'GET',
-    headers: getAuthHeaders(),
-  });
+  const response = await authFetch(`${API_URL}/api/auth/verify`, { method: 'GET' });
 
   if (response.status === 401) {
     return null;
@@ -367,11 +384,14 @@ export async function verifyToken(): Promise<User | null> {
     return getUserData();
   }
 
-  if (!getAuthToken() && !(await refreshAuthSession())) {
-    return getUserData();
+  if (!getAuthToken() && !getRefreshToken()) {
+    if (getUserData()) removeAuthToken();
+    return null;
   }
 
   try {
+    await getValidToken();
+
     let user = await fetchVerifiedUser();
 
     if (!user) {
@@ -381,14 +401,21 @@ export async function verifyToken(): Promise<User | null> {
       }
     }
 
-    return user ?? getUserData();
+    if (!user) {
+      removeAuthToken();
+      return null;
+    }
+
+    return user;
   } catch {
+    // Offline / transient — keep cached profile but don't pretend verify succeeded.
     return getUserData();
   }
 }
 
 export async function initializeAuthSession(): Promise<void> {
   if (!getAuthToken() && !getRefreshToken()) {
+    if (getUserData()) removeAuthToken();
     return;
   }
   await verifyToken();
@@ -407,10 +434,41 @@ export function registerAuthSessionListeners(): void {
       void initializeAuthSession();
     }
   });
+
+  // Proactively refresh before the access token expires while the app is open.
+  const REFRESH_INTERVAL_MS = 4 * 60 * 1000;
+  window.setInterval(() => {
+    if (getRefreshToken()) {
+      void getValidToken();
+    }
+  }, REFRESH_INTERVAL_MS);
 }
 
 export function isAuthenticated(): boolean {
   return getAuthToken() !== null || getRefreshToken() !== null;
+}
+
+/** True when we have a stored profile AND a session token (what the UI should show). */
+export function isLoggedIn(): boolean {
+  return isAuthenticated() && getUserData() !== null;
+}
+
+const AUTH_CHANGE_EVENT = 'syntraiq-auth-change';
+
+export function notifyAuthChange(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+}
+
+/** Subscribe to login / logout / token refresh — re-render UI when session changes. */
+export function onAuthChange(listener: () => void): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  window.addEventListener(AUTH_CHANGE_EVENT, listener);
+  window.addEventListener('syntraiq-storage-change', listener);
+  return () => {
+    window.removeEventListener(AUTH_CHANGE_EVENT, listener);
+    window.removeEventListener('syntraiq-storage-change', listener);
+  };
 }
 
 // Helper function to handle API responses and check for authentication errors
@@ -447,21 +505,20 @@ export async function authenticatedFetch(
   onUnauthorized?: () => void
 ): Promise<Response> {
   const isFormData = options.body instanceof FormData;
-  // For FormData, don't include Content-Type (browser sets it with boundary)
-  const baseHeaders = getAuthHeaders(!isFormData);
 
-  const makeRequest = () =>
-    fetch(url, {
+  const makeRequest = async () => {
+    await getValidToken();
+    const authHeaders = getAuthHeaders(!isFormData);
+    return fetch(url, {
       ...options,
       headers: {
-        ...baseHeaders,
+        ...authHeaders,
         ...options.headers,
       },
     });
+  };
 
   let response = await makeRequest();
-
-  // Save any silently-refreshed tokens from response headers
   saveTokensFromResponseHeaders(response);
 
   if (response.status === 401) {
@@ -469,10 +526,13 @@ export async function authenticatedFetch(
     if (refreshed) {
       response = await makeRequest();
       saveTokensFromResponseHeaders(response);
+    } else {
+      removeAuthToken();
     }
   }
 
   if (response.status === 401) {
+    removeAuthToken();
     if (onUnauthorized) {
       onUnauthorized();
     }

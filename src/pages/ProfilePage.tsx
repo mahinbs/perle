@@ -18,6 +18,8 @@ import {
   authFetch,
   handleUnauthorizedResponse,
   getPostAuthNavigation,
+  onAuthChange,
+  isLoggedIn,
   type User,
 } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
@@ -103,18 +105,23 @@ export default function ProfilePage() {
     }
   };
 
-  // Check authentication and fetch profile on mount
+  // Check authentication and fetch profile on mount; stay in sync on logout/expiry.
   useEffect(() => {
-    const checkAuth = async () => {
+    const syncAuth = async () => {
       const user = getUserData();
+      const loggedIn = isLoggedIn();
+      setIsAuthenticated(loggedIn);
       if (user) {
-        setIsAuthenticated(true);
-        setUserSettings(user); // Show cached data immediately
-        // Then fetch fresh data from backend
+        setUserSettings(user);
         await fetchProfile();
+      } else {
+        setUserSettings(null);
       }
     };
-    checkAuth();
+    void syncAuth();
+    return onAuthChange(() => {
+      void syncAuth();
+    });
   }, []);
 
   // Handle redirect modes (like state.mode from landing page)

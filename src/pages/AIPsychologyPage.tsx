@@ -12,7 +12,7 @@ import {
   FaComments,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
-import { getUserData, getAuthHeaders, removeAuthToken } from "../utils/auth";
+import { getUserData, authFetch, removeAuthToken } from "../utils/auth";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { formatTimestampIST } from "../utils/helpers";
@@ -123,10 +123,7 @@ export default function AIPsychologyPage() {
         const historyUrl = `${API_URL}/api/chat/history?chatMode=ai_psychologist&limit=${PSYCH_HISTORY_PAGE_SIZE}`;
         console.log('📚 [Psychology] Loading history from:', historyUrl);
 
-        const response = await fetch(historyUrl, {
-          method: "GET",
-          headers: getAuthHeaders(),
-        });
+        const response = await authFetch(historyUrl, { method: "GET" });
 
         console.log('📚 [Psychology] History response status:', response.status);
 
@@ -192,7 +189,7 @@ export default function AIPsychologyPage() {
 
     try {
       const url = `${API_URL}/api/chat/history?chatMode=ai_psychologist&limit=${PSYCH_HISTORY_PAGE_SIZE}&before=${encodeURIComponent(before)}`;
-      const response = await fetch(url, { method: 'GET', headers: getAuthHeaders() });
+      const response = await authFetch(url, { method: 'GET' });
       if (!response.ok) return;
       const data = await response.json();
       const older: Message[] = (data.messages || []).map((msg: any, index: number) => ({
