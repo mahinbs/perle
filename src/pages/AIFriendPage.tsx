@@ -32,6 +32,7 @@ import {
   isChatGreetingMessage,
   sortMessagesByTime,
 } from "../utils/chatDates";
+import { buildCompanionHistoryPayload } from "../utils/companionChat";
 import {
   CHAT_EXCHANGE_SCROLL_OFFSET,
   scheduleScrollExchangeToTop,
@@ -744,18 +745,15 @@ export default function AIFriendPage() {
       const contextMessageLimit = !isLoggedIn ? 5 : isPremium ? 10 : 8;
       const freshThread = newConversation;
       const buildHistoryForFriend = (friendId?: string) =>
-        messages
-          .slice(-contextMessageLimit)
-          .filter((m) => {
-            if (m.role === "user") return true;
-            // Group thread: every friend's reply is shared context.
-            if (isGroupChat) return m.role === "ai";
-            return !m.friendId || (friendId && m.friendId === friendId);
-          })
-          .map((m) => ({
-            role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
-            content: m.content,
-          }));
+        buildCompanionHistoryPayload(
+          messages
+            .filter((m) => {
+              if (m.role === "user") return true;
+              if (isGroupChat) return m.role === "ai";
+              return !m.friendId || (friendId && m.friendId === friendId);
+            }),
+          contextMessageLimit
+        );
       // Handle group chat vs individual chat
       if (isGroupChat && isLoggedIn && aiFriends.length > 0) {
         // Group chat: parse @ mentions

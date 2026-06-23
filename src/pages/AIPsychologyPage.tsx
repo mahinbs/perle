@@ -13,6 +13,7 @@ import {
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
 import { getUserData, authFetch, tryRecoverAuthOrLogout } from "../utils/auth";
+import { useAuthSession } from "../hooks/useAuthSession";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import {
@@ -28,6 +29,11 @@ import {
 } from "../utils/chatScroll";
 import { ChatDateDivider } from "../components/ChatDateDivider";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
+import {
+  PSYCHOLOGIST_GREETING,
+  buildCompanionHistoryPayload,
+  areGenericPsychFollowUps,
+} from "../utils/companionChat";
 
 interface Message {
   id: string;
@@ -40,6 +46,7 @@ interface Message {
 export default function AIPsychologyPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
+  const { isLoggedIn } = useAuthSession();
   // Get user data for avatar
   const userData = getUserData();
   const userName = userData?.name || "You";
@@ -56,15 +63,27 @@ export default function AIPsychologyPage() {
       userName
     )}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
   };
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "ai",
-      content:
-        "Hello, I'm Dr. Maya, your AI psychologist. I'm here to provide a safe, supportive space for you to explore your thoughts and feelings. How are you doing today?",
-      timestamp: new Date(),
-    },
-  ]);
+  const makeGreetingMessage = (): Message => ({
+    id: "1",
+    role: "ai",
+    content: PSYCHOLOGIST_GREETING,
+    timestamp: new Date(),
+  });
+
+  const startNewConversation = () => {
+    setNewConversation(true);
+    historyHasMoreRef.current = false;
+    historyOldestRef.current = null;
+    setMessages([makeGreetingMessage()]);
+    showToast({
+      message: "New session started",
+      type: "success",
+      duration: 2000,
+    });
+  };
+
+  const [messages, setMessages] = useState<Message[]>([makeGreetingMessage()]);
+  const [historyReady, setHistoryReady] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -116,11 +135,14 @@ export default function AIPsychologyPage() {
     setIsPremium(user?.isPremium ?? false);
   }, []);
 
-  // Load conversation history on mount (for both free and premium users)
+  // Load conversation history on mount / when auth becomes available.
   useEffect(() => {
     const loadHistory = async () => {
       const API_URL = import.meta.env.VITE_API_URL;
-      if (!API_URL) return;
+      if (!API_URL || !isLoggedIn) {
+        setHistoryReady(true);
+        return;
+      }
 
       try {
         historyHasMoreRef.current = false;
@@ -130,45 +152,39 @@ export default function AIPsychologyPage() {
 
         const response = await authFetch(historyUrl, { method: "GET" });
 
-        console.log('📚 [Psychology] History response status:', response.status);
-
-        // Handle 401 — try to silently refresh the session before logging
-        // the user out. Most "logouts" were really just an expired access
-        // token whose refresh token was still valid.
         if (response.status === 401) {
           void tryRecoverAuthOrLogout();
+          setHistoryReady(true);
           return;
         }
 
         if (response.ok) {
           const data = await response.json();
-          console.log('📚 [Psychology] History data:', data);
-          
           historyHasMoreRef.current = Boolean(data.hasMore);
           historyOldestRef.current = data.oldestTimestamp || null;
           if (data.messages && data.messages.length > 0) {
-            console.log(`📚 [Psychology] Loaded ${data.messages.length} messages from history`);
-            // Convert to Message format
             const historyMessages: Message[] = data.messages.map(
               (msg: any, index: number) => ({
-                id: `history-${index}`,
+                id: `history-${index}-${msg.timestamp || index}`,
                 role: msg.role === "user" ? "user" : "ai",
                 content: msg.content,
                 timestamp: new Date(msg.timestamp),
               })
             );
-
-            // History only — no greeting pinned to "Today" above older messages.
             setMessages(sortMessagesByTime(historyMessages));
+          } else {
+            setMessages([makeGreetingMessage()]);
           }
         }
       } catch (error) {
         console.error("Failed to load chat history:", error);
+      } finally {
+        setHistoryReady(true);
       }
     };
 
-    loadHistory();
-  }, [isPremium]);
+    void loadHistory();
+  }, [isLoggedIn]);
 
   // Fetch older chat history on scroll-up and prepend, preserving scroll
   // position so the view doesn't jump.
@@ -354,12 +370,11 @@ export default function AIPsychologyPage() {
 
     try {
       const contextMessageLimit = isPremium ? 20 : 10;
-      const conversationHistoryPayload = messages
-        .slice(-contextMessageLimit)
-        .map((m) => ({
-          role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
-          content: m.content,
-        }));
+      const freshThread = newConversation;
+      const conversationHistoryPayload = buildCompanionHistoryPayload(
+        messages,
+        contextMessageLimit
+      );
       const data = await chatAPI(
         messageText,
         COMPANION_CHAT_MODEL,
@@ -367,6 +382,9 @@ export default function AIPsychologyPage() {
         [],
         null,
         conversationHistoryPayload,
+        undefined,
+        undefined,
+        freshThread,
       );
 
       // Check if response is empty or invalid
@@ -374,14 +392,17 @@ export default function AIPsychologyPage() {
         throw new Error("AI returned an empty response. Please try again.");
       }
 
+      const rawSuggestions = Array.isArray(data.suggestedQuestions)
+        ? data.suggestedQuestions.slice(0, 3)
+        : [];
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
         content: data.message,
         timestamp: new Date(),
-        suggestedQuestions: Array.isArray(data.suggestedQuestions)
-          ? data.suggestedQuestions.slice(0, 3)
-          : [],
+        suggestedQuestions: areGenericPsychFollowUps(rawSuggestions)
+          ? []
+          : rawSuggestions,
       };
       setMessages((prev) => [...prev, aiResponse]);
 
@@ -492,6 +513,13 @@ export default function AIPsychologyPage() {
           </div>
           <div className="row flex items-center gap-2.5">
             <button
+              type="button"
+              className="btn-ghost glass-button flex items-center gap-1.5 px-3 py-1.5 text-[length:var(--font-sm)]"
+              onClick={startNewConversation}
+            >
+              <span>New</span>
+            </button>
+            <button
               className="btn-ghost glass-button p-2"
               aria-label="Favorite conversation"
             >
@@ -503,7 +531,22 @@ export default function AIPsychologyPage() {
 
       {/* Messages Area */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-5 flex flex-col">
-        {messages.map((message, index) => {
+        {isLoadingOlderHistory && (
+          <div className="text-center sub text-sm py-2 mb-2">Loading older messages…</div>
+        )}
+        {!historyReady && (
+          <div className="text-center sub text-sm py-4">Loading conversation…</div>
+        )}
+        {historyReady && messages.map((message, index) => {
+          const lastAiIndex = messages.reduce(
+            (acc, m, i) => (m.role === "ai" ? i : acc),
+            -1
+          );
+          const showFollowUps =
+            message.role === "ai" &&
+            index === lastAiIndex &&
+            message.suggestedQuestions &&
+            message.suggestedQuestions.length > 0;
           const showDateDivider =
             index === 0 ||
             isDifferentChatDay(
@@ -551,11 +594,9 @@ export default function AIPsychologyPage() {
               <div className="text-[length:var(--font-md)] whitespace-pre-wrap">
                 {message.content}
               </div>
-              {message.role === "ai" &&
-                message.suggestedQuestions &&
-                message.suggestedQuestions.length > 0 && (
+              {showFollowUps && (
                   <div className="mt-3 flex flex-col gap-2">
-                    {message.suggestedQuestions.slice(0, 3).map((q) => (
+                    {message.suggestedQuestions!.slice(0, 3).map((q) => (
                       <button
                         key={`${message.id}-${q}`}
                         onClick={() => handleUseSuggestion(q)}
@@ -698,23 +739,7 @@ export default function AIPsychologyPage() {
 
               <button
                 className="btn-ghost glass-button w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-all duration-200 bg-transparent text-inherit"
-                onClick={() => {
-                  // Start new chat - clear messages and reset
-                  setMessages([
-                    {
-                      id: "1",
-                      role: "ai",
-                      content:
-                        "Hello, I'm Dr. Maya, your AI psychologist. I'm here to provide a safe, supportive space for you to explore your thoughts and feelings. How are you doing today?",
-                      timestamp: new Date(),
-                    },
-                  ]);
-                  showToast({
-                    message: "New session started",
-                    type: "success",
-                    duration: 2000,
-                  });
-                }}
+                onClick={startNewConversation}
                 aria-label="Start new session"
               >
                 <FaComments size={16} />
