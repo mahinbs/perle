@@ -12,6 +12,61 @@ const TABLE_PLACEHOLDER = (i: number) => `\n<<<SYNTTABLE${i}>>>\n`;
 const EMOJI_CLUSTER =
   /[\p{Extended_Pictographic}](?:\uFE0F|‍[\p{Extended_Pictographic}])*/u;
 
+const LEADING_EMOJI_RE =
+  /^[\p{Extended_Pictographic}](?:\uFE0F|‍[\p{Extended_Pictographic}])*/u;
+
+function splitTableCells(line: string): string[] {
+  let trimmed = line.trim();
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+/** True when a table cell is really a section title, not a column header. */
+function isTableHeadingCell(cell: string): boolean {
+  const trimmed = cell.trim();
+  if (!trimmed || trimmed.length > 150 || trimmed.includes("•")) return false;
+  if (LEADING_EMOJI_RE.test(trimmed)) {
+    return trimmed.endsWith(":") || trimmed.length <= 80;
+  }
+  return trimmed.endsWith(":") && trimmed.length <= 120;
+}
+
+/**
+ * Models sometimes glue "📊 Best X:" into the first cell of a table header row.
+ * Pull it out so it renders as a subheading above the table.
+ */
+function detachTableEmojiHeadings(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.includes("|")) {
+      out.push(line);
+      continue;
+    }
+
+    const cells = splitTableCells(trimmed);
+    if (cells.filter(Boolean).length >= 2 && isTableHeadingCell(cells[0])) {
+      const heading = cells[0];
+      const rest = cells.slice(1).filter((c) => c.length > 0);
+      if (rest.length >= 2) {
+        if (out.length > 0 && out[out.length - 1].trim() !== "") out.push("");
+        out.push(heading);
+        out.push(`| ${rest.join(" | ")} |`);
+        continue;
+      }
+      out.push(heading);
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  return out.join("\n");
+}
+
 function protectTables(text: string): { body: string; tables: string[] } {
   const tables: string[] = [];
   const body = text.replace(TABLE_BLOCK_RE, (match) => {
@@ -86,6 +141,7 @@ export function normalizeInlineAnswerStructure(text: string): string {
   );
 
   working = restoreTables(working, tables);
+  working = detachTableEmojiHeadings(working);
   working = working.replace(/\n{3,}/g, "\n\n");
   return working.trim();
 }

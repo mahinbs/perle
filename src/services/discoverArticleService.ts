@@ -9,6 +9,54 @@ export interface DiscoverArticle {
 const ARTICLE_CACHE_PREFIX = 'syntraiq-article-v1-';
 const ARTICLE_CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
+function buildClientFallbackArticle(
+  title: string,
+  description: string,
+  category: string
+): DiscoverArticle {
+  const overview =
+    description?.trim() ||
+    `${title} is a ${category || 'General'} story worth understanding in more depth.`;
+  const facts = [
+    `Headline: ${title}`,
+    `Category: ${category || 'General'}`,
+    description?.trim() || 'Tap Deep dive with AI below for a full research brief.',
+  ];
+  while (facts.length < 5) {
+    facts.push(`Related coverage may expand on: ${title}`);
+  }
+  return {
+    overview,
+    keyFacts: facts.slice(0, 5),
+    sections: [
+      {
+        title: '📰 What happened',
+        content: description?.trim() || `This article covers ${title}.`,
+      },
+      {
+        title: '🔍 Why it matters',
+        content:
+          'Follow trusted sources for updates. Use Deep dive with AI on this page for a tailored brief.',
+      },
+    ],
+    relatedTopics: [category || 'News', title].filter(Boolean),
+    readTime: '2 min read',
+  };
+}
+
+function isValidArticleShape(article: unknown): article is DiscoverArticle {
+  const a = article as DiscoverArticle;
+  return Boolean(
+    a &&
+    typeof a.overview === 'string' &&
+    a.overview.trim().length > 0 &&
+    Array.isArray(a.keyFacts) &&
+    a.keyFacts.length > 0 &&
+    Array.isArray(a.sections) &&
+    a.sections.length > 0
+  );
+}
+
 function getArticleCache(id: string): DiscoverArticle | null {
   try {
     const raw = localStorage.getItem(ARTICLE_CACHE_PREFIX + id);
@@ -26,8 +74,8 @@ function setArticleCache(id: string, article: DiscoverArticle) {
 }
 
 /**
- * Fetch AI-generated article from backend API only.
- * API key stays on the backend; frontend never calls Gemini directly.
+ * Fetch AI-generated article from backend API.
+ * Never throws — always returns a readable article (API fallback or local shell).
  */
 export async function generateDiscoverArticle(
   id: string,
@@ -38,33 +86,35 @@ export async function generateDiscoverArticle(
   const cached = getArticleCache(id);
   if (cached) return cached;
 
+  const fallback = () => buildClientFallbackArticle(title, description, category);
   const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
-  if (!baseUrl) throw new Error('API URL not configured');
+  if (!baseUrl) return fallback();
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25000); // 25s timeout
+  const timeout = setTimeout(() => controller.abort(), 45_000);
 
-  let res: Response;
   try {
-    res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/discover/article`, {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/discover/article`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, description, category }),
       signal: controller.signal,
     });
+
+    if (!res.ok) {
+      console.warn('Discover article API non-OK:', res.status);
+      return fallback();
+    }
+
+    const article = (await res.json()) as DiscoverArticle;
+    if (!isValidArticleShape(article)) return fallback();
+
+    setArticleCache(id, article);
+    return article;
   } catch (e) {
+    console.warn('Discover article fetch failed:', e);
+    return fallback();
+  } finally {
     clearTimeout(timeout);
-    if ((e as Error).name === 'AbortError') throw new Error('Article took too long. Please retry.');
-    throw e;
   }
-  clearTimeout(timeout);
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `API error ${res.status}`);
-  }
-
-  const article = (await res.json()) as DiscoverArticle;
-  setArticleCache(id, article);
-  return article;
 }

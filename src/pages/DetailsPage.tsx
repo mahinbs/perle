@@ -28,7 +28,6 @@ export default function DetailsPage() {
   const [item, setItem] = useState<DiscoverItem | null>(null);
   const [article, setArticle] = useState<DiscoverArticle | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [articleError, setArticleError] = useState<string | null>(null);
   const [shareSuccess, setShareSuccess] = useState(false);
   const [imgError, setImgError] = useState(false);
 
@@ -61,9 +60,6 @@ export default function DetailsPage() {
           discovered.category || "General"
         );
         setArticle(a);
-        setArticleError(null);
-      } catch {
-        setArticleError("Could not load article. Make sure the backend is running.");
       } finally {
         setIsLoading(false);
       }
@@ -92,16 +88,6 @@ export default function DetailsPage() {
     navigateTo("/", { searchQuery: query, mode: "Research" });
   };
 
-  const handleRetry = () => {
-    if (!item) return;
-    setArticleError(null);
-    setIsLoading(true);
-    generateDiscoverArticle(item.id, item.title, item.description || "", item.category || "General")
-      .then(setArticle)
-      .catch(() => setArticleError("Failed again. Make sure the backend is running."))
-      .finally(() => setIsLoading(false));
-  };
-
   if (isLoading) {
     return (
       <div className="container" style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, paddingTop: "calc(16px + var(--safe-area-top))" }}>
@@ -112,19 +98,6 @@ export default function DetailsPage() {
   }
 
   if (!item) return null;
-
-  if (articleError) {
-    return (
-      <div className="container" style={{ paddingTop: "calc(40px + var(--safe-area-top))" }}>
-        <div className="glass-card" style={{ padding: 24, textAlign: "center", borderLeft: "3px solid #ff6b6b" }}>
-          <div style={{ color: "#ff6b6b", fontSize: "var(--font-md)", marginBottom: 8 }}>⚠ {articleError}</div>
-          <div className="sub" style={{ marginBottom: 16 }}>Start the backend with: npm run server:dev</div>
-          <button className="btn" onClick={handleRetry} style={{ marginRight: 8 }}>Retry</button>
-          <button className="btn-ghost glass-button" onClick={() => navigateTo("/discover")}>Back to Discover</button>
-        </div>
-      </div>
-    );
-  }
 
   if (!article) return null;
 

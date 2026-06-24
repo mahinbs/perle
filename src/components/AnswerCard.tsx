@@ -54,6 +54,21 @@ function isMarkdownTableSeparator(line: string): boolean {
   );
 }
 
+/** If the model glued an emoji subheading into cell 0, peel it off. */
+function peelTableTitleFromHeaderRow(
+  headerCells: string[]
+): { title: string | null; headerCells: string[] } {
+  if (headerCells.length < 2) return { title: null, headerCells };
+  const first = headerCells[0].trim();
+  if (!isColonHeading(first)) return { title: null, headerCells };
+  const rest = headerCells.slice(1);
+  if (rest.length < 2) return { title: null, headerCells };
+  return {
+    title: stripHeadingEmojis(first.replace(/:+$/, "").trim()),
+    headerCells: rest,
+  };
+}
+
 function hasMarkdownTable(text: string): boolean {
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
@@ -150,7 +165,21 @@ function renderStreamingContent(text: string): React.ReactNode[] {
       // Partial trailing rows are dropped — they'll appear in a later flush.
     }
     if (completeRows.length >= 1) {
-      const header = completeRows[0];
+      let header = completeRows[0];
+      const peeled = peelTableTitleFromHeaderRow(header);
+      if (peeled.title) {
+        nodes.push(
+          <div key={`stbl-title-${nodes.length}`} style={{ marginTop: 12, marginBottom: 4 }}>
+            {renderAnswerHeading(
+              2,
+              peeled.title,
+              `stbl-h-${nodes.length}`,
+              renderInlineFormatted(peeled.title, [], () => [], () => null)
+            )}
+          </div>
+        );
+        header = peeled.headerCells;
+      }
       const body = completeRows.slice(1);
       nodes.push(
         <div
@@ -1061,7 +1090,19 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         }
 
         if (parsedRows.length >= 1) {
-          const headerCells = parsedRows[0];
+          let headerCells = parsedRows[0];
+          const peeled = peelTableTitleFromHeaderRow(headerCells);
+          if (peeled.title) {
+            result.push(
+              renderAnswerHeading(
+                2,
+                peeled.title,
+                `table-title-${result.length}`,
+                renderTextContent(peeled.title)
+              )
+            );
+            headerCells = peeled.headerCells;
+          }
           const bodyRows = parsedRows.slice(1);
           // Defensive: empty-body tables (model output only headers, or
           // streamed response was truncated mid-table) are hidden entirely.
