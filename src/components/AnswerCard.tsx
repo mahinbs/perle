@@ -378,6 +378,32 @@ function renderStreamingContent(text: string): React.ReactNode[] {
         mode = "table";
       }
       tableLines.push(line);
+    } else if (mode === "table" && line.trim() === "") {
+      // CRITICAL FIX: a single blank line in the middle of a table block
+      // does NOT end the table. Models routinely emit blank lines between
+      // rows for readability. The previous code flushed the table at every
+      // blank line, so a 7-row table emitted with blanks between rows
+      // rendered as multiple tiny 2-row tables — exactly the fragmentation
+      // the user complained about. Peek at the next non-blank line: if
+      // it's another table row, stay in table mode and skip the blank.
+      let nextNonBlank = i + 1;
+      while (nextNonBlank < lines.length && lines[nextNonBlank].trim() === "") {
+        nextNonBlank++;
+      }
+      const nextLine = lines[nextNonBlank] ?? "";
+      const nextIsTable =
+        isStreamTableSeparator(nextLine) ||
+        isStreamTableRowComplete(nextLine) ||
+        isStreamTableRowPartial(nextLine);
+      if (nextIsTable) {
+        // Stay in table mode, swallow the blank line(s).
+        i = nextNonBlank - 1;
+      } else {
+        // Table truly ends — flush and resume text.
+        flushTable();
+        mode = "text";
+        textBuffer.push(line);
+      }
     } else {
       if (mode === "table") {
         flushTable();
@@ -1946,14 +1972,36 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                   );
                 })()
               ) : (
-                <div className={skipTypewriter ? "answer-formatted-fadein" : undefined}>
-                  {formatText(
-                    // Always fall back to chunk.text so there's never a blank frame
-                    // when displayedTexts hasn't been populated yet (e.g. wasStreamed transition)
-                    displayedTexts[index] !== undefined ? displayedTexts[index] : chunk.text,
-                    isTypingComplete && index === chunks.length - 1
-                  )}
-                </div>
+                // Post-stream view: use the SAME renderer as the streaming
+                // view (renderStreamingContent) so there is ZERO visual
+                // switch when the stream finishes. Headings, bullets, bold,
+                // italics, citations, and tables all render identically to
+                // what was on screen mid-stream — the user sees no flash,
+                // no re-render, no layout change. The text just stops
+                // growing and the cursor disappears.
+                //
+                // We still keep formatText available for chunks that genuinely
+                // need its richer feature set (LaTeX math, code blocks,
+                // comparison-subject highlighting), but route to it only
+                // when the answer is short AND contains those markers,
+                // not for table/bullet/heading-heavy answers where the
+                // streaming renderer is correct and consistent.
+                (() => {
+                  const text = displayedTexts[index] !== undefined
+                    ? displayedTexts[index]
+                    : chunk.text;
+                  const hasMath = /\$\$|\\\(|\\\[|\\begin\{/.test(text);
+                  const hasCodeBlock = /```/.test(text);
+                  const useStreamingRenderer = !hasMath && !hasCodeBlock;
+                  return (
+                    <div className={skipTypewriter ? "answer-formatted-fadein" : undefined}
+                         style={{ lineHeight: 1.75, wordBreak: "break-word" }}>
+                      {useStreamingRenderer
+                        ? renderStreamingContent(text)
+                        : formatText(text, isTypingComplete && index === chunks.length - 1)}
+                    </div>
+                  );
+                })()
               )}
             </div>
 

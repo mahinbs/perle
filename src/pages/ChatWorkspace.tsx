@@ -615,10 +615,19 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                 // emitting tokens, or a network blip dropped the tail),
                 // prefer cleanText so the UI shows the complete answer.
                 const streamed = streamingTextRef.current || "";
+                // Only swap to cleanText when the streamed answer is
+                // SIGNIFICANTLY shorter than the backend's authoritative
+                // version. The old 50-char threshold tripped on trivial
+                // whitespace/punctuation diffs and caused a visible
+                // re-render at the end of every stream. We now require a
+                // 500-char OR 15% gap — that catches the real failure
+                // cases (truncation, refusal-rescue, marker leak) while
+                // letting normal streams finish without any swap.
+                const diff = (cleanText?.length || 0) - streamed.length;
                 const useCleanText =
                   cleanText &&
                   cleanText.trim().length > 0 &&
-                  cleanText.length > streamed.length + 50; // 50-char fudge for trivial diffs
+                  (diff > 500 || (streamed.length > 0 && diff / streamed.length > 0.15));
                 const finalText = useCleanText ? cleanText : streamed;
                 if (useCleanText) {
                   console.warn(
