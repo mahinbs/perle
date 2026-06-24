@@ -265,5 +265,16 @@ export function enhanceDocumentStructure(text: string): string {
   // Ensure blank line before markdown headings
   result = result.replace(/([^\n])\n(#{1,3}\s)/g, "$1\n\n$2");
 
+  // CRITICAL: ensure a blank line before any markdown table row. Models
+  // sometimes emit:
+  //     🔬 Best Medicines for Impetigo (June 2026):
+  //     | Name | Manufacturer | ...
+  // with no blank line, which makes the line above get absorbed as the
+  // first cell of the header row (we saw "Best Medicines for Impetigo
+  // (June 2026):" showing up INSIDE the table next to "Name"). Inserting
+  // a blank line teaches the parser those are two separate blocks.
+  // Match any non-blank line followed by a line that starts with `|`.
+  result = result.replace(/([^\n])\n(\|[^\n]*\|)/g, "$1\n\n$2");
+
   return result;
 }

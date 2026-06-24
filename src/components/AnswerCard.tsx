@@ -1796,12 +1796,25 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                   // it already drops partial rows and shows complete ones.
                   // Completed tables sitting above the cursor go through
                   // formatText just fine (it has its own renderMarkdownTable).
+                  // CSS containment shared by both branches. `contain: content`
+                  // tells the browser to treat this subtree as its own layout
+                  // boundary — when a newly-completed line re-renders into a
+                  // styled heading or bullet (which has a different height
+                  // than the plain pre-wrap text it replaced), the reflow
+                  // doesn't cascade up into the chat list, so the page no
+                  // longer "shakes" with every token. `overflow-anchor: auto`
+                  // locks the user's read position so even if local height
+                  // does change, the browser scrolls to compensate instead
+                  // of jumping the content under the user's eyes.
+                  const streamingStyle: React.CSSProperties = {
+                    lineHeight: 1.75,
+                    wordBreak: "break-word",
+                    contain: "content",
+                    overflowAnchor: "auto",
+                  };
                   if (partialIsTableLike) {
                     return (
-                      <div
-                        className="answer-streaming-text"
-                        style={{ lineHeight: 1.75, wordBreak: "break-word" }}
-                      >
+                      <div className="answer-streaming-text" style={streamingStyle}>
                         {renderStreamingContent(chunk.text)}
                         {index === chunks.length - 1 && (
                           <span className="answer-streaming-cursor" aria-hidden />
@@ -1810,10 +1823,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     );
                   }
                   return (
-                    <div
-                      className="answer-streaming-text"
-                      style={{ lineHeight: 1.75, wordBreak: "break-word" }}
-                    >
+                    <div className="answer-streaming-text" style={streamingStyle}>
                       {completed && formatText(completed, false, true)}
                       {partial && (
                         <span style={{ whiteSpace: "pre-wrap" }}>
