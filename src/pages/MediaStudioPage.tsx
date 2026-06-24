@@ -385,7 +385,7 @@ export default function MediaStudioPage() {
         <div className="flex items-center gap-3 p-4">
           <button
             className="btn-ghost glass-button p-2!"
-            onClick={() => navigateTo("/")}
+            onClick={() => navigateTo("/app")}
             aria-label="Back"
           >
             <IoIosArrowBack size={24} />

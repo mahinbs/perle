@@ -25,7 +25,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   onOpenSidebar,
   showBackButton = false,
-  backTo = "/",
+  backTo = "/app",
 }) => {
   const { navigateTo } = useRouterNavigation();
   const location = useLocation();

@@ -154,7 +154,7 @@ export default function VerificationPage() {
         const { path } = getPostAuthNavigation(data.user, { plan: redirectPlan });
         navigateTo(path);
       } else {
-        navigateTo('/');
+        navigateTo('/app');
       }
     } catch (error: any) {
       setError('Verification failed. Please try again.');

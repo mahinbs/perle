@@ -259,7 +259,7 @@ export default function DiscoverPage() {
               normal page open will see them. */}
           <button
             className="btn-ghost glass-button"
-            onClick={() => navigateTo("/")}
+            onClick={() => navigateTo("/app")}
             style={{ fontSize: "var(--font-md)" }}
           >
             <IoIosArrowBack size={24} /> Back

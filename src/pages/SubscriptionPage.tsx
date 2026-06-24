@@ -295,7 +295,7 @@ export default function SubscriptionPage() {
         <button
           onClick={() => {
             if (navState?.fromAuthRedirect) {
-              navigateTo("/");
+              navigateTo("/app");
             } else {
               goBack();
             }

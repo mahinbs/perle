@@ -3,6 +3,7 @@ import HomePage from '../pages/HomePage';
 import DiscoverPage from '../pages/DiscoverPage';
 import ProfilePage from '../pages/ProfilePage';
 import LibraryPage from '../pages/LibraryPage';
+import AuthCallbackPage from '../pages/AuthCallbackPage';
 import DetailsPage from '../pages/DetailsPage';
 import AIFriendPage from '../pages/AIFriendPage';
 import AIPsychologyPage from '../pages/AIPsychologyPage';
@@ -39,8 +40,9 @@ export function AppRouter() {
 
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/home" element={<LandingPage />} />
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/app" element={<HomePage />} />
+      <Route path="/home" element={<Navigate to="/" replace />} />
       <Route path="/discover" element={<DiscoverPage />} />
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/library" element={<LibraryPage />} />
@@ -49,6 +51,7 @@ export function AppRouter() {
       <Route path="/ai-psychology" element={<AIPsychologyPage />} />
       <Route path="/upgrade" element={<UpgradePlansPage />} />
       <Route path="/subscription" element={<SubscriptionPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/details/:id" element={<DetailsPage />} />
       <Route path="/verify" element={<VerificationPage />} />
       <Route path="/terms" element={<TermsPage />} />
