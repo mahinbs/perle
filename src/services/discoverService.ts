@@ -202,14 +202,24 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
 // -------------------------------------------------------------------
 // Live news ("For You" + region-localized category tabs) — real only.
 // -------------------------------------------------------------------
-// NO frontend localStorage cache. The backend already has L1 in-memory (60s)
-// and L2 Redis (30 min) caches, plus per-country "last known good" persistence.
-// A second cache layer in the browser only adds staleness without buying any
-// real speed (the L1+L2 hit is sub-millisecond from the backend's perspective).
+// Frontend cache — matches the backend's 6h L2 TTL. Since the backend's
+// data is shared across all users and only rotates every 6 hours, there's
+// no point making the same user hit /api/discover/news on every navigation.
+// We persist the last-fetched payload + its timestamp in localStorage and
+// serve it instantly on repeat visits within the TTL window.
 //
-// Eagerly drop any older cache keys from past deploys so users never see stale
-// data on first load after this change ships.
+// Why bother when the backend cache is also fast? Two reasons:
+//   1. Network roundtrip ≈ 100-500ms on mobile / cold cellular. localStorage
+//      read is < 1ms. Visible difference on tab switch / back-navigation.
+//   2. Lets the page render BEFORE the network call returns, so Discover
+//      is never a blank "loading…" screen for returning users.
+const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v5';
+const FRONTEND_NEWS_TTL_MS = 6 * 60 * 60 * 1000; // 6h — matches NEWS_L2_TTL_SEC
+
 if (typeof localStorage !== 'undefined') {
+  // Drop older cache keys from past deploys so users never see stale data
+  // after a shape change. v5 = post-og-image-enrichment + category gradient
+  // fallbacks + per-cat dedup top-up.
   for (const oldKey of [
     'syntraiq-live-news-cache-v1',
     'syntraiq-live-news-cache-v2',
@@ -220,14 +230,60 @@ if (typeof localStorage !== 'undefined') {
   }
 }
 
+interface FrontendNewsCache {
+  ts: number;
+  items: DiscoverItem[];
+  regions: string;
+}
+
+function readFrontendCache(regions: string): DiscoverItem[] | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(FRONTEND_NEWS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as FrontendNewsCache;
+    if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return null;
+    // Region must match — a user travelling to a different country sees
+    // a region-mismatched cache and forces a re-fetch instead of seeing
+    // someone else's geography.
+    if (parsed.regions !== regions) return null;
+    if (Date.now() - parsed.ts > FRONTEND_NEWS_TTL_MS) return null;
+    return parsed.items;
+  } catch {
+    return null;
+  }
+}
+
+function writeFrontendCache(regions: string, items: DiscoverItem[]): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const payload: FrontendNewsCache = { ts: Date.now(), regions, items };
+    localStorage.setItem(FRONTEND_NEWS_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // Quota exceeded or storage disabled — silent fallback to network-only.
+  }
+}
+
 export async function fetchLiveNewsItems(forceRefresh = false): Promise<DiscoverItem[]> {
   const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
   if (!baseUrl) {
     console.error('[discover/news] VITE_API_URL not set — no news available.');
     return [];
   }
+  const order = getUserRegionOrder().join(',');
+
+  // Serve from the frontend cache if present and within TTL — repeat visits
+  // / tab switches feel instant. forceRefresh bypasses it (kept for future
+  // pull-to-refresh, even though the visible button was removed).
+  if (!forceRefresh) {
+    const cached = readFrontendCache(order);
+    if (cached) {
+      console.log(`[discover/news] ⚡ served ${cached.length} items from localStorage (TTL 6h)`);
+      return cached;
+    }
+  }
+
   try {
-    const order = getUserRegionOrder().join(',');
     const refreshParam = forceRefresh ? '&refresh=1' : '';
     const url = `${baseUrl.replace(/\/+$/, '')}/api/discover/news?country=${encodeURIComponent(order)}${refreshParam}`;
     const res = await fetch(url, forceRefresh ? { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } } : undefined);
@@ -241,6 +297,7 @@ export async function fetchLiveNewsItems(forceRefresh = false): Promise<Discover
       return [];
     }
     console.log(`[discover/news] ✅ loaded ${items.length} real items from backend (regions=${order}, refresh=${forceRefresh})`);
+    writeFrontendCache(order, items);
     return items;
   } catch (err) {
     console.error('[discover/news] fetch failed:', err);
