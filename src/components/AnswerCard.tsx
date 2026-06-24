@@ -138,22 +138,133 @@ function renderStreamingContent(text: string): React.ReactNode[] {
   let tableLines: string[] = [];
   let mode: "text" | "table" = "text";
 
-  const flushText = () => {
-    if (textBuffer.length === 0) return;
-    const txt = normalizeInlineAnswerStructure(textBuffer.join("\n")).replace(
-      /^#{1,6}\s+/gm,
-      ""
-    );
-    if (txt.length > 0) {
-      nodes.push(
-        <span
-          key={`stxt-${nodes.length}`}
-          style={{ whiteSpace: "pre-wrap" }}
-        >
-          {txt}
-        </span>
+  // Inline markdown rendering for streaming text. Bold (**word**), italic
+  // (*word*) and citation markers ([1] / [1, 2]) get styled the same way
+  // as post-stream — so the user sees the final formatting from the first
+  // token, no "raw then formatted" snap at the end.
+  const renderInlineMd = (raw: string, keyPrefix: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = [];
+    const re = /\*\*([^*]+)\*\*|\*([^*\s][^*]*?)\*|\[(\d+(?:\s*,\s*\d+)*)\]/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    let i = 0;
+    while ((m = re.exec(raw)) !== null) {
+      if (m.index > last) parts.push(raw.slice(last, m.index));
+      if (m[1]) {
+        parts.push(
+          <strong key={`${keyPrefix}-b${i}`} style={{ fontWeight: 700, color: "var(--text)" }}>
+            {m[1]}
+          </strong>,
+        );
+      } else if (m[2]) {
+        parts.push(
+          <em key={`${keyPrefix}-i${i}`} style={{ fontStyle: "italic" }}>
+            {m[2]}
+          </em>,
+        );
+      } else if (m[3]) {
+        parts.push(
+          <span
+            key={`${keyPrefix}-c${i}`}
+            style={{
+              fontSize: "0.78em",
+              padding: "1px 5px",
+              margin: "0 2px",
+              borderRadius: 6,
+              background: "var(--input-bg)",
+              color: "var(--sub)",
+              fontWeight: 600,
+            }}
+          >
+            [{m[3]}]
+          </span>,
+        );
+      }
+      last = re.lastIndex;
+      i++;
+    }
+    if (last < raw.length) parts.push(raw.slice(last));
+    return parts;
+  };
+
+  // Style a single non-table line. Detects:
+  //   - markdown headings (## Heading) → styled <h*>
+  //   - emoji-prefixed colon-terminated headings ("🎯 Top Performers:") → styled
+  //   - bullet points (• …, - …, 1. …) → indented bullet rows
+  //   - everything else → paragraph with inline bold/italic/citations
+  // Returns the React node for the line OR null if it should be plain text
+  // (joined later into a paragraph).
+  const styleLine = (line: string, lineKey: string): React.ReactNode | null => {
+    const t = line.trim();
+    if (!t) return null;
+    // Markdown headings (## ...)
+    const mdH = t.match(/^(#{1,3})\s+(.+)$/);
+    if (mdH) {
+      const level = (mdH[1].length as 1 | 2 | 3);
+      return renderAnswerHeading(level, mdH[2], lineKey, renderInlineMd(mdH[2], lineKey));
+    }
+    // Emoji-prefixed heading ending with colon ("🎯 Top Performers:")
+    if (isColonHeading(t)) {
+      return renderAnswerHeading(2, t.replace(/:+$/, ""), lineKey, renderInlineMd(t.replace(/:+$/, ""), lineKey));
+    }
+    // Bullet — • foo OR - foo OR * foo (anywhere we see the leading marker)
+    const bulletMatch = t.match(/^[•\-*]\s+(.+)$/);
+    if (bulletMatch) {
+      return (
+        <div key={lineKey} style={{ display: "flex", gap: 10, alignItems: "flex-start", margin: "4px 0" }}>
+          <AnswerBulletDot />
+          <span style={{ flex: 1, lineHeight: 1.6 }}>{renderInlineMd(bulletMatch[1], lineKey)}</span>
+        </div>
       );
     }
+    // Indented sub-bullet ("  - foo")
+    const subMatch = line.match(/^\s{2,}[\-•*]\s+(.+)$/);
+    if (subMatch) {
+      return (
+        <div key={lineKey} style={{ display: "flex", gap: 10, alignItems: "flex-start", margin: "2px 0 2px 24px" }}>
+          <span aria-hidden style={{ marginTop: 9, width: 6, height: 6, borderRadius: 999, background: "var(--sub)", flexShrink: 0 }} />
+          <span style={{ flex: 1, lineHeight: 1.6, color: "var(--sub)" }}>{renderInlineMd(subMatch[1], lineKey)}</span>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const flushText = () => {
+    if (textBuffer.length === 0) return;
+    // Walk each buffered line: styled lines render as their own block,
+    // unstyled lines accumulate into a paragraph and flush together.
+    const cleaned = normalizeInlineAnswerStructure(textBuffer.join("\n"));
+    const ls = cleaned.split("\n");
+    let paragraphBuffer: string[] = [];
+    const flushParagraph = () => {
+      const para = paragraphBuffer.join(" ").trim();
+      if (para) {
+        const k = `stp-${nodes.length}`;
+        nodes.push(
+          <p key={k} style={{ margin: "8px 0", lineHeight: 1.75 }}>
+            {renderInlineMd(para, k)}
+          </p>,
+        );
+      }
+      paragraphBuffer = [];
+    };
+    for (let i = 0; i < ls.length; i++) {
+      const line = ls[i];
+      const t = line.trim();
+      if (!t) {
+        flushParagraph();
+        continue;
+      }
+      const styled = styleLine(line, `stl-${nodes.length}-${i}`);
+      if (styled) {
+        flushParagraph();
+        nodes.push(styled);
+      } else {
+        paragraphBuffer.push(line.replace(/^#{1,6}\s+/, ""));
+      }
+    }
+    flushParagraph();
     textBuffer = [];
   };
 
@@ -1791,28 +1902,26 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                     isStreamTableSeparator(partial) ||
                     isStreamTableRowComplete(partial) ||
                     isStreamTableRowPartial(partial);
-                  // Only when the *currently-typing* line is part of a table
-                  // do we hand the whole chunk to the buffered renderer —
-                  // it already drops partial rows and shows complete ones.
-                  // Completed tables sitting above the cursor go through
-                  // formatText just fine (it has its own renderMarkdownTable).
-                  // CSS containment shared by both branches. `contain: content`
-                  // tells the browser to treat this subtree as its own layout
-                  // boundary — when a newly-completed line re-renders into a
-                  // styled heading or bullet (which has a different height
-                  // than the plain pre-wrap text it replaced), the reflow
-                  // doesn't cascade up into the chat list, so the page no
-                  // longer "shakes" with every token. `overflow-anchor: auto`
-                  // locks the user's read position so even if local height
-                  // does change, the browser scrolls to compensate instead
-                  // of jumping the content under the user's eyes.
+                  // CRITICAL: if *anywhere* in the chunk is a pipe-line
+                  // (a markdown table row, separator, or partial row), we
+                  // must hand the WHOLE chunk to renderStreamingContent.
+                  // formatText's table parser needs the separator row plus
+                  // ≥1 body row to recognise a table; during streaming the
+                  // intermediate state often has rows present but no separator
+                  // yet — formatText then renders each row as its own
+                  // separate table or as plain paragraphs (the "each row
+                  // becomes its own table" mess the user was seeing).
+                  // renderStreamingContent buffers complete rows correctly
+                  // and shows the table growing row-by-row, ChatGPT-style.
+                  const anyTableInChunk =
+                    partialIsTableLike || /(^|\n)\s*\|/.test(completed);
                   const streamingStyle: React.CSSProperties = {
                     lineHeight: 1.75,
                     wordBreak: "break-word",
                     contain: "content",
                     overflowAnchor: "auto",
                   };
-                  if (partialIsTableLike) {
+                  if (anyTableInChunk) {
                     return (
                       <div className="answer-streaming-text" style={streamingStyle}>
                         {renderStreamingContent(chunk.text)}
