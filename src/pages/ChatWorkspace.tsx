@@ -122,16 +122,43 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     }, 12);
   };
 
-  const stopDripAndFlush = () => {
-    if (flushTimerRef.current) {
-      clearInterval(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
-    if (pendingBufferRef.current) {
-      streamingTextRef.current += pendingBufferRef.current;
-      setStreamingText((s) => s + pendingBufferRef.current);
-      pendingBufferRef.current = "";
-    }
+  // Backend signalled done — DRAIN the remaining buffer at the drip's
+  // normal cadence (so the user sees the word-by-word reveal all the way
+  // to the last character), THEN clear the timer. The old code dumped
+  // everything in one setState the instant `done` fired, which made the
+  // answer "snap" from partial to complete and skipped the last few
+  // hundred chars of word-by-word streaming. Returns a Promise so the
+  // caller (onDone) can wait for the drip to finish before swapping in
+  // the final styled answer.
+  const stopDripAndFlush = (): Promise<void> => {
+    return new Promise((resolve) => {
+      // If the drip isn't running for some reason, hard-flush any leftover
+      // and resolve immediately — preserves the original safety behaviour
+      // for error paths.
+      if (!flushTimerRef.current) {
+        if (pendingBufferRef.current) {
+          streamingTextRef.current += pendingBufferRef.current;
+          setStreamingText((s) => s + pendingBufferRef.current);
+          pendingBufferRef.current = "";
+        }
+        resolve();
+        return;
+      }
+      // Stand up a separate watcher that polls the buffer at the drip's
+      // own interval. Once the buffer is empty, kill both timers and
+      // resolve. The drip itself keeps draining at normal cadence, so the
+      // user keeps seeing word-by-word reveal.
+      const watcher = window.setInterval(() => {
+        if (!pendingBufferRef.current) {
+          window.clearInterval(watcher);
+          if (flushTimerRef.current) {
+            window.clearInterval(flushTimerRef.current);
+            flushTimerRef.current = null;
+          }
+          resolve();
+        }
+      }, 12);
+    });
   };
 
   // Release streaming buffers if the component unmounts mid-stream.
@@ -587,8 +614,12 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                 startDrip();
               },
 
-              onDone: (suggestedQuestions, cleanText) => {
-                stopDripAndFlush();
+              onDone: async (suggestedQuestions, cleanText) => {
+                // Wait for the drip to finish revealing the pending buffer
+                // word-by-word — keeps the streaming feel intact all the
+                // way to the last character. ONLY after the user has seen
+                // every word do we flip out of streaming mode.
+                await stopDripAndFlush();
                 skipTypewriterOnRestoreRef.current = true;
                 setIsStreaming(false);
 
@@ -883,21 +914,24 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     pinActiveExchange(target, pendingFollowUpRef.current);
   }, [isStreaming, pinActiveExchange]);
 
-  // Keep the completed answer pinned after the loading card is replaced.
+  // Post-stream pin DISABLED.
+  //
+  // This effect used to fire after isStreaming flipped to false (i.e. the
+  // answer finished) and pin the completed exchange to the top of the
+  // viewport. Users hated that — they had naturally scrolled down to read
+  // the end of the answer and the page then yanked them back to the top
+  // of the question. ChatGPT, Claude, Gemini, and Perplexity all leave
+  // the scroll position alone once the answer completes; we now match that.
+  // The pin still runs DURING loading (line ~904) and DURING streaming
+  // (line ~914) — those are useful — but no longer after completion.
   useLayoutEffect(() => {
-    if (isLoading || isStreaming || conversationHistory.length === 0) return;
-    if (!pendingScrollOnCompleteRef.current) return;
-    pendingScrollOnCompleteRef.current = false;
-
-    const wrapper = answerCardRef.current;
-    if (!wrapper) return;
-
-    const exchanges = wrapper.querySelectorAll<HTMLElement>("[data-chat-exchange]");
-    const lastExchange = exchanges[exchanges.length - 1];
-    if (lastExchange) {
-      pinActiveExchange(lastExchange, pendingFollowUpRef.current);
+    if (isLoading || isStreaming) return;
+    // Always clear the pending flag so a stale flag from a prior submit
+    // can't fire on a future state change.
+    if (pendingScrollOnCompleteRef.current) {
+      pendingScrollOnCompleteRef.current = false;
     }
-  }, [isLoading, isStreaming, conversationHistory.length, pinActiveExchange]);
+  }, [isLoading, isStreaming]);
 
   // WhatsApp-style: show the latest messages when opening a saved or sidebar conversation.
   useLayoutEffect(() => {
