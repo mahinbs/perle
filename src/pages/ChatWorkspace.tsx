@@ -4,7 +4,7 @@ import { Header } from "../components/Header";
 import { SearchBar } from "../components/SearchBar";
 import { AnswerCard } from "../components/AnswerCard";
 import { ConversationSidebar } from "../components/ConversationSidebar";
-import { searchAPI, searchAPIStream, FILE_ONLY_DEFAULT_QUERY } from "../utils/answerEngine";
+import { searchAPIStream, FILE_ONLY_DEFAULT_QUERY } from "../utils/answerEngine";
 import { formatQuery } from "../utils/helpers";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { getUserData } from "../utils/auth";
@@ -528,59 +528,13 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
             : backendSearchType;
         const effectiveModel: LLMModel = isExaShortcutModel ? "auto" : selectedModel;
 
-        const useFileUpload = filesToProcess.length > 0;
-
-        if (useFileUpload) {
-          const res = await searchAPI(
-            q,
-            backendMode,
-            effectiveModel,
-            newConversation,
-            filesToProcess,
-            activeConversationId,
-            localConversationHistory,
-            effectiveSearchType
-          );
-
-          console.log(`✅ FRONTEND RECEIVED: conversationId=${res.conversationId}`);
-
-          if (
-            (!res.sources || res.sources.length === 0) &&
-            !newConversation &&
-            isContinuationFollowUp(q)
-          ) {
-            const fallbackSources = getLastNonEmptySources();
-            if (fallbackSources.length > 0) {
-              res.sources = fallbackSources as any;
-            }
-          }
-
-          if (res.conversationId) {
-            setActiveConversationId(res.conversationId);
-            lastLoadedConversationIdRef.current = null;
-            console.log(`💾 FRONTEND SAVED: activeConversationId=${res.conversationId}`);
-          }
-
-          const wasNewConversation = newConversation;
-          if (wasNewConversation) {
-            setNewConversation(false);
-          }
-
-          const answerWithAttachments = {
-            ...res,
-            attachments: filesToProcess.length > 0 ? filesToProcess : undefined,
-          };
-
-          if (wasNewConversation) {
-            setConversationHistory([answerWithAttachments]);
-          } else {
-            setConversationHistory((prev) =>
-              appendConversationAnswer(prev, answerWithAttachments)
-            );
-          }
-
-          setAnswer(answerWithAttachments);
-        } else {
+        // Always stream — including when files are attached. The backend's
+        // /api/stream endpoint accepts the same multipart upload contract as
+        // /api/search, so describe-this-image / explain-this-doc requests
+        // now drip in tokens just like plain queries. Was previously
+        // split-pathed into a one-shot searchAPI which gave the user a
+        // stuck-on-spinner experience until the full answer arrived.
+        {
           await searchAPIStream(
             q,
             backendMode,
@@ -699,7 +653,8 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                 stopDripAndFlush();
                 throw new Error(msg);
               },
-            }
+            },
+            filesToProcess,
           );
         }
       } catch (error: any) {

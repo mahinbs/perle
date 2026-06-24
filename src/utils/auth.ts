@@ -217,6 +217,24 @@ export function getAuthHeaders(includeContentType = true): HeadersInit {
  * Returns a valid access token, refreshing it proactively if it will expire within 5 minutes.
  * Returns null if no session exists (caller should redirect to login).
  */
+/**
+ * Returns a still-valid access token, refreshing in the background if the
+ * cached one is within 5 minutes of expiry.
+ *
+ * IMPORTANT race fix: this function used to perform its OWN /auth/refresh
+ * fetch, parallel to refreshAuthSession's. When two callers (e.g. multiple
+ * page-load fetches) hit getValidToken concurrently, both POSTed the SAME
+ * refresh token to /auth/refresh. Supabase rotates the refresh token on
+ * first use, so the SECOND request 401'd — and the old code reacted to
+ * that 401 by calling removeAuthToken(), nuking the FRESH credentials the
+ * first request had just saved. That's the boot-time auto-logout users
+ * reported.
+ *
+ * Fix: delegate to refreshAuthSession which has an in-flight guard, so
+ * concurrent callers share one refresh round-trip. On failure we now
+ * return the cached token (which may itself be the freshly-rotated one
+ * saved by the winning concurrent call) instead of wiping credentials.
+ */
 export async function getValidToken(): Promise<string | null> {
   const expiresAt = getTokenExpiresAt();
   const nowSeconds = Math.floor(Date.now() / 1000);
@@ -232,30 +250,18 @@ export async function getValidToken(): Promise<string | null> {
     return token;
   }
 
-  try {
-    const res = await fetch(`${API_URL}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: rt }),
-    });
-
-    if (!res.ok) {
-      if (res.status === 401) {
-        removeAuthToken();
-        return null;
-      }
-      return token;
-    }
-
-    const data: AuthResponse = await res.json();
-    if (data.token) {
-      setAuthCredentials(data.token, data.refreshToken, data.expiresAt);
-      return data.token;
-    }
-  } catch {
-    // Network error — fall back to cached token
+  // Share the in-flight refresh with anyone else who's currently refreshing.
+  const refreshed = await refreshAuthSession();
+  if (refreshed) {
+    return getAuthToken(); // refreshed value, set by refreshAuthSession
   }
-  return token;
+  // Refresh didn't succeed — but DON'T wipe credentials here. Either:
+  //   (a) Another concurrent call already updated localStorage with a fresh
+  //       token; we'd be deleting valid creds.
+  //   (b) Refresh genuinely failed — refreshAuthSession will have called
+  //       removeAuthToken() itself when the refresh endpoint returned 401.
+  // Returning whatever is currently cached lets the next request decide.
+  return getAuthToken();
 }
 
 /**
@@ -452,6 +458,20 @@ export async function verifyToken(): Promise<User | null> {
     }
 
     if (!user) {
+      // Final-stage failure: refresh didn't recover the session AND the
+      // verify endpoint kept saying 401. Only hard-logout if there's no
+      // refresh token left — `refreshAuthSession` clears it on a hard
+      // refresh-401, so absence here proves the session is genuinely
+      // gone. If a refresh token IS still present, this is more likely a
+      // transient verify-endpoint hiccup; preserve the cached user so a
+      // boot-time blip doesn't punt logged-in users to the login wall.
+      if (!getRefreshToken()) {
+        removeAuthToken();
+        return null;
+      }
+      const cached = getUserData();
+      if (cached) return cached;
+      // No cached user either → genuinely unknown identity → log out.
       removeAuthToken();
       return null;
     }

@@ -236,10 +236,26 @@ export async function searchAPI(
   }
 
   const data = await res.json();
-  // Normalise: if backend returns chunks[], use them; if it returns message (chat fallback), wrap it
-  if (!data.chunks && data.message) {
-    data.chunks = [{ text: data.message, citationIds: [] }];
+  // Normalise: backend can legally return chunks[], a top-level `message`
+  // (chat fallback), or `answer`. We coerce any of those into a chunks[]
+  // shape. If absolutely nothing is present we still emit a one-chunk
+  // explanatory message so downstream renderers never crash on a missing
+  // .chunks property — that was the white-screen failure mode when a
+  // multipart image upload hit an unusual provider error path.
+  if (!Array.isArray(data.chunks) || data.chunks.length === 0) {
+    const text =
+      typeof data.message === "string" && data.message.trim().length > 0
+        ? data.message
+        : typeof data.answer === "string" && data.answer.trim().length > 0
+        ? data.answer
+        : typeof data.error === "string" && data.error.trim().length > 0
+        ? `Error: ${data.error}`
+        : "The server returned an empty response. Please try again.";
+    data.chunks = [{ text, citationIds: [] }];
   }
+  // Defensive sources array — some error paths omit it, but the renderer
+  // iterates `sources` unconditionally and would crash on undefined.
+  if (!Array.isArray(data.sources)) data.sources = [];
   return data;
 }
 
@@ -340,7 +356,8 @@ export async function searchAPIStream(
      */
     onDone: (suggestedQuestions: string[], cleanText?: string) => void;
     onError: (message: string) => void;
-  }
+  },
+  uploadedFiles: UploadedFile[] = [],
 ): Promise<void> {
   const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
 
@@ -350,19 +367,42 @@ export async function searchAPIStream(
 
   const { getAuthHeaders } = await import('./auth');
 
-  const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({
-      query,
-      mode,
-      model,
-      newConversation,
-      conversationId,
-      conversationHistory,
-      searchType,
-    }),
-  });
+  // When files are attached we must send the request as multipart/form-data
+  // so the backend's `/api/stream` route (which uses the same `uploadSearchFiles`
+  // multer middleware as `/api/search`) can pick up the attachments. The
+  // browser sets the multipart boundary header automatically — passing our
+  // usual JSON Content-Type would corrupt the form-data parser — so we pass
+  // `false` to getAuthHeaders to drop the Content-Type header in the upload
+  // branch.
+  const hasUploads = uploadedFiles.some((f) => f.file);
+  const userContext = getUserLocalContext();
+
+  let response: Response;
+  if (hasUploads) {
+    const formData = buildSearchFormData(
+      { query, mode, model, newConversation, conversationId, conversationHistory, searchType, userContext },
+      uploadedFiles,
+    );
+    response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
+      method: 'POST',
+      headers: getAuthHeaders(false), // skip Content-Type so multipart boundary stays correct
+      body: formData,
+    });
+  } else {
+    response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        query,
+        mode,
+        model,
+        newConversation,
+        conversationId,
+        conversationHistory,
+        searchType,
+      }),
+    });
+  }
 
   if (!response.ok || !response.body) {
     const errData = await response

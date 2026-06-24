@@ -40,7 +40,15 @@ export function getProviderColor(provider?: string): string {
   }
 }
 
-/** SyntraIQ app icon — used for Auto / SyntraIQ-branded picks. */
+/**
+ * SyntraIQ app icon — used for Auto / SyntraIQ-branded picks.
+ *
+ * The source PNG has padding around the brain glyph, which made the inner
+ * mark look too small at chip sizes (~26px). We wrap the image in a
+ * fixed-size square with overflow:hidden and scale the image up so the
+ * brain fills the visible area — matches the visual weight of ChatGPT's
+ * official mark at the same chip size.
+ */
 export function SyntraIQLogomark({
   size = 26,
   className,
@@ -49,23 +57,42 @@ export function SyntraIQLogomark({
   className?: string;
 }) {
   const radius = Math.max(5, Math.round(size * 0.22));
+  // 1.45× crops the source's blank padding and brings the brain glyph
+  // up to the same visual size as the OpenAI/Gemini glyphs sitting next
+  // to it in the picker.
+  const innerScale = 1.45;
   return (
-    <img
-      src={syntraIcon}
-      alt=""
-      width={size}
-      height={size}
+    <div
+      aria-hidden
       className={className}
       style={{
         width: size,
         height: size,
         borderRadius: radius,
-        display: "block",
+        overflow: "hidden",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
         flexShrink: 0,
-        objectFit: "cover",
         boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+        background: "#fff",
       }}
-    />
+    >
+      <img
+        src={syntraIcon}
+        alt=""
+        width={size}
+        height={size}
+        style={{
+          width: size,
+          height: size,
+          display: "block",
+          objectFit: "cover",
+          transform: `scale(${innerScale})`,
+          transformOrigin: "center center",
+        }}
+      />
+    </div>
   );
 }
 
