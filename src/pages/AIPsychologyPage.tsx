@@ -489,7 +489,7 @@ export default function AIPsychologyPage() {
           <div className="row flex items-center gap-3">
             <button
               className="btn-ghost glass-button p-2! text-[length:var(--font-md)]"
-              onClick={() => navigateTo("/")}
+              onClick={() => navigateTo("/app")}
               aria-label="Back"
             >
               <IoIosArrowBack size={24} />

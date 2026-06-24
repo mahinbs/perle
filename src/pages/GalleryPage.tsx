@@ -130,7 +130,7 @@ export default function GalleryPage() {
       >
         <button
           className="btn-ghost"
-          onClick={() => navigateTo("/")}
+          onClick={() => navigateTo("/app")}
           aria-label="Back"
           style={{ fontSize: "var(--font-md)" }}
         >

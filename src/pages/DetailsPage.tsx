@@ -85,7 +85,7 @@ export default function DetailsPage() {
   };
 
   const handleAskAI = (query: string) => {
-    navigateTo("/", { searchQuery: query, mode: "Research" });
+    navigateTo("/app", { searchQuery: query, mode: "Research" });
   };
 
   if (isLoading) {

@@ -9,7 +9,7 @@ export default function SleepDisorderPage() {
     <div className="container h-screen flex flex-col !p-0 bg-[var(--bg)]">
       <div className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]" style={{ paddingTop: "var(--safe-area-top)" }}>
         <div className="flex items-center gap-3 p-4">
-          <button className="btn-ghost glass-button p-2!" onClick={() => navigateTo("/")} aria-label="Back">
+          <button className="btn-ghost glass-button p-2!" onClick={() => navigateTo("/app")} aria-label="Back">
             <IoIosArrowBack size={24} />
           </button>
           <div>
@@ -38,7 +38,7 @@ export default function SleepDisorderPage() {
           type="button"
           className="btn glass-button"
           style={{ background: "var(--accent)", color: "#111" }}
-          onClick={() => navigateTo("/?searchQuery=How can I improve my sleep if I have a sleep disorder")}
+          onClick={() => navigateTo("/app", { searchQuery: "How can I improve my sleep if I have a sleep disorder" })}
         >
           Ask IQ about sleep disorders
         </button>

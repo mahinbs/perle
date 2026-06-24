@@ -107,7 +107,7 @@ export default function EditImagesPage() {
     <div className="container h-screen flex flex-col !p-0">
       <div className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]" style={{ paddingTop: "var(--safe-area-top)" }}>
         <div className="flex items-center gap-3 p-4">
-          <button className="btn-ghost glass-button p-2!" onClick={() => navigateTo("/")} aria-label="Back">
+          <button className="btn-ghost glass-button p-2!" onClick={() => navigateTo("/app")} aria-label="Back">
             <IoIosArrowBack size={24} />
           </button>
           <div>

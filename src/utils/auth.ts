@@ -186,7 +186,7 @@ export function getPostAuthNavigation(
     Boolean(navState?.plan);
 
   if (hasPaidPremiumPlan(user) && wouldGoToSubscription) {
-    return { path: '/' };
+    return { path: '/app' };
   }
   if (navState?.returnTo) {
     return { path: navState.returnTo, useAuthRedirect: true };
@@ -194,7 +194,7 @@ export function getPostAuthNavigation(
   if (navState?.plan) {
     return { path: `/subscription?plan=${navState.plan}`, useAuthRedirect: true };
   }
-  return { path: '/' };
+  return { path: '/app' };
 }
 
 export function getAuthHeaders(includeContentType = true): HeadersInit {
@@ -358,6 +358,92 @@ export async function signup(name: string, email: string, password: string): Pro
     setUserData(data.user);
   }
   
+  return data;
+}
+
+const OAUTH_RETURN_KEY = 'syntraiq-oauth-return';
+
+export function storeOAuthReturnState(state?: { returnTo?: string; plan?: string }): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (state?.returnTo || state?.plan) {
+      sessionStorage.setItem(OAUTH_RETURN_KEY, JSON.stringify(state));
+    } else {
+      sessionStorage.removeItem(OAUTH_RETURN_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readOAuthReturnState(): { returnTo?: string; plan?: string } | undefined {
+  try {
+    const raw = sessionStorage.getItem(OAUTH_RETURN_KEY);
+    sessionStorage.removeItem(OAUTH_RETURN_KEY);
+    return raw ? JSON.parse(raw) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Redirect to Google via backend OAuth (no Supabase keys on frontend). */
+export async function startGoogleAuth(returnState?: { returnTo?: string; plan?: string }): Promise<void> {
+  if (!API_URL) {
+    throw new Error('Backend API not configured (VITE_API_URL).');
+  }
+
+  const params = new URLSearchParams();
+  if (returnState?.returnTo) params.set('returnTo', returnState.returnTo);
+  if (returnState?.plan) params.set('plan', returnState.plan);
+  const qs = params.toString();
+  window.location.href = `${API_URL.replace(/\/+$/, '')}/api/auth/google${qs ? `?${qs}` : ''}`;
+}
+
+/** Called on /auth/callback after backend redirects with a one-time oauth_code. */
+export async function completeGoogleOAuth(): Promise<AuthResponse> {
+  if (!API_URL) {
+    throw new Error('Backend API not configured.');
+  }
+
+  const url = new URL(window.location.href);
+  const oauthError = url.searchParams.get('error');
+  if (oauthError) {
+    throw new Error(oauthError);
+  }
+
+  const oauthCode = url.searchParams.get('oauth_code');
+  if (!oauthCode) {
+    throw new Error('Missing sign-in code. Please try Google sign-in again.');
+  }
+
+  const response = await fetch(`${API_URL}/api/auth/oauth/redeem`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: oauthCode }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to complete Google sign-in');
+  }
+
+  const data = (await response.json()) as AuthResponse & {
+    returnState?: { returnTo?: string; plan?: string };
+  };
+
+  if (data.token) {
+    setAuthCredentials(data.token, data.refreshToken, data.expiresAt);
+  }
+  if (data.user) {
+    setUserData(data.user);
+  }
+
+  if (data.returnState?.returnTo || data.returnState?.plan) {
+    storeOAuthReturnState(data.returnState);
+  }
+
+  window.history.replaceState({}, document.title, '/auth/callback');
+
   return data;
 }
 

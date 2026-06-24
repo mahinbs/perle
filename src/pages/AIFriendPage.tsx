@@ -1348,7 +1348,7 @@ export default function AIFriendPage() {
             <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               className="btn-ghost glass-button p-2! shrink-0 text-[length:var(--font-md)]"
-              onClick={() => navigateTo("/")}
+              onClick={() => navigateTo("/app")}
               aria-label="Back"
             >
               <IoIosArrowBack size={24} />

@@ -34,7 +34,7 @@ export const DiscoverRail: React.FC = () => {
 
   const handleItemClick = (item: DiscoverItem) => {
     const mode = getModeFromTag(item.tag);
-    navigateTo('/', {
+    navigateTo('/app', {
       searchQuery: item.title,
       mode: mode,
     });

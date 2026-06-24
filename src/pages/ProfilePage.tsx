@@ -20,6 +20,7 @@ import {
   getPostAuthNavigation,
   onAuthChange,
   isLoggedIn,
+  startGoogleAuth,
   type User,
 } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
@@ -313,7 +314,7 @@ export default function ProfilePage() {
     }
     setIsAuthenticated(false);
     setUserSettings(null);
-    navigateTo("/");
+    navigateTo("/app");
   };
 
   const handleSettingChange = async (
@@ -510,7 +511,7 @@ export default function ProfilePage() {
         await logout();
         setIsAuthenticated(false);
         setUserSettings(null);
-        navigateTo("/");
+        navigateTo("/app");
       } else {
         alert("Failed to delete account. Please try again.");
       }
@@ -523,11 +524,19 @@ export default function ProfilePage() {
   const handleGoogleAuth = async (_mode: "login" | "signup") => {
     setIsLoading(true);
     setAuthError("");
-
-    // Google OAuth would be implemented here
-    // For now, show error
-    setAuthError("Google authentication is not yet implemented");
-    setIsLoading(false);
+    try {
+      await startGoogleAuth({
+        returnTo: state?.returnTo,
+        plan: state?.plan,
+      });
+      // Browser redirects to Google — loading state stays until callback page.
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Google sign-in failed";
+      setAuthError(message);
+      showToast({ message, type: "error", duration: 5000 });
+      setIsLoading(false);
+    }
   };
 
   // Show login form
@@ -623,7 +632,7 @@ export default function ProfilePage() {
         <div className="h1">Profile</div>
         <button
           className="btn-ghost glass-button"
-          onClick={() => navigateTo("/")}
+          onClick={() => navigateTo("/app")}
           style={{ fontSize: "var(--font-md)" }}
         >
           <IoIosArrowBack size={24} /> Back
@@ -1199,7 +1208,7 @@ export default function ProfilePage() {
                     key={item.id}
                     className="btn-ghost glass-button"
                     onClick={() => {
-                      navigateTo("/", { searchQuery: item.query });
+                      navigateTo("/app", { searchQuery: item.query });
                     }}
                     style={{
                       width: "100%",
