@@ -34,7 +34,7 @@ const STAGES = [
   { thresholdMs: 8_000, emoji: "🔍", label: "Searching the web for sources" },
   { thresholdMs: 25_000, emoji: "📚", label: "Reading and analysing sources" },
   { thresholdMs: 60_000, emoji: "✍️", label: "Writing your detailed report" },
-  { thresholdMs: 150_000, emoji: "🎯", label: "Almost done — formatting" },
+  { thresholdMs: 150_000, emoji: "🎯", label: "Almost done, formatting" },
 ];
 
 function formatElapsed(ms: number): string {
