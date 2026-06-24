@@ -385,6 +385,15 @@ export function isSmallTalkQuery(query: string): boolean {
     /^(i am|i'm)\s+(good|fine|ok|okay|great|well)\b/i,
     /^(thanks|thank you)[!. ]*$/i,
     /^(good morning|good afternoon|good evening|good night)[!. ]*$/i,
+    /^who\s+(are|is)\s+you\??$/i,
+    /^who\s+am\s+i\??$/i,
+    /^what\s+(are|is)\s+you\??$/i,
+    /what\s+are\s+you\s+(doing|up\s+to)\??/i,
+    /^what'?s\s+up\??$/i,
+    /tell\s+me\s+about\s+(yourself|you|me)\??/i,
+    /what'?s\s+my\s+name\??$/i,
+    /do\s+you\s+know\s+who\s+i\s+am\??/i,
+    /what'?s\s+your\s+name\??/i,
   ];
 
   return smallTalkPatterns.some((p) => p.test(lower));
@@ -614,7 +623,8 @@ export function shouldPerformWebSearch(
   searchType?: WebSearchType,
   hasAttachments = false
 ): boolean {
-  if (chatMode === 'ai_psychologist') return false;
+  // Companion chats are conversational — never block on web search.
+  if (chatMode === 'ai_psychologist' || chatMode === 'ai_friend') return false;
   if (isSmallTalkQuery(query)) return false;
 
   // Uploaded files are primary context (ChatGPT/Gemini behavior) — skip web unless clearly needed
