@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { Source } from "../types";
 import { SourceFavicon } from "./SourceFavicon";
-import { getSourceDomain } from "../utils/sourceFavicon";
+import { getSourceDomain, normalizeSources } from "../utils/sourceFavicon";
 
 interface SourcesPillProps {
   sources: Source[];
+  /** Where the expanded list opens — use "down" when the pill is at the top (voice overlay). */
+  expandDirection?: "up" | "down";
 }
 
 /**
@@ -12,9 +14,14 @@ interface SourcesPillProps {
  * Tap to expand the full source list; tap a source to open it in a new tab;
  * tap outside to close.
  */
-export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
+export const SourcesPill: React.FC<SourcesPillProps> = ({
+  sources,
+  expandDirection = "up",
+}) => {
   const [expanded, setExpanded] = useState(false);
   const pillRef = useRef<HTMLDivElement>(null);
+
+  const normalizedSources = useMemo(() => normalizeSources(sources), [sources]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -32,9 +39,9 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
     };
   }, [expanded]);
 
-  if (sources.length === 0) return null;
+  if (normalizedSources.length === 0) return null;
 
-  const previewSources = sources.slice(0, 4);
+  const previewSources = normalizedSources.slice(0, 4);
 
   return (
     <div
@@ -49,7 +56,7 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        aria-label={`${sources.length} sources`}
+        aria-label={`${normalizedSources.length} sources`}
         className="glass-button"
         style={{
           display: "inline-flex",
@@ -64,14 +71,18 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
           fontWeight: 500,
           cursor: "pointer",
           boxShadow: "var(--shadow)",
+          overflow: "visible",
+          isolation: "isolate",
         }}
       >
-        <span style={{ display: "flex", alignItems: "center" }}>
+        <span style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
           {previewSources.map((source, index) => (
             <SourceFavicon
-              key={source.id}
+              key={`${source.id}-${source.url}-${index}`}
               url={source.url}
               domain={source.domain}
+              title={source.title}
+              snippet={source.snippet}
               size={18}
               style={{
                 position: "relative",
@@ -89,9 +100,11 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
         <div
           style={{
             position: "absolute",
-            bottom: "100%",
-            left: 0,
-            marginBottom: 8,
+            ...(expandDirection === "down"
+              ? { top: "100%", marginTop: 8 }
+              : { bottom: "100%", marginBottom: 8 }),
+            left: expandDirection === "down" ? "50%" : 0,
+            transform: expandDirection === "down" ? "translateX(-50%)" : undefined,
             width: "min(340px, 90vw)",
             maxHeight: "min(50vh, 300px)",
             overflowY: "auto",
@@ -103,9 +116,9 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
             padding: 8,
           }}
         >
-          {sources.map((source, index) => (
+          {normalizedSources.map((source, index) => (
             <button
-              key={source.id}
+              key={`${source.id}-${source.url}-${index}`}
               type="button"
               onClick={() => {
                 setExpanded(false);
@@ -134,6 +147,8 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
               <SourceFavicon
                 url={source.url}
                 domain={source.domain}
+                title={source.title}
+                snippet={source.snippet}
                 size={18}
                 rounded="sm"
                 style={{ marginTop: 2 }}
@@ -160,7 +175,7 @@ export const SourcesPill: React.FC<SourcesPillProps> = ({ sources }) => {
                     opacity: 0.65,
                   }}
                 >
-                  {source.domain || getSourceDomain(source.url)}
+                  {source.domain || getSourceDomain(source.url, source.domain, source.title, source.snippet)}
                 </span>
               </span>
             </button>

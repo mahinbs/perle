@@ -6,6 +6,7 @@ import {
   getSourceFaviconCandidates,
   getSourceLetter,
   normalizeSourceUrl,
+  normalizeSources,
 } from "../sourceFavicon";
 
 describe("sourceFavicon", () => {
@@ -34,6 +35,39 @@ describe("sourceFavicon", () => {
         "ovh.com"
       )
     ).toBe("ovh.com");
+  });
+
+  it("infers domain from title when URL and domain are grounding redirects", () => {
+    expect(
+      getSourceDomain(
+        "https://vertexaisearch.cloud.google.com/grounding-api-redirect/x",
+        "vertexaisearch.cloud.google.com",
+        "What is DBMS? | OVHcloud"
+      )
+    ).toBe("ovhcloud.com");
+  });
+
+  it("infers domain from snippet when URL and domain are grounding redirects", () => {
+    expect(
+      getSourceDomain(
+        "https://vertexaisearch.cloud.google.com/grounding-api-redirect/x",
+        "vertexaisearch.cloud.google.com",
+        "Article",
+        "Learn more at us.ovhcloud.com about database systems."
+      )
+    ).toBe("us.ovhcloud.com");
+  });
+
+  it("normalizes sources for favicon lookup", () => {
+    const normalized = normalizeSources([
+      {
+        id: "web-1",
+        title: "What is DBMS? | OVHcloud",
+        url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/x",
+        domain: "vertexaisearch.cloud.google.com",
+      },
+    ]);
+    expect(normalized[0].domain).toBe("ovhcloud.com");
   });
 
   it("extracts hostname from bare domains", () => {

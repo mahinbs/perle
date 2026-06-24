@@ -24,8 +24,7 @@ import {
   sortMessagesByTime,
 } from "../utils/chatDates";
 import {
-  CHAT_EXCHANGE_SCROLL_OFFSET,
-  scheduleScrollExchangeToTop,
+  scheduleScrollToBottom,
 } from "../utils/chatScroll";
 import { ChatDateDivider } from "../components/ChatDateDivider";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
@@ -99,30 +98,22 @@ export default function AIPsychologyPage() {
   const [dailySuggestionUses, setDailySuggestionUses] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const suppressAutoScrollRef = useRef(false);
   // Pagination for chat history (latest 20 first, older 20 on scroll-up).
   const PSYCH_HISTORY_PAGE_SIZE = 20;
   const historyHasMoreRef = useRef<boolean>(false);
   const historyOldestRef = useRef<string | null>(null);
   const [isLoadingOlderHistory, setIsLoadingOlderHistory] = useState(false);
-  const pendingScrollToMessageIdRef = useRef<string | null>(null);
-  const pendingScrollToMessageElRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
 
-  // ChatGPT-style UX: pin the new user message at the top; AI response streams below.
+  // WhatsApp-style UX: keep the latest messages in view at the bottom.
   useLayoutEffect(() => {
-    if (!isLoading) return;
-    if (!pendingScrollToMessageIdRef.current) return;
-    const el = pendingScrollToMessageElRef.current;
-    if (!el) return;
-
-    pendingScrollToMessageIdRef.current = null;
-    pendingScrollToMessageElRef.current = null;
-
-    scheduleScrollExchangeToTop(messagesContainerRef.current, el);
-  }, [isLoading, messages.length]);
+    if (suppressAutoScrollRef.current) return;
+    scheduleScrollToBottom(messagesContainerRef.current);
+  }, [messages, isLoading, historyReady]);
 
   // Focus input on mount
   useEffect(() => {
@@ -196,6 +187,7 @@ export default function AIPsychologyPage() {
     if (!API_URL) return;
 
     setIsLoadingOlderHistory(true);
+    suppressAutoScrollRef.current = true;
     const container = messagesContainerRef.current;
     const prevScrollHeight = container?.scrollHeight ?? 0;
     const prevScrollTop = container?.scrollTop ?? 0;
@@ -226,6 +218,9 @@ export default function AIPsychologyPage() {
         const c = messagesContainerRef.current;
         if (!c) return;
         c.scrollTop = prevScrollTop + (c.scrollHeight - prevScrollHeight);
+        requestAnimationFrame(() => {
+          suppressAutoScrollRef.current = false;
+        });
       });
     } catch (e) {
       console.warn('Failed to load older history:', e);
@@ -345,7 +340,6 @@ export default function AIPsychologyPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    pendingScrollToMessageIdRef.current = userMessage.id;
     const messageText = textToSend;
     setInputValue("");
     if (attachedFileName) {
@@ -484,43 +478,50 @@ export default function AIPsychologyPage() {
         <AIDataConsentModal onAccept={() => setShowConsentModal(false)} />
       )}
       {/* Header */}
-      <div className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]" style={{ paddingTop: "var(--safe-area-top)" }}>
-        <div className="row flex-nowrap! flex justify-between items-center p-4">
-          <div className="row flex items-center gap-3">
+      <div
+        className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]"
+        style={{ paddingTop: "var(--safe-area-top)" }}
+      >
+        <div className="flex items-center justify-between gap-2 px-3 py-3 min-h-[60px]">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
-              className="btn-ghost glass-button p-2! text-[length:var(--font-md)]"
-              onClick={() => navigateTo("/app")}
+              className="btn-ghost glass-button p-2! shrink-0 text-[length:var(--font-md)]"
+              onClick={() => navigateTo("/")}
               aria-label="Back"
             >
               <IoIosArrowBack size={24} />
             </button>
-            <div className="row flex items-center gap-3">
-              <div className="relative">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="relative shrink-0">
                 <img
                   src={aiProfile.avatar}
                   alt={`${aiProfile.name} avatar`}
-                  className="w-11 h-11 rounded-full object-cover border-2 border-[#9B59B6]"
+                  className="w-10 h-10 min-w-10 rounded-full object-cover border-2 border-[#9B59B6]"
                 />
-                <div className="w-2.5 h-2.5 rounded-full bg-[#9B59B6] shadow-[0_0_8px_rgba(155,89,182,0.5)] absolute bottom-0 right-0 animate-pulse" />
+                <div className="w-2 h-2 rounded-full bg-[#9B59B6] shadow-[0_0_8px_rgba(155,89,182,0.5)] absolute bottom-0 right-0 animate-pulse" />
               </div>
-              <div>
-                <div className="h3 mb-0.5">{aiProfile.name}</div>
-                <div className="sub text-sm text-[length:var(--font-sm)] opacity-80">
+              <div className="min-w-0">
+                <div className="h3 mb-0.5 truncate text-base leading-tight">
+                  {aiProfile.name}
+                </div>
+                <div className="sub text-xs opacity-80 truncate">
                   {aiProfile.handle}
                 </div>
               </div>
             </div>
           </div>
-          <div className="row flex items-center gap-2.5">
+
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              className="btn-ghost glass-button flex items-center gap-1.5 px-3 py-1.5 text-[length:var(--font-sm)]"
+              className="btn-ghost glass-button !px-2.5 !py-1.5 text-xs whitespace-nowrap"
               onClick={startNewConversation}
+              title="Start a new session"
             >
-              <span>New</span>
+              New
             </button>
             <button
-              className="btn-ghost glass-button p-2"
+              className="btn-ghost glass-button p-2 shrink-0"
               aria-label="Favorite conversation"
             >
               <FaStar size={18} color="var(--accent)" />
@@ -562,12 +563,6 @@ export default function AIPsychologyPage() {
             className={`flex items-end gap-3 mb-4 ${
               message.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
-              style={{ scrollMarginTop: CHAT_EXCHANGE_SCROLL_OFFSET }}
-              ref={(el) => {
-                if (message.id === pendingScrollToMessageIdRef.current) {
-                  pendingScrollToMessageElRef.current = el;
-                }
-              }}
           >
             <img
               src={
