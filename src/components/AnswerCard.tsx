@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from
 import { createPortal } from "react-dom";
 import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
 import { SourcesPill } from "./SourcesPill";
+import { DeepResearchProgress } from "./DeepResearchProgress";
 import {
   AnswerBulletDot,
   isColonHeading,
@@ -379,6 +380,13 @@ interface AnswerCardProps {
   generatedMedia?: { type: 'image' | 'video'; url: string; prompt: string }; // Generated media to display
   hideSources?: boolean;
   suggestedQuestions?: string[];
+  /**
+   * Backend search-type for this exchange. When set to 'deep' AND the
+   * card is in loading state, we render a Deep-Research-specific progress
+   * UI (staged labels + elapsed timer) instead of the generic
+   * "IQ is thinking" spinner, because deep research can take 60-180s.
+   */
+  searchType?: 'auto' | 'instant' | 'deep';
 }
 
 /** Mobile chat query sizing — aligned with ChatGPT / Perplexity phone UI */
@@ -400,6 +408,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   onQueryEdit,
   onSearch: _onSearch,
   attachments,
+  searchType,
   skipTypewriter = false,
   isStreamingAnswer = false,
   generatedMedia,
@@ -1563,7 +1572,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           </div>
         )}
         <div
-          className="flex items-start gap-1"
+          className="flex items-start gap-3"
           style={{ marginTop: query ? 8 : 0 }}
         >
           <div className="w-9 h-9 shrink-0">
@@ -1575,24 +1584,37 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               style={{ display: "block" }}
             />
           </div>
-          <div
-            className="flex items-center justify-center"
-            style={{ minHeight: 36, paddingRight: 8 }}
-          >
-            <p
-              style={{
-                fontSize: "var(--font-sm)",
-                fontWeight: 500,
-                color: "var(--sub)",
-                margin: 0,
-                textAlign: "center",
-                lineHeight: 1.3,
-              }}
+          {searchType === 'deep' ? (
+            // Deep Research can take 60-180s — render the staged progress
+            // panel (Searching → Reading sources → Writing report + timer)
+            // so the user knows the model is still working. Matches the
+            // pattern used by Perplexity Pro and Gemini Deep Think.
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <DeepResearchProgress
+                sourcesReceived={Array.isArray(sources) && sources.length > 0}
+                sourceCount={sources?.length}
+              />
+            </div>
+          ) : (
+            <div
+              className="flex items-center justify-center"
+              style={{ minHeight: 36, paddingRight: 8 }}
             >
-              IQ is thinking
-              <span className="thinking-dots" aria-hidden="true">.....</span>
-            </p>
-          </div>
+              <p
+                style={{
+                  fontSize: "var(--font-sm)",
+                  fontWeight: 500,
+                  color: "var(--sub)",
+                  margin: 0,
+                  textAlign: "center",
+                  lineHeight: 1.3,
+                }}
+              >
+                IQ is thinking
+                <span className="thinking-dots" aria-hidden="true">.....</span>
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );

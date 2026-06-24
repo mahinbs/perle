@@ -1163,6 +1163,13 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                 isLoading={true}
                 query={searchedQuery}
                 attachments={currentUploadedFiles}
+                // Pass through the active experience mode so the Deep
+                // Research stages UI replaces the generic spinner during
+                // the long "before any token arrives" wait.
+                searchType={
+                  experienceMode === 'deep_research' ? 'deep' :
+                  experienceMode === 'web_search' ? 'instant' : 'auto'
+                }
                 // Sources reveal only on the final answer, after streaming completes.
                 hideSources={true}
               />
@@ -1225,6 +1232,13 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                   isLoading={true}
                   mode={mode}
                   query={searchedQuery}
+                  // Same Deep Research UI surfaces here too — this is the
+                  // pre-stream loading state when the request hasn't yet
+                  // returned any SSE event.
+                  searchType={
+                    experienceMode === 'deep_research' ? 'deep' :
+                    experienceMode === 'web_search' ? 'instant' : 'auto'
+                  }
                   onQueryEdit={(editedQuery) => {
                     setQuery(editedQuery);
                     doSearch(editedQuery);
