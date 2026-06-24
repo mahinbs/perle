@@ -252,15 +252,11 @@ export default function DiscoverPage() {
       >
         <div className="h1">Discover</div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            className="btn-ghost glass-button"
-            onClick={() => loadItems(true)}
-            disabled={isLoading}
-            style={{ fontSize: "var(--font-md)" }}
-            title="Force re-fetch news from upstream (bypasses cache)"
-          >
-            {isLoading ? "Refreshing..." : "Refresh"}
-          </button>
+          {/* Refresh button removed — it bypassed the upstream news cache
+              and let users hammer Exa/Gemini + the og:image scraper at
+              will, which is an easy abuse surface. Server-side cache TTL
+              already cycles fresh stories every few minutes; the next
+              normal page open will see them. */}
           <button
             className="btn-ghost glass-button"
             onClick={() => navigateTo("/")}
