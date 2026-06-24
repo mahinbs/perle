@@ -592,11 +592,30 @@ function toSources(results: SearchResult[]): Source[] {
   for (const result of results) {
     try {
       const url = new URL(result.url);
+      const host = url.hostname.replace(/^www\./, '');
+      const isGroundingRedirect = host.includes('vertexaisearch.cloud.google.com');
+      let domain = isGroundingRedirect ? '' : host;
+
+      if (!domain) {
+        const domainInTitle = result.title.match(
+          /\b([a-z0-9][-a-z0-9]*(?:\.[a-z0-9][-a-z0-9]*)+\.[a-z]{2,})\b/i
+        );
+        if (domainInTitle) {
+          domain = domainInTitle[1].toLowerCase();
+        } else if (/wikipedia/i.test(result.title)) {
+          domain = 'wikipedia.org';
+        } else if (/youtube/i.test(result.title)) {
+          domain = 'youtube.com';
+        } else {
+          domain = host;
+        }
+      }
+
       sources.push({
         id: `web-${sources.length + 1}`,
         title: result.title,
         url: result.url,
-        domain: url.hostname.replace('www.', ''),
+        domain,
         year: new Date().getFullYear(),
         snippet: result.content.substring(0, 200) + (result.content.length > 200 ? '...' : '')
       });

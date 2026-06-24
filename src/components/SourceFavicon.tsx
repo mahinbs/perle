@@ -10,6 +10,8 @@ import {
 type SourceFaviconProps = {
   url: string;
   domain?: string;
+  title?: string;
+  snippet?: string;
   size?: number;
   className?: string;
   style?: React.CSSProperties;
@@ -39,16 +41,18 @@ const letterAvatarStyle = (
 export const SourceFavicon: React.FC<SourceFaviconProps> = ({
   url,
   domain,
+  title,
+  snippet,
   size = 18,
   className,
   style,
   rounded = true,
 }) => {
   const isNative = Capacitor.isNativePlatform();
-  const host = getSourceDomain(url, domain);
+  const host = getSourceDomain(url, domain, title, snippet);
   const candidates = useMemo(
-    () => getSourceFaviconCandidates(url, domain),
-    [url, domain]
+    () => getSourceFaviconCandidates(url, domain, title, snippet),
+    [url, domain, title, snippet]
   );
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [imgSrc, setImgSrc] = useState<string | null>(null);
@@ -72,7 +76,7 @@ export const SourceFavicon: React.FC<SourceFaviconProps> = ({
 
     const load = async () => {
       if (isNative) {
-        const resolved = await resolveSourceFaviconUrl(url, domain, 0);
+        const resolved = await resolveSourceFaviconUrl(url, domain, 0, title, snippet);
         if (cancelled) {
           if (resolved?.startsWith("blob:")) URL.revokeObjectURL(resolved);
           return;
@@ -91,7 +95,7 @@ export const SourceFavicon: React.FC<SourceFaviconProps> = ({
       cancelled = true;
       revokeObjectUrl();
     };
-  }, [url, domain, candidates, isNative]);
+  }, [url, domain, title, snippet, candidates, isNative]);
 
   const tryNextCandidate = async () => {
     const nextIndex = candidateIndex + 1;
@@ -102,7 +106,7 @@ export const SourceFavicon: React.FC<SourceFaviconProps> = ({
     }
 
     if (isNative) {
-      const resolved = await resolveSourceFaviconUrl(url, domain, nextIndex);
+      const resolved = await resolveSourceFaviconUrl(url, domain, nextIndex, title, snippet);
       revokeObjectUrl();
       objectUrlRef.current = resolved;
       setImgSrc(resolved);
@@ -138,6 +142,7 @@ export const SourceFavicon: React.FC<SourceFaviconProps> = ({
       height={size}
       loading="eager"
       decoding="async"
+      referrerPolicy="no-referrer"
       onLoad={(e) => {
         const img = e.currentTarget;
         // gstatic returns a 1×1 or 2×2 transparent pixel for unknown domains.
@@ -150,11 +155,20 @@ export const SourceFavicon: React.FC<SourceFaviconProps> = ({
         void tryNextCandidate();
       }}
       style={{
+        width: size,
+        height: size,
+        minWidth: size,
+        maxWidth: size,
+        minHeight: size,
+        maxHeight: size,
         borderRadius,
         objectFit: "cover",
         flexShrink: 0,
         background: "var(--card)",
         display: "block",
+        transform: "translateZ(0)",
+        position: "relative",
+        zIndex: 2,
         ...style,
       }}
     />

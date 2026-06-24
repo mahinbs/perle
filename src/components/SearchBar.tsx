@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel, AnswerResult, ExperienceMode, Mode } from "../types";
@@ -9,7 +9,7 @@ import {
   shouldEnforceUsageLimits,
 } from "../utils/queryLimit";
 import { searchAPI } from "../utils/answerEngine";
-import { sanitizeForSpeech } from "../utils/voiceText";
+import { speakAnswerWithVoicePlan, stopVoiceSpeechOutput } from "../utils/voiceSpeechOutput";
 import { Capacitor } from "@capacitor/core";
 import {
   getLocalItem,
@@ -44,7 +44,9 @@ import syntraGif from "../assets/gif/syntraiq.gif";
 import { ExperienceModeButtons } from "./ExperienceModeButtons";
 import { getUserData } from "../utils/auth";
 
-import { UploadedFile } from "../types";
+import { UploadedFile, type Source } from "../types";
+import { downsampleImageFile } from "../utils/imageResize";
+import { normalizeSources } from "../utils/sourceFavicon";
 
 interface SearchBarProps {
   selectedModel: LLMModel;
@@ -66,6 +68,8 @@ interface SearchBarProps {
   onNewConversation?: () => void; // Callback to start new conversation
   onMediaGenerated?: (media: { type: 'image' | 'video'; url: string; prompt: string }) => void; // Callback when media is generated
   answer?: AnswerResult | null;
+  /** Live sources while the home chat answer is still streaming. */
+  streamingSources?: Source[];
   currentAnswerText?: string;
   experienceMode?: ExperienceMode;
   onExperienceModeChange?: (mode: ExperienceMode) => void;
@@ -99,6 +103,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   onQueryLimitReached,
   onMediaLimitReached,
   pageContext = "home",
+  answer = null,
+  streamingSources = [],
 }) => {
   const isAnalyzeContext = pageContext === "analyze";
   const showQuickToolCards = !isAnalyzeContext;
@@ -134,6 +140,15 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const voiceConversationIdRef = useRef<string | null>(null);
   const voiceHistoryRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const { showToast } = useToast();
+
+  const voiceOverlaySources = useMemo(() => {
+    const raw =
+      (voiceAnswer?.sources?.length ? voiceAnswer.sources : null) ??
+      (streamingSources.length > 0 ? streamingSources : null) ??
+      (answer?.sources?.length ? answer.sources : null) ??
+      [];
+    return normalizeSources(raw);
+  }, [voiceAnswer?.sources, streamingSources, answer?.sources]);
 
   const clearVoiceSessionFlags = () => {
     removeLocalItem(STORAGE_KEYS.keepVoiceOverlayOpen);
@@ -194,6 +209,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     setVoiceQuery(q);
     setVoiceIsLoading(true);
     setVoiceAnswer(null);
+    removeLocalItem(STORAGE_KEYS.currentAnswerText);
 
     try {
       const { backendMode, effectiveSearchType, effectiveModel } = getVoiceSearchParams();
@@ -219,7 +235,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         { role: "assistant" as const, content: answerText },
       ].slice(-20);
 
-      setVoiceAnswer(res);
+      setVoiceAnswer({
+        ...res,
+        sources: normalizeSources(res.sources),
+      });
       localStorage.setItem("syntraiq-speak-next-answer", "1");
       localStorage.setItem("syntraiq-keep-voice-overlay-open", "1");
       localStorage.setItem("syntraiq-voice-session-active", "1");
@@ -574,66 +593,22 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   // Voice output helpers
 
   const stopVoiceOutput = () => {
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
+    stopVoiceSpeechOutput(setIsSpeaking);
   };
 
   const speakTextImmediately = (text: string) => {
-    const content = (text || "")
-      .replace(/\bundefined\b/gi, "")
-      .replace(/[ \t]{2,}/g, " ")
-      .trim();
-    if (!content) return;
-    try {
-      if (!("speechSynthesis" in window)) {
-        return;
-      }
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(sanitizeForSpeech(content));
-      utterance.rate = 0.92;
-      utterance.pitch = 1;
-      utterance.volume = 0.9;
-      let resumeKeepAlive: number | null = null;
-      let spokenOffset = 0;
-
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-        localStorage.setItem("syntraiq-current-answer-text", "");
-        resumeKeepAlive = window.setInterval(() => {
-          try {
-            if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-          } catch { /* ignore */ }
-        }, 10000);
-      };
-
-      utterance.onboundary = (event) => {
-        if (event.name !== "word" && event.charIndex <= spokenOffset) return;
-        spokenOffset = event.charIndex + (event.charLength || 0);
-        const slice = content.slice(0, spokenOffset).trim();
-        if (slice) {
-          localStorage.setItem("syntraiq-current-answer-text", slice);
-        }
-      };
-
-      utterance.onend = () => {
-        setIsSpeaking(false);
-        localStorage.setItem("syntraiq-current-answer-text", content);
-        if (resumeKeepAlive) { clearInterval(resumeKeepAlive); resumeKeepAlive = null; }
+    speakAnswerWithVoicePlan(text, {
+      rate: 0.92,
+      volume: 0.9,
+      onSpeakingChange: setIsSpeaking,
+      onComplete: () => {
         const voiceSessionActive =
           localStorage.getItem("syntraiq-voice-session-active") === "1";
         if (voiceSessionActive) {
           localStorage.setItem("syntraiq-auto-listen-next", "1");
         }
-      };
-      utterance.onerror = () => {
-        setIsSpeaking(false);
-        localStorage.setItem("syntraiq-current-answer-text", content);
-        if (resumeKeepAlive) { clearInterval(resumeKeepAlive); resumeKeepAlive = null; }
-      };
-      window.setTimeout(() => window.speechSynthesis.speak(utterance), 100);
-    } catch {
-      setIsSpeaking(false);
-    }
+      },
+    });
   };
 
   // When a voice query answer arrives, speak it directly from SearchBar.
@@ -1130,11 +1105,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       const newFiles: UploadedFile[] = [];
       const rejectedFiles: string[] = [];
 
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+    for (let i = 0; i < files.length; i++) {
+      let file = files[i];
 
-        // Only allow images for tool mode
-        if (!file.type.startsWith("image/")) {
+      // Only allow images for tool mode
+      if (!file.type.startsWith("image/")) {
           rejectedFiles.push(file.name);
           continue;
         }
@@ -1149,6 +1124,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           break;
         }
 
+        file = await downsampleImageFile(file);
         const preview = await createFilePreview(file);
 
         newFiles.push({
@@ -1197,7 +1173,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     const rejectedFiles: string[] = [];
 
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      let file = files[i];
 
       // Block video files
       if (isVideoFile(file)) {
@@ -1222,6 +1198,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         break;
       }
 
+      if (file.type.startsWith("image/")) {
+        file = await downsampleImageFile(file);
+      }
       const type = getFileType(file);
       const preview = await createFilePreview(file);
 
@@ -2010,8 +1989,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           isListening={isListening}
           isLoading={voiceIsLoading}
           queryText={voiceQuery}
-          responseText={voiceAnswer?.chunks.map((c) => c.text).join(" ") || ""}
-          sources={voiceAnswer?.sources || []}
+          responseText={voiceAnswer?.chunks.map((c) => c.text).join("\n\n") || ""}
+          sources={voiceOverlaySources}
           onToggleListening={() => {
             if (isListening) {
               stopVoiceInput();

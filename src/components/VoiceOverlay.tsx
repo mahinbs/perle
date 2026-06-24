@@ -9,174 +9,15 @@ import { createPortal } from "react-dom";
 import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
-import { SourceFavicon } from "./SourceFavicon";
+import { SourcesPill } from "./SourcesPill";
 import type { Source } from "../types";
-import { getSourceDomain } from "../utils/sourceFavicon";
 import syntraGif from "../assets/gif/syntraiq.gif";
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
-const BOTTOM_GLOBE_SIZE = "clamp(72px, 22vmin, 110px)";
-const CENTER_GLOBE_SIZE = "clamp(120px, 38vmin, 200px)";
+const BOTTOM_GLOBE_SIZE = "clamp(96px, 30vmin, 145px)";
+const CENTER_GLOBE_SIZE = "clamp(160px, 48vmin, 260px)";
 const VOICE_OVERLAY_SAFE_TOP = "max(12px, env(safe-area-inset-top, 0px))";
 const VOICE_CONTENT_H_PADDING = "clamp(12px, 4vw, 28px)";
-
-const VoiceSourcesPill: React.FC<{ sources: Source[] }> = ({ sources }) => {
-  const [expanded, setExpanded] = useState(false);
-  const pillRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!expanded) return;
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      const target = e.target as Node;
-      if (pillRef.current && !pillRef.current.contains(target)) {
-        setExpanded(false);
-      }
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("touchstart", onPointerDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("touchstart", onPointerDown);
-    };
-  }, [expanded]);
-
-  if (sources.length === 0) return null;
-
-  const previewSources = sources.slice(0, 4);
-
-  return (
-    <div
-      ref={pillRef}
-      style={{
-        position: "relative",
-        display: "flex",
-        justifyContent: "center",
-        paddingTop: 4,
-        flexShrink: 0,
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-        aria-label={`${sources.length} sources`}
-        className="glass-button"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "8px 16px",
-          borderRadius: 9999,
-          border: "1px solid var(--border)",
-          background: "var(--card)",
-          color: "var(--text)",
-          fontSize: "var(--font-sm)",
-          fontWeight: 500,
-          cursor: "pointer",
-          boxShadow: "var(--shadow)",
-        }}
-      >
-        <span style={{ display: "flex", alignItems: "center" }}>
-          {previewSources.map((source, index) => (
-            <SourceFavicon
-              key={source.id}
-              url={source.url}
-              domain={source.domain}
-              size={22}
-              style={{
-                position: "relative",
-                zIndex: previewSources.length - index,
-                border: "2px solid var(--bg)",
-                marginLeft: index > 0 ? -8 : 0,
-              }}
-            />
-          ))}
-        </span>
-        <span>
-          {sources.length} {sources.length === 1 ? "source" : "sources"}
-        </span>
-      </button>
-
-      {expanded && (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: "50%",
-            transform: "translateX(-50%)",
-            marginTop: 10,
-            width: "min(360px, 92vw)",
-            maxHeight: "min(50vh, 320px)",
-            overflowY: "auto",
-            borderRadius: 16,
-            border: "1px solid var(--border)",
-            background: "var(--card)",
-            boxShadow: "var(--shadow)",
-            zIndex: 20,
-            padding: 8,
-          }}
-        >
-          {sources.map((source, index) => (
-            <button
-              key={source.id}
-              type="button"
-              onClick={() => window.open(source.url, "_blank")}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 10,
-                width: "100%",
-                textAlign: "left",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "none",
-                background: "transparent",
-                color: "var(--text)",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--input-bg)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
-            >
-              <SourceFavicon
-                url={source.url}
-                domain={source.domain}
-                size={20}
-                rounded="sm"
-                style={{ marginTop: 2 }}
-              />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: "var(--font-sm)",
-                    fontWeight: 600,
-                    lineHeight: 1.35,
-                    marginBottom: 2,
-                  }}
-                >
-                  {index + 1}. {source.title}
-                </span>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: "var(--font-xs)",
-                    opacity: 0.65,
-                  }}
-                >
-                  {source.domain || getSourceDomain(source.url)}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 interface VoiceOverlayProps {
   isOpen: boolean;
@@ -205,8 +46,6 @@ const GlobeView = React.memo(function GlobeView({
         position: "relative",
         width: baseGlobeSize,
         height: baseGlobeSize,
-        maxWidth: "120px",
-        maxHeight: "120px",
         aspectRatio: "1 / 1",
         flexShrink: 0,
         display: "flex",
@@ -386,7 +225,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           minHeight: isLoading && sources.length === 0 ? 52 : undefined,
         }}
       >
-        <VoiceSourcesPill sources={sources} />
+        <SourcesPill sources={sources} expandDirection="down" />
       </div>
 
       <div
@@ -418,7 +257,6 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           </div>
         )}
         <VoiceResponsePanel
-          responseText={responseText}
           isLoading={isLoading}
           queryText={queryText}
           key={isOpen ? "open" : "closed"}
@@ -451,17 +289,21 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
 };
 
 const VoiceResponsePanel: React.FC<{
-  responseText?: string;
   isLoading?: boolean;
   queryText?: string;
-}> = ({ responseText: propResponseText, isLoading = false, queryText = "" }) => {
+}> = ({ isLoading = false, queryText = "" }) => {
   const [speaking, setSpeaking] = useState(false);
-  const [displayText, setDisplayText] = useState<string>(propResponseText || "");
+  const [displayText, setDisplayText] = useState("");
 
-  // Keep display text and speaking state in sync with live voice output text only.
+  // Progressive display driven only by live TTS sync (localStorage), never the full answer prop.
   useEffect(() => {
     if (isLoading) {
       setDisplayText("");
+      try {
+        localStorage.removeItem("syntraiq-current-answer-text");
+      } catch {
+        /* ignore */
+      }
       return;
     }
     let raf = 0;
@@ -472,14 +314,10 @@ const VoiceResponsePanel: React.FC<{
             ? window.localStorage.getItem("syntraiq-current-answer-text")
             : null;
 
-        if (storedText) {
-          const cleaned = storedText
-            .replace(/\bundefined\b/gi, "")
-            .replace(/[ \t]{2,}/g, " ")
-            .trim();
-          setDisplayText((prev) => (cleaned && cleaned !== prev ? cleaned : prev));
-        } else {
-          // No active spoken text -> keep overlay clean instead of showing stale fallback.
+        if (storedText !== null && storedText !== "") {
+          const cleaned = storedText.replace(/\bundefined\b/gi, "");
+          setDisplayText((prev) => (cleaned !== prev ? cleaned : prev));
+        } else if (!window.speechSynthesis?.speaking) {
           setDisplayText((prev) => (prev ? "" : prev));
         }
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, Fragment } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, Fragment, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
@@ -15,6 +15,7 @@ import {
   FaTrash,
 } from "react-icons/fa";
 import { isImageFile } from "../utils/imagePicker";
+import { downsampleImageFile } from "../utils/imageResize";
 import { useToast } from "../contexts/ToastContext";
 import {
   getUserData,
@@ -34,8 +35,7 @@ import {
 } from "../utils/chatDates";
 import { buildCompanionHistoryPayload } from "../utils/companionChat";
 import {
-  CHAT_EXCHANGE_SCROLL_OFFSET,
-  scheduleScrollExchangeToTop,
+  scheduleScrollToBottom,
 } from "../utils/chatScroll";
 import { ChatDateDivider } from "../components/ChatDateDivider";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
@@ -292,8 +292,7 @@ export default function AIFriendPage() {
   const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const pendingScrollToMessageIdRef = useRef<string | null>(null);
-  const pendingScrollToMessageElRef = useRef<HTMLDivElement | null>(null);
+  const suppressAutoScrollRef = useRef(false);
   // Pagination state for chat history (latest 20 first, older 20 on scroll-up).
   const HISTORY_PAGE_SIZE = 20;
   const historyHasMoreRef = useRef<boolean>(false);
@@ -307,19 +306,21 @@ export default function AIFriendPage() {
   const friendSelectorSheetRef = useRef<HTMLDivElement>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const attachedPreviewUrl = useMemo(
+    () => (attachedFile ? URL.createObjectURL(attachedFile) : null),
+    [attachedFile]
+  );
+  useEffect(() => {
+    return () => {
+      if (attachedPreviewUrl) URL.revokeObjectURL(attachedPreviewUrl);
+    };
+  }, [attachedPreviewUrl]);
 
-  // ChatGPT-style UX: pin the new user message at the top; AI response streams below.
+  // WhatsApp-style UX: keep the latest messages in view at the bottom.
   useLayoutEffect(() => {
-    if (!isLoading) return;
-    if (!pendingScrollToMessageIdRef.current) return;
-    const el = pendingScrollToMessageElRef.current;
-    if (!el) return;
-
-    pendingScrollToMessageIdRef.current = null;
-    pendingScrollToMessageElRef.current = null;
-
-    scheduleScrollExchangeToTop(messagesContainerRef.current, el);
-  }, [isLoading, messages.length]);
+    if (suppressAutoScrollRef.current) return;
+    scheduleScrollToBottom(messagesContainerRef.current);
+  }, [messages, isLoading]);
 
   // Focus input on mount
   useEffect(() => {
@@ -519,6 +520,7 @@ export default function AIFriendPage() {
     if (!API_URL) return;
 
     setIsLoadingOlderHistory(true);
+    suppressAutoScrollRef.current = true;
     const container = messagesContainerRef.current;
     const prevScrollHeight = container?.scrollHeight ?? 0;
     const prevScrollTop = container?.scrollTop ?? 0;
@@ -544,6 +546,9 @@ export default function AIFriendPage() {
         const c = messagesContainerRef.current;
         if (!c) return;
         c.scrollTop = prevScrollTop + (c.scrollHeight - prevScrollHeight);
+        requestAnimationFrame(() => {
+          suppressAutoScrollRef.current = false;
+        });
       });
     } catch (e) {
       console.warn('Failed to load older history:', e);
@@ -715,7 +720,6 @@ export default function AIFriendPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    pendingScrollToMessageIdRef.current = userMessage.id;
     const messageText = inputValue.trim();
     setInputValue("");
     setAttachedFile(null);
@@ -961,12 +965,12 @@ export default function AIFriendPage() {
     fileInputRef.current?.click();
   };
 
-  const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = event.target.files?.[0];
+    if (!raw) return;
 
     // Only allow images
-    if (!file.type.startsWith('image/')) {
+    if (!raw.type.startsWith('image/')) {
       showToast({
         message: "Please select an image file",
         type: "error",
@@ -976,7 +980,7 @@ export default function AIFriendPage() {
     }
 
     // Check file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
+    if (raw.size > 10 * 1024 * 1024) {
       showToast({
         message: "Image must be smaller than 10MB",
         type: "error",
@@ -985,6 +989,7 @@ export default function AIFriendPage() {
       return;
     }
 
+    const file = await downsampleImageFile(raw);
     setAttachedFile(file);
     setAttachedFileName(file.name);
   };
@@ -1527,12 +1532,6 @@ export default function AIFriendPage() {
           <div
               className={`flex items-end gap-3 mb-4 ${message.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
-              style={{ scrollMarginTop: CHAT_EXCHANGE_SCROLL_OFFSET }}
-              ref={(el) => {
-                if (message.id === pendingScrollToMessageIdRef.current) {
-                  pendingScrollToMessageElRef.current = el;
-                }
-              }}
           >
             <img
                 src={messageAvatar}
@@ -1620,7 +1619,7 @@ export default function AIFriendPage() {
           <div className="mb-2 flex items-start justify-end gap-2">
             <div className="relative inline-block">
               <img
-                src={URL.createObjectURL(attachedFile)}
+                src={attachedPreviewUrl ?? ""}
                 alt={attachedFileName || "Attached"}
                 className="h-20 w-20 rounded-lg object-cover border border-[var(--border)]"
               />

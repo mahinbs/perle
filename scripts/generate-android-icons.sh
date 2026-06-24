@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Generates Android launcher icons from src/assets/images/logo.png
-# (same asset used for App Store / Play Store listing).
+# Generates Android + iOS launcher icons from src/assets/icons/syntraiq-logo.jpeg
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-LOGO_SOURCE="$ROOT_DIR/src/assets/images/logo.png"
+LOGO_SOURCE="$ROOT_DIR/src/assets/icons/syntraiq-logo.jpeg"
 SQUARE_ICON="$ROOT_DIR/src/assets/app-icon.png"
 RES_DIR="$ROOT_DIR/android/app/src/main/res"
+ICON_BG="#FFFFFF"
 
 if [[ ! -f "$LOGO_SOURCE" ]]; then
   echo "Logo not found: $LOGO_SOURCE" >&2
@@ -14,21 +14,20 @@ if [[ ! -f "$LOGO_SOURCE" ]]; then
 fi
 
 if ! command -v magick >/dev/null 2>&1; then
-  echo "ImageMagick (magick) is required to build square app icons from logo.png" >&2
+  echo "ImageMagick (magick) is required to build app icons" >&2
   exit 1
 fi
 
-echo "Building square app icon from store listing logo: $LOGO_SOURCE"
+echo "Building square app icon from: $LOGO_SOURCE"
 
-# Square 1024x1024 icon — white background (logo has transparent/no background)
+# Square 1024x1024 store / launcher master icon
 magick "$LOGO_SOURCE" \
-  -resize 820x820 \
-  -background "#FFFFFF" \
+  -resize 1024x1024 \
+  -background "$ICON_BG" \
   -gravity center \
   -extent 1024x1024 \
   "$SQUARE_ICON"
 
-cp "$LOGO_SOURCE" "$ROOT_DIR/src/assets/logo.png"
 cp "$SQUARE_ICON" "$ROOT_DIR/public/app-icon.png"
 cp "$SQUARE_ICON" "$ROOT_DIR/resources/icon.png"
 
@@ -52,7 +51,7 @@ for spec in "81:ldpi" "108:mdpi" "162:hdpi" "216:xhdpi" "324:xxhdpi" "432:xxxhdp
   size="${spec%%:*}"
   density="${spec##*:}"
   generate_icon "$size" "$RES_DIR/mipmap-${density}/ic_launcher_foreground.png"
-  magick -size "${size}x${size}" xc:'#FFFFFF' "$RES_DIR/mipmap-${density}/ic_launcher_background.png"
+  magick -size "${size}x${size}" "xc:${ICON_BG}" "$RES_DIR/mipmap-${density}/ic_launcher_background.png"
 done
 
 # iOS App Store / home screen icon
@@ -62,4 +61,4 @@ if [[ -d "$(dirname "$IOS_ICON")" ]]; then
   echo "Updated iOS app icon: $IOS_ICON"
 fi
 
-echo "Done. Installed app icon now matches logo.png store listing."
+echo "Done. Installed app icon now matches syntraiq-logo.jpeg."

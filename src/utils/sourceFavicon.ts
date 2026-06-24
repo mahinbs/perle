@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import type { Source } from "../types";
 
 /** Strip markdown/citation noise and ensure a fetchable https URL. */
 export function normalizeSourceUrl(url: string): string {
@@ -38,18 +39,64 @@ export function getHostnameFromUrl(url: string): string {
   }
 }
 
-export function getSourceDomain(url: string, domain?: string): string {
-  const hostnameFromUrl = getHostnameFromUrl(url);
-  const isGroundingRedirect = hostnameFromUrl.includes("vertexaisearch.cloud.google.com");
+function isGroundingRedirectHost(host: string): boolean {
+  return host.includes("vertexaisearch.cloud.google.com");
+}
 
-  if (hostnameFromUrl && !isGroundingRedirect) {
+const WELL_KNOWN_TITLE_DOMAINS: ReadonlyArray<[RegExp, string]> = [
+  [/wikipedia/i, "wikipedia.org"],
+  [/youtube/i, "youtube.com"],
+  [/reddit/i, "reddit.com"],
+  [/github/i, "github.com"],
+  [/stackoverflow/i, "stackoverflow.com"],
+  [/medium\.com|medium\b/i, "medium.com"],
+  [/bbc\b/i, "bbc.com"],
+  [/\bcnn\b/i, "cnn.com"],
+  [/nytimes|new york times/i, "nytimes.com"],
+  [/techcrunch/i, "techcrunch.com"],
+  [/the verge/i, "theverge.com"],
+  [/ovhcloud|ovh\b/i, "ovhcloud.com"],
+];
+
+/** Infer a real site hostname from a page title when the URL is a redirect stub. */
+export function inferDomainFromTitle(title?: string): string {
+  if (!title?.trim()) return "";
+
+  const domainLike = title.match(
+    /\b([a-z0-9][-a-z0-9]*(?:\.[a-z0-9][-a-z0-9]*)+\.[a-z]{2,})\b/i
+  );
+  if (domainLike) return domainLike[1].toLowerCase();
+
+  for (const [pattern, host] of WELL_KNOWN_TITLE_DOMAINS) {
+    if (pattern.test(title)) return host;
+  }
+
+  return "";
+}
+
+export function getSourceDomain(
+  url: string,
+  domain?: string,
+  title?: string,
+  snippet?: string
+): string {
+  const hostnameFromUrl = getHostnameFromUrl(url);
+
+  if (hostnameFromUrl && !isGroundingRedirectHost(hostnameFromUrl)) {
     return hostnameFromUrl;
   }
 
   const trimmedDomain = domain?.trim();
-  if (trimmedDomain && trimmedDomain !== "uploaded-file") {
+  if (
+    trimmedDomain &&
+    trimmedDomain !== "uploaded-file" &&
+    !isGroundingRedirectHost(trimmedDomain)
+  ) {
     return trimmedDomain.replace(/^www\./i, "").split("/")[0] ?? trimmedDomain;
   }
+
+  const fromTitle = inferDomainFromTitle(title) || inferDomainFromTitle(snippet);
+  if (fromTitle) return fromTitle;
 
   if (hostnameFromUrl) {
     return hostnameFromUrl;
@@ -58,17 +105,41 @@ export function getSourceDomain(url: string, domain?: string): string {
   return "";
 }
 
-export function getSourcePageUrl(url: string, domain?: string): string {
-  const normalized = normalizeSourceUrl(url);
-  if (/^https?:\/\//i.test(normalized)) return normalized;
+/** Normalize source URLs/domains so favicons resolve (incl. Google grounding redirects). */
+export function normalizeSources(sources: Source[] | undefined): Source[] {
+  return (sources ?? [])
+    .map((source) => {
+      const url = normalizeSourceUrl(source.url);
+      const title = (source.title ?? "").trim();
+      const domain = getSourceDomain(url, source.domain, title, source.snippet);
+      return { ...source, url, title, domain };
+    })
+    .filter((source) => source.url || source.domain);
+}
 
-  const host = getSourceDomain(url, domain);
+export function getSourcePageUrl(
+  url: string,
+  domain?: string,
+  title?: string,
+  snippet?: string
+): string {
+  const normalized = normalizeSourceUrl(url);
+  if (/^https?:\/\//i.test(normalized) && !isGroundingRedirectHost(getHostnameFromUrl(normalized))) {
+    return normalized;
+  }
+
+  const host = getSourceDomain(url, domain, title, snippet);
   return host ? `https://${host}/` : normalized;
 }
 
 /** Host + registrable root domain for subdomain favicon fallbacks. */
-export function getFaviconHostVariants(url: string, domain?: string): string[] {
-  const host = getSourceDomain(url, domain);
+export function getFaviconHostVariants(
+  url: string,
+  domain?: string,
+  title?: string,
+  snippet?: string
+): string[] {
+  const host = getSourceDomain(url, domain, title, snippet);
   if (!host) return [];
 
   const variants = [host];
@@ -86,10 +157,15 @@ export function getSourceLetter(host: string): string {
   return match ? match[0].toUpperCase() : "?";
 }
 
-export function getFaviconProxyUrl(url: string, domain?: string): string | null {
+export function getFaviconProxyUrl(
+  url: string,
+  domain?: string,
+  title?: string,
+  snippet?: string
+): string | null {
   const apiBase = getApiBaseUrl();
   if (!apiBase) return null;
-  const pageUrl = getSourcePageUrl(url, domain);
+  const pageUrl = getSourcePageUrl(url, domain, title, snippet);
   if (!pageUrl) return null;
   return `${apiBase}/api/favicon?url=${encodeURIComponent(pageUrl)}`;
 }
@@ -99,11 +175,16 @@ export function getFaviconProxyUrl(url: string, domain?: string): string | null 
  *  favicon.ico → gstatic (last, returns 1×1 for unknown domains, detected
  *  by naturalWidth ≤ 2 check in SourceFavicon.tsx).
  */
-export function getSourceFaviconCandidates(url: string, domain?: string): string[] {
-  const hosts = getFaviconHostVariants(url, domain);
+export function getSourceFaviconCandidates(
+  url: string,
+  domain?: string,
+  title?: string,
+  snippet?: string
+): string[] {
+  const hosts = getFaviconHostVariants(url, domain, title, snippet);
   if (hosts.length === 0) return [];
 
-  const pageUrl = getSourcePageUrl(url, domain);
+  const pageUrl = getSourcePageUrl(url, domain, title, snippet);
   const encodedPage = encodeURIComponent(pageUrl);
   const candidates: string[] = [];
 
@@ -203,9 +284,11 @@ export async function fetchFaviconViaNativeHttp(
 export async function resolveSourceFaviconUrl(
   url: string,
   domain?: string,
-  startIndex = 0
+  startIndex = 0,
+  title?: string,
+  snippet?: string
 ): Promise<string | null> {
-  const candidates = getSourceFaviconCandidates(url, domain);
+  const candidates = getSourceFaviconCandidates(url, domain, title, snippet);
   if (candidates.length === 0) return null;
 
   for (let i = startIndex; i < candidates.length; i += 1) {

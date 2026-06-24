@@ -92,3 +92,43 @@ export function scheduleScrollExchangeToTop(
     });
   });
 }
+
+export type ScrollToBottomOptions = {
+  behavior?: ScrollBehavior;
+};
+
+/** WhatsApp-style: jump to the latest messages at the bottom of the thread. */
+export function scrollToBottom(
+  scrollContainer: HTMLElement | null | undefined,
+  options?: ScrollToBottomOptions
+): void {
+  if (!scrollContainer) return;
+  scrollContainer.scrollTo({
+    top: scrollContainer.scrollHeight,
+    behavior: options?.behavior ?? "auto",
+  });
+}
+
+/** Run bottom scroll after layout so message heights are measured. */
+export function scheduleScrollToBottom(
+  scrollContainer: HTMLElement | null | undefined,
+  options?: ScrollToBottomOptions
+): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      scrollToBottom(scrollContainer, options);
+    });
+  });
+}
+
+/** True when the viewport is within `threshold` px of the scroll bottom. */
+export function isNearBottom(
+  scrollContainer: HTMLElement,
+  threshold = 120
+): boolean {
+  const distance =
+    scrollContainer.scrollHeight -
+    scrollContainer.scrollTop -
+    scrollContainer.clientHeight;
+  return distance <= threshold;
+}

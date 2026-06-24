@@ -9,10 +9,12 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 migrateLegacyStorageKeys()
 initPlatformInsets()
 
+const app = (
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+)
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>,
+  import.meta.env.PROD ? app : <React.StrictMode>{app}</React.StrictMode>,
 )

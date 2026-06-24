@@ -18,7 +18,11 @@ import {
 import { normalizeInlineAnswerStructure } from "../utils/normalizeAnswerStructure";
 
 import { copyToClipboard, shareContent } from "../utils/helpers";
-import { sanitizeForSpeech } from "../utils/voiceText";
+import { buildVoiceSpeechPlan } from "../utils/voiceSpeechPlan";
+import {
+  speakAnswerWithVoicePlan,
+  stopVoiceSpeechOutput,
+} from "../utils/voiceSpeechOutput";
 import { useToast } from "../contexts/ToastContext";
 
 import {
@@ -1301,27 +1305,17 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   };
 
   const startVoiceOutput = useCallback(() => {
-    console.log('🎤 startVoiceOutput called, speechSupported:', speechSupported, 'isSpeaking:', isSpeaking, 'chunks:', chunks.length);
-
-    // Clear the trigger flag if it exists
     localStorage.removeItem("syntraiq-trigger-voice-output");
 
-    const rawAnswerText = chunks.map((c) => c.text).join(" ");
-    // Strip citation markers [1], markdown noise, URLs, emoji, question marks,
-    // table pipes etc. so the synth voice doesn't read them literally.
-    const answerText = sanitizeForSpeech(rawAnswerText);
-    console.log('🎤 Answer text length:', answerText.length);
+    const rawAnswerText = chunks.map((c) => c.text).join("\n\n");
 
-    // Even if speech is not supported, show the text
     if (!speechSupported) {
-      console.log("⚠️ Text-to-speech is not supported, but showing text anyway");
+      const plan = buildVoiceSpeechPlan(rawAnswerText);
+      localStorage.setItem("syntraiq-current-answer-text", plan.fullDisplayText);
 
-      // Display full text immediately
-      localStorage.setItem("syntraiq-current-answer-text", answerText);
-
-      // Clear after a delay
       setTimeout(() => {
-        const voiceSessionActive = localStorage.getItem("syntraiq-voice-session-active") === "1";
+        const voiceSessionActive =
+          localStorage.getItem("syntraiq-voice-session-active") === "1";
         if (!voiceSessionActive) {
           localStorage.removeItem("syntraiq-current-answer-text");
           localStorage.setItem("syntraiq-voice-output-complete", "1");
@@ -1329,7 +1323,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             localStorage.removeItem("syntraiq-voice-output-complete");
           }, 100);
         }
-      }, 5000); // Show for 5 seconds
+      }, 5000);
 
       return;
     }
@@ -1339,189 +1333,34 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       return;
     }
 
-    // Stop any existing speech
-    window.speechSynthesis.cancel();
-
-    // Split text into words for progressive display (preserve spaces)
-    const words = answerText.split(/(\s+)/).filter((w) => w.length > 0);
-    let currentWordIndex = 0;
-    let speechStartTime = 0;
-    let fallbackInterval: any = null;
-    let lastBoundaryUpdate = 0;
-    let resumeKeepAlive: ReturnType<typeof setInterval> | null = null;
-
-    // Initialize with empty text
-    localStorage.setItem("syntraiq-current-answer-text", "");
-    localStorage.setItem("syntraiq-current-word-index", "0");
-    localStorage.setItem("syntraiq-speech-rate", "0.9");
-
-    const utterance = new SpeechSynthesisUtterance(answerText);
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    utterance.volume = 0.8;
-
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      currentWordIndex = 0;
-      speechStartTime = Date.now();
-      lastBoundaryUpdate = Date.now();
-
-      // Show first word immediately
-      if (words.length > 0) {
-        const displayedText = words[0];
-        localStorage.setItem("syntraiq-current-answer-text", displayedText);
-        localStorage.setItem("syntraiq-current-word-index", "0");
-      }
-
-      // Chrome pauses speechSynthesis silently after ~15s. Resume every 10s to prevent this.
-      resumeKeepAlive = setInterval(() => {
-        try {
-          if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-          }
-        } catch { /* ignore */ }
-      }, 10000);
-
-      // Fallback timer for mobile devices where onboundary may not fire reliably
-      // Estimate words per second: average English is ~150 words/min = 2.5 words/sec
-      // With rate 0.9, that's ~2.25 words/sec, so ~444ms per word
-      const estimatedMsPerWord = 450 / utterance.rate;
-
-      fallbackInterval = window.setInterval(() => {
-        if (!window.speechSynthesis.speaking) {
-          if (fallbackInterval) {
-            clearInterval(fallbackInterval);
-            fallbackInterval = null;
-          }
+    speakAnswerWithVoicePlan(rawAnswerText, {
+      rate: 0.9,
+      volume: 0.8,
+      onSpeakingChange: setIsSpeaking,
+      onComplete: () => {
+        const voiceSessionActive =
+          localStorage.getItem("syntraiq-voice-session-active") === "1";
+        if (voiceSessionActive) {
+          localStorage.setItem("syntraiq-auto-listen-next", "1");
           return;
         }
 
-        const elapsed = Date.now() - speechStartTime;
-        const timeSinceLastUpdate = Date.now() - lastBoundaryUpdate;
-
-        // Calculate estimated progress based on elapsed time
-        const estimatedWordIndex = Math.min(
-          Math.floor(elapsed / estimatedMsPerWord + 1),
-          words.length - 1
-        );
-
-        // Use fallback if onboundary hasn't updated recently (mobile fallback)
-        // This ensures mobile devices get updates even if boundary events are delayed or missing
-        const shouldUseFallback =
-          timeSinceLastUpdate > estimatedMsPerWord * 0.8;
-
-        // Always update if we've progressed and either:
-        // 1. Boundary events haven't updated recently (fallback mode), OR
-        // 2. We're significantly ahead of the last boundary update (catch-up mode)
-        if (estimatedWordIndex > currentWordIndex && shouldUseFallback) {
-          currentWordIndex = estimatedWordIndex;
-          const displayedText = words.slice(0, estimatedWordIndex + 1).join("");
-          localStorage.setItem("syntraiq-current-answer-text", displayedText);
-          localStorage.setItem(
-            "syntraiq-current-word-index",
-            estimatedWordIndex.toString()
-          );
-          // Update lastBoundaryUpdate to prevent double-updates when boundary catches up
-          lastBoundaryUpdate = Date.now();
-        }
-      }, 150); // Check every 150ms for smoother updates
-    };
-
-    // Track word boundaries for progressive text display
-    utterance.onboundary = (event: SpeechSynthesisEvent) => {
-      if (event.name === "word" && event.charIndex !== undefined) {
-        // Calculate which word we're currently on based on character index
-        let charCount = 0;
-        let wordIndex = 0;
-
-        for (let i = 0; i < words.length; i++) {
-          const wordLength = words[i].length;
-          if (charCount + wordLength > event.charIndex) {
-            wordIndex = i;
-            break;
-          }
-          charCount += wordLength;
-        }
-
-        // Update if we've moved to a new word
-        if (wordIndex > currentWordIndex) {
-          currentWordIndex = wordIndex;
-          lastBoundaryUpdate = Date.now();
-          // Update displayed text up to and including current word
-          const displayedText = words.slice(0, wordIndex + 1).join("");
-          localStorage.setItem("syntraiq-current-answer-text", displayedText);
-          localStorage.setItem(
-            "syntraiq-current-word-index",
-            wordIndex.toString()
-          );
-        }
-      }
-    };
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      // Clear fallback interval
-      if (fallbackInterval) {
-        clearInterval(fallbackInterval);
-        fallbackInterval = null;
-      }
-      if (resumeKeepAlive) {
-        clearInterval(resumeKeepAlive);
-        resumeKeepAlive = null;
-      }
-      // Show full text when speech ends
-      localStorage.setItem("syntraiq-current-answer-text", answerText);
-      // Keep full answer text visible while voice session is active.
-      const voiceSessionActive = localStorage.getItem("syntraiq-voice-session-active") === "1";
-      if (voiceSessionActive) {
-        // Continue hands-free loop: once answer is spoken, go back to listening.
-        localStorage.setItem("syntraiq-auto-listen-next", "1");
-      }
-      if (!voiceSessionActive) {
         setTimeout(() => {
           localStorage.removeItem("syntraiq-current-answer-text");
           localStorage.removeItem("syntraiq-current-word-index");
-          // Signal that voice output has completed
           localStorage.setItem("syntraiq-voice-output-complete", "1");
-          // Clean up this flag after a moment
           setTimeout(() => {
             localStorage.removeItem("syntraiq-voice-output-complete");
           }, 100);
         }, 2000);
-      }
-    };
-
-    utterance.onerror = (event) => {
-      console.error("Speech synthesis error:", event.error);
-      setIsSpeaking(false);
-      // Clear fallback interval
-      if (fallbackInterval) {
-        clearInterval(fallbackInterval);
-        fallbackInterval = null;
-      }
-      if (resumeKeepAlive) {
-        clearInterval(resumeKeepAlive);
-        resumeKeepAlive = null;
-      }
-      // Show full text on error
-      localStorage.setItem("syntraiq-current-answer-text", answerText);
-    };
-
-    synthesisRef.current = utterance;
-    // Small delay after cancel() so Chrome doesn't silently drop the new utterance
-    window.setTimeout(() => {
-      window.speechSynthesis.speak(utterance);
-      console.log('🎤 Speech synthesis started');
-    }, 100);
-  }, [chunks, speechSupported, isSpeaking, showToast]);
+      },
+    });
+  }, [chunks, speechSupported, isSpeaking]);
 
   const stopVoiceOutput = () => {
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-    // Clear the stored text when speech is stopped
+    stopVoiceSpeechOutput(setIsSpeaking);
     localStorage.removeItem("syntraiq-current-answer-text");
     localStorage.removeItem("syntraiq-current-word-index");
-    // Note: fallbackInterval will be cleared in onend/onerror handlers
   };
 
   // Monitor for trigger flag and start voice output when ready

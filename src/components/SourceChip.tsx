@@ -52,7 +52,7 @@ export const SourceChip: React.FC<SourceChipProps> = ({ source, onClick, citatio
         e.currentTarget.style.boxShadow = "0 2px 4px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.1)";
       }}
     >
-      <SourceFavicon url={source.url} domain={source.domain} size={18} rounded="sm" />
+      <SourceFavicon url={source.url} domain={source.domain} title={source.title} snippet={source.snippet} size={18} rounded="sm" />
       {citationNumber !== undefined && (
         <span style={{ opacity: 0.45, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
           {citationNumber}

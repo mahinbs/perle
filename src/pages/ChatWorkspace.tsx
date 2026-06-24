@@ -25,6 +25,7 @@ import {
   getActiveExchangeMinHeight,
   getExchangeScrollOffset,
   scrollExchangeToTop,
+  scheduleScrollToBottom,
   useScrollViewportHeight,
 } from "../utils/chatScroll";
 import {
@@ -132,6 +133,19 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       pendingBufferRef.current = "";
     }
   };
+
+  // Release streaming buffers if the component unmounts mid-stream.
+  useEffect(() => {
+    return () => {
+      if (flushTimerRef.current) {
+        clearInterval(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      streamingTextRef.current = "";
+      streamingSourcesRef.current = [];
+      pendingBufferRef.current = "";
+    };
+  }, []);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
@@ -157,6 +171,9 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const pendingAutoScrollRef = useRef(false);
   const pendingScrollOnCompleteRef = useRef(false);
   const pendingFollowUpRef = useRef(false);
+  const pendingScrollToBottomRef = useRef(
+    restoredSnapshotRef.current.conversationHistory.length > 0
+  );
   const lastSearchedKeyRef = useRef<string>(restoredSnapshotRef.current.lastSearchedKey);
   const lastSearchedQueryRef = useRef<string>(restoredSnapshotRef.current.lastSearchedQuery);
   const skipTypewriterOnRestoreRef = useRef(restoredSnapshotRef.current.skipTypewriter);
@@ -371,14 +388,18 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     experienceModeRef.current = experienceMode;
   }, [experienceMode]);
 
-  // Allow re-searching the same query only when experience mode actually changes
+  // Allow re-searching the same query only when experience mode actually changes.
+  // Also reset model to Auto so each mode starts with the default routing.
   useEffect(() => {
     if (isFirstExperienceModeEffectRef.current) {
       isFirstExperienceModeEffectRef.current = false;
       return;
     }
     lastSearchedKeyRef.current = "";
-  }, [experienceMode]);
+    if (isPremium) {
+      setSelectedModel("auto");
+    }
+  }, [experienceMode, isPremium]);
 
   const doSearch = useCallback(
     async (searchQuery?: string) => {
@@ -425,7 +446,9 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       const finalQuery = q;
       const activeExperienceMode = experienceModeRef.current;
       const searchKey = `${activeExperienceMode}:${finalQuery}`;
-      if (searchKey === lastSearchedKeyRef.current) {
+      const isProgrammaticQuery =
+        typeof searchQuery === "string" && searchQuery.trim().length > 0;
+      if (!isProgrammaticQuery && searchKey === lastSearchedKeyRef.current) {
         return;
       }
 
@@ -442,6 +465,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       // Pin the new exchange at the top; older Q&A scroll up out of view.
       pendingAutoScrollRef.current = true;
       pendingScrollOnCompleteRef.current = true;
+      pendingScrollToBottomRef.current = false;
       pendingFollowUpRef.current = conversationHistory.length > 0;
       setIsLoading(true);
       setIsStreaming(false);
@@ -460,7 +484,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         }
       }
 
-      setQuery(displayQuery);
+      setQuery("");
       setSearchedQuery(displayQuery || "📎 Attached files");
 
       // Call the real API with uploaded files and conversation ID
@@ -721,6 +745,18 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode, navigateTo, appendConversationAnswer, goToSubscriptionForLimit]
   );
 
+  const handleFollowUpSearch = useCallback(
+    (followUpQuery: string, searchMode?: Mode) => {
+      const trimmed = followUpQuery.trim();
+      if (!trimmed || isLoading || isStreaming || isSearchingRef.current) return;
+      if (searchMode) setMode(searchMode);
+      setQuery("");
+      setShowHistory(false);
+      void doSearch(trimmed);
+    },
+    [isLoading, isStreaming, doSearch]
+  );
+
   // Handle search query from other pages (e.g., Discover, Profile history)
   useEffect(() => {
     if (isAnalyzePage) return;
@@ -854,6 +890,14 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     }
   }, [isLoading, isStreaming, conversationHistory.length, pinActiveExchange]);
 
+  // WhatsApp-style: show the latest messages when opening a saved or sidebar conversation.
+  useLayoutEffect(() => {
+    if (!pendingScrollToBottomRef.current) return;
+    if (isLoading || isStreaming) return;
+    pendingScrollToBottomRef.current = false;
+    scheduleScrollToBottom(scrollContainerRef.current);
+  }, [conversationHistory, isLoadingOldConversation, isLoading, isStreaming]);
+
   // Load latest page (20) of a specific conversation. Older pages are pulled
   // on scroll via loadOlderMessages.
   const PAGE_SIZE = 20;
@@ -885,6 +929,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         }));
 
         setConversationHistory(history);
+        pendingScrollToBottomRef.current = true;
         // Track pagination cursor for "load older on scroll-up".
         hasMoreOlderRef.current = Boolean(data.hasMore);
         oldestTimestampRef.current = data.oldestTimestamp || null;
@@ -1029,15 +1074,17 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       {showConsentModal && (
         <AIDataConsentModal onAccept={() => setShowConsentModal(false)} />
       )}
-      {/* Conversation Sidebar */}
-      <ConversationSidebar
-        activeConversationId={activeConversationId}
-        onSelectConversation={loadConversation}
-        onNewConversation={handleNewConversation}
-        onDeleteConversation={handleDeleteConversation}
-        isOpen={isSidebarOpen}
-        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-      />
+      {/* Conversation Sidebar — home only; analyze-doc uses back navigation */}
+      {!isAnalyzePage && (
+        <ConversationSidebar
+          activeConversationId={activeConversationId}
+          onSelectConversation={loadConversation}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+          isOpen={isSidebarOpen}
+          onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        />
+      )}
 
       {/* Main Content */}
       <div className="container !px-2 !pb-0 flex flex-col h-dvh overflow-hidden relative">
@@ -1051,7 +1098,13 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         </div>
 
         <div className="relative z-10 flex flex-col flex-1 min-h-0">
-          <Header onOpenSidebar={() => setIsSidebarOpen(true)} />
+          <Header
+            showBackButton={isAnalyzePage}
+            backTo="/"
+            onOpenSidebar={
+              isAnalyzePage ? undefined : () => setIsSidebarOpen(true)
+            }
+          />
 
           <div
             ref={scrollContainerRef}
@@ -1145,11 +1198,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                       doSearch(editedQuery);
                     }}
                     onSearch={(searchQuery, searchMode) => {
-                      if (searchMode) {
-                        setMode(searchMode);
-                      }
-                      setQuery(searchQuery);
-                      doSearch(searchQuery);
+                      handleFollowUpSearch(searchQuery, searchMode);
                     }}
                   />
                 </div>
@@ -1244,11 +1293,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                     doSearch(editedQuery);
                   }}
                   onSearch={(searchQuery, searchMode) => {
-                    if (searchMode) {
-                      setMode(searchMode);
-                    }
-                    setQuery(searchQuery);
-                    doSearch(searchQuery);
+                    handleFollowUpSearch(searchQuery, searchMode);
                   }}
                   attachments={currentUploadedFiles}
                   hideSources={false}
@@ -1278,6 +1323,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
               !isLoading && !isStreaming && (!!answer || conversationHistory.length > 0)
             }
             answer={answer}
+            streamingSources={streamingSources}
             currentAnswerText={
               (answer?.chunks?.map((c) => c.text).join(" ").trim()) ||
               (conversationHistory.length > 0
