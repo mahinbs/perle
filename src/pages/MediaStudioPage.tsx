@@ -241,8 +241,8 @@ export default function MediaStudioPage() {
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i];
       if (!file.type.startsWith("image/")) continue;
-      if (file.size > 10 * 1024 * 1024) {
-        showToast({ message: `${file.name} must be under 10MB`, type: "error", duration: 3000 });
+      if (file.size > 20 * 1024 * 1024) {
+        showToast({ message: `${file.name} must be under 20 MB`, type: "error", duration: 3000 });
         continue;
       }
       if (newAttachments.length >= remainingSlots) break;

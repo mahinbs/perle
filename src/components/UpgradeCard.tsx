@@ -11,7 +11,7 @@ export const UpgradeCard: React.FC = () => {
     "Unlimited image generation (vs 3/day on Free)",
     "Video generation — up to 6 videos/day on Pro, 12/day on Max",
     "Longer search conversation history — 50 messages retained",
-    "10 MB file uploads in chat & search (images, PDFs, docs)",
+    "20 MB file uploads in chat & search (images, PDFs, docs)",
     "Unlimited saved Spaces & prompts",
     "Toggle auto-renewal anytime",
   ];

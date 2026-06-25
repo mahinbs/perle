@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import {
   IoMdCheckmark,
@@ -138,6 +138,15 @@ export default function LandingPage() {
   const { navigateTo } = useRouterNavigation();
   const [query, setQuery] = useState("");
 
+  // Logged-in users should never see the marketing landing page — send
+  // them straight to /app. Runs on mount; if the user signs out and
+  // comes back the absence of getUserData() means they see the landing.
+  useEffect(() => {
+    if (getUserData()) {
+      navigateTo("/app");
+    }
+  }, [navigateTo]);
+
   const goToApp = (searchQuery?: string) => {
     if (searchQuery?.trim()) {
       navigateTo("/app", { searchQuery: searchQuery.trim() });
@@ -188,6 +197,17 @@ export default function LandingPage() {
             <button type="button" className="landing__btn-primary" onClick={() => goToApp()}>
               Open app
             </button>
+            <img
+              src={logo}
+              alt="SyntraIQ"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                objectFit: "contain",
+                marginLeft: 4,
+              }}
+            />
           </div>
         </div>
       </header>

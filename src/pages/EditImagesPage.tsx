@@ -45,8 +45,8 @@ export default function EditImagesPage() {
 
   const handleFile = (file: File | undefined) => {
     if (!file || !file.type.startsWith("image/")) return;
-    if (file.size > 10 * 1024 * 1024) {
-      showToast({ message: "Image must be under 10MB", type: "error", duration: 3000 });
+    if (file.size > 20 * 1024 * 1024) {
+      showToast({ message: "Image must be under 20 MB", type: "error", duration: 3000 });
       return;
     }
     setImageFile(file);

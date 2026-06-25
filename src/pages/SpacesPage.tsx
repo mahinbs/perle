@@ -1239,7 +1239,7 @@ export default function SpacesPage() {
                   Logo (optional)
                 </label>
                 <div className="sub text-xs" style={{ marginBottom: 12, opacity: 0.75 }}>
-                  Pick a default avatar or upload your own (max 10MB)
+                  Pick a default avatar or upload your own (max 20 MB)
                 </div>
                 <div
                   style={{
@@ -1284,8 +1284,8 @@ export default function SpacesPage() {
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      if (file.size > 10 * 1024 * 1024) {
-                        showToast({ message: "Logo must be under 10MB", type: "error" });
+                      if (file.size > 20 * 1024 * 1024) {
+                        showToast({ message: "Logo must be under 20 MB", type: "error" });
                         return;
                       }
                       handleUploadLogo(file);

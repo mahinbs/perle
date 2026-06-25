@@ -1,8 +1,11 @@
 import { Capacitor } from "@capacitor/core";
 
-const MAX_LOGO_BYTES = 10 * 1024 * 1024;
+// 20 MB everywhere — matches the backend multer cap (MAX_UPLOAD_BYTES in
+// server/src/utils/uploadConfig.ts). Lifted from 10 MB on user request so
+// modern phone photos / multi-page PDFs sail through without rejection.
+const MAX_LOGO_BYTES = 20 * 1024 * 1024;
 
-export const MAX_IMAGE_UPLOAD_MB = 10;
+export const MAX_IMAGE_UPLOAD_MB = 20;
 
 const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|heic|heif|bmp|svg)$/i;
 

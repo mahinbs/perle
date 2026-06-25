@@ -320,6 +320,7 @@ export default function ProfilePage() {
   const handleSettingChange = async (
     key: string,
     value: boolean | string | number | null,
+    options?: { silent?: boolean },
   ) => {
     if (!API_URL || !isAuthenticated || updatingSetting) return;
 
@@ -354,7 +355,9 @@ export default function ProfilePage() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/profile`, {
+      // Use authFetch so an expired access token gets refreshed instead of
+      // throwing "Failed to fetch" at the user.
+      const response = await authFetch(`${API_URL}/api/profile`, {
         method: "PUT",
         headers: getAuthHeaders(),
         body: JSON.stringify(updates),
@@ -364,29 +367,34 @@ export default function ProfilePage() {
         const updatedProfile = await response.json();
         setUserSettings(updatedProfile);
         setUserData(updatedProfile); // Save to localStorage
-        const fieldNames: Record<string, string> = {
-          darkMode: "Dark mode",
-          notifications: "Notifications",
-          searchHistory: "Search history",
-          voiceSearch: "Voice search",
-          name: "Name",
-          dp: "Display picture",
-          personality: "Personality",
-          gender: "Gender",
-          age: "Age",
-        };
-        const fieldName = fieldNames[key] || key;
-        const message =
-          typeof value === "boolean"
-            ? `${fieldName} ${value ? "enabled" : "disabled"}`
-            : `${fieldName} updated`;
-        showToast({
-          message,
-          type: "success",
-          duration: 2000,
-        });
-        // Refresh profile to ensure all data is synced
-        await fetchProfile();
+        if (!options?.silent) {
+          const fieldNames: Record<string, string> = {
+            darkMode: "Dark mode",
+            notifications: "Notifications",
+            searchHistory: "Search history",
+            voiceSearch: "Voice search",
+            name: "Name",
+            dp: "Display picture",
+            personality: "Personality",
+            gender: "Gender",
+            age: "Age",
+          };
+          const fieldName = fieldNames[key] || key;
+          const message =
+            typeof value === "boolean"
+              ? `${fieldName} ${value ? "enabled" : "disabled"}`
+              : `${fieldName} updated`;
+          showToast({
+            message,
+            type: "success",
+            duration: 2000,
+          });
+        }
+        // Refresh profile to ensure all data is synced. Skip when silent
+        // (the caller — the Save modal — refreshes once at the end).
+        if (!options?.silent) {
+          await fetchProfile();
+        }
       } else {
         // Revert on error
         if (userSettings) {
@@ -1625,10 +1633,10 @@ export default function ProfilePage() {
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      // Check file size (2MB limit)
-                      if (file.size > 10 * 1024 * 1024) {
+                      // Check file size (20 MB limit — matches backend cap)
+                      if (file.size > 20 * 1024 * 1024) {
                         showToast({
-                          message: "File size exceeds 10MB limit",
+                          message: "File size exceeds 20 MB limit",
                           type: "error",
                           duration: 3000,
                         });
@@ -1663,7 +1671,7 @@ export default function ProfilePage() {
                   {uploadingPicture ? "Uploading..." : "Upload Image"}
                 </label>
                 <span className="sub" style={{ fontSize: "var(--font-xs)" }}>
-                  Max 10MB (JPG, PNG, WebP, GIF)
+                  Max 20 MB (JPG, PNG, WebP, GIF)
                 </span>
               </div>
               <div style={{ marginBottom: 8 }}>
@@ -1893,23 +1901,26 @@ export default function ProfilePage() {
                       editAge !== ((userSettings as any).age?.toString() || "");
 
                     if (hasChanges) {
-                      // Update name if changed
+                      // Run each field update silently — we'll show ONE
+                      // "Profile saved" toast at the end instead of a
+                      // separate toast per field. Each silent call still
+                      // optimistically updates userSettings, so the UI
+                      // reflects new values immediately.
+                      const silent = { silent: true };
                       if (
                         editName.trim() &&
                         editName.trim() !== userSettings.name
                       ) {
-                        await handleSettingChange("name", editName.trim());
+                        await handleSettingChange("name", editName.trim(), silent);
                       }
-                      // Update dp if changed
                       if (
                         editDp !==
                         ((userSettings as any).dp ||
                           (userSettings as any).displayPictureUrl ||
                           "")
                       ) {
-                        await handleSettingChange("dp", editDp || null);
+                        await handleSettingChange("dp", editDp || null, silent);
                       }
-                      // Update personality if changed
                       if (
                         editPersonality !==
                         ((userSettings as any).personality || "")
@@ -1917,22 +1928,21 @@ export default function ProfilePage() {
                         await handleSettingChange(
                           "personality",
                           editPersonality,
+                          silent,
                         );
                       }
-                      // Update gender if changed
                       if (editGender !== ((userSettings as any).gender || "")) {
-                        await handleSettingChange("gender", editGender);
+                        await handleSettingChange("gender", editGender, silent);
                       }
-                      // Update age if changed (convert to number)
                       if (
                         editAge !==
                         ((userSettings as any).age?.toString() || "")
                       ) {
                         const ageNum = editAge ? parseInt(editAge, 10) : null;
                         if (ageNum && ageNum > 0 && ageNum < 150) {
-                          await handleSettingChange("age", ageNum);
+                          await handleSettingChange("age", ageNum, silent);
                         } else if (editAge === "") {
-                          await handleSettingChange("age", null);
+                          await handleSettingChange("age", null, silent);
                         }
                       }
                     }
@@ -1945,8 +1955,18 @@ export default function ProfilePage() {
                     setPictureFile(null);
                     setPicturePreview(null);
 
-                    // Refresh profile after saving to ensure all data is synced
+                    // Re-fetch authoritative profile from backend so the
+                    // page reflects exactly what was persisted.
                     await fetchProfile();
+
+                    // Single success toast at the end of the save flow.
+                    if (hasChanges || pictureFile) {
+                      showToast({
+                        message: "Profile saved",
+                        type: "success",
+                        duration: 2500,
+                      });
+                    }
                   } catch (error: any) {
                     console.error("Save profile error:", error);
                     showToast({

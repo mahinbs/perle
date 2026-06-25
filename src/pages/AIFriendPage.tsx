@@ -979,10 +979,10 @@ export default function AIFriendPage() {
       return;
     }
 
-    // Check file size (max 10MB)
-    if (raw.size > 10 * 1024 * 1024) {
+    // Check file size (max 20 MB — matches backend cap)
+    if (raw.size > 20 * 1024 * 1024) {
       showToast({
-        message: "Image must be smaller than 10MB",
+        message: "Image must be smaller than 20 MB",
         type: "error",
         duration: 3000,
       });
@@ -1086,9 +1086,9 @@ export default function AIFriendPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > 20 * 1024 * 1024) {
       showToast({
-        message: "Logo file must be less than 10MB",
+        message: "Logo file must be less than 20 MB",
         type: "error",
         duration: 3000,
       });
@@ -1935,7 +1935,7 @@ export default function AIFriendPage() {
                   {/* Custom Upload */}
                   <div className="border-t border-[var(--border)] pt-4">
                     <div className="text-xs opacity-70 mb-2">
-                      Or upload your own (Max 10MB):
+                      Or upload your own (Max 20 MB):
                     </div>
                     <input
                       ref={logoFileInputRef}
