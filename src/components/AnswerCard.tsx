@@ -129,7 +129,7 @@ function splitStreamTableCells(line: string): string[] {
  *     complete rows appear immediately, the trailing partial row is hidden
  *     (so the user sees rows fill in smoothly like ChatGPT/Gemini)
  */
-function renderStreamingContent(text: string): React.ReactNode[] {
+export function _renderStreamingContent(text: string): React.ReactNode[] {
   if (!text) return [];
   const lines = text.split("\n");
   const nodes: React.ReactNode[] = [];
@@ -1906,76 +1906,49 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               }}
             >
               {isStreamingAnswer ? (
-                // Streaming render strategy: feed COMPLETED lines (everything
-                // up to the last newline) into the same `formatText` pipeline
-                // we use post-stream, so headings / bullets / bold appear in
-                // their final styled form the moment the line finishes — no
-                // visible "raw → formatted" snap at the end of streaming.
-                // The actively-typing trailing line is rendered as plain
-                // pre-wrap text so partial markdown (a `## ` waiting for its
-                // word, an unbalanced `**`, a `|---|` table separator) never
-                // flickers into half-styled form.
+                // Streaming render strategy v2 — feed formatText only
+                // COMPLETE structural blocks (text up to the last blank
+                // line `\n\n`). Markdown blocks (tables, headings,
+                // bullet groups, paragraphs) are separated by blank
+                // lines, so anything before the last `\n\n` is fully
+                // formed and renders identically to the post-stream
+                // pass. That eliminates the broken-tables / fragmented
+                // columns / missed-subheading issues caused by feeding
+                // half-built blocks into the parser.
                 //
-                // Tables remain handled by renderStreamingContent for the
-                // in-flight portion only — partial table rows look ugly when
-                // styled mid-row, so we keep that buffer-then-render behaviour.
+                // The trailing in-flight block (after the last `\n\n`)
+                // shows as a styled paragraph with inline markdown
+                // (bold/italic/citations) ONLY if it's plain prose. If
+                // it starts with a structural marker (`|`, `#`, `-`,
+                // `*`, `>`), it stays hidden until the next blank line
+                // arrives — no half-rendered table rows, no headings
+                // missing their underline, no broken bullets.
                 (() => {
                   const text = chunk.text || "";
-                  const lastNl = text.lastIndexOf("\n");
-                  const completed = lastNl >= 0 ? text.slice(0, lastNl) : "";
-                  const partial = lastNl >= 0 ? text.slice(lastNl + 1) : text;
-                  const partialIsTableLike =
-                    isStreamTableSeparator(partial) ||
-                    isStreamTableRowComplete(partial) ||
-                    isStreamTableRowPartial(partial);
-                  // CRITICAL: if *anywhere* in the chunk is a pipe-line
-                  // (a markdown table row, separator, or partial row), we
-                  // must hand the WHOLE chunk to renderStreamingContent.
-                  // formatText's table parser needs the separator row plus
-                  // ≥1 body row to recognise a table; during streaming the
-                  // intermediate state often has rows present but no separator
-                  // yet — formatText then renders each row as its own
-                  // separate table or as plain paragraphs (the "each row
-                  // becomes its own table" mess the user was seeing).
-                  // renderStreamingContent buffers complete rows correctly
-                  // and shows the table growing row-by-row, ChatGPT-style.
-                  const anyTableInChunk =
-                    partialIsTableLike || /(^|\n)\s*\|/.test(completed);
+                  const lastBlockEnd = text.lastIndexOf("\n\n");
+                  const safe = lastBlockEnd >= 0 ? text.slice(0, lastBlockEnd) : "";
+                  const trailing = (lastBlockEnd >= 0 ? text.slice(lastBlockEnd + 2) : text).trim();
+                  // Trailing block is "structural" if it starts with a
+                  // markdown construct that needs multiple lines to
+                  // render correctly. Keep it hidden until the block
+                  // closes with the next blank line.
+                  const trailingIsStructural =
+                    /^[#>|\-*+]/.test(trailing) ||
+                    /^\d+\.\s/.test(trailing) ||
+                    /^```/.test(trailing);
                   const streamingStyle: React.CSSProperties = {
                     lineHeight: 1.75,
                     wordBreak: "break-word",
                     contain: "content",
                     overflowAnchor: "auto",
                   };
-                  if (anyTableInChunk) {
-                    return (
-                      <div className="answer-streaming-text" style={streamingStyle}>
-                        {renderStreamingContent(chunk.text)}
-                        {index === chunks.length - 1 && (
-                          <span className="answer-streaming-cursor" aria-hidden />
-                        )}
-                      </div>
-                    );
-                  }
-                  // CRITICAL: pass `streaming=false` to formatText even
-                  // DURING streaming. The third arg controls whether
-                  // formatText runs its preprocessing pipeline (ALL-CAPS
-                  // → heading promotion, blank-line normalisation, table
-                  // separator insertion, etc.). When we passed `true`,
-                  // the streaming output skipped that preprocessing, and
-                  // the post-stream pass applied it — producing a visible
-                  // formatting "snap" at the end. By passing `false` for
-                  // BOTH passes, the output is byte-identical the moment
-                  // the partial line lands in `completed`. The user sees
-                  // the same rich formatting from the very first token
-                  // and zero change at end-of-stream.
                   return (
                     <div className="answer-streaming-text" style={streamingStyle}>
-                      {completed && formatText(completed, false, false)}
-                      {partial && (
-                        <span style={{ whiteSpace: "pre-wrap" }}>
-                          {partial.replace(/^#{1,6}\s+/, "")}
-                        </span>
+                      {safe && formatText(safe, false, false)}
+                      {trailing && !trailingIsStructural && (
+                        <p style={{ margin: "8px 0", lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
+                          {trailing}
+                        </p>
                       )}
                       {index === chunks.length - 1 && (
                         <span className="answer-streaming-cursor" aria-hidden />
