@@ -308,6 +308,18 @@ export function enhanceDocumentStructure(text: string): string {
   // Run table merge FIRST so the downstream regexes see one cohesive
   // table rather than a stream of mini-tables.
   let result = mergePerRowMiniTables(text);
+
+  // Split "Emoji Heading•first bullet content" where the model glued the
+  // first bullet to the heading with no newline. Pattern: emoji + 3–80
+  // chars of heading text + `•` + bullet content → heading on its own
+  // line, blank line, then `• ` bullet on its own line. Bullet char is
+  // intentionally NOT included in the captured heading so we don't pull
+  // legitimate bullet runs apart mid-list.
+  result = result.replace(
+    /([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}][^\n•]{3,80}?)[ \t]*•[ \t]*/gu,
+    "$1\n\n• ",
+  );
+
   result = normalizeInlineAnswerStructure(result);
 
   // Promote short ALL-CAPS lines (3–60 chars) to level-2 headings

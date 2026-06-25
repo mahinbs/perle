@@ -1943,6 +1943,13 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
                   // STEP 2: Split inline `• ` bullets onto their own lines.
                   cleaned = cleaned.replace(/([^\n])[ \t]+•[ \t]+/g, "$1\n• ");
+                  // STEP 2b: Split emoji-heading glued to its first bullet —
+                  // e.g. "📈 Key Industry Trends•3nm as the flagship…" —
+                  // into heading + blank line + bullet line.
+                  cleaned = cleaned.replace(
+                    /([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}][^\n•]{3,80}?)[ \t]*•[ \t]*/gu,
+                    "$1\n\n• ",
+                  );
 
                   // STEP 3: Normalize tables. Walk consecutive pipe-row
                   // runs and rebuild them with exactly ONE separator row
