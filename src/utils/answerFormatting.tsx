@@ -238,10 +238,77 @@ export function renderLeadBoldContent(
 }
 
 /** Normalize spacing and section breaks for document-style answers. */
+// Walk consecutive pipe-row runs (separated only by blank/whitespace lines)
+// and rebuild each as ONE table with a single separator row. Models
+// (Perplexity in particular) routinely emit each {header,sep,row} triplet
+// as a separate mini-table — this merges them into the single logical
+// table the user expects.
+function mergePerRowMiniTables(text: string): string {
+  const isPipeRow = (s: string) =>
+    /^\s*\|.*\|\s*$/.test(s) && s.trim().length > 1;
+  const isSepRow = (s: string) =>
+    /^\s*\|[\s\-:|]+\|\s*$/.test(s) && /-/.test(s);
+  const isBlank = (s: string) => s.trim().length === 0;
+
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (!isPipeRow(lines[i])) {
+      out.push(lines[i]);
+      i++;
+      continue;
+    }
+    // Collect a "run": consecutive pipe rows, optionally separated by
+    // blank lines (which we discard).
+    const run: string[] = [];
+    while (i < lines.length) {
+      if (isPipeRow(lines[i])) {
+        run.push(lines[i]);
+        i++;
+        continue;
+      }
+      // Allow blank lines to bridge two pipe-row clusters. Peek ahead
+      // to see if the next non-blank line is another pipe row.
+      if (isBlank(lines[i])) {
+        let k = i + 1;
+        while (k < lines.length && isBlank(lines[k])) k++;
+        if (k < lines.length && isPipeRow(lines[k])) {
+          i = k;
+          continue;
+        }
+      }
+      break;
+    }
+    // Identify header (first non-separator row), drop all separators,
+    // keep every other row as a data row.
+    let headerIdx = 0;
+    while (headerIdx < run.length && isSepRow(run[headerIdx])) headerIdx++;
+    const header = run[headerIdx];
+    if (!header) continue;
+    const dataRows: string[] = [];
+    for (let j = 0; j < run.length; j++) {
+      if (j === headerIdx) continue;
+      if (isSepRow(run[j])) continue;
+      dataRows.push(run[j]);
+    }
+    const colCount = (header.match(/\|/g)?.length ?? 1) - 1;
+    const sep =
+      colCount >= 1 ? "|" + " --- |".repeat(colCount) : "|---|";
+    out.push(header);
+    out.push(sep);
+    for (const d of dataRows) out.push(d);
+  }
+  return out.join("\n");
+}
+
 export function enhanceDocumentStructure(text: string): string {
   if (!text) return text;
 
-  let result = normalizeInlineAnswerStructure(text);
+  // Run table merge FIRST so the downstream regexes see one cohesive
+  // table rather than a stream of mini-tables.
+  let result = mergePerRowMiniTables(text);
+  result = normalizeInlineAnswerStructure(result);
 
   // Promote short ALL-CAPS lines (3–60 chars) to level-2 headings
   result = result
@@ -265,16 +332,21 @@ export function enhanceDocumentStructure(text: string): string {
   // Ensure blank line before markdown headings
   result = result.replace(/([^\n])\n(#{1,3}\s)/g, "$1\n\n$2");
 
-  // CRITICAL: ensure a blank line before any markdown table row. Models
-  // sometimes emit:
+  // CRITICAL: ensure a blank line before the FIRST markdown table row of
+  // a table (i.e. a pipe row that follows a NON-pipe, NON-blank line).
+  // Models sometimes emit:
   //     🔬 Best Medicines for Impetigo (June 2026):
   //     | Name | Manufacturer | ...
-  // with no blank line, which makes the line above get absorbed as the
-  // first cell of the header row (we saw "Best Medicines for Impetigo
-  // (June 2026):" showing up INSIDE the table next to "Name"). Inserting
-  // a blank line teaches the parser those are two separate blocks.
-  // Match any non-blank line followed by a line that starts with `|`.
-  result = result.replace(/([^\n])\n(\|[^\n]*\|)/g, "$1\n\n$2");
+  // with no blank line, which makes the heading get absorbed as the first
+  // cell of the header row. Inserting a blank line teaches the parser those
+  // are two separate blocks.
+  //
+  // CRUCIAL — we exclude `|` from the preceding-char class so we DON'T
+  // insert a blank line BETWEEN consecutive pipe rows. Inserting blanks
+  // mid-table fragments one table into many tiny ones (the bug the user
+  // kept seeing as "table not together"). Tables stay as one cohesive
+  // block; only the FIRST row gets the blank-line gap before it.
+  result = result.replace(/([^\n|])\n(\|[^\n]*\|)/g, "$1\n\n$2");
 
   return result;
 }

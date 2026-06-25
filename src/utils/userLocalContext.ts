@@ -61,11 +61,90 @@ function extractCountryCode(locale: string): string | undefined {
   return regionPart.length === 2 ? regionPart : undefined;
 }
 
+// Timezone → country map. The browser's `navigator.language` is unreliable
+// for actual location (macOS Chrome often reports "en-US" regardless of
+// where the device physically is). The timezone resolved by Intl reflects
+// the OS-configured time zone, which almost always matches the user's
+// real country. We use this as the PRIMARY signal and fall back to the
+// locale-derived code only if no mapping is found.
+const COUNTRY_BY_TIMEZONE: Record<string, string> = {
+  "Asia/Kolkata": "IN",
+  "Asia/Calcutta": "IN",
+  "Asia/Delhi": "IN",
+  "Asia/Karachi": "PK",
+  "Asia/Dhaka": "BD",
+  "Asia/Colombo": "LK",
+  "Asia/Kathmandu": "NP",
+  "Asia/Dubai": "AE",
+  "Asia/Riyadh": "SA",
+  "Asia/Qatar": "QA",
+  "Asia/Kuwait": "KW",
+  "Asia/Bahrain": "BH",
+  "Asia/Muscat": "OM",
+  "Asia/Tehran": "IR",
+  "Asia/Jerusalem": "IL",
+  "Asia/Istanbul": "TR",
+  "Asia/Singapore": "SG",
+  "Asia/Hong_Kong": "HK",
+  "Asia/Shanghai": "CN",
+  "Asia/Tokyo": "JP",
+  "Asia/Seoul": "KR",
+  "Asia/Bangkok": "TH",
+  "Asia/Manila": "PH",
+  "Asia/Jakarta": "ID",
+  "Asia/Kuala_Lumpur": "MY",
+  "Asia/Ho_Chi_Minh": "VN",
+  "Asia/Saigon": "VN",
+  "Europe/London": "GB",
+  "Europe/Dublin": "IE",
+  "Europe/Berlin": "DE",
+  "Europe/Paris": "FR",
+  "Europe/Madrid": "ES",
+  "Europe/Rome": "IT",
+  "Europe/Amsterdam": "NL",
+  "Europe/Lisbon": "PT",
+  "Europe/Stockholm": "SE",
+  "Europe/Oslo": "NO",
+  "Europe/Copenhagen": "DK",
+  "Europe/Zurich": "CH",
+  "Europe/Moscow": "RU",
+  "America/New_York": "US",
+  "America/Chicago": "US",
+  "America/Denver": "US",
+  "America/Los_Angeles": "US",
+  "America/Phoenix": "US",
+  "America/Anchorage": "US",
+  "America/Toronto": "CA",
+  "America/Vancouver": "CA",
+  "America/Mexico_City": "MX",
+  "America/Sao_Paulo": "BR",
+  "Africa/Cairo": "EG",
+  "Africa/Lagos": "NG",
+  "Africa/Nairobi": "KE",
+  "Africa/Johannesburg": "ZA",
+  "Australia/Sydney": "AU",
+  "Australia/Melbourne": "AU",
+  "Pacific/Auckland": "NZ",
+};
+
+function countryFromTimezone(tz: string): string | undefined {
+  if (COUNTRY_BY_TIMEZONE[tz]) return COUNTRY_BY_TIMEZONE[tz];
+  // Heuristic fallback for unmapped Asia/* zones — many Indian users hit
+  // less-common aliases; if the zone starts with "Asia/Kolkata"-class
+  // prefixes, assume IN.
+  if (/^Asia\/(Calcutta|Kolkata)/i.test(tz)) return "IN";
+  return undefined;
+}
+
 export function getUserLocalContext(): UserLocalContextPayload {
   const locale = navigator.language || "en-US";
   const resolved = Intl.DateTimeFormat().resolvedOptions();
   const timeZone = resolved.timeZone || "UTC";
-  const countryCode = extractCountryCode(locale);
+  // Prefer timezone-derived country (reflects real device location) over
+  // locale-derived (which is just the UI language and is wrong for many
+  // users — e.g. Indian users with English-US UI).
+  const countryCode =
+    countryFromTimezone(timeZone) || extractCountryCode(locale);
   const now = new Date();
 
   let localDateTime = now.toString();
