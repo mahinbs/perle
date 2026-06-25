@@ -1023,6 +1023,21 @@ html.platform-ios .voice-overlay-controls-bar {
   display: block;
 }
 
+/*
+ * During streaming the wrapper sets `word-break: break-word` so long
+ * prose tokens don't horizontally overflow before the next space
+ * arrives. That cascades into <table> cells and breaks every word per
+ * syllable ("Snapdragon8" → "Snap / drago / n8"). Reset for tables so
+ * cells size based on content the same way they do post-stream — the
+ * user sees the same wide, readable table during AND after the stream.
+ */
+.answer-streaming-text table,
+.answer-streaming-text th,
+.answer-streaming-text td {
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
 /* Fade-in when formatted markdown replaces plain streaming text */
 .answer-formatted-fadein {
   animation: answer-format-fade 0.25s ease-out forwards;
