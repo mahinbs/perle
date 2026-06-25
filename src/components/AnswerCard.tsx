@@ -1957,9 +1957,21 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                       </div>
                     );
                   }
+                  // CRITICAL: pass `streaming=false` to formatText even
+                  // DURING streaming. The third arg controls whether
+                  // formatText runs its preprocessing pipeline (ALL-CAPS
+                  // → heading promotion, blank-line normalisation, table
+                  // separator insertion, etc.). When we passed `true`,
+                  // the streaming output skipped that preprocessing, and
+                  // the post-stream pass applied it — producing a visible
+                  // formatting "snap" at the end. By passing `false` for
+                  // BOTH passes, the output is byte-identical the moment
+                  // the partial line lands in `completed`. The user sees
+                  // the same rich formatting from the very first token
+                  // and zero change at end-of-stream.
                   return (
                     <div className="answer-streaming-text" style={streamingStyle}>
-                      {completed && formatText(completed, false, true)}
+                      {completed && formatText(completed, false, false)}
                       {partial && (
                         <span style={{ whiteSpace: "pre-wrap" }}>
                           {partial.replace(/^#{1,6}\s+/, "")}
@@ -1986,22 +1998,19 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 // when the answer is short AND contains those markers,
                 // not for table/bullet/heading-heavy answers where the
                 // streaming renderer is correct and consistent.
-                (() => {
-                  const text = displayedTexts[index] !== undefined
-                    ? displayedTexts[index]
-                    : chunk.text;
-                  const hasMath = /\$\$|\\\(|\\\[|\\begin\{/.test(text);
-                  const hasCodeBlock = /```/.test(text);
-                  const useStreamingRenderer = !hasMath && !hasCodeBlock;
-                  return (
-                    <div className={skipTypewriter ? "answer-formatted-fadein" : undefined}
-                         style={{ lineHeight: 1.75, wordBreak: "break-word" }}>
-                      {useStreamingRenderer
-                        ? renderStreamingContent(text)
-                        : formatText(text, isTypingComplete && index === chunks.length - 1)}
-                    </div>
-                  );
-                })()
+                // Post-stream view uses the RICH formatText renderer — the
+                // one you had before. It produces nicer heading borders,
+                // bullet spacing, paragraph margins, code blocks, math,
+                // comparison-subject highlighting, etc. The streaming view
+                // (above) already styles headings/bullets/bold/citations
+                // as tokens arrive, so the final swap to formatText is a
+                // small visual polish, not a "raw → formatted" snap.
+                <div className={skipTypewriter ? "answer-formatted-fadein" : undefined}>
+                  {formatText(
+                    displayedTexts[index] !== undefined ? displayedTexts[index] : chunk.text,
+                    isTypingComplete && index === chunks.length - 1,
+                  )}
+                </div>
               )}
             </div>
 

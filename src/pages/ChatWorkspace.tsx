@@ -103,23 +103,25 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
 
   const startDrip = () => {
     if (flushTimerRef.current) return;
+    // Tuned to a ChatGPT-like cadence (~120-160 chars/sec for normal
+    // backlog; accelerates if the model dumps a lot of text so we never
+    // fall too far behind generation). Slower than the original 12 ms /
+    // 4 chars (~333 chars/sec) so the word-by-word reveal is more
+    // readable. ChatGPT itself runs roughly 100-200 chars/sec.
     flushTimerRef.current = window.setInterval(() => {
       const pending = pendingBufferRef.current;
       if (!pending) return;
-      // Adaptive reveal: keep a smooth word-by-word feel for a small backlog,
-      // but accelerate hard when the model dumps a lot so the text never lags
-      // behind generation (fast, Perplexity/Claude-style streaming).
       const len = pending.length;
       const take =
-        len > 600 ? 40 :
-        len > 300 ? 22 :
-        len > 120 ? 12 :
-        len > 40 ? 7 : 4;
+        len > 800 ? 30 :
+        len > 400 ? 14 :
+        len > 150 ? 8 :
+        len > 50 ? 4 : 3;
       const chunk = pending.slice(0, take);
       pendingBufferRef.current = pending.slice(take);
       streamingTextRef.current += chunk;
       setStreamingText((s) => s + chunk);
-    }, 12);
+    }, 20);
   };
 
   // Backend signalled done — DRAIN the remaining buffer at the drip's
