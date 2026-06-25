@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import { Capacitor } from "@capacitor/core";
 import { useToast } from "../contexts/ToastContext";
 import { LoginForm } from "../components/LoginForm";
 import { SignupForm } from "../components/SignupForm";
@@ -20,7 +19,9 @@ import {
   getPostAuthNavigation,
   onAuthChange,
   isLoggedIn,
+  readOAuthReturnState,
   startGoogleAuth,
+  onNativeOAuthBrowserDismissed,
   type User,
 } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
@@ -533,19 +534,39 @@ export default function ProfilePage() {
     setIsLoading(true);
     setAuthError("");
     try {
-      await startGoogleAuth({
+      const response = await startGoogleAuth({
         returnTo: state?.returnTo,
         plan: state?.plan,
       });
-      // Browser redirects to Google — loading state stays until callback page.
+
+      if (response?.user) {
+        const navState = readOAuthReturnState();
+        const { path, useAuthRedirect } = getPostAuthNavigation(response.user, navState);
+        if (useAuthRedirect) {
+          navigateTo(path, { fromAuthRedirect: true }, { replace: true });
+        } else {
+          navigateTo(path, undefined, { replace: true });
+        }
+      }
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Google sign-in failed";
-      setAuthError(message);
-      showToast({ message, type: "error", duration: 5000 });
+      if (message !== "Google sign-in was cancelled.") {
+        setAuthError(message);
+        showToast({ message, type: "error", duration: 5000 });
+      }
+    } finally {
       setIsLoading(false);
     }
   };
+
+  const resetGoogleAuthLoading = useCallback(() => {
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => onNativeOAuthBrowserDismissed(resetGoogleAuthLoading), [
+    resetGoogleAuthLoading,
+  ]);
 
   // Show login form
   if (showLogin) {
@@ -578,7 +599,7 @@ export default function ProfilePage() {
             setShowSignup(true);
             setAuthError("");
           }}
-          onGoogleSignIn={Capacitor.getPlatform() !== "ios" ? () => handleGoogleAuth("login") : undefined}
+          onGoogleSignIn={() => handleGoogleAuth("login")}
           isLoading={isLoading}
           error={authError}
         />
@@ -617,7 +638,7 @@ export default function ProfilePage() {
             setShowLogin(true);
             setAuthError("");
           }}
-          onGoogleSignup={Capacitor.getPlatform() !== "ios" ? () => handleGoogleAuth("signup") : undefined}
+          onGoogleSignup={() => handleGoogleAuth("signup")}
           isLoading={isLoading}
           error={authError}
         />
@@ -702,8 +723,7 @@ export default function ProfilePage() {
               experience…
             </p>
           </div>
-          {Capacitor.getPlatform() !== "ios" && (
-            <button
+          <button
               className="btn-ghost glass-button"
               onClick={() => handleGoogleAuth("signup")}
               disabled={isLoading}
@@ -722,7 +742,6 @@ export default function ProfilePage() {
               <GoogleIcon width={22} height={22} />
               Continue with Google
             </button>
-          )}
           <button
             className="btn-ghost glass-button"
             onClick={() => setShowSignup(true)}

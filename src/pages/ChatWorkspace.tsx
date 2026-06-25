@@ -210,16 +210,21 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const isSearchingRef = useRef<boolean>(false);
   const queryRef = useRef<string>(""); // Keep query in ref to avoid stale closures
   const navigatedSearchHandledRef = useRef(false);
+  const navReturnToRef = useRef<string | undefined>(undefined);
   const isFirstExperienceModeEffectRef = useRef(true);
   const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
 
   const queryLimitReached =
     shouldEnforceQueryLimit() && hasReachedDailyQueryLimit();
 
-  const goToSubscriptionForLimit = useCallback(() => {
+  const goToSubscriptionForLimit = useCallback((options?: {
+    message?: string;
+    returnTo?: string;
+  }) => {
     navigateTo("/subscription", {
       limitReached: true,
-      message: getQueryLimitMessage(),
+      message: options?.message ?? getQueryLimitMessage(),
+      returnTo: options?.returnTo,
     });
   }, [navigateTo]);
 
@@ -453,16 +458,26 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       }
 
       if (shouldEnforceQueryLimit() && hasReachedDailyQueryLimit()) {
-        goToSubscriptionForLimit();
+        const isProgrammaticQuery =
+          typeof searchQuery === "string" && searchQuery.trim().length > 0;
+        goToSubscriptionForLimit({
+          returnTo: isProgrammaticQuery
+            ? navReturnToRef.current ?? "/discover"
+            : undefined,
+        });
         return;
       }
 
       // Deep research: free users get ONE lifetime use (it's heavy + slow).
       const isDeepSearch = experienceModeRef.current === "deep_research";
       if (isDeepSearch && shouldEnforceQueryLimit() && hasReachedLifetimeDeepLimit()) {
-        navigateTo("/subscription", {
-          limitReached: true,
+        const isProgrammaticQuery =
+          typeof searchQuery === "string" && searchQuery.trim().length > 0;
+        goToSubscriptionForLimit({
           message: getDeepLimitMessage(),
+          returnTo: isProgrammaticQuery
+            ? navReturnToRef.current ?? "/discover"
+            : undefined,
         });
         return;
       }
@@ -738,10 +753,14 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         if (error?.limitReached) {
           setIsLoading(false);
           isSearchingRef.current = false;
-          navigateTo("/subscription", {
-            limitReached: true,
+          const isProgrammaticQuery =
+            typeof searchQuery === "string" && searchQuery.trim().length > 0;
+          goToSubscriptionForLimit({
             message:
               error.limitKind === "deep" ? getDeepLimitMessage() : getQueryLimitMessage(),
+            returnTo: isProgrammaticQuery
+              ? navReturnToRef.current ?? "/discover"
+              : undefined,
           });
           return;
         }
@@ -802,10 +821,13 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   // Handle search query from other pages (e.g., Discover, Profile history)
   useEffect(() => {
     if (isAnalyzePage) return;
+
     const navQuery = currentData?.searchQuery?.trim();
     if (!navQuery) return;
     if (navigatedSearchHandledRef.current) return;
     navigatedSearchHandledRef.current = true;
+    navReturnToRef.current =
+      typeof currentData?.returnTo === "string" ? currentData.returnTo : undefined;
 
     const navMode =
       currentData.mode &&
@@ -832,8 +854,10 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   }, [
     currentData?.searchQuery,
     currentData?.mode,
+    currentData?.returnTo,
     conversationHistory,
     doSearch,
+    isAnalyzePage,
   ]);
 
   const hasStarted = conversationHistory.length > 0 || isLoading || isStreaming;
@@ -1389,7 +1413,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
               }
               setExperienceMode(mode);
             }}
-            showModelSelector={isPremium}
+            showModelSelector
             queryLimitReached={queryLimitReached}
             onQueryLimitReached={goToSubscriptionForLimit}
             pageContext={variant}

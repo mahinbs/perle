@@ -506,4 +506,192 @@ router.get('/auth/verify', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
+// ─── Helper: build user response from Supabase user + profile ────────────────
+async function buildUserResponse(user: any, accessToken: string, refreshToken: string, expiresAt?: number, expiresIn?: number) {
+  const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User';
+
+  // Fetch or create profile
+  let { data: profile } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('user_id', user.id)
+    .single();
+
+  if (!profile) {
+    await supabase.from('user_profiles').insert({
+      user_id: user.id,
+      notifications: true,
+      dark_mode: false,
+      search_history: true,
+      voice_search: true,
+      is_premium: false,
+    });
+    // Re-fetch after insert
+    const { data: newProfile } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+    profile = newProfile;
+  }
+
+  const premiumTier = (profile as any)?.premium_tier || 'free';
+  const isPremium = (profile as any)?.is_premium ?? false;
+
+  return {
+    token: accessToken,
+    refreshToken,
+    expiresAt,
+    expiresIn,
+    user: {
+      id: user.id,
+      name,
+      email: user.email || '',
+      notifications: (profile as any)?.notifications ?? true,
+      darkMode: (profile as any)?.dark_mode ?? false,
+      searchHistory: (profile as any)?.search_history ?? true,
+      voiceSearch: (profile as any)?.voice_search ?? true,
+      isPremium,
+      premiumTier,
+    },
+  };
+}
+
+// ─── Google OAuth: Initiate ───────────────────────────────────────────────────
+// Redirects the browser / Chrome Custom Tab / ASWebAuthenticationSession
+// directly to Supabase's authorize endpoint.
+//
+// We do NOT use supabase.auth.signInWithOAuth() here because that generates a
+// PKCE code_verifier server-side and stores it in the server's memory — there
+// is no way to retrieve it when the exchange request arrives on a different
+// request/instance. Instead we issue a plain redirect to the Supabase authorize
+// URL without a code_challenge, which causes Supabase to use the implicit flow
+// and return the tokens directly in the hash fragment of the redirect_to URL.
+//
+// Query params:
+//   mobile=1, platform=android|ios, redirect_to=syntraiq://auth/callback
+//   returnTo=<path>, plan=<plan>
+router.get('/auth/google', (req, res) => {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  if (!supabaseUrl) {
+    return res.status(500).json({ error: 'Supabase not configured' });
+  }
+
+  const { platform, redirect_to, returnTo, plan, mobile } = req.query as Record<string, string>;
+
+  const isNative = mobile === '1' || platform === 'android' || platform === 'ios';
+  const redirectTo = isNative && redirect_to
+    ? redirect_to
+    : `${process.env.CORS_ORIGIN || 'https://syntraiq.ai'}/auth/callback`;
+
+  const params = new URLSearchParams({ provider: 'google', redirect_to: redirectTo });
+  // Pass through optional navigation state so the frontend can read it after auth
+  if (returnTo) params.set('returnTo', returnTo);
+  if (plan) params.set('plan', plan);
+
+  return res.redirect(302, `${supabaseUrl}/auth/v1/authorize?${params.toString()}`);
+});
+
+// ─── Google OAuth: Token / Code exchange ──────────────────────────────────────
+// Called by the mobile app after it intercepts the syntraiq://auth/callback URL.
+//
+// Supabase can return the session in two ways depending on its flow config:
+//   1. Implicit flow → access_token + refresh_token in the hash fragment
+//   2. PKCE flow    → code in the query string
+//
+// We accept either form in the request body and handle both.
+router.post('/auth/google/exchange', async (req, res) => {
+  try {
+    const { code, access_token, refresh_token, expires_in } = req.body;
+
+    // ── Implicit flow: access_token sent directly ──
+    if (access_token && typeof access_token === 'string') {
+      // Validate the token and get the user from Supabase
+      const { data: { user }, error } = await supabase.auth.getUser(access_token);
+      if (error || !user) {
+        console.error('Google OAuth token validation error:', error);
+        return res.status(401).json({ error: 'Invalid access token' });
+      }
+
+      const expiresAt = expires_in
+        ? Math.floor(Date.now() / 1000) + Number(expires_in)
+        : undefined;
+
+      const response = await buildUserResponse(user, access_token, refresh_token || '', expiresAt, expires_in ? Number(expires_in) : undefined);
+      return res.json(response);
+    }
+
+    // ── PKCE flow: authorization code exchange ──
+    if (code && typeof code === 'string') {
+      // exchangeCodeForSession requires the code_verifier that was generated
+      // when the authorize URL was created. If the frontend used the Supabase
+      // JS SDK to generate the URL (proper PKCE), the SDK stores the verifier
+      // in localStorage and this call will succeed. If Supabase used implicit
+      // flow despite us passing `code`, we reject and ask the client to retry.
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error || !data.session || !data.user) {
+        console.error('Code exchange error:', error);
+        return res.status(400).json({ error: error?.message || 'Failed to exchange code — try signing in again' });
+      }
+
+      const { user, session } = data;
+      const response = await buildUserResponse(
+        user,
+        session.access_token,
+        session.refresh_token,
+        session.expires_at,
+        session.expires_in,
+      );
+      return res.json(response);
+    }
+
+    return res.status(400).json({ error: 'access_token or code is required' });
+  } catch (err) {
+    console.error('Google OAuth exchange error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── OAuth Redeem (alternate / legacy path) ───────────────────────────────────
+// Mirrors /auth/google/exchange; kept as a separate route for forward-compat.
+router.post('/auth/oauth/redeem', async (req, res) => {
+  try {
+    const { code, oauth_code, access_token, refresh_token, expires_in } = req.body;
+    const theCode = code || oauth_code;
+
+    // Implicit flow
+    if (access_token && typeof access_token === 'string') {
+      const { data: { user }, error } = await supabase.auth.getUser(access_token);
+      if (error || !user) {
+        return res.status(401).json({ error: 'Invalid access token' });
+      }
+      const expiresAt = expires_in ? Math.floor(Date.now() / 1000) + Number(expires_in) : undefined;
+      const response = await buildUserResponse(user, access_token, refresh_token || '', expiresAt, expires_in ? Number(expires_in) : undefined);
+      return res.json(response);
+    }
+
+    // PKCE code exchange
+    if (theCode && typeof theCode === 'string') {
+      const { data, error } = await supabase.auth.exchangeCodeForSession(theCode);
+      if (error || !data.session || !data.user) {
+        return res.status(400).json({ error: error?.message || 'Failed to redeem OAuth code' });
+      }
+      const { user, session } = data;
+      const response = await buildUserResponse(
+        user,
+        session.access_token,
+        session.refresh_token,
+        session.expires_at,
+        session.expires_in,
+      );
+      return res.json(response);
+    }
+
+    return res.status(400).json({ error: 'access_token or code is required' });
+  } catch (err) {
+    console.error('OAuth redeem error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

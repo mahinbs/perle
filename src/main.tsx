@@ -5,9 +5,11 @@ import './index.css'
 import { migrateLegacyStorageKeys } from './utils/storage'
 import { initPlatformInsets } from './utils/platformInsets'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { registerAuthSessionListeners } from './utils/auth'
 
 migrateLegacyStorageKeys()
 initPlatformInsets()
+registerAuthSessionListeners()
 
 const app = (
   <ErrorBoundary>

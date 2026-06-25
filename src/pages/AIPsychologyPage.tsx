@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, Fragment } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
+import HeadsetWaveIcon from "../components/HeadsetWaveIcon";
 import { Capacitor } from "@capacitor/core";
 import {
   FaPen,
@@ -693,17 +694,8 @@ export default function AIPsychologyPage() {
             />
           </div>
 
-          <div className="flex w-full items-center gap-2">
-            <div className="flex gap-2">
-              <button
-                className={`btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center${isListening ? " mic-recording" : ""}`}
-                onClick={isListening ? stopVoiceInput : startVoiceInput}
-                aria-label={isListening ? "Stop recording" : "Voice input"}
-                disabled={!isListening && isLoading}
-              >
-                <MicWaveIcon size={19} active={isListening} />
-              </button>
-
+          <div className="flex w-full items-center justify-between gap-2">
+            <div className="flex gap-2 items-center">
               <button
                 className={`btn-ghost glass-button w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${
                   isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
@@ -738,6 +730,26 @@ export default function AIPsychologyPage() {
                 aria-label="Start new session"
               >
                 <FaComments size={16} />
+              </button>
+            </div>
+
+            <div className="flex gap-2 items-center shrink-0">
+              <button
+                className={`btn-ghost glass-button min-w-6 w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center${isListening ? " mic-recording" : ""}`}
+                onClick={isListening ? stopVoiceInput : startVoiceInput}
+                aria-label={isListening ? "Stop recording" : "Voice input"}
+                disabled={!isListening && isLoading}
+              >
+                <MicWaveIcon size={19} active={isListening} />
+              </button>
+
+              <button
+                className="btn-ghost glass-button w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center bg-transparent text-inherit opacity-70"
+                onClick={isListening ? stopVoiceInput : startVoiceInput}
+                aria-label="Voice conversation"
+                disabled={isLoading}
+              >
+                <HeadsetWaveIcon size={19} />
               </button>
 
               <button

@@ -3,5 +3,5 @@
     <string name="app_name">SyntraIQ</string>
     <string name="title_activity_main">SyntraIQ</string>
     <string name="package_name">com.syntraiq.com</string>
-    <string name="custom_url_scheme">com.syntraiq.com</string>
+    <string name="custom_url_scheme">syntraiq</string>
 </resources>

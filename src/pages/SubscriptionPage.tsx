@@ -288,18 +288,31 @@ export default function SubscriptionPage() {
     });
   };
 
+  const handleClose = () => {
+    if (navState?.fromAuthRedirect) {
+      navigateTo("/app", undefined, { replace: true });
+      return;
+    }
+
+    if (navState?.returnTo) {
+      navigateTo(navState.returnTo, undefined, { replace: true });
+      return;
+    }
+
+    if (navState?.limitReached) {
+      navigateTo("/app", undefined, { replace: true });
+      return;
+    }
+
+    goBack();
+  };
+
   return (
     <div className="fixed inset-0 bg-[var(--bg)] text-[var(--text)] z-50 flex flex-col p-4 pt-[calc(16px+var(--safe-area-top))] pb-[calc(16px+var(--safe-area-bottom))]">
       {/* Top Bar */}
       <div className="flex justify-start mb-6">
         <button
-          onClick={() => {
-            if (navState?.fromAuthRedirect) {
-              navigateTo("/app");
-            } else {
-              goBack();
-            }
-          }}
+          onClick={handleClose}
           className="bg-transparent border-none text-[var(--text)] cursor-pointer p-0"
         >
           <IoClose size={28} />

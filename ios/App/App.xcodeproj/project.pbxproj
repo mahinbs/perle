@@ -18,6 +18,8 @@
 		868033CB2FBDCC3700020A1A /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 868033CA2FBDCC3500020A1A /* StoreKit.framework */; };
 		868033CE2FBDCC3700020A1A /* IAPPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868033CD2FBDCC3700020A1A /* IAPPlugin.swift */; };
 		868033D02FBDCC3700020A1A /* IAPPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 868033CF2FBDCC3700020A1A /* IAPPlugin.m */; };
+		868033D32FBDCC3700020A1B /* OAuthSessionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868033D42FBDCC3700020A1B /* OAuthSessionPlugin.swift */; };
+		868033D52FBDCC3700020A1B /* OAuthSessionPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 868033D62FBDCC3700020A1B /* OAuthSessionPlugin.m */; };
 		868033D12FBDCC3700020A1A /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868033D22FBDCC3700020A1A /* ViewController.swift */; };
 /* End PBXBuildFile section */
 
@@ -34,6 +36,8 @@
 		868033CA2FBDCC3500020A1A /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		868033CD2FBDCC3700020A1A /* IAPPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IAPPlugin.swift; sourceTree = "<group>"; };
 		868033CF2FBDCC3700020A1A /* IAPPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = IAPPlugin.m; sourceTree = "<group>"; };
+		868033D42FBDCC3700020A1B /* OAuthSessionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthSessionPlugin.swift; sourceTree = "<group>"; };
+		868033D62FBDCC3700020A1B /* OAuthSessionPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OAuthSessionPlugin.m; sourceTree = "<group>"; };
 		868033D22FBDCC3700020A1A /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -83,6 +87,8 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 				868033CD2FBDCC3700020A1A /* IAPPlugin.swift */,
 				868033CF2FBDCC3700020A1A /* IAPPlugin.m */,
+				868033D42FBDCC3700020A1B /* OAuthSessionPlugin.swift */,
+				868033D62FBDCC3700020A1B /* OAuthSessionPlugin.m */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -180,6 +186,8 @@
 				868033D12FBDCC3700020A1A /* ViewController.swift in Sources */,
 				868033CE2FBDCC3700020A1A /* IAPPlugin.swift in Sources */,
 				868033D02FBDCC3700020A1A /* IAPPlugin.m in Sources */,
+				868033D32FBDCC3700020A1B /* OAuthSessionPlugin.swift in Sources */,
+				868033D52FBDCC3700020A1B /* OAuthSessionPlugin.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,5 +1,13 @@
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
+import { OAuthSession } from '../plugins/oauthSession';
+import { supabase } from '../lib/supabaseClient';
+
 // Vite exposes env variables via import.meta.env
 const API_URL = import.meta.env.VITE_API_URL as string | undefined;
+
+export const NATIVE_OAUTH_SCHEME = 'syntraiq';
+export const NATIVE_OAUTH_REDIRECT = `${NATIVE_OAUTH_SCHEME}://auth/callback`;
 
 // Debug: Log API URL in development (will be removed in production)
 if (import.meta.env.DEV) {
@@ -386,65 +394,208 @@ export function readOAuthReturnState(): { returnTo?: string; plan?: string } | u
   }
 }
 
-/** Redirect to Google via backend OAuth (no Supabase keys on frontend). */
-export async function startGoogleAuth(returnState?: { returnTo?: string; plan?: string }): Promise<void> {
-  if (!API_URL) {
-    throw new Error('Backend API not configured (VITE_API_URL).');
-  }
-
+async function buildGoogleAuthUrl(returnState?: { returnTo?: string; plan?: string }): Promise<string> {
   const params = new URLSearchParams();
   if (returnState?.returnTo) params.set('returnTo', returnState.returnTo);
   if (returnState?.plan) params.set('plan', returnState.plan);
-  const qs = params.toString();
-  window.location.href = `${API_URL.replace(/\/+$/, '')}/api/auth/google${qs ? `?${qs}` : ''}`;
-}
 
-/** Called on /auth/callback after backend redirects with a one-time oauth_code. */
-export async function completeGoogleOAuth(): Promise<AuthResponse> {
-  if (!API_URL) {
-    throw new Error('Backend API not configured.');
+  if (Capacitor.isNativePlatform()) {
+    // ── NATIVE (Android / iOS): use the Supabase SDK to generate a PKCE-aware URL ──
+    //
+    // The SDK stores a code_verifier in the app's localStorage. When the callback
+    // deep-link arrives, supabase.auth.exchangeCodeForSession() uses that stored
+    // verifier to exchange the code — no backend exchange endpoint needed.
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: NATIVE_OAUTH_REDIRECT,
+        skipBrowserRedirect: true, // we open the URL ourselves via OAuthSession
+      },
+    });
+
+    if (error || !data.url) {
+      throw new Error(error?.message || 'Failed to build Google sign-in URL');
+    }
+    return data.url;
   }
 
-  const url = new URL(window.location.href);
-  const oauthError = url.searchParams.get('error');
+  // ── WEB: go through the backend as before ──
+  if (!API_URL) {
+    throw new Error('Backend API not configured (VITE_API_URL).');
+  }
+  const qs = params.toString();
+  return `${API_URL.replace(/\/+$/, '')}/api/auth/google${qs ? `?${qs}` : ''}`;
+}
+
+function parseOAuthCallbackParams(rawUrl: string): URLSearchParams {
+  const parsed = new URL(rawUrl);
+  const params = new URLSearchParams(parsed.search);
+
+  if (parsed.hash) {
+    const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ''));
+    hashParams.forEach((value, key) => {
+      if (!params.has(key)) {
+        params.set(key, value);
+      }
+    });
+  }
+
+  return params;
+}
+
+
+
+/**
+ * Complete Google OAuth from a native callback URL.
+ *
+ * On native platforms we now use the Supabase JS SDK for the full exchange:
+ *   1. supabase.auth.exchangeCodeForSession(callbackUrl) - uses the code_verifier
+ *      that was stored in localStorage when buildGoogleAuthUrl() ran.
+ *   2. Call /api/auth/verify with the resulting access_token to get the user
+ *      profile from the backend (this endpoint already exists).
+ *
+ * Also handles the implicit-flow fallback (access_token in hash) for older
+ * Supabase configurations.
+ */
+export async function completeGoogleOAuthFromCallbackUrl(callbackUrl: string): Promise<AuthResponse> {
+  const params = parseOAuthCallbackParams(callbackUrl);
+
+  const oauthError = params.get('error') || params.get('error_description');
   if (oauthError) {
     throw new Error(oauthError);
   }
 
-  const oauthCode = url.searchParams.get('oauth_code');
-  if (!oauthCode) {
-    throw new Error('Missing sign-in code. Please try Google sign-in again.');
+  // ── PKCE flow: let Supabase SDK exchange the code using its stored verifier ──
+  const code = params.get('code');
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(callbackUrl);
+    if (error || !data.session) {
+      throw new Error(error?.message || 'Google sign-in failed. Please try again.');
+    }
+    return completeWithSupabaseSession(data.session.access_token, data.session.refresh_token, data.session.expires_at, data.session.expires_in);
   }
 
-  const response = await fetch(`${API_URL}/api/auth/oauth/redeem`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: oauthCode }),
+  // ── Implicit flow: access_token directly in hash fragment ──
+  const accessToken = params.get('access_token');
+  if (accessToken) {
+    const refreshToken = params.get('refresh_token') ?? undefined;
+    const expiresIn = params.get('expires_in');
+    const expiresAt = expiresIn ? Math.floor(Date.now() / 1000) + Number(expiresIn) : undefined;
+    return completeWithSupabaseSession(accessToken, refreshToken, expiresAt, expiresIn ? Number(expiresIn) : undefined);
+  }
+
+  // ── Legacy alternate code paths ──
+  const redeemCode = params.get('oauth_code');
+  if (redeemCode) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(callbackUrl);
+    if (error || !data.session) {
+      throw new Error(error?.message || 'Google sign-in failed. Please try again.');
+    }
+    return completeWithSupabaseSession(data.session.access_token, data.session.refresh_token, data.session.expires_at, data.session.expires_in);
+  }
+
+  throw new Error('Missing sign-in token. Please try Google sign-in again.');
+}
+
+/**
+ * Given a valid Supabase access_token, store credentials locally and fetch
+ * the user profile from the backend's existing /api/auth/verify endpoint.
+ */
+async function completeWithSupabaseSession(
+  accessToken: string,
+  refreshToken: string | undefined,
+  expiresAt: number | undefined,
+  expiresIn: number | undefined,
+): Promise<AuthResponse> {
+  // Persist the tokens immediately so subsequent API calls are authenticated
+  setAuthCredentials(accessToken, refreshToken, expiresAt);
+
+  // Fetch user profile from the backend using the existing /api/auth/verify endpoint
+  if (!API_URL) throw new Error('Backend API not configured.');
+  const verifyRes = await fetch(`${API_URL.replace(/\/+$/, '')}/api/auth/verify`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to complete Google sign-in');
+  if (!verifyRes.ok) {
+    const err = await verifyRes.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch user profile after Google sign-in');
   }
 
-  const data = (await response.json()) as AuthResponse & {
-    returnState?: { returnTo?: string; plan?: string };
-  };
+  const data = await verifyRes.json();
 
-  if (data.token) {
-    setAuthCredentials(data.token, data.refreshToken, data.expiresAt);
-  }
   if (data.user) {
     setUserData(data.user);
   }
 
-  if (data.returnState?.returnTo || data.returnState?.plan) {
-    storeOAuthReturnState(data.returnState);
+  notifyAuthChange();
+
+  return {
+    token: accessToken,
+    refreshToken,
+    expiresAt,
+    expiresIn,
+    user: data.user,
+  };
+}
+
+/**
+ * Start Google OAuth.
+ * - iOS: ASWebAuthenticationSession (native sheet, intercepts syntraiq:// callback)
+ * - Android: Chrome Custom Tab + deep link callback
+ * - Web: full-page redirect to backend
+ */
+export async function startGoogleAuth(
+  returnState?: { returnTo?: string; plan?: string },
+): Promise<AuthResponse | void> {
+  storeOAuthReturnState(returnState);
+  const url = await buildGoogleAuthUrl(returnState);
+
+  if (!Capacitor.isNativePlatform()) {
+    window.location.href = url;
+    return;
   }
 
-  window.history.replaceState({}, document.title, '/auth/callback');
+  const result = await OAuthSession.authenticate({
+    url,
+    callbackScheme: NATIVE_OAUTH_SCHEME,
+  });
 
-  return data;
+  if (result.cancelled) {
+    throw new Error('Google sign-in was cancelled.');
+  }
+
+  if (!result.callbackUrl) {
+    throw new Error('Google sign-in did not return a callback URL.');
+  }
+
+  return completeGoogleOAuthFromCallbackUrl(result.callbackUrl);
+}
+
+/** Reset UI when Android OAuth tab is closed without finishing sign-in. */
+export function onNativeOAuthBrowserDismissed(listener: () => void): () => void {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+    return () => undefined;
+  }
+
+  let handles: Array<{ remove: () => void }> = [];
+
+  void App.addListener('appStateChange', ({ isActive }) => {
+    if (isActive) {
+      listener();
+    }
+  }).then((handle) => {
+    handles.push(handle);
+  });
+
+  return () => {
+    handles.forEach((handle) => handle.remove());
+    handles = [];
+  };
+}
+
+/** Called on /auth/callback for web redirects after Google sign-in. */
+export async function completeGoogleOAuth(): Promise<AuthResponse> {
+  return completeGoogleOAuthFromCallbackUrl(window.location.href);
 }
 
 export async function logout(): Promise<void> {
@@ -590,6 +741,18 @@ export function registerAuthSessionListeners(): void {
       void initializeAuthSession();
     }
   });
+
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+    void App.addListener('appUrlOpen', (event) => {
+      void completeGoogleOAuthFromCallbackUrl(event.url).catch(() => undefined);
+    });
+
+    void App.getLaunchUrl().then((launch) => {
+      if (launch?.url?.startsWith(`${NATIVE_OAUTH_SCHEME}://`)) {
+        void completeGoogleOAuthFromCallbackUrl(launch.url).catch(() => undefined);
+      }
+    });
+  }
 
   // Proactively refresh before the access token expires while the app is open.
   const REFRESH_INTERVAL_MS = 4 * 60 * 1000;
