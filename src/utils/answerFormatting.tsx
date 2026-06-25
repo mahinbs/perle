@@ -319,6 +319,22 @@ export function enhanceDocumentStructure(text: string): string {
     /([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}][^\n•]{3,80}?)[ \t]*•[ \t]*/gu,
     "$1\n\n• ",
   );
+  // Split "sentence.💡 Key Takeaways" / "sentence. 🧙 What's Coming Next"
+  // — emoji heading glued to the end of a sentence, paragraph, or bullet
+  // line. Force a blank line BEFORE the emoji so the renderer treats it
+  // as a heading. Same unicode range + u-flag, matches BOTH "no space"
+  // and "one space" cases between punctuation and emoji.
+  result = result.replace(
+    /([.!?…\)\]"'])[ \t]*([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])[ \t]+([A-Z])/gu,
+    "$1\n\n$2 $3",
+  );
+  // Fallback: emoji glued to a lowercase word ending with no punctuation
+  // (rare but happens, e.g. "...segments💡 Key"). Allow non-space lowercase
+  // letter or digit immediately before the emoji.
+  result = result.replace(
+    /([a-z0-9])([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])[ \t]+([A-Z][a-z])/gu,
+    "$1\n\n$2 $3",
+  );
 
   result = normalizeInlineAnswerStructure(result);
 
