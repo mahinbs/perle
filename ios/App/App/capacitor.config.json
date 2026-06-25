@@ -2,5 +2,8 @@
 	"appId": "com.syntraiq.com",
 	"appName": "SyntraIQ",
 	"webDir": "dist",
-	"packageClassList": []
+	"packageClassList": [
+		"AppPlugin",
+		"CAPBrowserPlugin"
+	]
 }

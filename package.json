@@ -1,6 +1,6 @@
 {
   "name": "perle-mobile",
-  "version": "1.0.1",
+  "version": "1.0.7",
   "description": "Elegant Perplexity-style mobile web app",
   "main": "index.js",
   "scripts": {
@@ -15,9 +15,12 @@
     "server:start": "npm --prefix server run start"
   },
   "dependencies": {
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/browser": "^6.0.6",
     "@capacitor/core": "^6.0.0",
     "@react-three/drei": "^9.88.0",
     "@react-three/fiber": "^8.15.0",
+    "@supabase/supabase-js": "^2.108.2",
     "clsx": "^2.1.1",
     "katex": "^0.16.27",
     "motion": "^12.23.24",

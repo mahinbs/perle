@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import HomePage from '../pages/HomePage';
 import DiscoverPage from '../pages/DiscoverPage';
 import ProfilePage from '../pages/ProfilePage';
@@ -28,6 +29,9 @@ import RefundCancellationPage from '../pages/RefundCancellationPage';
 // Set this to true to enable maintenance mode
 const MAINTENANCE_MODE = false;
 
+const isNativeApp = Capacitor.isNativePlatform();
+const defaultRoute = isNativeApp ? '/app' : '/';
+
 export function AppRouter() {
   // If maintenance mode is enabled, show maintenance page for all routes
   if (MAINTENANCE_MODE) {
@@ -40,9 +44,14 @@ export function AppRouter() {
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route
+        path="/"
+        element={
+          isNativeApp ? <Navigate to="/app" replace /> : <LandingPage />
+        }
+      />
       <Route path="/app" element={<HomePage />} />
-      <Route path="/home" element={<Navigate to="/" replace />} />
+      <Route path="/home" element={<Navigate to={defaultRoute} replace />} />
       <Route path="/discover" element={<DiscoverPage />} />
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/library" element={<LibraryPage />} />
@@ -71,7 +80,7 @@ export function AppRouter() {
       <Route path="/support" element={<SupportPage />} />
       <Route path="/refund-cancellation" element={<RefundCancellationPage />} />
       <Route path="/maintenance" element={<MaintenancePage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to={defaultRoute} replace />} />
     </Routes>
   );
 }

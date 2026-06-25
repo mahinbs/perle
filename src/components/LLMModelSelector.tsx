@@ -7,11 +7,36 @@ import { ProviderLogo } from "./ProviderLogos";
 
 const FREE_TIER_MODEL: LLMModelInfo = {
   id: "gemini-lite",
-  name: "Gemini Lite",
+  name: "Free",
   provider: "Google",
   description: "Free tier model for everyday questions",
   capabilities: ["Free", "Fast", "Efficient"],
 };
+
+type SubscriptionTierOption = "pro" | "max";
+
+const SUBSCRIPTION_TIER_OPTIONS: Array<{
+  id: SubscriptionTierOption;
+  name: string;
+  provider: string;
+  description: string;
+  capabilities: string[];
+}> = [
+  {
+    id: "pro",
+    name: "IQ Pro",
+    provider: "SyntraIQ",
+    description: "All premium AI models, unlimited queries, and richer creation tools",
+    capabilities: ["All models", "Unlimited search", "Media creation"],
+  },
+  {
+    id: "max",
+    name: "IQ Max",
+    provider: "SyntraIQ",
+    description: "Everything in IQ Pro with the highest limits and priority support",
+    capabilities: ["Priority access", "Max limits", "Team features"],
+  },
+];
 
 // Premium models available to premium users
 const premiumModels: LLMModelInfo[] = [
@@ -577,6 +602,18 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     setIsOpen(false);
   };
 
+  const handleSubscriptionTierSelect = (tier: SubscriptionTierOption) => {
+    setIsOpen(false);
+    navigateTo("/subscription", { plan: tier });
+  };
+
+  const triggerLabel =
+    !isPremium && selectedModel === "gemini-lite"
+      ? "Free"
+      : selectedModelInfo?.name.slice(0, 10).concat(
+          (selectedModelInfo?.name.length ?? 0) > 10 ? "…" : ""
+        ) || "Free";
+
   // Check if mobile on mount and resize
   useEffect(() => {
     const checkMobile = () => {
@@ -699,6 +736,125 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   };
 
   const currentSize = sizeStyles[size];
+
+  const renderSubscriptionTierButton = (
+    tier: (typeof SUBSCRIPTION_TIER_OPTIONS)[number],
+    isMobileView: boolean
+  ) => (
+    <button
+      key={tier.id}
+      type="button"
+      onMouseDown={
+        isMobileView
+          ? undefined
+          : (e) => {
+              e.preventDefault();
+              handleSubscriptionTierSelect(tier.id);
+            }
+      }
+      onTouchEnd={
+        isMobileView
+          ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleSubscriptionTierSelect(tier.id);
+            }
+          : undefined
+      }
+      onClick={
+        isMobileView ? undefined : () => handleSubscriptionTierSelect(tier.id)
+      }
+      style={{
+        width: "100%",
+        padding: isMobileView ? "8px 12px" : "12px 16px",
+        border: "none",
+        backgroundColor: "transparent",
+        textAlign: "left",
+        cursor: "pointer",
+        borderBottom: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        gap: isMobileView ? 8 : 12,
+        transition: "background-color 0.2s ease",
+      }}
+      onMouseEnter={(e) => {
+        if (!isMobileView) {
+          e.currentTarget.style.backgroundColor = "var(--border)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isMobileView) {
+          e.currentTarget.style.backgroundColor = "transparent";
+        }
+      }}
+    >
+      <ProviderLogo provider={tier.provider} size={isMobileView ? 24 : 26} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontWeight: 700,
+            fontSize: "var(--font-sm)",
+            marginBottom: isMobileView ? 1 : 2,
+            color: "var(--text)",
+          }}
+        >
+          {tier.name}
+        </div>
+        <div
+          style={{
+            fontSize: isMobileView ? "var(--font-xs)" : "var(--font-sm)",
+            color: "var(--sub)",
+            marginBottom: isMobileView ? 2 : 4,
+          }}
+        >
+          {tier.provider}
+        </div>
+        <div
+          style={{
+            fontSize: "var(--font-xs)",
+            color: "var(--sub)",
+            lineHeight: isMobileView ? "12px" : "14px",
+          }}
+        >
+          {tier.description}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: isMobileView ? 3 : 4,
+            marginTop: isMobileView ? 4 : 6,
+          }}
+        >
+          {tier.capabilities.slice(0, isMobileView ? 2 : 3).map((capability) => (
+            <span
+              key={capability}
+              style={{
+                fontSize: "var(--font-xs)",
+                padding: isMobileView ? "1px 4px" : "2px 6px",
+                backgroundColor: "var(--border)",
+                borderRadius: isMobileView ? 3 : 4,
+                color: "var(--sub)",
+              }}
+            >
+              {capability}
+            </span>
+          ))}
+        </div>
+      </div>
+      <span
+        style={{
+          fontSize: "var(--font-xs)",
+          fontWeight: 600,
+          color: "var(--accent)",
+          flexShrink: 0,
+          whiteSpace: "nowrap",
+        }}
+      >
+        Upgrade
+      </span>
+    </button>
+  );
 
   const renderModelButton = (model: LLMModelInfo, isMobileView: boolean) => {
     const locked = isModelLocked(model.id);
@@ -881,9 +1037,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               size={Math.max(currentSize.iconSize + 8, 16)}
             />
             <span className="font-medium">
-              {selectedModelInfo?.name.slice(0, 10).concat(
-                (selectedModelInfo?.name.length ?? 0) > 10 ? "…" : ""
-              ) || "Gemini Lite"}
+              {triggerLabel}
             </span>
           </div>
           <span style={{ fontSize: currentSize.fontSize, opacity: 0.7 }}>
@@ -972,10 +1126,19 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
                       lineHeight: 1.45,
                     }}
                   >
-                    Gemini Lite is free. Tap any other model to upgrade to IQ Pro or IQ Max.
+                    Free is selected by default. Upgrade to IQ Pro or IQ Max for all premium models.
                   </div>
                 )}
-                {availableModels.map((model) => renderModelButton(model, isMobile))}
+                {!isPremium ? (
+                  <>
+                    {renderModelButton(FREE_TIER_MODEL, isMobile)}
+                    {SUBSCRIPTION_TIER_OPTIONS.map((tier) =>
+                      renderSubscriptionTierButton(tier, isMobile)
+                    )}
+                  </>
+                ) : (
+                  availableModels.map((model) => renderModelButton(model, isMobile))
+                )}
               </div>
             </>,
             document.body

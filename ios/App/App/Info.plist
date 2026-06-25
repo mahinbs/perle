@@ -52,5 +52,16 @@
 	<string>This app requires microphone access for voice input to interact with the AI assistant.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>This app requires speech recognition permission to convert your voice queries into text.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>syntraiq.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>syntraiq</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

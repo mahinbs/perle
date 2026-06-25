@@ -2101,16 +2101,34 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
 
 
       {suggestedQuestions.length > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <div className="sub text-sm" style={{ marginBottom: 8 }}>
+        <div style={{ marginTop: 14, width: "100%" }}>
+          <div className="sub text-sm" style={{ marginBottom: 8, textAlign: "left" }}>
             Related questions
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 8,
+              width: "100%",
+            }}
+          >
             {suggestedQuestions.slice(0, 3).map((question) => (
               <button
                 key={question}
-                className="glass-button !px-2 !py-0.5 rounded-sm"
-                style={{ cursor: "pointer" }}
+                type="button"
+                className="glass-button rounded-sm"
+                style={{
+                  cursor: "pointer",
+                  textAlign: "left",
+                  alignSelf: "flex-start",
+                  width: "fit-content",
+                  maxWidth: "min(100%, 360px)",
+                  padding: "8px 12px",
+                  fontSize: "var(--font-sm)",
+                  lineHeight: 1.45,
+                }}
                 onClick={() => _onSearch?.(question, mode)}
               >
                 {question}

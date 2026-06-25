@@ -2303,62 +2303,96 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             />
           )}
 
-          <div className="row gap-[5px] max-md:!gap-[9px] max-md:flex-nowrap" style={{ flexShrink: 0 }}>
-            {/* Attach File - Hide when tool mode is active */}
-            {!toolMode && (
-              <div
-                style={{ position: "relative" }}
-                className="flex gap-0"
-                data-upload-menu
-              >
-                <button
-                  ref={uploadBtnRef}
-                  type="button"
-                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
-                  onClick={openAttachMenu}
-                  aria-label="Upload files"
-                  disabled={isListening}
-                  style={{
-                    padding: hasAnswer ? 6 : 8,
-                    opacity: isListening ? 0.5 : 1,
-                    cursor: isListening ? "not-allowed" : "pointer",
-                    touchAction: "manipulation",
-                  }}
+          <div
+            className="max-md:flex-nowrap"
+            style={{
+              width: "100%",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexShrink: 0,
+              gap: 8,
+            }}
+          >
+            <div
+              className="max-md:gap-[9px]"
+              style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}
+            >
+              {/* Attach File - Hide when tool mode is active */}
+              {!toolMode && (
+                <div
+                  style={{ position: "relative" }}
+                  className="flex gap-0"
+                  data-upload-menu
                 >
-                  <FaPaperclip size={hasAnswer ? 14 : 18} />
-                </button>
-              </div>
-            )}
+                  <button
+                    ref={uploadBtnRef}
+                    type="button"
+                    className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                    onClick={openAttachMenu}
+                    aria-label="Upload files"
+                    disabled={isListening}
+                    style={{
+                      padding: hasAnswer ? 6 : 8,
+                      opacity: isListening ? 0.5 : 1,
+                      cursor: isListening ? "not-allowed" : "pointer",
+                      touchAction: "manipulation",
+                    }}
+                  >
+                    <FaPaperclip size={hasAnswer ? 14 : 18} />
+                  </button>
+                </div>
+              )}
 
-            {/* Model selector — free users see all models; premium models require upgrade */}
-            {!toolMode && showModelSelector && (
-              <div>
-                <LLMModelSelector
-                  selectedModel={selectedModel}
-                  onModelChange={(model) => {
-                    // Support either prop to avoid breaking older call sites/tests
-                    (setSelectedModel ?? onModelChange)(model);
-                    // Save to localStorage immediately for premium users
-                    if (isPremium) {
-                      localStorage.setItem("syntraiq-selected-model", model);
-                    }
-                  }}
-                  isPremium={isPremium}
-                  experienceMode={experienceMode}
-                  onExperienceModeChange={onExperienceModeChange}
-                />
-              </div>
-            )}
+              {/* Model selector — free users see Free + upgrade tiers */}
+              {!toolMode && showModelSelector && (
+                <div>
+                  <LLMModelSelector
+                    selectedModel={selectedModel}
+                    onModelChange={(model) => {
+                      (setSelectedModel ?? onModelChange)(model);
+                      if (isPremium) {
+                        localStorage.setItem("syntraiq-selected-model", model);
+                      }
+                    }}
+                    isPremium={isPremium}
+                    experienceMode={experienceMode}
+                    onExperienceModeChange={onExperienceModeChange}
+                  />
+                </div>
+              )}
+            </div>
 
-            {/* Voice Search (no overlay): start/stop dictation, auto-search on end */}
-            {/* Voice/Search Button Toggle */}
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
+                marginLeft: "auto",
+                flexShrink: 0,
               }}
             >
+              {hasAnswer && !toolMode && (
+                <button
+                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                  onClick={() => {
+                    if (onNewConversation) {
+                      onNewConversation();
+                      setQuery("");
+                    }
+                  }}
+                  disabled={isLoading}
+                  style={{
+                    padding: hasAnswer ? 6 : 8,
+                    fontSize: "var(--font-md)",
+                  }}
+                  aria-label="Start a new conversation"
+                  title="Start a new conversation"
+                >
+                  <FaPen size={hasAnswer ? 14 : 18} />
+                </button>
+              )}
+
               {toolMode ? (
                 <button
                   className="btn !text-black max-md:!px-2 max-md:!py-1 max-md:!text-sm"
@@ -2412,118 +2446,89 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     <span>Generate</span>
                   )}
                 </button>
-              ) : speechSupported ? (
-                <button
-                  className={`btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]${isListening && voiceInputModeRef.current === "dictation" ? " mic-recording" : ""}`}
-                  onClick={() => {
-                    if (isListening && voiceInputModeRef.current === "dictation") {
-                      stopVoiceInput();
-                    } else if (!isListening) {
-                      startVoiceInput("dictation");
+              ) : (
+                <>
+                  {speechSupported && (
+                    <button
+                      className={`btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]${isListening && voiceInputModeRef.current === "dictation" ? " mic-recording" : ""}`}
+                      onClick={() => {
+                        if (isListening && voiceInputModeRef.current === "dictation") {
+                          stopVoiceInput();
+                        } else if (!isListening) {
+                          startVoiceInput("dictation");
+                        }
+                      }}
+                      aria-label={
+                        isListening ? "Stop dictation" : "Dictate message"
+                      }
+                      style={{
+                        padding: hasAnswer ? "4px 6px" : "4px 8px",
+                        fontSize: "var(--font-md)",
+                      }}
+                    >
+                      <MicWaveIcon
+                        size={hasAnswer ? 20 : 25}
+                        active={isListening && voiceInputModeRef.current === "dictation"}
+                      />
+                    </button>
+                  )}
+
+                  {speechSupported && (
+                    <button
+                      className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                      onClick={() => {
+                        try {
+                          if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+                        } catch { }
+                        setIsSpeaking(false);
+                        resetVoiceSession();
+                        localStorage.setItem("syntraiq-voice-session-active", "1");
+                        setShowVoiceOverlay(true);
+                      }}
+                      disabled={isListening || isLoading}
+                      style={{
+                        padding: hasAnswer ? 6 : 8,
+                        opacity: isListening || isLoading ? 0.5 : 1,
+                        cursor: isListening || isLoading ? "not-allowed" : "pointer",
+                      }}
+                      aria-label="Voice conversation"
+                    >
+                      <HeadsetWaveIcon size={hasAnswer ? 22 : 27} />
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
+                    onClick={triggerSearchWithScroll}
+                    disabled={isLoading || !canSubmitSearch}
+                    aria-label={queryLimitReached ? "Upgrade to continue" : "Send message"}
+                    title={
+                      queryLimitReached
+                        ? "Limit reached — upgrade to continue"
+                        : query.trim()
+                          ? "Send"
+                          : uploadedFiles.length > 0
+                            ? "Analyze attached files"
+                            : "Type a message to send"
                     }
-                  }}
-                  aria-label={
-                    isListening ? "Stop dictation" : "Dictate message"
-                  }
-                  style={{
-                    padding: hasAnswer ? "4px 6px" : "4px 8px",
-                    fontSize: "var(--font-md)",
-                  }}
-                >
-                  <MicWaveIcon
-                    size={hasAnswer ? 20 : 25}
-                    active={isListening && voiceInputModeRef.current === "dictation"}
-                  />
-                </button>
-              ) : null}
+                    style={{
+                      padding: hasAnswer ? 6 : 8,
+                      color:
+                        queryLimitReached && canSubmitSearch ? "var(--accent)" : "",
+                      opacity: isLoading || !canSubmitSearch ? 0.45 : 1,
+                      cursor: isLoading || !canSubmitSearch ? "not-allowed" : "pointer",
+                      marginRight: 4,
+                      touchAction: "manipulation",
+                      WebkitTapHighlightColor: "transparent",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {isLoading ? "…" : <IoIosSend size={hasAnswer ? 18 : 22} />}
+                  </button>
+                </>
+              )}
             </div>
-
-            {/* New conversation — available to all; free users limited by daily query cap */}
-            {hasAnswer && (
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                }}
-              >
-                <button
-                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
-                  onClick={() => {
-                    if (onNewConversation) {
-                      onNewConversation();
-                      setQuery("");
-                    }
-                  }}
-                  disabled={isLoading}
-                  style={{
-                    padding: hasAnswer ? 6 : 8,
-                    fontSize: "var(--font-md)",
-                  }}
-                  aria-label="Start a new conversation"
-                  title="Start a new conversation"
-                >
-                  <FaPen size={hasAnswer ? 14 : 18} />
-                </button>
-                {/* Follow-up button removed - using main search icon */}
-              </div>
-            )}
-
-            {(query.trim() || uploadedFiles.length > 0) && (
-            <button
-              type="button"
-              className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
-              onClick={triggerSearchWithScroll}
-              disabled={isLoading || !canSubmitSearch}
-              aria-label={queryLimitReached ? "Upgrade to continue" : "Send message"}
-              title={
-                queryLimitReached
-                  ? "Limit reached — upgrade to continue"
-                  : query.trim()
-                    ? "Send"
-                    : uploadedFiles.length > 0
-                      ? "Analyze attached files"
-                      : "Type a message to send"
-              }
-              style={{
-                padding: hasAnswer ? 6 : 8,
-                color:
-                  queryLimitReached && canSubmitSearch ? "var(--accent)" : "",
-                opacity: isLoading || !canSubmitSearch ? 0.45 : 1,
-                cursor: isLoading || !canSubmitSearch ? "not-allowed" : "pointer",
-                marginRight: 4,
-                touchAction: "manipulation",
-                WebkitTapHighlightColor: "transparent",
-                flexShrink: 0,
-              }}
-            >
-              {isLoading ? "…" : <IoIosSend size={hasAnswer ? 18 : 22} />}
-            </button>
-            )}
-
-            {!query.trim() && uploadedFiles.length === 0 && speechSupported ? (
-              <button
-                className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
-                onClick={() => {
-                  try {
-                    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-                  } catch { }
-                  setIsSpeaking(false);
-                  resetVoiceSession();
-                  localStorage.setItem("syntraiq-voice-session-active", "1");
-                  setShowVoiceOverlay(true);
-                }}
-                disabled={isListening || isLoading}
-                style={{
-                  padding: hasAnswer ? 6 : 8,
-                  color: "",
-                  opacity: isListening || isLoading ? 0.5 : 1,
-                  cursor: isListening || isLoading ? "not-allowed" : "pointer",
-                }}
-              >
-                <HeadsetWaveIcon size={hasAnswer ? 22 : 27} />
-              </button>
-            ) : null}
           </div>
         </div>
 
