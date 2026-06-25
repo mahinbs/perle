@@ -1906,36 +1906,41 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
               }}
             >
               {isStreamingAnswer ? (
-                // Streaming render strategy v2 — feed formatText only
-                // COMPLETE structural blocks (text up to the last blank
-                // line `\n\n`). Markdown blocks (tables, headings,
-                // bullet groups, paragraphs) are separated by blank
-                // lines, so anything before the last `\n\n` is fully
-                // formed and renders identically to the post-stream
-                // pass. That eliminates the broken-tables / fragmented
-                // columns / missed-subheading issues caused by feeding
-                // half-built blocks into the parser.
+                // Streaming render strategy v3 — sanitize the FULL stream
+                // text and run it through formatText on every drip tick.
+                // Same renderer, same preprocessing, same flags as the
+                // post-stream pass. Two stream-only sanitizers fix the
+                // garbage shapes the model emits mid-answer:
                 //
-                // The trailing in-flight block (after the last `\n\n`)
-                // shows as a styled paragraph with inline markdown
-                // (bold/italic/citations) ONLY if it's plain prose. If
-                // it starts with a structural marker (`|`, `#`, `-`,
-                // `*`, `>`), it stays hidden until the next blank line
-                // arrives — no half-rendered table rows, no headings
-                // missing their underline, no broken bullets.
+                //   1. Tables broken by stray blank lines between rows
+                //      (model loves to emit `| h | h |\n\n| r | r |`).
+                //      We merge those so formatText sees one cohesive
+                //      table instead of multiple 1-row fragments.
+                //
+                //   2. Bullets concatenated on a single line
+                //      (`• Item — desc. • Item — desc.`). We split on
+                //      the inline `•` so each becomes its own list item.
+                //
+                // No safe/trailing split — the whole text always renders
+                // with full formatting. Partial tables (header arrived,
+                // separator not yet) briefly show as paragraph text, then
+                // re-render as a table the moment the `|---|` row lands.
+                // That short partial state is fine and is what the user
+                // explicitly asked for ("formatting from first look").
                 (() => {
-                  const text = chunk.text || "";
-                  const lastBlockEnd = text.lastIndexOf("\n\n");
-                  const safe = lastBlockEnd >= 0 ? text.slice(0, lastBlockEnd) : "";
-                  const trailing = (lastBlockEnd >= 0 ? text.slice(lastBlockEnd + 2) : text).trim();
-                  // Trailing block is "structural" if it starts with a
-                  // markdown construct that needs multiple lines to
-                  // render correctly. Keep it hidden until the block
-                  // closes with the next blank line.
-                  const trailingIsStructural =
-                    /^[#>|\-*+]/.test(trailing) ||
-                    /^\d+\.\s/.test(trailing) ||
-                    /^```/.test(trailing);
+                  const raw = chunk.text || "";
+                  // 1. Merge blank lines that appear *between* consecutive
+                  //    pipe-rows so the whole table is parsed as one block.
+                  //    Repeated replace handles multi-line gaps.
+                  let cleaned = raw;
+                  for (let i = 0; i < 3; i++) {
+                    cleaned = cleaned.replace(
+                      /(\|[^\n]*\|[ \t]*\n)[ \t]*\n+([ \t]*\|)/g,
+                      "$1$2",
+                    );
+                  }
+                  // 2. Split inline `• ` bullets onto their own lines.
+                  cleaned = cleaned.replace(/([^\n])[ \t]+•[ \t]+/g, "$1\n• ");
                   const streamingStyle: React.CSSProperties = {
                     lineHeight: 1.75,
                     wordBreak: "break-word",
@@ -1944,12 +1949,7 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                   };
                   return (
                     <div className="answer-streaming-text" style={streamingStyle}>
-                      {safe && formatText(safe, false, false)}
-                      {trailing && !trailingIsStructural && (
-                        <p style={{ margin: "8px 0", lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
-                          {trailing}
-                        </p>
-                      )}
+                      {formatText(cleaned, false, false)}
                       {index === chunks.length - 1 && (
                         <span className="answer-streaming-cursor" aria-hidden />
                       )}
