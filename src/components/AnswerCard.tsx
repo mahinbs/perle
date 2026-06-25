@@ -1929,18 +1929,90 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                 // explicitly asked for ("formatting from first look").
                 (() => {
                   const raw = chunk.text || "";
-                  // 1. Merge blank lines that appear *between* consecutive
-                  //    pipe-rows so the whole table is parsed as one block.
-                  //    Repeated replace handles multi-line gaps.
                   let cleaned = raw;
+
+                  // STEP 1: Merge blank lines between consecutive pipe-rows.
+                  // The model emits `| h | h |\n\n| r | r |` and breaks the
+                  // table into fragments. Repeat to collapse multi-line gaps.
                   for (let i = 0; i < 3; i++) {
                     cleaned = cleaned.replace(
                       /(\|[^\n]*\|[ \t]*\n)[ \t]*\n+([ \t]*\|)/g,
                       "$1$2",
                     );
                   }
-                  // 2. Split inline `• ` bullets onto their own lines.
+
+                  // STEP 2: Split inline `• ` bullets onto their own lines.
                   cleaned = cleaned.replace(/([^\n])[ \t]+•[ \t]+/g, "$1\n• ");
+
+                  // STEP 3: Normalize tables. Walk consecutive pipe-row
+                  // runs and rebuild them with exactly ONE separator row
+                  // (the second line). Multiple separator rows mid-run —
+                  // which the model emits when it thinks each pair is its
+                  // own table — get DROPPED so the renderer sees one
+                  // cohesive table.
+                  {
+                    const isPipeRow = (s: string) =>
+                      /^\s*\|.*\|\s*$/.test(s) && s.trim().length > 1;
+                    const isSepRow = (s: string) =>
+                      /^\s*\|[\s\-:|]+\|\s*$/.test(s) && /-/.test(s);
+                    const lines = cleaned.split("\n");
+                    const out: string[] = [];
+                    let i = 0;
+                    while (i < lines.length) {
+                      if (!isPipeRow(lines[i])) {
+                        out.push(lines[i]);
+                        i++;
+                        continue;
+                      }
+                      // Collect the entire run of consecutive pipe-rows.
+                      const run: string[] = [];
+                      while (i < lines.length && isPipeRow(lines[i])) {
+                        run.push(lines[i]);
+                        i++;
+                      }
+                      // The header is the first non-separator row.
+                      let header = run[0];
+                      let headerIdx = 0;
+                      while (headerIdx < run.length && isSepRow(run[headerIdx])) {
+                        headerIdx++;
+                        header = run[headerIdx];
+                      }
+                      // Data rows = every non-separator row after the header.
+                      const dataRows: string[] = [];
+                      for (let j = 0; j < run.length; j++) {
+                        if (j === headerIdx) continue;
+                        if (isSepRow(run[j])) continue;
+                        dataRows.push(run[j]);
+                      }
+                      if (header) {
+                        const colCount =
+                          (header.match(/\|/g)?.length ?? 1) - 1;
+                        const sep =
+                          colCount >= 1
+                            ? "|" + " --- |".repeat(colCount)
+                            : "|---|";
+                        out.push(header);
+                        out.push(sep);
+                        for (const d of dataRows) out.push(d);
+                      }
+                    }
+                    cleaned = out.join("\n");
+                  }
+
+                  // STEP 4: Force a blank line BEFORE any emoji that's glued
+                  //         to the end of a sentence/bullet so it becomes a
+                  //         heading instead of inline text. Uses unicode
+                  //         ranges + `u` flag so multi-byte emoji match.
+                  cleaned = cleaned.replace(
+                    /([.!?…\)\]])[ \t]*([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2700}-\u{27BF}])[ \t]+([A-Z])/gu,
+                    "$1\n\n$2 $3",
+                  );
+                  // Also catch the case where emoji is glued WITHOUT
+                  // sentence-ending punctuation (rare but happens).
+                  cleaned = cleaned.replace(
+                    /([a-z0-9])[ \t]+([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}])[ \t]+([A-Z][a-z])/gu,
+                    "$1\n\n$2 $3",
+                  );
                   const streamingStyle: React.CSSProperties = {
                     lineHeight: 1.75,
                     wordBreak: "break-word",
