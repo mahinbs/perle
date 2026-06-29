@@ -394,22 +394,18 @@ export function readOAuthReturnState(): { returnTo?: string; plan?: string } | u
   }
 }
 
-async function buildGoogleAuthUrl(returnState?: { returnTo?: string; plan?: string }): Promise<string> {
-  const params = new URLSearchParams();
-  if (returnState?.returnTo) params.set('returnTo', returnState.returnTo);
-  if (returnState?.plan) params.set('plan', returnState.plan);
-
+async function buildGoogleAuthUrl(_returnState?: { returnTo?: string; plan?: string }): Promise<string> {
   if (Capacitor.isNativePlatform()) {
-    // ── NATIVE (Android / iOS): use the Supabase SDK to generate a PKCE-aware URL ──
-    //
-    // The SDK stores a code_verifier in the app's localStorage. When the callback
-    // deep-link arrives, supabase.auth.exchangeCodeForSession() uses that stored
-    // verifier to exchange the code — no backend exchange endpoint needed.
+    // Native: verifier in app localStorage → deep link → exchangeCodeForSession
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: NATIVE_OAUTH_REDIRECT,
-        skipBrowserRedirect: true, // we open the URL ourselves via OAuthSession
+        skipBrowserRedirect: true,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'select_account',
+        },
       },
     });
 
@@ -419,12 +415,28 @@ async function buildGoogleAuthUrl(returnState?: { returnTo?: string; plan?: stri
     return data.url;
   }
 
-  // ── WEB: go through the backend as before ──
-  if (!API_URL) {
-    throw new Error('Backend API not configured (VITE_API_URL).');
+  // Web: same Supabase PKCE flow — verifier must live in this browser tab
+  if (typeof window === 'undefined') {
+    throw new Error('Google sign-in is only available in the browser.');
   }
-  const qs = params.toString();
-  return `${API_URL.replace(/\/+$/, '')}/api/auth/google${qs ? `?${qs}` : ''}`;
+
+  const webRedirect = `${window.location.origin}/auth/callback`;
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: webRedirect,
+      skipBrowserRedirect: true,
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'select_account',
+      },
+    },
+  });
+
+  if (error || !data.url) {
+    throw new Error(error?.message || 'Failed to build Google sign-in URL');
+  }
+  return data.url;
 }
 
 function parseOAuthCallbackParams(rawUrl: string): URLSearchParams {
@@ -484,14 +496,35 @@ export async function completeGoogleOAuthFromCallbackUrl(callbackUrl: string): P
     return completeWithSupabaseSession(accessToken, refreshToken, expiresAt, expiresIn ? Number(expiresIn) : undefined);
   }
 
-  // ── Legacy alternate code paths ──
+  // Legacy backend one-time code (not Supabase PKCE)
   const redeemCode = params.get('oauth_code');
   if (redeemCode) {
-    const { data, error } = await supabase.auth.exchangeCodeForSession(callbackUrl);
-    if (error || !data.session) {
-      throw new Error(error?.message || 'Google sign-in failed. Please try again.');
+    if (!API_URL) {
+      throw new Error('Backend API not configured.');
     }
-    return completeWithSupabaseSession(data.session.access_token, data.session.refresh_token, data.session.expires_at, data.session.expires_in);
+    const response = await fetch(`${API_URL.replace(/\/+$/, '')}/api/auth/oauth/redeem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: redeemCode }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to complete Google sign-in');
+    }
+    const data = (await response.json()) as AuthResponse & {
+      returnState?: { returnTo?: string; plan?: string };
+    };
+    if (data.token) {
+      setAuthCredentials(data.token, data.refreshToken, data.expiresAt);
+    }
+    if (data.user) {
+      setUserData(data.user);
+    }
+    notifyAuthChange();
+    if (data.returnState?.returnTo || data.returnState?.plan) {
+      storeOAuthReturnState(data.returnState);
+    }
+    return data;
   }
 
   throw new Error('Missing sign-in token. Please try Google sign-in again.');
@@ -595,7 +628,11 @@ export function onNativeOAuthBrowserDismissed(listener: () => void): () => void 
 
 /** Called on /auth/callback for web redirects after Google sign-in. */
 export async function completeGoogleOAuth(): Promise<AuthResponse> {
-  return completeGoogleOAuthFromCallbackUrl(window.location.href);
+  const result = await completeGoogleOAuthFromCallbackUrl(window.location.href);
+  if (!Capacitor.isNativePlatform()) {
+    window.history.replaceState({}, document.title, '/auth/callback');
+  }
+  return result;
 }
 
 export async function logout(): Promise<void> {
