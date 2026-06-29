@@ -1,16 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * Frontend Supabase client — used exclusively for Google OAuth on native platforms.
+ * Frontend Supabase client — used for Google OAuth on web and native.
  *
  * The anon key is the PUBLIC key (safe to bundle in frontend code).
- * It only has the same permissions as an unauthenticated user.
- *
- * We use this client to:
- *   1. Generate the OAuth URL with a proper PKCE code_verifier stored in localStorage
- *   2. Exchange the authorization code for a session after the deep-link callback
- *
- * All other backend communication goes through the existing REST API (api.syntraiq.ai).
+ * Generates PKCE-aware OAuth URLs and exchanges the callback code in the
+ * same browser / WebView where sign-in started.
  */
 const SUPABASE_URL =
   (import.meta.env.VITE_SUPABASE_URL as string | undefined) ||
