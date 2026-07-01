@@ -15,7 +15,15 @@
  * so no single key hits its per-minute rate limit first.
  */
 
-export type KeyProvider = 'openai' | 'gemini' | 'grok' | 'claude' | 'exa';
+export type KeyProvider =
+  | 'openai'
+  | 'gemini'
+  | 'grok'
+  | 'claude'
+  | 'exa'
+  | 'deepseek'
+  | 'kimi'
+  | 'perplexity';
 
 // Candidate env var names per provider, in preference order. The FIRST one that
 // is set becomes the "primary" (preserving the previous fallback order exactly).
@@ -25,6 +33,9 @@ const CANDIDATES: Record<KeyProvider, string[]> = {
   grok: ['XAI_API_KEY', 'X_API_KEY'],
   claude: ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'],
   exa: ['EXA_API_KEY'],
+  deepseek: ['DEEPSEEK_API_KEY'],
+  kimi: ['MOONSHOT_API_KEY', 'KIMI_API_KEY'],
+  perplexity: ['PERPLEXITY_API_KEY', 'PPLX_API_KEY'],
 };
 
 function splitAdd(pool: string[], raw?: string): void {

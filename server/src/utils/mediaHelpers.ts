@@ -431,6 +431,173 @@ export async function saveMediaToConversationHistory(
   }
 }
 
+// ── Smart edit-vs-create intent classification ────────────────────────────
+//
+// The keyword-only `isEditRequest` above misfires on phrasings like
+// "create a brighter version" (classified as new creation because of the
+// "create a" override) when the user clearly means EDIT, or "make a forest
+// scene" after a robot image (classified as edit by the "make" verb when
+// the user actually wants a new image). To fix this without breaking the
+// fast path, we add an LLM-backed classifier that ONLY runs when the
+// keyword pass is uncertain.
+//
+//   1. Hard "definitely edit" signals (pronouns to prior, explicit
+//      "edit"/"change this") → edit, no LLM call.
+//   2. Hard "definitely create" signals (totally different subject, very
+//      long detailed prompt) → create, no LLM call.
+//   3. Anything else → tiny gemini-lite call (~300ms, ~$0.0001) returns a
+//      single token EDIT or CREATE.
+//   4. LLM timeout/failure → default to EDIT when a previous image exists,
+//      since "treat it as a continuation" is the recoverable mistake; the
+//      user can always say "no, fresh image of X" next turn. The opposite
+//      mistake (treating an edit as a new image) loses the source image
+//      and forces the user to re-upload.
+
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getApiKey } from './apiKeys.js';
+
+function _withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('TIMEOUT')), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); })
+     .catch((e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+export type ImageIntent = 'edit' | 'create';
+
+// Decision cache keyed on "<lastPrompt>||<currentPrompt>". Short TTL because
+// the same pair shouldn't change meaning, but we don't want unbounded growth.
+const INTENT_CACHE = new Map<string, { intent: ImageIntent; ts: number }>();
+const INTENT_CACHE_TTL_MS = 10 * 60 * 1000;
+const INTENT_CACHE_MAX = 500;
+
+function intentCacheKey(last: string, current: string): string {
+  return `${last.trim().toLowerCase()}||${current.trim().toLowerCase()}`;
+}
+
+function getCachedIntent(last: string, current: string): ImageIntent | null {
+  const key = intentCacheKey(last, current);
+  const hit = INTENT_CACHE.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.ts > INTENT_CACHE_TTL_MS) {
+    INTENT_CACHE.delete(key);
+    return null;
+  }
+  return hit.intent;
+}
+
+function setCachedIntent(last: string, current: string, intent: ImageIntent): void {
+  if (INTENT_CACHE.size >= INTENT_CACHE_MAX) {
+    // Crude bound — drop the oldest 100 entries.
+    const entries = Array.from(INTENT_CACHE.entries()).sort((a, b) => a[1].ts - b[1].ts);
+    for (let i = 0; i < 100 && i < entries.length; i++) INTENT_CACHE.delete(entries[i][0]);
+  }
+  INTENT_CACHE.set(intentCacheKey(last, current), { intent, ts: Date.now() });
+}
+
+/** Strong "definitely a fresh image" signal — overrides edit guess. */
+function isDefinitelyCreate(prompt: string): boolean {
+  const p = prompt.toLowerCase().trim();
+  // Very long detailed prompts (>25 words) are almost never edit instructions.
+  const wordCount = p.split(/\s+/).length;
+  if (wordCount > 25) return true;
+  // Explicit "new image" / "different image" / "another image"
+  if (/\b(new|different|another|fresh|separate|brand[\s-]?new)\s+(image|picture|photo|version of a|version with)\b/.test(p)) return true;
+  // "Image of <noun>" with no reference to previous → describes a wholly new scene
+  if (/^(an?|the)\s+(image|picture|photo|illustration|painting|drawing|render)\s+of\s+/.test(p)) return true;
+  return false;
+}
+
+/**
+ * LLM-based intent classifier — call only for ambiguous cases. Uses Gemini's
+ * cheapest fast model so the latency budget is ~300-500ms and cost is
+ * trivial. Returns null on any error / timeout so the caller can fall back.
+ */
+async function classifyImageIntentWithLLM(
+  currentPrompt: string,
+  lastPrompt: string,
+): Promise<ImageIntent | null> {
+  const apiKey = getApiKey('gemini');
+  if (!apiKey) return null;
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const sys = `You classify whether a user's image prompt is asking to EDIT the previous image or CREATE a brand-new unrelated image.
+
+PREVIOUS IMAGE PROMPT: "${lastPrompt}"
+NEW USER MESSAGE: "${currentPrompt}"
+
+Decide:
+- EDIT — the new message is a modification, adjustment, addition, removal, restyling, recoloring, continuation, or variation of the previous image. Even phrasings like "create a brighter version", "make a version with X", "generate the same scene but Y" count as EDIT when they reference or build on the previous image.
+- CREATE — the new message describes a completely different, unrelated subject or scene with no meaningful connection to the previous image.
+
+Output EXACTLY one word: EDIT or CREATE. Nothing else.`;
+    const res = await _withTimeout(
+      model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: sys }] }],
+        generationConfig: { maxOutputTokens: 4, temperature: 0 },
+      }),
+      1500,
+    );
+    const text = (res as any)?.response?.text?.()?.trim?.().toUpperCase() ?? '';
+    if (text.startsWith('EDIT')) return 'edit';
+    if (text.startsWith('CREATE')) return 'create';
+    return null;
+  } catch (e: any) {
+    console.warn('Intent classifier LLM failed:', e?.message || e);
+    return null;
+  }
+}
+
+/**
+ * Final intent decision for the route layer. Always returns 'edit' or
+ * 'create' — never null. Use this instead of calling isEditRequest()
+ * directly when you have a previous image and want robust intent.
+ *
+ *   1. No previous image → 'create' (nothing to edit).
+ *   2. Strong "definitely create" linguistic signal → 'create'.
+ *   3. Strong "definitely edit" via isEditRequest() keyword pass → 'edit'.
+ *   4. Ambiguous → LLM classifier (cached).
+ *   5. LLM fails → 'edit' as the recoverable default.
+ */
+export async function resolveImageIntent(
+  currentPrompt: string,
+  lastPrompt: string | undefined,
+): Promise<ImageIntent> {
+  if (!lastPrompt) return 'create';
+
+  if (isDefinitelyCreate(currentPrompt)) {
+    console.log(`🧭 Intent: CREATE (strong signal)`);
+    return 'create';
+  }
+
+  if (isEditRequest(currentPrompt, lastPrompt)) {
+    console.log(`🧭 Intent: EDIT (keyword pass)`);
+    return 'edit';
+  }
+
+  // Ambiguous — try cache, then LLM.
+  const cached = getCachedIntent(lastPrompt, currentPrompt);
+  if (cached) {
+    console.log(`🧭 Intent: ${cached.toUpperCase()} (cached)`);
+    return cached;
+  }
+
+  const llmIntent = await classifyImageIntentWithLLM(currentPrompt, lastPrompt);
+  if (llmIntent) {
+    setCachedIntent(lastPrompt, currentPrompt, llmIntent);
+    console.log(`🧭 Intent: ${llmIntent.toUpperCase()} (LLM classifier)`);
+    return llmIntent;
+  }
+
+  // LLM unavailable — default to EDIT since a previous image exists. Treating
+  // an edit as create loses the source image; treating a create as edit just
+  // gives the user a related result they can correct with the next prompt.
+  console.log(`🧭 Intent: EDIT (fallback default — LLM unavailable)`);
+  return 'edit';
+}
+
 /**
  * Download image from URL and convert to data URL (for passing to AI as reference)
  */

@@ -456,6 +456,94 @@ export async function generateVideoWithOpenAI(
   };
 }
 
+/**
+ * xAI Grok video generation. Verified live against the deployment's key:
+ *   POST /v1/videos/generations  → returns {request_id}   (HTTP 200)
+ *   GET  /v1/videos/{request_id} → 202 {status:"pending"} → 200 {status:"done", video:{url}}
+ *
+ * Generation took ~8s for an 8-second clip. We poll for up to 120s before
+ * giving up so the request can't hang the fallback chain forever.
+ *
+ * Note: xAI's `grok-imagine-video` does not honour the duration/aspect args
+ * — it returns a fixed-length clip. We respect that and report whatever
+ * duration the response says.
+ */
+export async function generateVideoWithGrok(
+  prompt: string,
+  _duration: number = 5,
+  aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
+  quality: 'standard' | 'high' = 'standard',
+): Promise<GeneratedVideo | null> {
+  const apiKey = process.env.XAI_API_KEY || process.env.X_API_KEY;
+  if (!apiKey) {
+    console.warn('⚠️ xAI API key not configured.');
+    return null;
+  }
+  const model = quality === 'high' ? 'grok-imagine-video-1.5' : 'grok-imagine-video';
+  console.log('═'.repeat(60));
+  console.log(`🎥 [GROK ${model}] Generating video (fallback)`);
+  console.log(`   Prompt: "${prompt}"`);
+  console.log('═'.repeat(60));
+
+  // 1) Kick off the async job.
+  const createRes = await fetch('https://api.x.ai/v1/videos/generations', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, prompt, n: 1 }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!createRes.ok) {
+    const errText = await createRes.text();
+    console.error(`Grok video create failed (${createRes.status}):`, errText.slice(0, 300));
+    return null;
+  }
+  const createData: any = await createRes.json();
+  const requestId: string | undefined = createData?.request_id;
+  if (!requestId) {
+    console.error('Grok video: no request_id in response');
+    return null;
+  }
+  console.log(`✅ Grok video job created: ${requestId}`);
+
+  // 2) Poll until done (cap ~120s — typical completion is 8-30s).
+  const POLL_INTERVAL_MS = 4_000;
+  const MAX_WAIT_MS = 120_000;
+  const startTs = Date.now();
+  while (Date.now() - startTs < MAX_WAIT_MS) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    try {
+      const pollRes = await fetch(`https://api.x.ai/v1/videos/${requestId}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const pollData: any = await pollRes.json();
+      const status = pollData?.status;
+      if (status === 'done' || status === 'completed' || status === 'success') {
+        const url: string | undefined = pollData?.video?.url || pollData?.url;
+        const dur: number = pollData?.video?.duration ?? 8;
+        if (!url) {
+          console.error('Grok video done but no url in response:', pollData);
+          return null;
+        }
+        const width = aspectRatio === '9:16' ? 720 : 1280;
+        const height = aspectRatio === '9:16' ? 1280 : 720;
+        console.log(`✅ Grok video ready in ${((Date.now() - startTs) / 1000).toFixed(1)}s`);
+        return { url, prompt, duration: dur, width, height };
+      }
+      if (status === 'failed' || status === 'error') {
+        console.error('Grok video failed:', pollData);
+        return null;
+      }
+      // Still pending — keep polling.
+      console.log(`⏳ Grok video ${requestId} status=${status} progress=${pollData?.progress ?? '?'}`);
+    } catch (e: any) {
+      console.warn('Grok video poll threw, retrying:', e?.message || e);
+    }
+  }
+  console.warn(`Grok video timed out after ${MAX_WAIT_MS / 1000}s — aborting`);
+  return null;
+}
+
 // Main function - Gemini first, OpenAI as fallback
 export async function generateVideo(
   prompt: string,
@@ -482,6 +570,7 @@ export async function generateVideo(
   }
 
   // Try OpenAI fallback
+  let openaiError: VideoGenerationError | null = null;
   try {
     console.log('🔄 Trying OpenAI fallback...');
     const openaiVideo = await generateVideoWithOpenAI(prompt, duration, aspectRatio);
@@ -490,19 +579,40 @@ export async function generateVideo(
     }
   } catch (error: unknown) {
     if (error instanceof VideoGenerationError) {
-      throw error;
+      // Don't throw yet — give Grok one last shot before surfacing the error.
+      openaiError = error;
+      console.warn(`⚠️ OpenAI failed (${error.errorCode}), trying Grok fallback...`);
+    } else {
+      console.error('⚠️ OpenAI video generation failed:', error);
     }
-    console.error('⚠️ OpenAI video generation failed:', error);
+  }
+
+  // Try xAI Grok as third fallback. Grok Imagine Video doesn't accept a
+  // reference image, so we only call it for pure text-to-video — passing a
+  // ref would silently ignore it which is worse than skipping the rung.
+  if (!referenceImageDataUrl && !referenceVideoFileUri) {
+    try {
+      console.log('🔄 Trying Grok Imagine Video fallback...');
+      const grokVideo = await generateVideoWithGrok(prompt, duration, aspectRatio);
+      if (grokVideo) {
+        return grokVideo;
+      }
+    } catch (error: unknown) {
+      console.error('⚠️ Grok video generation failed:', error);
+    }
+  } else {
+    console.log('ℹ️ Skipping Grok video fallback — reference media not supported by grok-imagine-video');
   }
 
   // No video providers available
   console.error('❌ All video generation providers failed or unavailable');
   console.error('   - Gemini Veo: Failed');
   console.error('   - OpenAI Sora: Failed or unavailable');
+  console.error('   - Grok Imagine Video: Failed or unavailable');
 
-  if (geminiError) {
-    throw geminiError;
-  }
+  // Surface the most informative error we collected (Gemini first, then OpenAI).
+  if (geminiError) throw geminiError;
+  if (openaiError) throw openaiError;
 
   return null;
 }

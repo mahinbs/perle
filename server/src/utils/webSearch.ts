@@ -396,7 +396,51 @@ export function isSmallTalkQuery(query: string): boolean {
     /what'?s\s+your\s+name\??/i,
   ];
 
-  return smallTalkPatterns.some((p) => p.test(lower));
+  if (smallTalkPatterns.some((p) => p.test(lower))) return true;
+
+  // Detect greetings written in non-Latin scripts (skips search and switches to conversational mode)
+  const multilingualGreetings = [
+    // Tamil
+    /நீங்கள்\s*எப்படி/,   // "How are you" (formal)
+    /நீ\s*எப்படி/,        // "How are you" (informal)
+    /வணக்கம்/,            // Vanakkam (Hello)
+    /நன்றி/,              // Thank you
+    /காலை\s*வணக்கம்/,    // Good morning
+    /மாலை\s*வணக்கம்/,    // Good evening
+    // Hindi / Devanagari
+    /आप\s*कैसे\s*हैं/,     // How are you (formal)
+    /तुम\s*कैसे\s*हो/,     // How are you (informal)
+    /नमस्ते/,               // Namaste
+    /नमस्कार/,              // Namaskar
+    /धन्यवाद/,              // Thank you
+    /शुक्रिया/,              // Shukriya (thanks)
+    /सुप्रभात/,              // Good morning
+    /अलविदा/,               // Goodbye
+    // Telugu
+    /మీరు\s*ఎలా\s*ఉన్నారు/,
+    /నమస్కారం/,
+    /ధన్యవాదాలు/,
+    // Kannada
+    /ನೀವು\s*ಹೇಗಿದ್ದೀರಿ/,
+    /ನಮಸ್ಕಾರ/,
+    /ಧನ್ಯವಾದ/,
+    // Malayalam
+    /നിങ്ങൾ\s*എങ്ങനെ/,
+    /നമസ്കാരം/,
+    /നന്ദി/,
+    // Bengali
+    /আপনি\s*কেমন\s*আছেন/,
+    /নমস্কার/,
+    /ধন্যবাদ/,
+    // Arabic / Urdu
+    /كيف\s*حالك/,
+    /مرحبا/,
+    /شكرا/,
+    /السلام\s*عليكم/,
+  ];
+  if (multilingualGreetings.some((p) => p.test(query))) return true;
+
+  return false;
 }
 
 /**
@@ -491,9 +535,18 @@ export function isExplicitWebSearchRequest(query: string): boolean {
 
 /**
  * Detect continuation follow-ups that should inherit previous topic context.
+ *
+ * Two classes are caught:
+ *   1. Phrase-based ("explain more", "tell me more", "go deeper" …)
+ *   2. Short affirmative/action requests that obviously refer back to the
+ *      previous turn — "yes", "sure", "ok", "do it", "can you do it",
+ *      "go ahead", "please do", "yeah do that", etc. Without this, the
+ *      model treats "can you do it?" as a brand-new standalone query
+ *      about the *phrase* "you can do it" instead of executing the
+ *      previously-described task.
  */
 export function isContinuationFollowUpQuery(query: string): boolean {
-  const lower = query.toLowerCase().trim();
+  const lower = query.toLowerCase().trim().replace(/[?!.,]+$/g, '');
   if (!lower) return false;
 
   const continuationPhrases = [
@@ -510,8 +563,67 @@ export function isContinuationFollowUpQuery(query: string): boolean {
     'and more',
     'what more',
   ];
+  if (continuationPhrases.some((p) => lower.includes(p))) return true;
 
-  return continuationPhrases.some((p) => lower.includes(p));
+  // Short affirmative / action follow-ups. These are short queries that
+  // only make sense in light of the previous turn.
+  const affirmativeFollowUps = new Set([
+    'yes',
+    'yes please',
+    'yeah',
+    'yep',
+    'yup',
+    'sure',
+    'ok',
+    'okay',
+    'k',
+    'do it',
+    'do that',
+    'please do',
+    'please do it',
+    'go ahead',
+    'go for it',
+    'proceed',
+    'please',
+    'show me',
+    'can you',
+    'can you do it',
+    'can you do that',
+    'could you',
+    'could you do it',
+    'would you',
+    'will you',
+    'will you do it',
+    'try it',
+    'try',
+    'give it a shot',
+    'attempt it',
+    'go on',
+    'continue please',
+    'next',
+    'more',
+    'more please',
+    'yes do it',
+    'yes please do it',
+    'sure do it',
+    'ok do it',
+    'alright',
+  ]);
+  if (affirmativeFollowUps.has(lower)) return true;
+
+  // Very short query (≤ 4 words) starting with a request verb that
+  // strongly implies "act on the previous turn".
+  const words = lower.split(/\s+/).filter(Boolean);
+  if (words.length <= 4) {
+    if (/^(do|make|create|generate|build|write|give|show|tell|describe|list)\b/.test(lower)) {
+      return true;
+    }
+    if (/^(can|could|would|will|please)\b/.test(lower) && words.length <= 6) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -691,6 +803,7 @@ CRITICAL INSTRUCTIONS:
 3. Always cite sources using [1], [2], [3], etc. notation from the numbered search results above
 4. ⚠️ NEVER use the phrase "[Context provided]" - ONLY cite numbered sources like [1], [2], etc.
 5. ALL facts MUST come from search results with [source number] citations
+6. 🌐 LANGUAGE RULE: Write the FULL answer in the same language and script as the user's query. If the user asked in Tamil, answer in Tamil. If in Hindi, answer in Hindi. If in English, answer in English. This applies to EVERY part of your reply — headings, bullets, citations. Never switch to English if the user did not write in English.
 
 GENERAL GUIDELINES:
 1. Use only facts supported by the search results above.

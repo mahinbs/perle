@@ -50,7 +50,28 @@ export type LLMModel =
   | 'gemini-pro'
   | 'gemini-pro-vision'
   | 'llama-2'
-  | 'mistral-7b';
+  | 'mistral-7b'
+  // DeepSeek
+  | 'deepseek-v3.2'
+  | 'deepseek-v3.2-exp'
+  | 'deepseek-v3.1'
+  | 'deepseek-r1'
+  // Kimi / Moonshot
+  | 'kimi-k2'
+  | 'kimi-k2.5'
+  | 'kimi-k2-thinking'
+  // Perplexity (Sonar family)
+  | 'perplexity-sonar'
+  | 'perplexity-sonar-pro'
+  | 'perplexity-sonar-reasoning-pro'
+  | 'perplexity-deep-research'
+  | 'perplexity-adv-deep-research';
+
+export interface FileAttachment {
+  dataUrl: string;
+  mimeType: string;
+  filename?: string;
+}
 
 export interface FileAttachment {
   dataUrl: string;
@@ -76,6 +97,8 @@ export interface AnswerChunk {
 export interface ConversationMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** Group chat: which AI friend sent this assistant message */
+  friendId?: string;
 }
 
 export interface UserLocalContext {

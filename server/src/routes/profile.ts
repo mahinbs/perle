@@ -6,11 +6,13 @@ import multer from 'multer';
 
 const router = Router();
 
-// Configure multer for profile picture uploads (2MB limit)
+// Configure multer for profile picture uploads. Bumped from 2 MB to 20 MB
+// on user request — same cap as chat/search attachments. Modern phone
+// camera selfies easily exceed 2 MB.
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB limit
+    fileSize: 20 * 1024 * 1024, // 20 MB limit
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
@@ -199,20 +201,18 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
 
     const updates = parse.data;
 
-    // Update user name if provided (update in Supabase Auth metadata)
+    // Update user name if provided. We MUST use the admin API here —
+    // supabase.auth.updateUser only works for the currently-signed-in
+    // session, which doesn't exist server-side. For Google OAuth users
+    // this is the only path that actually persists the name change.
     if (updates.name) {
-      const authHeader = req.headers.authorization;
-      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-      
-      if (token) {
-        const { error: updateError } = await supabase.auth.updateUser({
-          data: { name: updates.name.trim() }
-        });
-
-        if (updateError) {
-          console.error('Update user name error:', updateError);
-          // Don't fail, just log it
-        }
+      const { error: updateError } = await supabase.auth.admin.updateUserById(
+        req.userId,
+        { user_metadata: { name: updates.name.trim() } },
+      );
+      if (updateError) {
+        console.error('Update user name error:', updateError);
+        // Don't fail the whole request — profile settings can still save.
       }
     }
 
@@ -355,9 +355,12 @@ router.post('/profile/upload-picture', authenticateToken, upload.single('picture
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    // Check file size (2MB limit)
-    if (req.file.size > 2 * 1024 * 1024) {
-      return res.status(400).json({ error: 'File size exceeds 2MB limit' });
+    // Check file size (20MB limit — matches global MAX_UPLOAD_BYTES). The
+    // hardcoded 2MB cap here was rejecting normal phone-camera photos and
+    // showing "Failed to upload profile picture" with no useful detail.
+    const MAX_PROFILE_PIC_BYTES = 20 * 1024 * 1024;
+    if (req.file.size > MAX_PROFILE_PIC_BYTES) {
+      return res.status(400).json({ error: 'File size exceeds 20MB limit' });
     }
 
     // Generate unique filename: {userId}/{timestamp}-{random}.{ext}
