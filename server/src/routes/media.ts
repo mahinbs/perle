@@ -5,12 +5,13 @@ import { generateImage } from '../utils/imageGeneration.js';
 import { generateVideo, generateVideoFromImage, uploadVideoToGeminiFileAPI, VideoGenerationError } from '../utils/videoGeneration.js';
 import { supabase } from '../lib/supabase.js';
 import multer from 'multer';
-import { 
-  isEditRequest, 
-  getLastGeneratedImage, 
-  getLastGeneratedVideo, 
+import {
+  isEditRequest,
+  resolveImageIntent,
+  getLastGeneratedImage,
+  getLastGeneratedVideo,
   saveMediaToConversationHistory,
-  downloadImageAsDataUrl 
+  downloadImageAsDataUrl
 } from '../utils/mediaHelpers.js';
 
 const router = Router();
@@ -19,7 +20,7 @@ const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit for images
+    fileSize: 20 * 1024 * 1024, // 20 MB limit for reference images
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
@@ -33,7 +34,10 @@ const upload = multer({
 // Image generation schema
 const imageSchema = z.object({
   prompt: z.string().min(1, 'Prompt cannot be empty').max(500, 'Prompt too long'),
-  aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']).optional().default('1:1')
+  aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']).optional().default('1:1'),
+  // Premium users can pin a preferred image model; free users always get auto.
+  // 'auto' (default) runs the full Gemini → OpenAI → Grok fallback chain.
+  imageModel: z.enum(['auto', 'nano-banana', 'imagen-4', 'gpt-image-1', 'grok-image']).optional().default('auto')
 });
 
 // Video generation schema (handles both JSON and FormData)
@@ -63,27 +67,25 @@ router.post('/generate-image', authenticateToken, upload.single('referenceImage'
       });
     }
 
-    const { prompt, aspectRatio } = parse.data;
+    const { prompt, aspectRatio, imageModel } = parse.data;
     
-    // Check if this is an edit request and retrieve previous image as reference
+    // Edit vs. create detection — uses the hybrid keyword + LLM classifier
+    // so prompts like "create a brighter version" or "make a forest scene"
+    // are interpreted by *meaning*, not just by leading verb. See
+    // resolveImageIntent for the full decision tree.
     let referenceImageDataUrl: string | undefined;
     if (req.userId && !req.file) {
-      // Get last image first to check context
       const lastImage = await getLastGeneratedImage(req.userId);
-      
-      // Check if this is an edit (with conversation context)
-      const isEdit = isEditRequest(prompt, lastImage?.prompt);
-      
-      if (isEdit && lastImage) {
-        console.log('🔍 Edit request detected - looking for previous image to use as reference...');
-        console.log(`🎨 Found previous image to edit: ${lastImage.prompt}`);
-        // Download and convert to data URL for AI reference
-        referenceImageDataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
+      const intent = await resolveImageIntent(prompt, lastImage?.prompt);
+
+      if (intent === 'edit' && lastImage) {
+        console.log(`🎨 Editing previous image: "${lastImage.prompt}"`);
+        referenceImageDataUrl = (await downloadImageAsDataUrl(lastImage.url)) || undefined;
         if (referenceImageDataUrl) {
           console.log('✅ Using previous image as reference for editing');
         }
-      } else if (isEdit && !lastImage) {
-        console.log('⚠️ Edit request detected but no previous image found');
+      } else if (intent === 'edit' && !lastImage) {
+        console.log('⚠️ Edit intent detected but no previous image found — treating as fresh');
       }
     }
     
@@ -180,9 +182,11 @@ router.post('/generate-image', authenticateToken, upload.single('referenceImage'
       }
     }
 
-    // Generate image using Gemini Imagen (with DALL-E fallback)
-    console.log(`🎨 Generating image with ${isPremium ? 'premium' : 'free'} tier`);
-    const image = await generateImage(prompt, aspectRatio, referenceImageDataUrl);
+    // Generate image. Premium users can pin a preferred model (it goes first
+    // in the chain); free users always get the default auto chain.
+    const preferredModel = isPremium ? imageModel : 'auto';
+    console.log(`🎨 Generating image with ${isPremium ? 'premium' : 'free'} tier (model=${preferredModel})`);
+    const image = await generateImage(prompt, aspectRatio, referenceImageDataUrl, preferredModel);
 
     if (!image) {
       return res.status(500).json({ 
@@ -1176,5 +1180,3 @@ router.get('/proxy-openai-video/:videoId', async (req, res) => {
 });
 
 export default router;
-
-

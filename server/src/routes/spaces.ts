@@ -25,7 +25,7 @@ const uploadLogo = multer({
 const uploadFile = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit for space files
+    fileSize: 20 * 1024 * 1024, // 20 MB limit for space files
   },
   fileFilter: (req, file, cb) => {
     // Allow most common file types
@@ -666,5 +666,3 @@ router.delete('/spaces/:spaceId/files/:fileId', authenticateToken, async (req: A
 });
 
 export default router;
-
-

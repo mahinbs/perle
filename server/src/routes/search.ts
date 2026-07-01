@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { generateAIAnswer, streamAIAnswer, type GeminiStreamEvent } from '../utils/aiProviders.js';
+import { resolveActualSearchModel } from '../utils/modelRegistry.js';
 import type { AnswerResult, Mode, LLMModel, FileAttachment } from '../types.js';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
@@ -231,20 +232,7 @@ router.post('/search', optionalAuth, uploadSearchFiles, async (req: AuthRequest,
       void enforceConversationLimit(req.userId, isPremium ? premiumTier : 'free');
     }
 
-    // Determine actual model to use
-    let actualModel: LLMModel = model as LLMModel;
-
-    if (!isPremium) {
-      // Free users always use gemini-lite
-      actualModel = 'gemini-lite';
-    } else {
-      // Premium users: if 'auto' is selected, use gemini-lite
-      if (model === 'auto') {
-        actualModel = 'gemini-lite';
-      } else {
-        actualModel = model as LLMModel;
-      }
-    }
+    const actualModel = resolveActualSearchModel(model as LLMModel, isPremium);
 
     // Fetch conversation history for context
     // Non-logged: 5 messages (from client fallback only)
@@ -514,7 +502,7 @@ router.post('/stream', optionalAuth, uploadSearchFiles, async (req: AuthRequest,
     void enforceConversationLimit(req.userId, isPremium ? premiumTier : 'free');
   }
 
-  let actualModel: LLMModel = (!isPremium || model === 'auto') ? 'gemini-lite' : model as LLMModel;
+  const actualModel = resolveActualSearchModel(model as LLMModel, isPremium);
 
   // ── Conversation history (compressed: verbatim window + rolling summary) ──
   const contextMessageLimit = !req.userId
@@ -578,7 +566,7 @@ router.post('/stream', optionalAuth, uploadSearchFiles, async (req: AuthRequest,
         const finalSuggestions = suggestedQuestions.length >= 3
           ? suggestedQuestions
           : buildFallbackSuggestedQuestions(trimmedQuery);
-        send('done', { suggestedQuestions: finalSuggestions });
+        send('done', { suggestedQuestions: finalSuggestions, cleanText: fullCleanText });
       }
       if (res.writableEnded) break;
     }

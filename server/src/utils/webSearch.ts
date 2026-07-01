@@ -398,10 +398,7 @@ export function isSmallTalkQuery(query: string): boolean {
 
   if (smallTalkPatterns.some((p) => p.test(lower))) return true;
 
-  // Detect greetings written in non-Latin scripts — Tamil, Hindi, Telugu,
-  // Kannada, Malayalam, Bengali, Marathi, Gujarati, Punjabi, Urdu, Arabic, etc.
-  // These are ONLY the common "how are you / hi / thanks" phrases — NOT research
-  // queries — so web search is correctly skipped for them.
+  // Detect greetings written in non-Latin scripts (skips search and switches to conversational mode)
   const multilingualGreetings = [
     // Tamil
     /நீங்கள்\s*எப்படி/,   // "How are you" (formal)
@@ -420,34 +417,26 @@ export function isSmallTalkQuery(query: string): boolean {
     /सुप्रभात/,              // Good morning
     /अलविदा/,               // Goodbye
     // Telugu
-    /మీరు\s*ఎలా\s*ఉన్నారు/, // How are you
-    /నమస్కారం/,              // Hello
-    /ధన్యవాదాలు/,            // Thank you
+    /మీరు\s*ఎలా\s*ఉన్నారు/,
+    /నమస్కారం/,
+    /ధన్యవాదాలు/,
     // Kannada
-    /ನೀವು\s*ಹೇಗಿದ್ದೀರಿ/,     // How are you
-    /ನಮಸ್ಕಾರ/,               // Hello
-    /ಧನ್ಯವಾದ/,               // Thank you
+    /ನೀವು\s*ಹೇಗಿದ್ದೀರಿ/,
+    /ನಮಸ್ಕಾರ/,
+    /ಧನ್ಯವಾದ/,
     // Malayalam
-    /നിങ്ങൾ\s*എങ്ങനെ/,       // How are you
-    /നമസ്കാരം/,               // Hello
-    /നന്ദി/,                   // Thank you
+    /നിങ്ങൾ\s*എങ്ങനെ/,
+    /നമസ്കാരം/,
+    /നന്ദി/,
     // Bengali
-    /আপনি\s*কেমন\s*আছেন/,    // How are you
-    /নমস্কার/,                  // Hello
-    /ধন্যবাদ/,                  // Thank you
-    // Marathi
-    /तुम्ही\s*कसे\s*आहात/,    // How are you
-    // Gujarati
-    /તમે\s*કેમ\s*છો/,          // How are you
-    /નમસ્તે/,                    // Hello
-    // Punjabi
-    /ਸਤ\s*ਸ੍ਰੀ\s*ਅਕਾਲ/,        // Hello
-    /ਤੁਸੀਂ\s*ਕਿਵੇਂ\s*ਹੋ/,        // How are you
+    /আপনি\s*কেমন\s*আছেন/,
+    /নমস্কার/,
+    /ধন্যবাদ/,
     // Arabic / Urdu
-    /كيف\s*حالك/,               // How are you
-    /مرحبا/,                    // Hello
-    /شكرا/,                     // Thank you
-    /السلام\s*عليكم/,           // Assalamu alaikum
+    /كيف\s*حالك/,
+    /مرحبا/,
+    /شكرا/,
+    /السلام\s*عليكم/,
   ];
   if (multilingualGreetings.some((p) => p.test(query))) return true;
 
@@ -546,9 +535,18 @@ export function isExplicitWebSearchRequest(query: string): boolean {
 
 /**
  * Detect continuation follow-ups that should inherit previous topic context.
+ *
+ * Two classes are caught:
+ *   1. Phrase-based ("explain more", "tell me more", "go deeper" …)
+ *   2. Short affirmative/action requests that obviously refer back to the
+ *      previous turn — "yes", "sure", "ok", "do it", "can you do it",
+ *      "go ahead", "please do", "yeah do that", etc. Without this, the
+ *      model treats "can you do it?" as a brand-new standalone query
+ *      about the *phrase* "you can do it" instead of executing the
+ *      previously-described task.
  */
 export function isContinuationFollowUpQuery(query: string): boolean {
-  const lower = query.toLowerCase().trim();
+  const lower = query.toLowerCase().trim().replace(/[?!.,]+$/g, '');
   if (!lower) return false;
 
   const continuationPhrases = [
@@ -565,8 +563,67 @@ export function isContinuationFollowUpQuery(query: string): boolean {
     'and more',
     'what more',
   ];
+  if (continuationPhrases.some((p) => lower.includes(p))) return true;
 
-  return continuationPhrases.some((p) => lower.includes(p));
+  // Short affirmative / action follow-ups. These are short queries that
+  // only make sense in light of the previous turn.
+  const affirmativeFollowUps = new Set([
+    'yes',
+    'yes please',
+    'yeah',
+    'yep',
+    'yup',
+    'sure',
+    'ok',
+    'okay',
+    'k',
+    'do it',
+    'do that',
+    'please do',
+    'please do it',
+    'go ahead',
+    'go for it',
+    'proceed',
+    'please',
+    'show me',
+    'can you',
+    'can you do it',
+    'can you do that',
+    'could you',
+    'could you do it',
+    'would you',
+    'will you',
+    'will you do it',
+    'try it',
+    'try',
+    'give it a shot',
+    'attempt it',
+    'go on',
+    'continue please',
+    'next',
+    'more',
+    'more please',
+    'yes do it',
+    'yes please do it',
+    'sure do it',
+    'ok do it',
+    'alright',
+  ]);
+  if (affirmativeFollowUps.has(lower)) return true;
+
+  // Very short query (≤ 4 words) starting with a request verb that
+  // strongly implies "act on the previous turn".
+  const words = lower.split(/\s+/).filter(Boolean);
+  if (words.length <= 4) {
+    if (/^(do|make|create|generate|build|write|give|show|tell|describe|list)\b/.test(lower)) {
+      return true;
+    }
+    if (/^(can|could|would|will|please)\b/.test(lower) && words.length <= 6) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**

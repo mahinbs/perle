@@ -7,7 +7,7 @@ import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
 import { buildUserLocalContext } from '../utils/requestLocalContext.js';
 import { extractMemoryFromUserMessage, formatAIFriendMemoryContext, mergeAIFriendMemory, type AIFriendMemory } from '../utils/aiFriendMemory.js';
 import { uploadSearchFiles } from '../utils/uploadConfig.js';
-import { LLM_MODEL_ENUM } from '../utils/modelRegistry.js';
+import { COMPANION_CHAT_MODEL, LLM_MODEL_ENUM, resolveActualSearchModel } from '../utils/modelRegistry.js';
 import {
   collectUploadedFiles,
   processUploadedFiles,
@@ -20,10 +20,20 @@ const router = Router();
 
 const buildFallbackSuggestedQuestions = (message: string, chatMode: ChatMode): string[] => {
   if (chatMode === 'ai_psychologist') {
+    const lower = message.trim().toLowerCase();
+    const isGreeting =
+      /^(hi|hello|hey|yo|hiya|sup|what'?s up|how are you)[\s!?.,]*$/.test(lower);
+    if (isGreeting) {
+      return [
+        "I've been feeling stressed and could use someone to talk to.",
+        "Something's been weighing on me — can we talk through it?",
+        "I'd like help understanding what I'm feeling lately.",
+      ];
+    }
     return [
-      "When does this feeling become strongest for you?",
-      "What has helped you even a little in similar moments before?",
-      "Would you like a small 5-minute step you can try right now?"
+      "What feels most pressing about this for you right now?",
+      "When did you first notice this pattern?",
+      "What would feeling even a little better look like today?",
     ];
   }
 
@@ -73,7 +83,7 @@ const stripInlineCitations = (text: string): string =>
     .trim();
 
 const COMPANION_RECENT_MESSAGE_LIMIT = 10; // last 10 messages for model context
-const COMPANION_CONTEXT_FETCH_EXCHANGES = 60; // enough history to summarize older context
+const COMPANION_CONTEXT_FETCH_EXCHANGES = 12; // DB page size — keep small for fast companion replies
 const HISTORY_PAGE_DEFAULT = 20; // exchanges per page (each = user + assistant bubble)
 const HISTORY_PAGE_MAX = 100;
 
@@ -108,11 +118,19 @@ const chatSchema = z.object({
           const role = m?.role === 'assistant' ? 'assistant' : 'user';
           const raw = typeof m?.content === 'string' ? m.content : (m?.content == null ? '' : String(m.content));
           const content = raw.trim().slice(0, 12000);
-          return { role, content };
+          const friendId =
+            typeof m?.friendId === 'string' && m.friendId.trim().length > 0
+              ? m.friendId.trim()
+              : undefined;
+          return friendId ? { role, content, friendId } : { role, content };
         })
         .filter((m) => m.content.length > 0)
         .slice(-40);
-    }, z.array(z.object({ role: z.enum(['user','assistant']), content: z.string() })))
+    }, z.array(z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string(),
+      friendId: z.string().uuid().optional(),
+    })))
     .optional()
     .default([]),
   userContext: z.object({
@@ -126,9 +144,87 @@ const chatSchema = z.object({
   searchType: z.enum(['auto', 'instant', 'deep']).optional(),
   chatMode: z.enum(['normal', 'ai_friend', 'ai_psychologist', 'space']).optional().default('normal'),
   aiFriendId: z.string().uuid().optional(), // Optional AI friend ID for individual chat
+  groupChat: z.boolean().optional().default(false), // Group chat: shared thread, per-friend responses
   mentionedFriendIds: z.array(z.string().uuid()).optional(), // Array of friend IDs for group chat (@ mentions)
   spaceId: z.string().uuid().optional() // Optional space ID for space-specific conversations
 });
+
+const GROUP_CHAT_MODE = 'Group';
+const INDIVIDUAL_CHAT_MODE = 'Ask';
+
+/** Expand group-chat DB rows (one row per friend reply) into a chronological message list. */
+function expandGroupHistoryRows(
+  rows: Array<{ query: string; answer: string; created_at: string; ai_friend_id?: string | null }>
+): Array<{ role: 'user' | 'assistant'; content: string; timestamp: string; friendId?: string | null }> {
+  const messages: Array<{ role: 'user' | 'assistant'; content: string; timestamp: string; friendId?: string | null }> = [];
+  let lastUserQuery = '';
+  for (const item of rows) {
+    if (item.query !== lastUserQuery) {
+      messages.push({ role: 'user', content: item.query, timestamp: item.created_at });
+      lastUserQuery = item.query;
+    }
+    messages.push({
+      role: 'assistant',
+      content: item.answer,
+      timestamp: item.created_at,
+      friendId: item.ai_friend_id ?? null,
+    });
+  }
+  return messages;
+}
+
+function applyAiFriendHistoryScope(
+  query: any,
+  opts: { chatMode: ChatMode; aiFriendId?: string; groupChat?: boolean }
+) {
+  const { chatMode, aiFriendId, groupChat } = opts;
+  if (chatMode === 'ai_friend' && groupChat) {
+    return query.eq('mode', GROUP_CHAT_MODE);
+  }
+  if (chatMode === 'ai_friend' && aiFriendId) {
+    return query.eq('ai_friend_id', aiFriendId).neq('mode', GROUP_CHAT_MODE);
+  }
+  if (chatMode === 'ai_friend') {
+    return query.is('ai_friend_id', null);
+  }
+  return query.is('ai_friend_id', null);
+}
+
+/** In group chat, only this friend's assistant turns stay as assistant; others become labeled user context. */
+function scopeFriendConversationHistory(
+  history: ConversationMessage[],
+  aiFriendId: string | undefined,
+  groupChat: boolean
+): ConversationMessage[] {
+  if (!aiFriendId) {
+    return history.map(({ role, content }) => ({ role, content }));
+  }
+
+  const scoped: ConversationMessage[] = [];
+  for (const msg of history) {
+    if (msg.role === 'user') {
+      scoped.push({ role: 'user', content: msg.content });
+      continue;
+    }
+    if (!groupChat) {
+      // Individual chat: assistant turns belong to this friend
+      if (!msg.friendId || msg.friendId === aiFriendId) {
+        scoped.push({ role: 'assistant', content: msg.content });
+      }
+      continue;
+    }
+    // Group chat: only this friend's lines are assistant; everything else is context
+    if (msg.friendId === aiFriendId) {
+      scoped.push({ role: 'assistant', content: msg.content });
+    } else {
+      scoped.push({
+        role: 'user',
+        content: `[Another friend in the group chat said]: ${msg.content}`,
+      });
+    }
+  }
+  return scoped;
+}
 
 // Chat endpoint for AI Friend (supports both JSON and multipart/form-data with image)
 router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, res) => {
@@ -139,6 +235,9 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
     // Convert form-data string values to proper types
     if (bodyData.newConversation === 'true' || bodyData.newConversation === 'false') {
       bodyData.newConversation = bodyData.newConversation === 'true';
+    }
+    if (bodyData.groupChat === 'true' || bodyData.groupChat === 'false') {
+      bodyData.groupChat = bodyData.groupChat === 'true';
     }
     if (typeof bodyData.conversationHistory === 'string') {
       try {
@@ -170,7 +269,19 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
       });
     }
 
-    const { message, model, newConversation, conversationHistory: clientConversationHistory, userContext, searchType, chatMode, aiFriendId, mentionedFriendIds, spaceId } = parse.data;
+    const { message, model, newConversation, conversationHistory: clientConversationHistory, userContext, searchType, chatMode, aiFriendId, groupChat, mentionedFriendIds, spaceId } = parse.data;
+
+    const inferredGroupChat =
+      chatMode === 'ai_friend' &&
+      !!aiFriendId &&
+      (
+        clientConversationHistory.some(
+          (m) => m.role === 'assistant' && m.friendId && m.friendId !== aiFriendId
+        ) ||
+        clientConversationHistory.filter((m) => m.role === 'assistant').length >= 2
+      );
+    const effectiveGroupChat = groupChat || inferredGroupChat;
+
     const uploadedFilesEarly = collectUploadedFiles(req);
     const trimmedMessage = resolveQueryWithAttachments(message, uploadedFilesEarly.length);
     const effectiveUserContext = buildUserLocalContext(req, userContext);
@@ -281,21 +392,16 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
       }
     }
 
-    // Determine actual model to use (works for ALL chat modes: normal, ai_friend, ai_psychologist)
-    let actualModel: LLMModel = model as LLMModel;
-    
-    if (!isPremium) {
-      // Free users always use gemini-lite regardless of chat mode
-      actualModel = 'gemini-lite';
-      console.log(`🔒 Free user - forcing gemini-lite for ${chatMode} mode`);
+    const isCompanionMode = chatMode === 'ai_friend' || chatMode === 'ai_psychologist';
+
+    // Companion chats are plain conversation — always use the fast lite model.
+    let actualModel: LLMModel;
+    if (isCompanionMode) {
+      actualModel = COMPANION_CHAT_MODEL;
+      console.log(`💬 Companion chat — using ${actualModel} (model picker ignored)`);
     } else {
-      // Premium users can use ANY model in ANY chat mode
-      if (model === 'auto') {
-        actualModel = 'gemini-lite';
-      } else {
-        actualModel = model as LLMModel;
-      }
-      console.log(`✅ Premium user - using ${actualModel} for ${chatMode} mode`);
+      actualModel = resolveActualSearchModel(model as LLMModel, isPremium);
+      console.log(`🔍 Search chat — resolved model ${actualModel} (premium=${isPremium}) for ${chatMode} mode`);
     }
 
     // Fetch conversation history for context - ISOLATED BY CHAT MODE, SPACE, AND AI FRIEND
@@ -310,14 +416,13 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
       : premiumTier === 'pro' ? 10
       : 5;
     // Context is isolated per user, chat mode, space, AND ai_friend_id (no mixing between friends)
-    const isCompanionMode = chatMode === 'ai_friend' || chatMode === 'ai_psychologist';
     let conversationHistory: ConversationMessage[] = [];
     let priorSummary: string | undefined = undefined;
     if (req.userId && !newConversation) {
       try {
         let query = supabase
           .from('conversation_history')
-          .select('query, answer')
+          .select('query, answer, created_at, ai_friend_id')
           .eq('user_id', req.userId)
           .eq('chat_mode', chatMode); // Filter by chat mode - ensures separate histories
         
@@ -328,16 +433,8 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
           query = query.is('space_id', null);
         }
         
-        // If aiFriendId is provided (individual chat), filter by friend. Otherwise, get group chats (null ai_friend_id)
-        if (chatMode === 'ai_friend' && aiFriendId) {
-          query = query.eq('ai_friend_id', aiFriendId);
-        } else if (chatMode === 'ai_friend') {
-          // Group chat: get conversations with null ai_friend_id
-          query = query.is('ai_friend_id', null);
-        } else {
-          // Non-ai_friend modes: ensure ai_friend_id is null
-          query = query.is('ai_friend_id', null);
-        }
+        // If aiFriendId is provided (individual chat), filter by friend. Group chat uses mode=Group.
+        query = applyAiFriendHistoryScope(query, { chatMode, aiFriendId, groupChat: effectiveGroupChat });
         
         const historyLimit = isCompanionMode ? COMPANION_CONTEXT_FETCH_EXCHANGES : contextMessageLimit;
         const { data: history } = await query
@@ -346,10 +443,17 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
         
         if (history && history.length > 0) {
           // Convert to conversation format (reverse to get chronological order)
-          const fullHistory = history.reverse().flatMap((item: any) => [
-            { role: 'user' as const, content: item.query },
-            { role: 'assistant' as const, content: item.answer }
-          ]);
+          const chronological = history.slice().reverse();
+          const fullHistory = effectiveGroupChat && chatMode === 'ai_friend'
+            ? expandGroupHistoryRows(chronological).map((m) => ({
+                role: m.role,
+                content: m.content,
+                ...(m.friendId ? { friendId: m.friendId } : {}),
+              }))
+            : chronological.flatMap((item: any) => [
+                { role: 'user' as const, content: item.query },
+                { role: 'assistant' as const, content: item.answer }
+              ]);
           if (isCompanionMode) {
             const splitIndex = Math.max(0, fullHistory.length - COMPANION_RECENT_MESSAGE_LIMIT);
             const older = fullHistory.slice(0, splitIndex);
@@ -396,9 +500,11 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
           deleteQuery = deleteQuery.is('space_id', null);
         }
         
-        // If aiFriendId is provided (individual chat), clear only that friend's history. Otherwise, clear group chats
-        if (chatMode === 'ai_friend' && aiFriendId) {
-          deleteQuery = deleteQuery.eq('ai_friend_id', aiFriendId);
+        // If aiFriendId is provided (individual chat), clear only that friend's history. Group clears mode=Group.
+        if (chatMode === 'ai_friend' && effectiveGroupChat) {
+          deleteQuery = deleteQuery.eq('mode', GROUP_CHAT_MODE);
+        } else if (chatMode === 'ai_friend' && aiFriendId) {
+          deleteQuery = deleteQuery.eq('ai_friend_id', aiFriendId).neq('mode', GROUP_CHAT_MODE);
         } else if (chatMode === 'ai_friend') {
           deleteQuery = deleteQuery.is('ai_friend_id', null);
         } else {
@@ -410,6 +516,15 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
         console.warn('Failed to clear conversation history:', clearError);
         // Continue even if clear fails
       }
+    }
+
+    // Per-friend history in group chat — stops other friends' replies from bleeding into voice
+    if (chatMode === 'ai_friend' && aiFriendId) {
+      conversationHistory = scopeFriendConversationHistory(
+        conversationHistory,
+        aiFriendId,
+        effectiveGroupChat
+      );
     }
 
     // Process uploaded files (images + documents)
@@ -475,66 +590,59 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
       });
     }
 
-    // Save to conversation history for context (store answer text with chat mode)
-    // Both free and premium users save history (different limits)
-    // History is isolated by chat mode
-    if (req.userId) {
+    const rawAnswerText = result.chunks.map(c => c.text).join('\n\n');
+    const answerText = (chatMode === 'ai_friend' || chatMode === 'ai_psychologist')
+      ? stripInlineCitations(rawAnswerText)
+      : rawAnswerText;
+    const resolvedSuggestions = Array.isArray((result as any).suggestedQuestions)
+      ? (result as any).suggestedQuestions.filter((s: any) => typeof s === 'string' && s.trim().length > 0).slice(0, 3)
+      : [];
+    const shouldDisableSuggestions = chatMode === 'ai_friend';
+
+    const persistConversationHistory = async () => {
+      if (!req.userId) return;
       try {
-        const rawAnswerText = result.chunks.map(c => c.text).join('\n\n');
-        const answerText = (chatMode === 'ai_friend' || chatMode === 'ai_psychologist')
-          ? stripInlineCitations(rawAnswerText)
-          : rawAnswerText;
-        let insertData: any = {
+        const insertData: any = {
           user_id: req.userId,
           query: trimmedMessage,
           answer: answerText,
-          mode: 'Ask',
+          mode: (chatMode === 'ai_friend' && effectiveGroupChat) ? GROUP_CHAT_MODE : INDIVIDUAL_CHAT_MODE,
           model: actualModel,
-          chat_mode: chatMode, // Save with chat mode for isolation
-          space_id: spaceId || null, // Save with space ID for isolation
-          ai_friend_id: (chatMode === 'ai_friend' && aiFriendId) ? aiFriendId : null // Save with ai friend ID for isolation
+          chat_mode: chatMode,
+          space_id: spaceId || null,
+          ai_friend_id: (chatMode === 'ai_friend' && aiFriendId) ? aiFriendId : null,
         };
-        
-        console.log(`💾 Saving to history: mode=${chatMode}, aiFriendId=${aiFriendId || 'none'}, spaceId=${spaceId || 'none'}`);
-        
+
+        console.log(`💾 Saving to history: mode=${chatMode}, groupChat=${effectiveGroupChat}, aiFriendId=${aiFriendId || 'none'}, spaceId=${spaceId || 'none'}`);
+
         const { error: insertError } = await supabase
           .from('conversation_history')
           .insert(insertData);
-        
+
         if (insertError) {
           console.error('❌ Failed to save to history:', insertError);
         } else {
           console.log('✅ History saved successfully');
         }
-        
-        // Keep only last N messages per user per chat mode per friend/space (cleanup old ones)
-        // Free: 10 messages, Premium: 20 messages
+
         const maxHistory = isPremium ? 20 : 10;
         let cleanupQuery = supabase
           .from('conversation_history')
           .select('id')
           .eq('user_id', req.userId)
-          .eq('chat_mode', chatMode); // Filter by chat mode
-        
-        // If spaceId is provided, filter by space. Otherwise, only get non-space conversations
+          .eq('chat_mode', chatMode);
+
         if (spaceId) {
           cleanupQuery = cleanupQuery.eq('space_id', spaceId);
         } else {
           cleanupQuery = cleanupQuery.is('space_id', null);
         }
-        
-        // If aiFriendId is provided (individual chat), filter by friend. Otherwise, get group chats
-        if (chatMode === 'ai_friend' && aiFriendId) {
-          cleanupQuery = cleanupQuery.eq('ai_friend_id', aiFriendId);
-        } else if (chatMode === 'ai_friend') {
-          cleanupQuery = cleanupQuery.is('ai_friend_id', null);
-        } else {
-          cleanupQuery = cleanupQuery.is('ai_friend_id', null);
-        }
-        
+
+        cleanupQuery = applyAiFriendHistoryScope(cleanupQuery, { chatMode, aiFriendId, groupChat: effectiveGroupChat });
+
         const { data: allHistory } = await cleanupQuery
           .order('created_at', { ascending: false });
-        
+
         if (allHistory && allHistory.length > maxHistory) {
           const idsToDelete = allHistory.slice(maxHistory).map((h: any) => h.id);
           await supabase
@@ -543,7 +651,6 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
             .in('id', idsToDelete);
         }
 
-        // Update user memory for this specific AI friend (best effort)
         if (chatMode === 'ai_friend' && aiFriendId) {
           try {
             const extracted = extractMemoryFromUserMessage(trimmedMessage);
@@ -557,7 +664,7 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
                     ai_friend_id: aiFriendId,
                     preferred_name: merged.preferredName,
                     pronouns: merged.pronouns,
-                    key_nouns: merged.keyNouns
+                    key_nouns: merged.keyNouns,
                   },
                   { onConflict: 'user_id,ai_friend_id' }
                 );
@@ -567,26 +674,21 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
           }
         }
       } catch (convError) {
-        // Log but don't fail the request if conversation history save fails
         console.error('Failed to save conversation history:', convError);
       }
+    };
+
+    // Companion replies feel instant — don't block the HTTP response on DB writes.
+    if (isCompanionMode) {
+      void persistConversationHistory();
+    } else if (req.userId) {
+      await persistConversationHistory();
     }
 
-    // Return answer text with optional images
-    const rawAnswerText = result.chunks.map(c => c.text).join('\n\n');
-    const answerText = (chatMode === 'ai_friend' || chatMode === 'ai_psychologist')
-      ? stripInlineCitations(rawAnswerText)
-      : rawAnswerText;
-    const resolvedSuggestions = Array.isArray((result as any).suggestedQuestions)
-      ? (result as any).suggestedQuestions.filter((s: any) => typeof s === 'string' && s.trim().length > 0).slice(0, 3)
-      : [];
-
-    const shouldDisableSuggestions = chatMode === 'ai_friend';
-
-    res.json({ 
+    res.json({
       message: answerText,
       model: actualModel,
-      images: result.images || [], // Include generated images if any
+      images: result.images || [],
       sources: (chatMode === 'ai_psychologist' || chatMode === 'ai_friend') ? [] : (result.sources || []),
       suggestedQuestions: shouldDisableSuggestions
         ? []
@@ -594,7 +696,7 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
           resolvedSuggestions.length >= 3
             ? resolvedSuggestions
             : buildFallbackSuggestedQuestions(trimmedMessage, chatMode)
-        )
+        ),
     });
   } catch (error) {
     console.error('Chat error:', error);
@@ -626,10 +728,13 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
     // Get spaceId and aiFriendId from query parameters if provided
     const spaceId = req.query.spaceId as string | undefined;
     const aiFriendId = req.query.aiFriendId as string | undefined;
+    const groupChat =
+      req.query.groupChat === 'true' ||
+      req.query.groupChat === '1';
     
     let historyQuery = supabase
       .from('conversation_history')
-      .select('query, answer, created_at')
+      .select('query, answer, created_at, ai_friend_id')
       .eq('user_id', req.userId) // Isolated per user
       .eq('chat_mode', chatMode); // Isolated per chat mode - ensures separate histories
     
@@ -640,16 +745,7 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
       historyQuery = historyQuery.is('space_id', null);
     }
     
-    // If aiFriendId is provided (individual chat), filter by friend. Otherwise, get group chats (null ai_friend_id)
-    if (chatMode === 'ai_friend' && aiFriendId) {
-      historyQuery = historyQuery.eq('ai_friend_id', aiFriendId);
-    } else if (chatMode === 'ai_friend') {
-      // Group chat: get conversations with null ai_friend_id
-      historyQuery = historyQuery.is('ai_friend_id', null);
-    } else {
-      // Non-ai_friend modes: ensure ai_friend_id is null
-      historyQuery = historyQuery.is('ai_friend_id', null);
-    }
+    historyQuery = applyAiFriendHistoryScope(historyQuery, { chatMode, aiFriendId, groupChat });
     
     if (beforeIso) {
       historyQuery = historyQuery.lt('created_at', beforeIso);
@@ -675,10 +771,23 @@ router.get('/chat/history', optionalAuth, async (req: AuthRequest, res) => {
       (chatMode === 'ai_friend' || chatMode === 'ai_psychologist')
         ? stripInlineCitations(text)
         : text;
-    const messages = history.flatMap((item: any) => [
-      { role: 'user' as const, content: item.query, timestamp: item.created_at },
-      { role: 'assistant' as const, content: sanitizeForMode(item.answer), timestamp: item.created_at }
-    ]);
+
+    const messages = groupChat && chatMode === 'ai_friend'
+      ? expandGroupHistoryRows(history).map((m) => ({
+          role: m.role,
+          content: sanitizeForMode(m.content),
+          timestamp: m.timestamp,
+          ...(m.role === 'assistant' && m.friendId ? { friendId: m.friendId } : {}),
+        }))
+      : history.flatMap((item: any) => [
+          { role: 'user' as const, content: item.query, timestamp: item.created_at },
+          {
+            role: 'assistant' as const,
+            content: sanitizeForMode(item.answer),
+            timestamp: item.created_at,
+            ...(item.ai_friend_id ? { friendId: item.ai_friend_id } : {}),
+          }
+        ]);
 
     const historySummary = isCompanionMode
       ? buildCompanionContextSummary(

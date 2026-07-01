@@ -1,7 +1,7 @@
 import multer from 'multer';
 import { isAllowedUploadMime } from './fileAttachments.js';
 
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB per file
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB per file (chat attachments — images + docs)
 
 export const upload = multer({
   storage: multer.memoryStorage(),
