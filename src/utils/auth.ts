@@ -141,11 +141,7 @@ export async function tryRecoverAuthOrLogout(): Promise<boolean> {
     return false;
   }
   const refreshed = await refreshAuthSession();
-  if (!refreshed) {
-    removeAuthToken();
-    return false;
-  }
-  return true;
+  return refreshed;
 }
 
 export function getUserData(): User | null {
@@ -739,14 +735,16 @@ export async function verifyToken(): Promise<User | null> {
       // gone. If a refresh token IS still present, this is more likely a
       // transient verify-endpoint hiccup; preserve the cached user so a
       // boot-time blip doesn't punt logged-in users to the login wall.
-      if (!getRefreshToken()) {
+      const cached = getUserData();
+      if (!getRefreshToken() && !cached) {
         removeAuthToken();
         return null;
       }
-      const cached = getUserData();
+      // Either refresh token is still present (transient failure) or we
+      // have a cached user profile — keep the session alive either way.
       if (cached) return cached;
-      // No cached user either → genuinely unknown identity → log out.
-      removeAuthToken();
+      // No cached user but refresh token is present — session is probably
+      // valid but the verify endpoint was unreachable. Don't log out.
       return null;
     }
 
@@ -868,8 +866,8 @@ export async function authenticatedFetch(
     return fetch(url, {
       ...options,
       headers: {
-        ...authHeaders,
         ...options.headers,
+        ...authHeaders,
       },
     });
   };
@@ -882,15 +880,15 @@ export async function authenticatedFetch(
     if (refreshed) {
       response = await makeRequest();
       saveTokensFromResponseHeaders(response);
-    } else {
-      removeAuthToken();
     }
   }
 
   if (response.status === 401) {
-    removeAuthToken();
-    if (onUnauthorized) {
-      onUnauthorized();
+    if (!getRefreshToken()) {
+      removeAuthToken();
+      if (onUnauthorized) {
+        onUnauthorized();
+      }
     }
   }
 

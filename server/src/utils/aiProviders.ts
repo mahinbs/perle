@@ -566,7 +566,7 @@ Rules:
     return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nPREMIUM IN-DEPTH REQUEST. Produce a long, expert-level multi-section answer (minimum 900 words; target 1500–2500 words when topic complexity justifies it). You MUST use ALL of these:\n• Start with a 2–3 sentence engaging introduction.\n• Then 6–8 emoji-headed sections, each with a DIFFERENT emoji that matches the section's topic.\n• Each section: 1 short intro line + 4–6 bullets + nested sub-bullets ("  - ") for extra specifics.\n• Pack every section with specific numbers, percentages, dates, named examples, and real-world context.\n• Include sections like: background/context, how it works (mechanism), key components/players, real-world examples, comparisons, trade-offs, current trends, future outlook, practical takeaways/recommendations.\n• End with a "💡 Key Takeaways" section of 4–5 cited bullets [1], [2].\n• NEVER hedge with vague phrases — be specific, technical, and expert.\n• If the query is trivially simple arithmetic/fact (e.g., \"2+2\"), answer directly and concisely instead of forcing long form.${FORMAT_STRICT}`;
   }
 
-  return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+  return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.\n\n[LANGUAGE RULE] Detect the language/script of the query above and write the ENTIRE answer — including all headings, bullets, and citations — in that same language and script. If the query is in Tamil, reply in Tamil. If in Hindi, reply in Hindi. If in English, reply in English. Never reply in a different language than the query.`;
 }
 
 function chunkTextToAnswer(
@@ -1099,11 +1099,8 @@ function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
   }
 
   if (isGreeting) {
-    return [
-      'What should we work on right now?',
-      'Do you want a quick update on a topic you care about?',
-      'Should I help with planning, research, or decision-making next?',
-    ];
+    // Return empty so the LLM generates its own follow-ups in the user's language
+    return [];
   }
 
   if (asksCurrentInfo) {

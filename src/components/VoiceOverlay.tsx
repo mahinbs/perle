@@ -90,6 +90,9 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       if (!AudioCtx) return;
 
       const audioCtx = new AudioCtx();
+      if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+      }
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
 
@@ -134,7 +137,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
     let cancelled = false;
 
     const kickOffListening = async () => {
-      await playActivationBeep();
+      void playActivationBeep();
       if (cancelled) return;
       // When opening voice mode to read existing chat answer, do not immediately
       // start listening (which would cancel TTS). Let TTS start first.

@@ -9,6 +9,76 @@ export const FILE_ONLY_DEFAULT_QUERY = 'Review the attached files.';
 /** AI Friend + AI Psychology always use this model (server enforces the same). */
 export const COMPANION_CHAT_MODEL: LLMModel = 'gemini-lite';
 
+export function enrichQueryForLanguage(query: string): string {
+  const trimmed = query.trim();
+  const lower = trimmed.toLowerCase();
+
+  const multilingualGreetings = [
+    // Tamil
+    /நீங்கள்\s*எப்படி/,   // "How are you" (formal)
+    /நீ\s*எப்படி/,        // "How are you" (informal)
+    /வணக்கம்/,            // Vanakkam (Hello)
+    /நன்றி/,              // Thank you
+    /காலை\s*வணக்கம்/,    // Good morning
+    /மாலை\s*வணக்கம்/,    // Good evening
+    // Hindi / Devanagari
+    /आप\s*कैसे\s*हैं/,     // How are you (formal)
+    /तुम\s*कैसे\s*हो/,     // How are you (informal)
+    /नमस्ते/,               // Namaste
+    /नमस्कार/,              // Namaskar
+    /धन्यवाद/,              // Thank you
+    /शुक्रिया/,              // Shukriya (thanks)
+    /सुप्रभात/,              // Good morning
+    /अलविदा/,               // Goodbye
+    // Telugu
+    /మీరు\s*ఎలా\s*ఉన్నారు/, // How are you
+    /నమస్కారం/,              // Hello
+    /ధన్యవాదాలు/,            // Thank you
+    // Kannada
+    /ನೀವು\s*ಹೇಗಿದ್ದೀರಿ/,     // How are you
+    /ನಮಸ್ಕಾರ/,               // Hello
+    /ಧನ್ಯವಾದ/,               // Thank you
+    // Malayalam
+    /നിങ്ങൾ\s*എങ്ങനെ/,       // How are you
+    /നമസ്കാരം/,               // Hello
+    /നന്ദി/,                   // Thank you
+    // Bengali
+    /আপনি\s*কেমন\s*আছেন/,    // How are you
+    /নমস্কার/,                  // Hello
+    /ধন্যবাদ/,                  // Thank you
+    // Marathi
+    /तुम्ही\s*कसे\s*आहात/,    // How are you
+    // Gujarati
+    /તમે\s*કેમ\s*છો/,          // How are you
+    /നમસ્તે/,                    // Hello
+    // Punjabi
+    /ਸਤ\s*ਸ੍ਰੀ\s*ਅਕਾਲ/,        // Hello
+    /ਤੁਸੀਂ\s*ਕਿਵੇਂ\s*ਹੋ/,        // How are you
+    // Arabic / Urdu
+    /كيف\s*حالك/,               // How are you
+    /مرحبا/,                    // Hello
+    /شكرا/,                     // Thank you
+    /السلام\s*عليكم/,           // Assalamu alaikum
+  ];
+
+  const isGreeting =
+    multilingualGreetings.some((p) => p.test(trimmed)) ||
+    /^(hi|hello|hey|yo|sup|what'?s up|how are you|how r u|good (morning|afternoon|evening))[\s!?.,]*$/i.test(lower) ||
+    /(how are you|how r u)/i.test(lower);
+
+  const isRegional = /[^\x00-\x7F]/.test(trimmed);
+
+  if (isGreeting) {
+    return `${trimmed}\n\n[MANDATORY CONVERSATIONAL DIRECTIVE: This is a greeting or conversational opener. Do NOT perform web search, do NOT output structured sections, do NOT use bullet points or headings. Reply in 1-2 friendly, natural sentences in the exact same language and script. If Tamil, reply in Tamil script. If Hindi, reply in Hindi Devanagari script.]`;
+  }
+
+  if (isRegional) {
+    return `${trimmed}\n\n[MANDATORY LANGUAGE DIRECTIVE: Write your entire response — including all headings, bullets, and citations — in the exact same language and script as this query. If this query is in Tamil script, reply entirely in Tamil script. If in Hindi, reply entirely in Hindi Devanagari script. Never write the response or headings in English.]`;
+  }
+
+  return trimmed;
+}
+
 interface UploadedFile {
   id: string;
   file: File;
@@ -214,9 +284,10 @@ export async function searchAPI(
   
   const { authFetch } = await import('./auth');
   const userContext = getUserLocalContext();
+  const enrichedQuery = enrichQueryForLanguage(query);
 
   const formData = buildSearchFormData(
-    { query, mode, model, newConversation, conversationId, conversationHistory, searchType, userContext },
+    { query: enrichedQuery, mode, model, newConversation, conversationId, conversationHistory, searchType, userContext },
     uploadedFiles
   );
   
@@ -376,11 +447,12 @@ export async function searchAPIStream(
   // branch.
   const hasUploads = uploadedFiles.some((f) => f.file);
   const userContext = getUserLocalContext();
+  const enrichedQuery = enrichQueryForLanguage(query);
 
   let response: Response;
   if (hasUploads) {
     const formData = buildSearchFormData(
-      { query, mode, model, newConversation, conversationId, conversationHistory, searchType, userContext },
+      { query: enrichedQuery, mode, model, newConversation, conversationId, conversationHistory, searchType, userContext },
       uploadedFiles,
     );
     response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
@@ -393,7 +465,7 @@ export async function searchAPIStream(
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        query,
+        query: enrichedQuery,
         mode,
         model,
         newConversation,

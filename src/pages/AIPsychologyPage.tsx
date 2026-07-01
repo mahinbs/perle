@@ -28,6 +28,7 @@ import {
   scheduleScrollToBottom,
 } from "../utils/chatScroll";
 import { ChatDateDivider } from "../components/ChatDateDivider";
+import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 import {
   PSYCHOLOGIST_GREETING,
@@ -408,16 +409,16 @@ export default function AIPsychologyPage() {
     } catch (error: any) {
       console.error("Chat API error:", error);
       showToast({
-        message: error.message || "Failed to get response from AI",
+        message: getUserFriendlyErrorMessage(error.message || "Failed to get response from AI"),
         type: "error",
         duration: 3000,
       });
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
-        content: `I apologize, but I encountered an error: ${
+        content: getUserFriendlyErrorMessage(
           error.message || "Failed to connect to the server"
-        }. Please try again.`,
+        ),
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorResponse]);

@@ -38,6 +38,7 @@ import { buildCompanionHistoryPayload } from "../utils/companionChat";
 import {
   scheduleScrollToBottom,
 } from "../utils/chatScroll";
+import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import { ChatDateDivider } from "../components/ChatDateDivider";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 
@@ -123,6 +124,7 @@ export default function AIFriendPage() {
   // AI Friends state
   const [aiFriends, setAiFriends] = useState<AIFriend[]>([]);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [showAllGroupAvatars, setShowAllGroupAvatars] = useState(false);
   // Default landing surface is the group chat — individual friend chats are
   // an opt-in from the friend picker.
   const [isGroupChat, setIsGroupChat] = useState(true);
@@ -822,7 +824,7 @@ export default function AIFriendPage() {
               const errorResponse: Message = {
                 id: `${Date.now()}-error-${friend.id}`,
                 role: "ai",
-                content: `Sorry, ${friend.name} encountered an error: ${error?.message || "Failed to connect"}.`,
+                content: `Sorry, ${friend.name} encountered an error: ${getUserFriendlyErrorMessage(error?.message || "Failed to connect")}`,
                 timestamp: new Date(),
                 friendId: friend.id,
                 friendName: friend.name,
@@ -888,15 +890,16 @@ export default function AIFriendPage() {
     } catch (error: any) {
       console.error("Chat API error:", error);
       showToast({
-        message: error.message || "Failed to get response from AI",
+        message: getUserFriendlyErrorMessage(error.message || "Failed to get response from AI"),
         type: "error",
         duration: 3000,
       });
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "ai",
-        content: `Sorry, I encountered an error: ${error.message || "Failed to connect to the server"
-        }. Please try again.`,
+        content: getUserFriendlyErrorMessage(
+          error.message || "Failed to connect to the server"
+        ),
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorResponse]);
@@ -1369,22 +1372,72 @@ export default function AIFriendPage() {
                     aria-label="Switch character"
                   >
                     <div className="relative shrink-0">
-                      {isGroupChat && aiFriends.length > 0 ? (
-                        <GroupAvatarStack friends={aiFriends} size={40} />
-                      ) : (
-                        <img
-                          src={aiProfile.avatar}
-                          alt={`${aiProfile.name} avatar`}
-                          className="w-10 h-10 min-w-10 rounded-full object-cover border-2 border-[var(--accent)]"
-                        />
-                      )}
+                      <img
+                        src={isGroupChat && aiFriends.length > 0
+                          ? friendAvatarUrl(aiFriends[0].name, aiFriends[0].logo_url)
+                          : aiProfile.avatar}
+                        alt={isGroupChat ? "Group chat" : `${aiProfile.name} avatar`}
+                        className="w-10 h-10 min-w-10 rounded-full object-cover border-2 border-[var(--accent)]"
+                      />
                       <div className="w-2 h-2 rounded-full bg-[#10A37F] shadow-[0_0_8px_rgba(16,163,127,0.5)] absolute bottom-0 right-0 animate-pulse" />
                     </div>
                     <div className="text-left min-w-0">
                       <div className="h3 mb-0.5 truncate text-base">{aiProfile.name}</div>
-                      <div className="sub text-xs opacity-80 truncate">
-                        {aiProfile.handle}
-                      </div>
+                      {isGroupChat ? (
+                        <div className="flex items-center" style={{ gap: 0, marginTop: 2 }}>
+                          <div 
+                            className="relative flex items-center shrink-0" 
+                            style={{ height: 20, cursor: aiFriends.length > 5 ? 'pointer' : 'default' }}
+                            onClick={(e) => {
+                              if (aiFriends.length > 5) {
+                                e.stopPropagation();
+                                setShowAllGroupAvatars(prev => !prev);
+                              }
+                            }}
+                          >
+                            {(showAllGroupAvatars ? aiFriends : aiFriends.slice(0, 5)).map((friend, index) => {
+                              const avatar = friendAvatarUrl(friend.name, friend.logo_url);
+                              return (
+                                <img
+                                  key={friend.id}
+                                  src={avatar}
+                                  alt={friend.name}
+                                  title={friend.name}
+                                  className="rounded-full object-cover border border-[var(--bg)]"
+                                  style={{
+                                    width: 20,
+                                    height: 20,
+                                    marginLeft: index === 0 ? 0 : -6,
+                                    zIndex: aiFriends.length - index,
+                                    boxShadow: "0 0 0 1px rgba(0,0,0,0.15)",
+                                  }}
+                                />
+                              );
+                            })}
+                            {!showAllGroupAvatars && aiFriends.length > 5 && (
+                              <div
+                                className="rounded-full flex items-center justify-center border border-[var(--bg)] text-[9px] font-bold text-white bg-[var(--accent)]"
+                                style={{
+                                  width: 20,
+                                  height: 20,
+                                  marginLeft: -6,
+                                  zIndex: 0,
+                                  boxShadow: "0 0 0 1px rgba(0,0,0,0.15)",
+                                }}
+                              >
+                                +{aiFriends.length - 5}
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-[10px] opacity-75 ml-1.5 whitespace-nowrap">
+                            {aiFriends.length} friends joined
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="sub text-xs opacity-80 truncate">
+                          {aiProfile.handle}
+                        </div>
+                      )}
                     </div>
                   </button>
                 </div>

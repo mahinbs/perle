@@ -41,10 +41,26 @@ export const Header: React.FC<HeaderProps> = ({
   const isActive = (path: string) => location.pathname === path;
 
   useEffect(() => {
-    getAllDiscoverItems()
-      .then((items) => setPreviewItems(Array.isArray(items) ? items.slice(0, 2) : []))
-      .catch(() => setPreviewItems([]));
-  }, []);
+    const updateDiscoverItems = () => {
+      getAllDiscoverItems()
+        .then((items) => setPreviewItems(Array.isArray(items) ? items.slice(0, 2) : []))
+        .catch(() => setPreviewItems([]));
+    };
+
+    updateDiscoverItems();
+
+    // Re-fetch when page becomes visible (handles app foregrounding on iOS/Android!)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        updateDiscoverItems();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [location.pathname]);
 
   useEffect(() => {
     refreshProfileImage();
