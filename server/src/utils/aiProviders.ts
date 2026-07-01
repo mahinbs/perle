@@ -672,8 +672,12 @@ function getEffectiveTokenLimit(
   detailedContinuation: boolean,
   isPremium: boolean = false,
   deepResearch: boolean = false,
-  chatMode: ChatMode = 'normal'
+  chatMode: ChatMode = 'normal',
+  query?: string
 ): number {
+  if (query && isNormalSmallTalk(query, chatMode)) {
+    return 512;
+  }
   // Chat modes (AI Friend, AI Psychologist). Low cap = faster time-to-first-token
   // for short conversational replies; the model still writes naturally.
   if (chatMode === 'ai_friend' || chatMode === 'ai_psychologist') {
@@ -828,12 +832,39 @@ The user asked: "${query}"
 • Just talk like a real person in character.${topicLine}`;
   }
 
-  return `\n\n💬 SMALL-TALK MODE (AUTO):
-- The user is making a conversational/small-talk message.
-- Reply naturally, warmly, and with personality (2-5 concise lines).
-- Be context-aware: use prior conversation tone and continuity.${topicLine}
-- If a prior topic exists, add a short optional bridge like "Want to continue that?".
-- Do NOT force web/factual citations for pure small-talk unless user asks factual/current info.`;
+  return `\n\n💬 SMALL-TALK MODE (AUTO) — MANDATORY:
+- The user said: "${query}"
+- This is a GREETING or casual message — NOT a research or language-lesson query.
+- Reply in 1-3 warm conversational sentences in the SAME language and script as the user.
+- FORBIDDEN: translating or romanizing their message; explaining what the phrase means; "The phrase X translates to..."; emoji section headings; bullet lists; citations; cultural or linguistic essays.
+- Example: Tamil "நீங்கள் எப்படி இருக்கிறீர்கள்?" → "நான் நன்றாக இருக்கிறேன், நன்றி! இன்று உங்களுக்கு எப்படி உதவ முடியும்?" — NOT an essay about Tamil greetings.${topicLine}`;
+}
+
+/** True for home-page greetings / chit-chat in normal or space mode. */
+function isNormalSmallTalk(query: string, chatMode: ChatMode): boolean {
+  return (chatMode === 'normal' || chatMode === 'space') && isSmallTalkQuery(query.trim());
+}
+
+/** Whether to ask the model for SUGGESTED_FOLLOWUPS (skip for greetings). */
+function wantsContextualFollowups(chatMode: ChatMode, query: string): boolean {
+  return (chatMode === 'normal' || chatMode === 'space') && !isSmallTalkQuery(query.trim());
+}
+
+/**
+ * Last-in-system-prompt override for home-page greetings. Placed AFTER web
+ * search context so it wins over the normal-mode "emoji sections + bullets"
+ * formatting rules that otherwise produce linguistic essays.
+ */
+function buildNormalSmallTalkSystemOverride(query: string, chatMode: ChatMode): string {
+  if (!isNormalSmallTalk(query, chatMode)) return '';
+  return `
+
+🚨🚨🚨 GREETING / SMALL-TALK — HIGHEST PRIORITY — OVERRIDES ALL PRIOR RULES 🚨🚨🚨
+The user's message is a GREETING or casual chit-chat — NOT a research question.
+• Reply in 1–3 warm conversational sentences ONLY — like AI Friend mode, NOT a textbook.
+• Write in EXACTLY the same language and script as the user's message (Tamil→Tamil, Hindi→Hindi, Urdu→Urdu, English→English).
+• FORBIDDEN: translating their message; romanization like "(Nīṅkaḷ eppaṭi...)"; explaining what their phrase means; linguistic/cultural analysis; emoji section headings; bullet lists; citations; "Here's a breakdown".
+• If they ask how you are, say you're doing well and ask how you can help — in THEIR language.`;
 }
 
 /** Personal/identity questions in AI Friend chat — must stay in character, not SyntraIQ. */
@@ -1074,16 +1105,11 @@ function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
   const cleaned = query.replace(/\s+/g, ' ').trim();
   const shortTopic = cleaned.length > 70 ? `${cleaned.slice(0, 70)}...` : cleaned;
   const lower = cleaned.toLowerCase();
-  const isGreeting =
-    /^(hi|hello|hey|yo|sup|what'?s up|how are you|how r u|good (morning|afternoon|evening))[\s!?.,]*$/.test(lower) ||
-    /(how are you|how r u)/.test(lower);
+  const isGreeting = isSmallTalkQuery(cleaned);
   const asksCurrentInfo =
     /(latest|current|today|now|this week|this month|2026|price|cost|launch|release|news)/.test(lower);
 
   if (chatMode === 'ai_psychologist') {
-    const lower = cleaned.toLowerCase();
-    const isGreeting =
-      /^(hi|hello|hey|yo|hiya|sup|what'?s up|how are you|how r u|good (morning|afternoon|evening))[\s!?.,]*$/.test(lower);
     if (isGreeting) {
       return [
         "I've been feeling stressed and could use someone to talk to.",
@@ -1261,7 +1287,13 @@ function buildChatLanguageReminder(
   friendDescription?: string | null,
   friendName?: string | null
 ): string {
-  if (chatMode === 'normal') {
+  if (chatMode === 'normal' || chatMode === 'space') {
+    if (isSmallTalkQuery(query.trim())) {
+      return `\n\n🌐 GREETING LANGUAGE — MANDATORY (CURRENT MESSAGE ONLY):
+- Reply in EXACTLY the same language and script as the user's greeting above.
+- 1-3 conversational sentences only. No English unless they wrote in English.
+- Do NOT explain or translate their greeting — just respond to it naturally, like a friend.`;
+    }
     const lang = detectReplyLanguage(query);
     if (lang === 'native_script') {
       return `\n\n🌐 LANGUAGE — MANDATORY (CURRENT MESSAGE ONLY):
@@ -1727,6 +1759,8 @@ export async function generateOpenAIAnswer(
   const resolvedAttachments = normalizeAttachments(imageDataUrl, attachments);
   const attachmentSystemAddon = buildAttachmentSystemAddon(resolvedAttachments, query);
   if (attachmentSystemAddon) sys += attachmentSystemAddon;
+  const normalSmallTalkOverride = buildNormalSmallTalkSystemOverride(query, chatMode);
+  if (normalSmallTalkOverride) sys += normalSmallTalkOverride;
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -1762,7 +1796,7 @@ export async function generateOpenAIAnswer(
 
   const openaiModel = resolveOpenAIModel(model);
 
-  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode);
+  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode, query);
   const isCompanion = chatMode === 'ai_friend' || chatMode === 'ai_psychologist';
 
   const response = await withTimeout(
@@ -1931,6 +1965,8 @@ export async function generateGeminiAnswer(
   const resolvedAttachments = normalizeAttachments(imageDataUrl, attachments);
   const attachmentSystemAddon = buildAttachmentSystemAddon(resolvedAttachments, query);
   if (attachmentSystemAddon) sys += attachmentSystemAddon;
+  const normalSmallTalkOverride = buildNormalSmallTalkSystemOverride(query, chatMode);
+  if (normalSmallTalkOverride) sys += normalSmallTalkOverride;
   
   // Build conversation context from history
   let contextPrompt = '';
@@ -1952,7 +1988,7 @@ export async function generateGeminiAnswer(
     prompt = buildNormalModeUserPrompt(query, mode, conversationHistory, contextPrompt, isPremium);
   }
 
-  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode);
+  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode, query);
   const isCompanion = chatMode === 'ai_friend' || chatMode === 'ai_psychologist';
   // Gemini 2.5+ supports up to 65536 output tokens. Premium gets the full budget;
   // free stays at 8192 to preserve cost/latency. Companion chats cap at 1024.
@@ -2196,10 +2232,12 @@ export async function* streamGeminiAnswer(
   const resolvedAttachments = normalizeAttachments(imageDataUrl, attachments);
   const attachmentSystemAddon = buildAttachmentSystemAddon(resolvedAttachments, query);
   if (attachmentSystemAddon) sys += attachmentSystemAddon;
+  const normalSmallTalkOverride = buildNormalSmallTalkSystemOverride(query, chatMode);
+  if (normalSmallTalkOverride) sys += normalSmallTalkOverride;
 
   // Contextual follow-up questions: ask the model to append 3 specific follow-ups
   // tied to THIS answer, on its own final line, so we can parse + suppress them.
-  const wantsFollowups = chatMode === 'normal' || chatMode === 'space';
+  const wantsFollowups = wantsContextualFollowups(chatMode, query);
   if (wantsFollowups) {
     sys += `\n\nFOLLOW-UP QUESTIONS (MANDATORY, LAST LINE ONLY):
 After your complete answer, output ONE final line that starts EXACTLY with "${FOLLOWUP_MARKER}" followed by THREE short, specific follow-up questions a curious reader would naturally ask NEXT about this exact topic/answer — separated by " || ".
@@ -2226,7 +2264,7 @@ After your complete answer, output ONE final line that starts EXACTLY with "${FO
     prompt = buildNormalModeUserPrompt(query, mode, conversationHistory, contextPrompt, isPremium);
   }
 
-  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode);
+  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode, query);
   // Premium gets Gemini's full 32k output budget; free stays at the legacy 8192 cap.
   const maxOutputTokens = isPremium ? Math.min(tokenLimit, 32768) : Math.min(tokenLimit, 8192);
 
@@ -2397,7 +2435,7 @@ async function* streamOpenAICompatibleAnswer(
     spaceTitle, spaceDescription, userContext, useTableFormat,
     isPremium, searchType === 'deep', priorSummary,
   );
-  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
+  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
@@ -2409,6 +2447,8 @@ async function* streamOpenAICompatibleAnswer(
   const resolvedAttachments = normalizeAttachments(imageDataUrl, attachments);
   const attachmentSystemAddon = buildAttachmentSystemAddon(resolvedAttachments, query);
   if (attachmentSystemAddon) sys += attachmentSystemAddon;
+  const normalSmallTalkOverride = buildNormalSmallTalkSystemOverride(query, chatMode);
+  if (normalSmallTalkOverride) sys += normalSmallTalkOverride;
 
   // Perplexity Deep Research used to produce 12k+ word reports. Per user
   // feedback we trim ~10% by both lowering the token ceiling above AND
@@ -2424,7 +2464,7 @@ async function* streamOpenAICompatibleAnswer(
 
   // Same follow-up marker contract Gemini uses — keeps the frontend's
   // parser logic universal across providers.
-  const wantsFollowups = chatMode === 'normal' || chatMode === 'space';
+  const wantsFollowups = wantsContextualFollowups(chatMode, query);
   if (wantsFollowups) {
     sys += `\n\nFOLLOW-UP QUESTIONS (MANDATORY, LAST LINE ONLY):
 After your complete answer, output ONE final line that starts EXACTLY with "${FOLLOWUP_MARKER}" followed by THREE short, specific follow-up questions a curious reader would naturally ask NEXT about this exact topic/answer — separated by " || ".
@@ -2444,17 +2484,18 @@ After your complete answer, output ONE final line that starts EXACTLY with "${FO
     prompt = buildNormalModeUserPrompt(query, mode, conversationHistory, '', isPremium);
   }
   prompt = augmentPromptForAttachments(prompt, resolvedAttachments, query);
+  prompt = appendChatLanguageReminder(prompt, query, chatMode, friendName, friendDescription);
   const userContent = buildOpenAIUserContent(prompt, resolvedAttachments);
   messages.push({ role: 'user', content: userContent });
 
   let tokenLimit = getEffectiveTokenLimit(
     mode,
     isContinuationFollowUpQuery(query) && conversationHistory.length > 0,
-    isPremium, searchType === 'deep', chatMode,
+    isPremium, searchType === 'deep', chatMode, query,
   );
   if (cfg.minTokenLimit && tokenLimit < cfg.minTokenLimit) tokenLimit = cfg.minTokenLimit;
 
-  // Kick off the streaming completion. If the provider rate-limits or
+  // Kick off the streaming completion.
   // 404s, we bubble up so streamAIAnswer can fall through to another
   // provider — but ONLY then, not on every request.
   let stream: any;
@@ -2579,7 +2620,7 @@ async function* streamClaudeAnswer(
     spaceTitle, spaceDescription, userContext, useTableFormat,
     isPremium, searchType === 'deep', priorSummary,
   );
-  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
+  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
@@ -2591,7 +2632,9 @@ async function* streamClaudeAnswer(
   const resolvedAttachments = normalizeAttachments(imageDataUrl, attachments);
   const attachmentSystemAddon = buildAttachmentSystemAddon(resolvedAttachments, query);
   if (attachmentSystemAddon) sys += attachmentSystemAddon;
-  const wantsFollowups = chatMode === 'normal' || chatMode === 'space';
+  const normalSmallTalkOverride = buildNormalSmallTalkSystemOverride(query, chatMode);
+  if (normalSmallTalkOverride) sys += normalSmallTalkOverride;
+  const wantsFollowups = wantsContextualFollowups(chatMode, query);
   if (wantsFollowups) {
     sys += `\n\nFOLLOW-UP QUESTIONS (MANDATORY, LAST LINE ONLY):
 After your complete answer, output ONE final line that starts EXACTLY with "${FOLLOWUP_MARKER}" followed by THREE short, specific follow-up questions separated by " || ". Each under 12 words. Output nothing after.`;
@@ -2608,13 +2651,14 @@ After your complete answer, output ONE final line that starts EXACTLY with "${FO
     prompt = buildNormalModeUserPrompt(query, mode, conversationHistory, '', isPremium);
   }
   prompt = augmentPromptForAttachments(prompt, resolvedAttachments, query);
+  prompt = appendChatLanguageReminder(prompt, query, chatMode, friendName, friendDescription);
   messages.push({ role: 'user', content: buildClaudeUserContent(prompt, resolvedAttachments) });
 
   const claudeModel = resolveClaudeModel(model);
   const tokenLimit = getEffectiveTokenLimit(
     mode,
     isContinuationFollowUpQuery(query) && conversationHistory.length > 0,
-    isPremium, searchType === 'deep', chatMode,
+    isPremium, searchType === 'deep', chatMode, query,
   );
 
   let stream: any;
@@ -3079,6 +3123,8 @@ export async function generateClaudeAnswer(
   const resolvedAttachments = normalizeAttachments(imageDataUrl, attachments);
   const attachmentSystemAddon = buildAttachmentSystemAddon(resolvedAttachments, query);
   if (attachmentSystemAddon) sys += attachmentSystemAddon;
+  const normalSmallTalkOverride = buildNormalSmallTalkSystemOverride(query, chatMode);
+  if (normalSmallTalkOverride) sys += normalSmallTalkOverride;
   
   // Build messages array with conversation history
   const messages: any[] = [];
@@ -3110,7 +3156,7 @@ export async function generateClaudeAnswer(
 
   const claudeModel = resolveClaudeModel(model);
 
-  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode);
+  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode, query);
 
   let response: any;
   try {
@@ -3282,6 +3328,8 @@ export async function generateGrokAnswer(
   const resolvedAttachments = normalizeAttachments(imageDataUrl, attachments);
   const attachmentSystemAddon = buildAttachmentSystemAddon(resolvedAttachments, query);
   if (attachmentSystemAddon) sys += attachmentSystemAddon;
+  const normalSmallTalkOverride = buildNormalSmallTalkSystemOverride(query, chatMode);
+  if (normalSmallTalkOverride) sys += normalSmallTalkOverride;
   
   // Build messages array with conversation history
   const messages: any[] = [
@@ -3316,7 +3364,7 @@ export async function generateGrokAnswer(
   const grokModel = resolveGrokModel(model);
   const isReasoningModel = model === 'grok-3-mini';
 
-  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode);
+  const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode, query);
   
   let response;
   try {
@@ -3475,7 +3523,7 @@ async function generateOpenAICompatibleAnswer(
     spaceTitle, spaceDescription, userContext, useTableFormat,
     isPremium, searchType === 'deep', priorSummary,
   );
-  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory);
+  const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
@@ -3488,6 +3536,8 @@ async function generateOpenAICompatibleAnswer(
   const resolvedAttachments = normalizeAttachments(imageDataUrl, attachments);
   const attachmentSystemAddon = buildAttachmentSystemAddon(resolvedAttachments, query);
   if (attachmentSystemAddon) sys += attachmentSystemAddon;
+  const normalSmallTalkOverride = buildNormalSmallTalkSystemOverride(query, chatMode);
+  if (normalSmallTalkOverride) sys += normalSmallTalkOverride;
 
   // Deep-research length guardrail — keep streaming + non-streaming paths
   // identical so the same model produces consistently-sized reports
@@ -3512,6 +3562,7 @@ async function generateOpenAICompatibleAnswer(
     prompt = buildNormalModeUserPrompt(query, mode, conversationHistory, '', isPremium);
   }
   prompt = augmentPromptForAttachments(prompt, resolvedAttachments, query);
+  prompt = appendChatLanguageReminder(prompt, query, chatMode, friendName, friendDescription);
   // These providers accept OpenAI-style multimodal content; reuse the OpenAI builder.
   const userContent = buildOpenAIUserContent(prompt, resolvedAttachments);
   messages.push({ role: 'user', content: userContent });
@@ -3519,7 +3570,7 @@ async function generateOpenAICompatibleAnswer(
   let tokenLimit = getEffectiveTokenLimit(
     mode,
     isContinuationFollowUpQuery(query) && conversationHistory.length > 0,
-    isPremium, searchType === 'deep', chatMode,
+    isPremium, searchType === 'deep', chatMode, query,
   );
   // Perplexity reasoning + deep-research models spend almost all of
   // max_tokens on internal reasoning/citation tokens before emitting a
@@ -3714,6 +3765,8 @@ function pickModelForAutoMode(
   hasAttachment: boolean,
   searchType?: ExaSearchType,
 ): LLMModel {
+  if (isSmallTalkQuery((query || '').trim())) return 'gemini-lite';
+
   const q = (query || '').toLowerCase();
 
   // 1) Anything with an attached image → Gemini (best vision support that

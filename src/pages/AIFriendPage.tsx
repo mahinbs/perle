@@ -71,46 +71,6 @@ function friendAvatarUrl(name: string, logoUrl?: string | null): string {
   )}&background=C7A869&color=111&size=120&bold=true`;
 }
 
-function GroupAvatarStack({
-  friends,
-  size = 40,
-}: {
-  friends: AIFriend[];
-  size?: number;
-}) {
-  if (friends.length === 0) {
-    return (
-      <img
-        src={friendAvatarUrl("Group")}
-        alt="Group chat"
-        className="rounded-full object-cover border-2 border-[var(--accent)]"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-  const shown = friends.slice(0, 4);
-  return (
-    <div
-      className="relative flex items-center shrink-0"
-      style={{ width: size + (shown.length - 1) * (size * 0.52), height: size }}
-    >
-      {shown.map((friend, index) => (
-        <img
-          key={friend.id}
-          src={friendAvatarUrl(friend.name, friend.logo_url)}
-          alt={friend.name}
-          className="rounded-full object-cover border-2 border-[var(--accent)] absolute"
-          style={{
-            width: size,
-            height: size,
-            left: index * (size * 0.52),
-            zIndex: shown.length - index,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
 
 export default function AIFriendPage() {
   const { navigateTo } = useRouterNavigation();
@@ -125,6 +85,7 @@ export default function AIFriendPage() {
   const [aiFriends, setAiFriends] = useState<AIFriend[]>([]);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [showAllGroupAvatars, setShowAllGroupAvatars] = useState(false);
+  const [showAllFriendsInSheet, setShowAllFriendsInSheet] = useState(false);
   // Default landing surface is the group chat — individual friend chats are
   // an opt-in from the friend picker.
   const [isGroupChat, setIsGroupChat] = useState(true);
@@ -337,6 +298,18 @@ export default function AIFriendPage() {
       loadDefaultLogos();
     }
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (showFriendSelector) {
+      setShowAllFriendsInSheet(false);
+    }
+  }, [showFriendSelector]);
+
+  useEffect(() => {
+    if (!isGroupChat) {
+      setShowAllGroupAvatars(false);
+    }
+  }, [isGroupChat]);
 
   useEffect(() => {
     if (!showFriendSelector) return;
@@ -1515,8 +1488,7 @@ export default function AIFriendPage() {
               <button
                 className="btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors hover:bg-[var(--input-bg)] disabled:opacity-50 disabled:cursor-not-allowed text-xs whitespace-nowrap"
                 onClick={openCreateFriendModal}
-                disabled={aiFriends.length >= 5}
-                title={aiFriends.length >= 5 ? "Maximum 5 characters reached" : "Create Character"}
+                title="Create Character"
               >
                 <FaPlus size={12} />
                 <span>Create</span>
@@ -1638,19 +1610,17 @@ export default function AIFriendPage() {
         })}
         {isLoading && (
           <div className="flex items-end gap-3 mb-4">
-            {isGroupChat && aiFriends.length > 0 ? (
-              <GroupAvatarStack friends={aiFriends} size={36} />
-            ) : (
-              <img
-                src={
-                  selectedFriend
+            <img
+              src={
+                isGroupChat && aiFriends.length > 0
+                  ? friendAvatarUrl(aiFriends[0].name, aiFriends[0].logo_url)
+                  : selectedFriend
                     ? friendAvatarUrl(selectedFriend.name, selectedFriend.logo_url)
                     : aiProfile.avatar
-                }
-                alt="Thinking"
-                className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(16,163,127,0.5)]"
-              />
-            )}
+              }
+              alt="Thinking"
+              className="w-9 h-9 rounded-full object-cover border-2 border-[rgba(16,163,127,0.5)]"
+            />
             <div className="px-4 py-3 rounded-[var(--radius-sm)] glass-panel border border-[rgba(255,255,255,0.1)]">
               <div className="text-[length:var(--font-md)] font-semibold mb-1">
                 {isGroupChat
@@ -2145,7 +2115,15 @@ export default function AIFriendPage() {
                     setShowFriendSelector(false);
                   }}
                 >
-                  <GroupAvatarStack friends={aiFriends} size={36} />
+                  <img
+                    src={
+                      aiFriends.length > 0
+                        ? friendAvatarUrl(aiFriends[0].name, aiFriends[0].logo_url)
+                        : friendAvatarUrl("Group")
+                    }
+                    alt="Group chat"
+                    className="w-9 h-9 rounded-full object-cover border-2 border-[var(--accent)] shrink-0"
+                  />
                   <div className="min-w-0">
                     <div className="font-semibold text-sm">Group Chat</div>
                     <div className="text-xs opacity-70">
@@ -2156,7 +2134,7 @@ export default function AIFriendPage() {
               )}
 
               <div className="flex flex-col gap-2">
-                {aiFriends.map((friend) => (
+                {(showAllFriendsInSheet ? aiFriends : aiFriends.slice(0, 5)).map((friend) => (
                   <div
                     key={friend.id}
                     className={`flex items-center gap-3 px-3 py-3 rounded-lg border ${
@@ -2224,6 +2202,16 @@ export default function AIFriendPage() {
                 ))}
               </div>
 
+              {!showAllFriendsInSheet && aiFriends.length > 5 && (
+                <button
+                  type="button"
+                  className="w-full mt-2 glass-button border border-[var(--border)] rounded-lg py-2 text-sm font-medium opacity-80"
+                  onClick={() => setShowAllFriendsInSheet(true)}
+                >
+                  Show {aiFriends.length - 5} more characters
+                </button>
+              )}
+
               <button
                 type="button"
                 className="w-full mt-3 glass-button border border-[var(--border)] rounded-lg py-3 flex items-center justify-center gap-2 font-semibold text-sm"
@@ -2231,7 +2219,6 @@ export default function AIFriendPage() {
                   setShowFriendSelector(false);
                   openCreateFriendModal();
                 }}
-                disabled={aiFriends.length >= 5}
               >
                 <FaPlus size={14} />
                 Create Character

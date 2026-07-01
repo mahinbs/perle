@@ -437,8 +437,21 @@ export function isSmallTalkQuery(query: string): boolean {
     /مرحبا/,
     /شكرا/,
     /السلام\s*عليكم/,
+    /آپ\s*کیسے/,
+    /آپ\s*کیا\s*حال/,
+    /سلام/,
   ];
   if (multilingualGreetings.some((p) => p.test(query))) return true;
+
+  // Short informal Tamil "how are you?" only — not "சென்னை வானிலை எப்படி இருக்கிறது?"
+  const trimmed = query.trim();
+  if (
+    trimmed.length <= 35 &&
+    /^எப்படி\s*இருக்க/i.test(trimmed) &&
+    !/(வானிலை|வானிலை|நிலை|விலை|செய்தி|போக்குவரத்து|டிரா஫ிக்)/.test(trimmed)
+  ) {
+    return true;
+  }
 
   return false;
 }

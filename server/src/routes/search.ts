@@ -18,15 +18,14 @@ import {
   fileToDataUrl,
   resolveQueryWithAttachments,
 } from '../utils/fileAttachments.js';
+import { isSmallTalkQuery } from '../utils/webSearch.js';
 
 const router = Router();
 
 const buildFallbackSuggestedQuestions = (query: string): string[] => {
   const q = query.trim();
   const lower = q.toLowerCase();
-  const isGreeting =
-    /^(hi|hello|hey|yo|sup|what'?s up|how are you|how r u|good (morning|afternoon|evening))[\s!?.,]*$/.test(lower) ||
-    /(how are you|how r u)/.test(lower);
+  const isGreeting = isSmallTalkQuery(q);
   const asksCurrentInfo =
     /(latest|current|today|now|this week|this month|2026|price|cost|launch|release|news)/.test(lower);
 

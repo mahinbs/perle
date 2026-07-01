@@ -1,0 +1,13 @@
+# Render Blueprint — SyntraIQ API backend
+# If the service Root Directory is already perle/server, omit rootDir or set it to "."
+services:
+  - type: web
+    name: syntraiq-api
+    runtime: node
+    rootDir: perle/server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production

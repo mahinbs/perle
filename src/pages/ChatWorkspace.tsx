@@ -29,9 +29,12 @@ import {
   useScrollViewportHeight,
 } from "../utils/chatScroll";
 import {
-  homeChatStore,
   analyzeDocStore,
+  getHomeChatStore,
+  clearAllHomeChatSessions,
+  getEmptyHomeChatSnapshot,
   type ChatSessionStore,
+  type HomeChatSnapshot,
 } from "../utils/homeChatSession";
 import { FaFileAlt } from "react-icons/fa";
 
@@ -76,9 +79,17 @@ type ChatWorkspaceProps = {
 
 export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const isAnalyzePage = variant === "analyze";
-  const sessionStore: ChatSessionStore = isAnalyzePage ? analyzeDocStore : homeChatStore;
+  const sessionStoreRef = useRef<ChatSessionStore>(
+    isAnalyzePage ? analyzeDocStore : getHomeChatStore(isLoggedIn())
+  );
+  const [, bumpSessionStore] = useState(0);
+  const sessionStore = sessionStoreRef.current;
   const { state: currentData, navigateTo } = useRouterNavigation();
-  const restoredSnapshotRef = useRef(sessionStore.getInitial());
+  const restoredSnapshotRef = useRef<HomeChatSnapshot>(
+    isAnalyzePage
+      ? analyzeDocStore.getInitial()
+      : getHomeChatStore(isLoggedIn()).getInitial()
+  );
   const [mode, setMode] = useState<Mode>("Ask");
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
   const [hasSelectedMode, setHasSelectedMode] = useState(false);
@@ -266,27 +277,53 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     }
   }, [isAnalyzePage]);
 
-  // Clear guest (pre-login) chat when the user logs in.
-  // We track the previous login state in a ref so we only act on the
-  // *transition* from logged-out → logged-in, not on every auth tick.
-  const wasLoggedInRef = useRef<boolean>(isLoggedIn());
+  // Drop legacy unified session key (pre guest/auth split) on home mount.
   useEffect(() => {
+    if (!isAnalyzePage && typeof window !== "undefined") {
+      sessionStorage.removeItem(STORAGE_KEYS.homeChatSession);
+    }
+  }, [isAnalyzePage]);
+
+  // Clear guest ↔ signed-in chat on auth transitions — never show the other
+  // session's messages after login or logout.
+  const wasLoggedInRef = useRef<boolean>(isLoggedIn());
+  const resetChatToBlank = useCallback(() => {
+    const blank = getEmptyHomeChatSnapshot();
+    restoredSnapshotRef.current = blank;
+    lastSearchedKeyRef.current = "";
+    lastSearchedQueryRef.current = "";
+    skipTypewriterOnRestoreRef.current = false;
+    lastLoadedConversationIdRef.current = null;
+    setConversationHistory([]);
+    setAnswer(null);
+    setSearchedQuery("");
+    setQuery("");
+    setActiveConversationId(null);
+    setStreamingText("");
+    setStreamingSources([]);
+    setIsStreaming(false);
+    streamingTextRef.current = "";
+    streamingSourcesRef.current = [];
+    pendingBufferRef.current = "";
+    setNewConversation(true);
+  }, []);
+
+  useEffect(() => {
+    if (isAnalyzePage) return undefined;
+
     const unsub = onAuthChange(() => {
       const nowLoggedIn = isLoggedIn();
-      if (!wasLoggedInRef.current && nowLoggedIn) {
-        // User just signed in — discard any guest-session messages
-        sessionStore.clear();
-        setConversationHistory([]);
-        setAnswer(null);
-        setSearchedQuery("");
-        setActiveConversationId(null);
-        lastSearchedKeyRef.current = "";
-        lastSearchedQueryRef.current = "";
-      }
+      if (nowLoggedIn === wasLoggedInRef.current) return;
+
+      // Discard both buckets so neither guest nor signed-in history leaks across.
+      clearAllHomeChatSessions();
+      sessionStoreRef.current = getHomeChatStore(nowLoggedIn);
+      bumpSessionStore((v) => v + 1);
+      resetChatToBlank();
       wasLoggedInRef.current = nowLoggedIn;
     });
     return unsub;
-  }, [sessionStore]);
+  }, [isAnalyzePage, resetChatToBlank]);
 
   // Load user premium status on mount and when user data changes
   useEffect(() => {

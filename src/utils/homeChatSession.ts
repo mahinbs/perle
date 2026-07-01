@@ -173,7 +173,29 @@ export function createChatSessionStore(storageKey: string): ChatSessionStore {
   return { read, write, clear, getInitial };
 }
 
-export const homeChatStore = createChatSessionStore(STORAGE_KEYS.homeChatSession);
+export const guestHomeChatStore = createChatSessionStore(STORAGE_KEYS.homeChatSessionGuest);
+export const authHomeChatStore = createChatSessionStore(STORAGE_KEYS.homeChatSessionAuth);
+
+/** Pick the session bucket for the current auth state (guest vs signed-in). */
+export function getHomeChatStore(loggedIn: boolean): ChatSessionStore {
+  return loggedIn ? authHomeChatStore : guestHomeChatStore;
+}
+
+/** Wipe both buckets — used on login/logout so chats never leak across auth. */
+export function clearAllHomeChatSessions(): void {
+  guestHomeChatStore.clear();
+  authHomeChatStore.clear();
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem(STORAGE_KEYS.homeChatSession);
+  }
+}
+
+export function getEmptyHomeChatSnapshot(): HomeChatSnapshot {
+  return cloneEmptySnapshot();
+}
+
+/** @deprecated Use getHomeChatStore(loggedIn) — kept for imports that expect a default. */
+export const homeChatStore = guestHomeChatStore;
 export const analyzeDocStore = createChatSessionStore(STORAGE_KEYS.analyzeDocSession);
 
 export const readHomeChatSnapshot = homeChatStore.read;

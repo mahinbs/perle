@@ -22,6 +22,8 @@ export const STORAGE_KEYS = {
   triggerVoiceOutput: 'syntraiq-trigger-voice-output',
   speechRate: 'syntraiq-speech-rate',
   homeChatSession: 'syntraiq-home-chat-session',
+  homeChatSessionGuest: 'syntraiq-home-chat-session-guest',
+  homeChatSessionAuth: 'syntraiq-home-chat-session-auth',
   analyzeDocSession: 'syntraiq-analyze-doc-session',
 } as const;
 
