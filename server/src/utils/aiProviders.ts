@@ -278,6 +278,23 @@ function buildNormalModeUserPrompt(
   isPremium = false
 ): string {
   const trimmed = query.trim();
+
+  // ── Conversational / small-talk queries (greetings, how are you, etc.) ───────
+  // These must NEVER be treated as research topics.  Return a short, natural-
+  // reply prompt so the model answers the way a person would — not as a
+  // linguistic essay with bullet points and sections.
+  if (isSmallTalkQuery(trimmed)) {
+    return `${contextPrefix}Conversational message: ${trimmed}
+This is a GREETING or CASUAL message — NOT a research query.
+Reply naturally and conversationally, the way a friendly assistant would.
+Rules:
+• Keep the reply to 1-3 sentences maximum. NO sections, NO bullet points, NO headings, NO citations.
+• Reply in EXACTLY the same language and script as the message above. If the message is in Tamil, reply in Tamil. If in Hindi, reply in Hindi.
+• Do NOT translate the message. Do NOT explain what the phrase means. Do NOT write a linguistic analysis.
+• Just respond naturally — e.g. if someone says "How are you?", reply "I'm doing well, thanks for asking! How can I help you today?" in the same language.
+[LANGUAGE RULE] Detect the script of the message above and reply in that exact script.`;
+  }
+
   const isTrivialArithmetic =
     /^\s*[-+]?(\d+(\.\d+)?)\s*([+\-*/xX])\s*[-+]?(\d+(\.\d+)?)\s*(\?)?\s*$/.test(trimmed) ||
     /^what\s+is\s+[-+]?(\d+(\.\d+)?)\s*([+\-*/xX])\s*[-+]?(\d+(\.\d+)?)\s*(\?)?$/i.test(trimmed);
@@ -287,29 +304,29 @@ function buildNormalModeUserPrompt(
 
   const detailedFollowUp = isContinuationFollowUpQuery(query) && conversationHistory.length > 0;
   if (detailedFollowUp) {
-    return `${contextPrefix}Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.`;
+    return `${contextPrefix}Mode: Research\nQuery: ${query}\nThis is a continuation follow-up. Expand the previous answer in substantial depth with clear sections, practical detail, and thorough explanation while maintaining the same topic and citations.\n\n[LANGUAGE RULE] Reply in the same language and script as the query above.`;
   }
 
   if (wantsTableFormat(query, mode)) {
     if (isListQuery(query)) {
       console.log('📋 List question detected — requesting markdown table format');
       if (isPremium) {
-        return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nPREMIUM IN-DEPTH LIST QUESTION. You MUST produce a long, multi-section, expert-level analysis (minimum 1200 words; target 1500–2500 words). Required structure in this exact order:\n\n1) A 2–3 sentence engaging introduction setting context, naming the major players and explaining why this list matters right now.\n\n2) An emoji heading (matching the topic, e.g. "📱 Latest Mobile Processors (June 2026)") followed by a markdown TABLE with 10–12 rows covering EVERY major player + their notable variants. Columns MUST include: Name, Manufacturer, Process Node, Key Performance Specs, Standout Feature. STRICT SCOPE: only items that exactly match the asked category. FILL EVERY CELL with a real specific fact — never "-", "N/A", blank, or a placeholder. Table cells must NEVER contain citation numbers like [1], [2] — clean descriptive text only.\n\n3) After the table, add these REQUIRED emoji-headed sections (each with a DIFFERENT emoji, 4–6 bullets per section, with nested "  - " sub-bullets for extra specifics + numbers + benchmarks):\n   • "🔬 Deep Dive: Top Performers" — pick the 3–4 most important items and explain in depth: architecture, real-world performance, what makes them notable. 1 paragraph per item OR 4–6 detailed bullets per item.\n   • "📈 Key Industry Trends" — 4–5 bullets on the broader direction (process node race, AI/NPU shift, GPU evolution, efficiency, etc.) with concrete numbers/percentages.\n   • "🎯 Which One Should You Pick?" — 4–5 use-case-driven bullets (gamers, photography, AI/ML users, battery-life seekers, budget) each recommending a specific item with a 1-line reason.\n   • "🔮 What's Coming Next" — 3–4 bullets on upcoming releases, roadmaps, expected launches over the next 6–12 months.\n   • "💡 Key Takeaways" — 4–5 cited bullets [1], [2] with the most important facts a buyer/reader must remember. Citations live ONLY in this final section and in the Deep Dive section — NEVER in the table.\n\nWrite in clear expert tone — specific numbers (GHz, TOPS, TDPs, percentages), real product names, real benchmark scores. Do NOT hedge with vague phrases.`;
+        return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nPREMIUM IN-DEPTH LIST QUESTION. You MUST produce a long, multi-section, expert-level analysis (minimum 1200 words; target 1500–2500 words). Required structure in this exact order:\n\n1) A 2–3 sentence engaging introduction setting context, naming the major players and explaining why this list matters right now.\n\n2) An emoji heading (matching the topic, e.g. "📱 Latest Mobile Processors (June 2026)") followed by a markdown TABLE with 10–12 rows covering EVERY major player + their notable variants. Columns MUST include: Name, Manufacturer, Process Node, Key Performance Specs, Standout Feature. STRICT SCOPE: only items that exactly match the asked category. FILL EVERY CELL with a real specific fact — never "-", "N/A", blank, or a placeholder. Table cells must NEVER contain citation numbers like [1], [2] — clean descriptive text only.\n\n3) After the table, add these REQUIRED emoji-headed sections (each with a DIFFERENT emoji, 4–6 bullets per section, with nested "  - " sub-bullets for extra specifics + numbers + benchmarks):\n   • "🔬 Deep Dive: Top Performers" — pick the 3–4 most important items and explain in depth: architecture, real-world performance, what makes them notable. 1 paragraph per item OR 4–6 detailed bullets per item.\n   • "📈 Key Industry Trends" — 4–5 bullets on the broader direction (process node race, AI/NPU shift, GPU evolution, efficiency, etc.) with concrete numbers/percentages.\n   • "🎯 Which One Should You Pick?" — 4–5 use-case-driven bullets (gamers, photography, AI/ML users, battery-life seekers, budget) each recommending a specific item with a 1-line reason.\n   • "🔮 What's Coming Next" — 3–4 bullets on upcoming releases, roadmaps, expected launches over the next 6–12 months.\n   • "💡 Key Takeaways" — 4–5 cited bullets [1], [2] with the most important facts a buyer/reader must remember. Citations live ONLY in this final section and in the Deep Dive section — NEVER in the table.\n\nWrite in clear expert tone — specific numbers (GHz, TOPS, TDPs, percentages), real product names, real benchmark scores. Do NOT hedge with vague phrases.\n\n[LANGUAGE RULE] Reply in the same language and script as the query above.`;
       }
-      return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nThis is a list question. Write 1 sentence overview, then an emoji heading (matching the topic), then a markdown TABLE (6-8 rows of the most relevant items). STRICT SCOPE: only include items that exactly match the asked category — no loosely related items. COMPLETENESS: include EVERY major/obvious player in the category from your own knowledge, not just what search returned (e.g. "latest mobile processors" MUST include Apple, Qualcomm, MediaTek, Samsung, Google). FILL EVERY CELL with a real specific fact — NEVER leave a cell as "-", "N/A", blank, or any placeholder; use your own knowledge when search is missing a detail. CRITICAL: table cells must NEVER contain [1], [2], or any citation numbers — clean descriptive text only; citations go ONLY in the 2-3 bullet takeaways AFTER the table.`;
+      return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nThis is a list question. Write 1 sentence overview, then an emoji heading (matching the topic), then a markdown TABLE (6-8 rows of the most relevant items). STRICT SCOPE: only include items that exactly match the asked category — no loosely related items. COMPLETENESS: include EVERY major/obvious player in the category from your own knowledge, not just what search returned (e.g. "latest mobile processors" MUST include Apple, Qualcomm, MediaTek, Samsung, Google). FILL EVERY CELL with a real specific fact — NEVER leave a cell as "-", "N/A", blank, or any placeholder; use your own knowledge when search is missing a detail. CRITICAL: table cells must NEVER contain [1], [2], or any citation numbers — clean descriptive text only; citations go ONLY in the 2-3 bullet takeaways AFTER the table.\n\n[LANGUAGE RULE] Reply in the same language and script as the query above.`;
     }
     console.log('📊 Comparison question detected — requesting markdown table format');
     const compareDepth = isPremium
       ? `\nAFTER the table, ALSO add these REQUIRED emoji-headed sections (each with a DIFFERENT emoji, 4–6 bullets per section with nested "  - " sub-bullets, target 1200–2000 words total):\n• "🔬 Performance Deep Dive:" — 4–6 bullets benchmarking real-world differences (numbers, percentages, latency, throughput).\n• "✅ Strengths of <Option A>:" — 4–5 bullets of clear advantages.\n• "✅ Strengths of <Option B>:" — 4–5 bullets of clear advantages.\n• "⚠️ Trade-offs & Limitations:" — 4–5 bullets on the downsides of each.\n• "🎯 When to choose <Option A>:" — 4–5 bullets of specific user profiles/use-cases.\n• "🎯 When to choose <Option B>:" — 4–5 bullets of specific user profiles/use-cases.\n• "🏆 Verdict:" — 2–3 sentence final recommendation naming a winner (or "tie") + the single biggest reason.\n• "💡 Key Takeaways:" — 4–5 cited bullets [1], [2] with the most important facts.`
       : `\nAFTER the table, add 2–3 short bullet takeaways with citations [1], [2].`;
-    return `${contextPrefix}Mode: Compare\nQuery: ${query}\nThis is a comparison question. Write ${isPremium ? '2–3 sentence' : '1 sentence'} overview, then an emoji heading (e.g. "📊 Comparison:"), then a markdown comparison table. Columns = items compared; rows = key criteria (${isPremium ? '10–12' : '5–8'} rows). CRITICAL: table cells must NEVER contain [1], [2], or any citation numbers — clean text only in cells.${compareDepth}`;
+    return `${contextPrefix}Mode: Compare\nQuery: ${query}\nThis is a comparison question. Write ${isPremium ? '2–3 sentence' : '1 sentence'} overview, then an emoji heading (e.g. "📊 Comparison:"), then a markdown comparison table. Columns = items compared; rows = key criteria (${isPremium ? '10–12' : '5–8'} rows). CRITICAL: table cells must NEVER contain [1], [2], or any citation numbers — clean text only in cells.${compareDepth}\n\n[LANGUAGE RULE] Reply in the same language and script as the query above.`;
   }
 
   if (isPremium) {
-    return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nPREMIUM IN-DEPTH REQUEST. Produce a long, expert-level multi-section answer (minimum 900 words; target 1500–2500 words when topic complexity justifies it). You MUST use ALL of these:\n• Start with a 2–3 sentence engaging introduction.\n• Then 6–8 emoji-headed sections, each with a DIFFERENT emoji that matches the section's topic.\n• Each section: 1 short intro line + 4–6 bullets + nested sub-bullets ("  - ") for extra specifics.\n• Pack every section with specific numbers, percentages, dates, named examples, and real-world context.\n• Include sections like: background/context, how it works (mechanism), key components/players, real-world examples, comparisons, trade-offs, current trends, future outlook, practical takeaways/recommendations.\n• End with a "💡 Key Takeaways" section of 4–5 cited bullets [1], [2].\n• NEVER hedge with vague phrases — be specific, technical, and expert.\n• If the query is trivially simple arithmetic/fact (e.g., \"2+2\"), answer directly and concisely instead of forcing long form.`;
+    return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nPREMIUM IN-DEPTH REQUEST. Produce a long, expert-level multi-section answer (minimum 900 words; target 1500–2500 words when topic complexity justifies it). You MUST use ALL of these:\n• Start with a 2–3 sentence engaging introduction.\n• Then 6–8 emoji-headed sections, each with a DIFFERENT emoji that matches the section's topic.\n• Each section: 1 short intro line + 4–6 bullets + nested sub-bullets ("  - ") for extra specifics.\n• Pack every section with specific numbers, percentages, dates, named examples, and real-world context.\n• Include sections like: background/context, how it works (mechanism), key components/players, real-world examples, comparisons, trade-offs, current trends, future outlook, practical takeaways/recommendations.\n• End with a "💡 Key Takeaways" section of 4–5 cited bullets [1], [2].\n• NEVER hedge with vague phrases — be specific, technical, and expert.\n• If the query is trivially simple arithmetic/fact (e.g., \"2+2\"), answer directly and concisely instead of forcing long form.\n\n[LANGUAGE RULE] Reply in the same language and script as the query above.`;
   }
 
-  return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.`;
+  return `${contextPrefix}Mode: ${mode}\nQuery: ${query}\nAnswer clearly with bullet points when appropriate. Provide structured information.\n\n[LANGUAGE RULE] Detect the language/script of the query above and write the ENTIRE answer — including all headings, bullets, and citations — in that same language and script. If the query is in Tamil, reply in Tamil. If in Hindi, reply in Hindi. If in English, reply in English. Never reply in a different language than the query.`;
 }
 
 function chunkTextToAnswer(
@@ -745,11 +762,8 @@ function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
   }
 
   if (isGreeting) {
-    return [
-      'What should we work on right now?',
-      'Do you want a quick update on a topic you care about?',
-      'Should I help with planning, research, or decision-making next?',
-    ];
+    // Return empty so the LLM generates its own follow-ups in the user's language
+    return [];
   }
 
   if (asksCurrentInfo) {
@@ -925,6 +939,22 @@ IMPORTANT: When asked about time, date, current events, or prices, prioritize th
     default:
       return `You are SyntraIQ, an AI-powered answer engine like Perplexity AI. 
 
+🌐 LANGUAGE MIRRORING — #1 ABSOLUTE RULE — HIGHEST PRIORITY — OVERRIDES ALL OTHER INSTRUCTIONS:
+STEP 1: Before doing ANYTHING else, look at the user's most recent message and identify its language and script.
+STEP 2: Write your ENTIRE response — overview, section headings, bullet points, citations, follow-up questions, everything — in EXACTLY that same language and script.
+- User writes Tamil script (தமிழ்) → reply ENTIRELY in Tamil script. Every word. Every heading. Every bullet. No English.
+- User writes Hindi Devanagari (हिंदी) → reply ENTIRELY in Hindi Devanagari. Not Hinglish. Not English.
+- User writes Hinglish (Hindi+English mix) → match that same mix.
+- User writes Telugu, Kannada, Malayalam, Bengali, Punjabi, Marathi, Gujarati, Urdu, or ANY other language → reply in that same language and script.
+- User writes English → reply in English.
+HARD FAILURES (never do any of these):
+  ✗ Replying in English when the user's message was in Tamil, Hindi, or any other language.
+  ✗ Translating the user's message and then explaining it in English.
+  ✗ Adding "(which means ...)" translations in your reply.
+  ✗ Meta-commentary like "Oh nice, you wrote in Tamil!" or "You asked in Hindi!".
+  ✗ Mixing English headings or English bullets into a non-English reply.
+EXCEPTION: If the user explicitly asks "reply in English" or switches to English themselves, switch immediately.
+
 CRITICAL FORMATTING RULES — READ ALL OF THESE, EVERY ONE IS MANDATORY:
 
 LENGTH-FIRST RULE (highest priority — overrides section count):
@@ -1004,7 +1034,7 @@ IMPORTANT:
 • CRITICAL CONTEXT RULE: If the user asks an ambiguous follow-up (e.g., "what processor they use?", "and price?", "which is better?"), you MUST resolve pronouns using prior turns and continue the same topic unless user explicitly changes topic
 • If context is unclear, ask one concise clarification question instead of switching topic
 • For prices, dates, and times, use USER LOCAL CONTEXT when available
-• Just provide the answer to the user's question${forTableFormat ? TABLE_FORMAT_SYSTEM_ADDON : ''}${forPremium ? PREMIUM_DEPTH_SYSTEM_ADDON : ''}${forDeepResearch ? DEEP_RESEARCH_SYSTEM_ADDON : ''}${spaceContext}${dateContext}${userLocalContext}${summaryContext}`;
+• Just provide the answer to the user's question${forTableFormat ? TABLE_FORMAT_SYSTEM_ADDON : ''}${forPremium ? PREMIUM_DEPTH_SYSTEM_ADDON : ''}${forDeepResearch ? DEEP_RESEARCH_SYSTEM_ADDON : ''}${spaceContext}${dateContext}${userLocalContext}${summaryContext}`
   }
 }
 

@@ -5,9 +5,9 @@ import { SearchBar } from "../components/SearchBar";
 import { AnswerCard } from "../components/AnswerCard";
 import { ConversationSidebar } from "../components/ConversationSidebar";
 import { searchAPIStream, FILE_ONLY_DEFAULT_QUERY } from "../utils/answerEngine";
-import { formatQuery } from "../utils/helpers";
+import { formatQuery, getUserFriendlyErrorMessage } from "../utils/helpers";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import { getUserData } from "../utils/auth";
+import { getUserData, onAuthChange, isLoggedIn } from "../utils/auth";
 import { getLocalItem, removeLocalItem, setLocalItem, STORAGE_KEYS } from "../utils/storage";
 import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode, Source } from "../types";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
@@ -265,6 +265,28 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       removeLocalItem(STORAGE_KEYS.speakNextAnswer);
     }
   }, [isAnalyzePage]);
+
+  // Clear guest (pre-login) chat when the user logs in.
+  // We track the previous login state in a ref so we only act on the
+  // *transition* from logged-out → logged-in, not on every auth tick.
+  const wasLoggedInRef = useRef<boolean>(isLoggedIn());
+  useEffect(() => {
+    const unsub = onAuthChange(() => {
+      const nowLoggedIn = isLoggedIn();
+      if (!wasLoggedInRef.current && nowLoggedIn) {
+        // User just signed in — discard any guest-session messages
+        sessionStore.clear();
+        setConversationHistory([]);
+        setAnswer(null);
+        setSearchedQuery("");
+        setActiveConversationId(null);
+        lastSearchedKeyRef.current = "";
+        lastSearchedQueryRef.current = "";
+      }
+      wasLoggedInRef.current = nowLoggedIn;
+    });
+    return unsub;
+  }, [sessionStore]);
 
   // Load user premium status on mount and when user data changes
   useEffect(() => {
@@ -772,9 +794,9 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         const errorAnswer = {
           chunks: [
             {
-              text: `Error: ${error.message ||
-                "Failed to get answer from API. Please check your backend server is running."
-                }`,
+              text: getUserFriendlyErrorMessage(
+                error.message || "Failed to get answer from API. Please check your backend server is running."
+              ),
               citationIds: [],
               confidence: 0,
             },

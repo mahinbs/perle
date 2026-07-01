@@ -396,7 +396,62 @@ export function isSmallTalkQuery(query: string): boolean {
     /what'?s\s+your\s+name\??/i,
   ];
 
-  return smallTalkPatterns.some((p) => p.test(lower));
+  if (smallTalkPatterns.some((p) => p.test(lower))) return true;
+
+  // Detect greetings written in non-Latin scripts — Tamil, Hindi, Telugu,
+  // Kannada, Malayalam, Bengali, Marathi, Gujarati, Punjabi, Urdu, Arabic, etc.
+  // These are ONLY the common "how are you / hi / thanks" phrases — NOT research
+  // queries — so web search is correctly skipped for them.
+  const multilingualGreetings = [
+    // Tamil
+    /நீங்கள்\s*எப்படி/,   // "How are you" (formal)
+    /நீ\s*எப்படி/,        // "How are you" (informal)
+    /வணக்கம்/,            // Vanakkam (Hello)
+    /நன்றி/,              // Thank you
+    /காலை\s*வணக்கம்/,    // Good morning
+    /மாலை\s*வணக்கம்/,    // Good evening
+    // Hindi / Devanagari
+    /आप\s*कैसे\s*हैं/,     // How are you (formal)
+    /तुम\s*कैसे\s*हो/,     // How are you (informal)
+    /नमस्ते/,               // Namaste
+    /नमस्कार/,              // Namaskar
+    /धन्यवाद/,              // Thank you
+    /शुक्रिया/,              // Shukriya (thanks)
+    /सुप्रभात/,              // Good morning
+    /अलविदा/,               // Goodbye
+    // Telugu
+    /మీరు\s*ఎలా\s*ఉన్నారు/, // How are you
+    /నమస్కారం/,              // Hello
+    /ధన్యవాదాలు/,            // Thank you
+    // Kannada
+    /ನೀವು\s*ಹೇಗಿದ್ದೀರಿ/,     // How are you
+    /ನಮಸ್ಕಾರ/,               // Hello
+    /ಧನ್ಯವಾದ/,               // Thank you
+    // Malayalam
+    /നിങ്ങൾ\s*എങ്ങനെ/,       // How are you
+    /നമസ്കാരം/,               // Hello
+    /നന്ദി/,                   // Thank you
+    // Bengali
+    /আপনি\s*কেমন\s*আছেন/,    // How are you
+    /নমস্কার/,                  // Hello
+    /ধন্যবাদ/,                  // Thank you
+    // Marathi
+    /तुम्ही\s*कसे\s*आहात/,    // How are you
+    // Gujarati
+    /તમે\s*કેમ\s*છો/,          // How are you
+    /નમસ્તે/,                    // Hello
+    // Punjabi
+    /ਸਤ\s*ਸ੍ਰੀ\s*ਅਕਾਲ/,        // Hello
+    /ਤੁਸੀਂ\s*ਕਿਵੇਂ\s*ਹੋ/,        // How are you
+    // Arabic / Urdu
+    /كيف\s*حالك/,               // How are you
+    /مرحبا/,                    // Hello
+    /شكرا/,                     // Thank you
+    /السلام\s*عليكم/,           // Assalamu alaikum
+  ];
+  if (multilingualGreetings.some((p) => p.test(query))) return true;
+
+  return false;
 }
 
 /**
@@ -691,6 +746,7 @@ CRITICAL INSTRUCTIONS:
 3. Always cite sources using [1], [2], [3], etc. notation from the numbered search results above
 4. ⚠️ NEVER use the phrase "[Context provided]" - ONLY cite numbered sources like [1], [2], etc.
 5. ALL facts MUST come from search results with [source number] citations
+6. 🌐 LANGUAGE RULE: Write the FULL answer in the same language and script as the user's query. If the user asked in Tamil, answer in Tamil. If in Hindi, answer in Hindi. If in English, answer in English. This applies to EVERY part of your reply — headings, bullets, citations. Never switch to English if the user did not write in English.
 
 GENERAL GUIDELINES:
 1. Use only facts supported by the search results above.

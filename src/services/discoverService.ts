@@ -285,8 +285,16 @@ export async function fetchLiveNewsItems(forceRefresh = false): Promise<Discover
 
   try {
     const refreshParam = forceRefresh ? '&refresh=1' : '';
-    const url = `${baseUrl.replace(/\/+$/, '')}/api/discover/news?country=${encodeURIComponent(order)}${refreshParam}`;
-    const res = await fetch(url, forceRefresh ? { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } } : undefined);
+    const timeParam = `&_t=${Date.now()}`;
+    const url = `${baseUrl.replace(/\/+$/, '')}/api/discover/news?country=${encodeURIComponent(order)}${refreshParam}${timeParam}`;
+    const res = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
     if (!res.ok) {
       console.error(`[discover/news] backend ${res.status}. URL=${url}`);
       return [];
