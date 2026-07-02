@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
-import { buildAuthResponseFromAccessToken } from '../utils/authSessionResponse.js';
+import { buildAuthResponseFromAccessToken, buildAuthResponseFromSession } from '../utils/authSessionResponse.js';
 import {
   handleGoogleOAuthCallback,
   handleGoogleOAuthStart,
@@ -129,52 +129,14 @@ router.post('/auth/verify-otp', async (req, res) => {
       type: 'signup'
     });
 
-    if (verifyError || !verifyData.user) {
+    if (verifyError || !verifyData.user || !verifyData.session) {
       return res.status(400).json({ 
         error: verifyError?.message || 'Invalid or expired verification code' 
       });
     }
 
-    // Get user metadata
-    const userMetadata = verifyData.user.user_metadata;
-    const name = userMetadata?.name || 'User';
-
-    // Get or create profile
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('user_id', verifyData.user.id)
-      .single();
-
-    if (!profile) {
-      await supabase
-        .from('user_profiles')
-        .insert({
-          user_id: verifyData.user.id,
-          notifications: true,
-          dark_mode: false,
-          search_history: true,
-          voice_search: true,
-          is_premium: false
-        });
-    }
-
-    // Create session token (using Supabase session)
-    const sessionToken = verifyData.session?.access_token || verifyData.user.id;
-
-    res.json({
-      token: sessionToken,
-      user: {
-        id: verifyData.user.id,
-        name: name,
-        email: verifyData.user.email || normalizedEmail,
-        notifications: profile?.notifications ?? true,
-        darkMode: profile?.dark_mode ?? false,
-        searchHistory: profile?.search_history ?? true,
-        voiceSearch: profile?.voice_search ?? true,
-        isPremium: (profile as any)?.is_premium ?? false
-      }
-    });
+    const authPayload = await buildAuthResponseFromSession(verifyData.session);
+    res.json(authPayload);
   } catch (error) {
     console.error('OTP verification error:', error);
     res.status(500).json({ error: 'Internal server error' });

@@ -398,6 +398,18 @@ export function isSmallTalkQuery(query: string): boolean {
 
   if (smallTalkPatterns.some((p) => p.test(lower))) return true;
 
+  // Romanized Indic greetings (Latin script)
+  const romanizedGreetings = [
+    /^(vanakkam|namaskar|namaste)\b/i,
+    /^(eppadi|eppdi|epadi)\s+(iruk|irukeenga|irukinga|iruka)\b/i,
+    /^(neenga|ninga)\s+(eppadi|eppdi)\s+(iruk|irukeenga)\b/i,
+    /^(kaise|kaisa)\s+(ho|hai)\b/i,
+    /^(aap|tum)\s+kaise\s+(ho|hain)\b/i,
+    /^(ela\s+unnaru|ela\s+unav)\b/i,
+    /^(heg\s+iddira|hege\s+iddira)\b/i,
+  ];
+  if (romanizedGreetings.some((p) => p.test(lower))) return true;
+
   // Detect greetings written in non-Latin scripts (skips search and switches to conversational mode)
   const multilingualGreetings = [
     // Tamil
@@ -443,12 +455,12 @@ export function isSmallTalkQuery(query: string): boolean {
   ];
   if (multilingualGreetings.some((p) => p.test(query))) return true;
 
-  // Short informal Tamil "how are you?" only — not "சென்னை வானிலை எப்படி இருக்கிறது?"
+  // Short informal Tamil "how are you?" — matches எப்படி இருக்கிறீர்கள் and variants
   const trimmed = query.trim();
   if (
-    trimmed.length <= 35 &&
-    /^எப்படி\s*இருக்க/i.test(trimmed) &&
-    !/(வானிலை|வானிலை|நிலை|விலை|செய்தி|போக்குவரத்து|டிரா஫ிக்)/.test(trimmed)
+    trimmed.length <= 40 &&
+    (/^எப்படி\s*இருக்க/i.test(trimmed) || /^நீங்கள்\s*எப்படி/i.test(trimmed) || /^நீ\s*எப்படி/i.test(trimmed)) &&
+    !/(வானிலை|நிலை|விலை|செய்தி|போக்குவரத்து|டிராபிக்|மக்கள்தொகை|population)/.test(trimmed)
   ) {
     return true;
   }

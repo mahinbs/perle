@@ -790,6 +790,35 @@ ${isGreeting ? '• They said a short greeting — reply warmly in 1-3 sentences
 • Suggested follow-up questions (if any) must relate to what THEY just said — not generic templates.`;
 }
 
+/** Home chat greetings must not inherit prior Q&A — avoids re-answering old topics. */
+function shouldOmitConversationHistory(query: string, chatMode: ChatMode): boolean {
+  return (chatMode === 'normal' || chatMode === 'space') && isSmallTalkQuery(query.trim());
+}
+
+function buildConversationContextPrefix(
+  query: string,
+  chatMode: ChatMode,
+  conversationHistory: ConversationMessage[]
+): string {
+  if (conversationHistory.length === 0 || shouldOmitConversationHistory(query, chatMode)) {
+    return '';
+  }
+
+  let contextPrompt = 'Previous conversation:\n';
+  for (const msg of conversationHistory) {
+    contextPrompt += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
+  }
+  return `${contextPrompt}\n`;
+}
+
+function buildFollowupLanguageInstruction(query: string): string {
+  const lang = detectReplyLanguage(query);
+  if (lang === 'native_script') {
+    return '- All THREE follow-up questions MUST be in the EXACT same language and script as the user\'s query — NOT in English unless they wrote in English.';
+  }
+  return '- All THREE follow-up questions MUST be in the EXACT same language as the user\'s query above.';
+}
+
 function buildSmallTalkContextGuidance(
   query: string,
   conversationHistory: ConversationMessage[] = [],
@@ -800,10 +829,13 @@ function buildSmallTalkContextGuidance(
   const personal = isCompanion && isCompanionPersonalQuery(query);
   if (!isSmallTalkQuery(query) && !personal) return '';
 
+  const isHomeGreeting = (chatMode === 'normal' || chatMode === 'space') && isSmallTalkQuery(query);
   const lastTopic = getLastMeaningfulUserTopic(conversationHistory);
-  const topicLine = lastTopic
-    ? `\n- Previous meaningful topic from this chat: "${lastTopic}"`
-    : '\n- No earlier meaningful topic detected in this chat.';
+  const topicLine = isHomeGreeting
+    ? '\n- IGNORE all earlier messages in this chat. Do NOT summarize, continue, or re-answer any previous topic — reply ONLY to this greeting.'
+    : lastTopic
+      ? `\n- Previous meaningful topic from this chat: "${lastTopic}"`
+      : '\n- No earlier meaningful topic detected in this chat.';
 
   if (personal) {
     const name = friendName?.trim() || 'your character';
@@ -836,8 +868,8 @@ The user asked: "${query}"
 - The user said: "${query}"
 - This is a GREETING or casual message — NOT a research or language-lesson query.
 - Reply in 1-3 warm conversational sentences in the SAME language and script as the user.
-- FORBIDDEN: translating or romanizing their message; explaining what the phrase means; "The phrase X translates to..."; emoji section headings; bullet lists; citations; cultural or linguistic essays.
-- Example: Tamil "நீங்கள் எப்படி இருக்கிறீர்கள்?" → "நான் நன்றாக இருக்கிறேன், நன்றி! இன்று உங்களுக்கு எப்படி உதவ முடியும்?" — NOT an essay about Tamil greetings.${topicLine}`;
+- FORBIDDEN: translating or romanizing their message; explaining what the phrase means; "The phrase X translates to..."; emoji section headings; bullet lists; citations; cultural or linguistic essays; mentioning or re-answering earlier topics from this chat.
+- Example: Tamil "நீங்கள் எப்படி இருக்கிறீர்கள்?" → "நான் நன்றாக இருக்கிறேன், நன்றி! இன்று உங்களுக்கு எப்படி உதவ முடியும்?" — NOT an essay about Tamil greetings and NOT a recap of prior answers.${topicLine}`;
 }
 
 /** True for home-page greetings / chit-chat in normal or space mode. */
@@ -863,6 +895,7 @@ function buildNormalSmallTalkSystemOverride(query: string, chatMode: ChatMode): 
 The user's message is a GREETING or casual chit-chat — NOT a research question.
 • Reply in 1–3 warm conversational sentences ONLY — like AI Friend mode, NOT a textbook.
 • Write in EXACTLY the same language and script as the user's message (Tamil→Tamil, Hindi→Hindi, Urdu→Urdu, English→English).
+• IGNORE all previous conversation — do NOT mention, summarize, or re-answer any earlier topic (e.g. population, weather, news).
 • FORBIDDEN: translating their message; romanization like "(Nīṅkaḷ eppaṭi...)"; explaining what their phrase means; linguistic/cultural analysis; emoji section headings; bullet lists; citations; "Here's a breakdown".
 • If they ask how you are, say you're doing well and ask how you can help — in THEIR language.`;
 }
@@ -1101,13 +1134,37 @@ async function performWebSearch(
   return enrichContinuationSources(searchQuery, continuationMode, results);
 }
 
-function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
+type QueryLanguageFamily =
+  | 'tamil'
+  | 'hindi'
+  | 'telugu'
+  | 'kannada'
+  | 'malayalam'
+  | 'bengali'
+  | 'arabic'
+  | 'english';
+
+function detectQueryLanguageFamily(query: string): QueryLanguageFamily {
+  const trimmed = query.trim();
+  if (/[஀-௿]/.test(trimmed)) return 'tamil';
+  if (/[ऀ-ॿ]/.test(trimmed)) return 'hindi';
+  if (/[ఀ-౿]/.test(trimmed)) return 'telugu';
+  if (/[ಀ-೿]/.test(trimmed)) return 'kannada';
+  if (/[ഀ-ൿ]/.test(trimmed)) return 'malayalam';
+  if (/[ঀ-৿]/.test(trimmed)) return 'bengali';
+  if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(trimmed)) return 'arabic';
+  return 'english';
+}
+
+/** Localized server-side fallbacks when the model returns too few follow-ups. */
+export function buildLocalizedFallbackSuggestedQuestions(query: string, chatMode: ChatMode = 'normal'): string[] {
   const cleaned = query.replace(/\s+/g, ' ').trim();
   const shortTopic = cleaned.length > 70 ? `${cleaned.slice(0, 70)}...` : cleaned;
   const lower = cleaned.toLowerCase();
   const isGreeting = isSmallTalkQuery(cleaned);
   const asksCurrentInfo =
-    /(latest|current|today|now|this week|this month|2026|price|cost|launch|release|news)/.test(lower);
+    /(latest|current|today|now|this week|this month|2026|price|cost|launch|release|news|population|present)/.test(lower);
+  const lang = detectQueryLanguageFamily(cleaned);
 
   if (chatMode === 'ai_psychologist') {
     if (isGreeting) {
@@ -1124,29 +1181,113 @@ function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
     ];
   }
 
-  if (isGreeting) {
-    // Return empty so the LLM generates its own follow-ups in the user's language
-    return [];
-  }
+  if (isGreeting) return [];
 
-  if (asksCurrentInfo) {
-    return [
-      `Do you want the latest update on "${shortTopic}" with fresh sources?`,
-      `Should I compare top options and key differences for "${shortTopic}"?`,
-      `Want prices, timeline, and availability for "${shortTopic}" in your region?`,
-    ];
-  }
+  const templates: Record<QueryLanguageFamily, { current: string[]; generic: string[] }> = {
+    tamil: {
+      current: [
+        `"${shortTopic}" பற்றிய சமீபத்திய புதுப்பிப்பு வேண்டுமா?`,
+        `"${shortTopic}" தொடர்பான முக்கிய வேறுபாடுகளை ஒப்பிட வேண்டுமா?`,
+        `"${shortTopic}" குறித்து மேலும் விரிவாக விளக்க வேண்டுமா?`,
+      ],
+      generic: [
+        'இதில் எந்த பகுதியை மேலும் விரிவாக விளக்க வேண்டும்?',
+        'தொடர்புடைய மாற்று விருப்பங்கள் அல்லது கருவிகள் பரிந்துரைக்க வேண்டுமா?',
+        'படிப்படியாக செய்வதற்கான வழிமுறைகள் வேண்டுமா?',
+      ],
+    },
+    hindi: {
+      current: [
+        `"${shortTopic}" पर नवीनतम अपडेट चाहिए?`,
+        `"${shortTopic}" के मुख्य अंतरों की तुलना करूँ?`,
+        `"${shortTopic}" पर और गहराई से बताऊँ?`,
+      ],
+      generic: [
+        'किस हिस्से पर और विस्तार से जानना चाहेंगे?',
+        'संबंधित विकल्प या टूल सुझाऊँ?',
+        'कदम-दर-कदम कैसे करें, यह बताऊँ?',
+      ],
+    },
+    telugu: {
+      current: [
+        `"${shortTopic}" కోసం తాజా అప్‌డేట్ కావాలా?`,
+        `"${shortTopic}" ముఖ్య తేడాలను పోల్చాలా?`,
+        `"${shortTopic}" గురించి మరింత వివరంగా చెప్పాలా?`,
+      ],
+      generic: [
+        'ఏ భాగాన్ని మరింత వివరంగా చెప్పాలి?',
+        'సంబంధిత ఎంపికలు లేదా సాధనాలు సూచించాలా?',
+        'దశలవారీగా ఎలా చేయాలో చెప్పాలా?',
+      ],
+    },
+    kannada: {
+      current: [
+        `"${shortTopic}" ಕುರಿತು ಇತ್ತೀಚಿನ ನವೀಕರಣ ಬೇಕೇ?`,
+        `"${shortTopic}" ಪ್ರಮುಖ ವ್ಯತ್ಯಾಸಗಳನ್ನು ಹೋಲಿಸಬೇಕೇ?`,
+        `"${shortTopic}" ಬಗ್ಗೆ ಇನ್ನಷ್ಟು ವಿವರವಾಗಿ ಹೇಳಬೇಕೇ?`,
+      ],
+      generic: [
+        'ಯಾವ ಭಾಗವನ್ನು ಇನ್ನಷ್ಟು ವಿವರಿಸಬೇಕು?',
+        'ಸಂಬಂಧಿತ ಆಯ್ಕೆಗಳು ಅಥವಾ ಉಪಕರಣಗಳನ್ನು ಸೂಚಿಸಬೇಕೇ?',
+        'ಹಂತ ಹಂತವಾಗಿ ಹೇಗೆ ಮಾಡುವುದು ಎಂದು ಹೇಳಬೇಕೇ?',
+      ],
+    },
+    malayalam: {
+      current: [
+        `"${shortTopic}" ഏറ്റവും പുതിയ അപ്‌ഡേറ്റ് വേണോ?`,
+        `"${shortTopic}" പ്രധാന വ്യത്യാസങ്ങൾ താരതമ്യം ചെയ്യണോ?`,
+        `"${shortTopic}" കുറിച്ച് കൂടുതൽ വിശദമായി പറയണോ?`,
+      ],
+      generic: [
+        'ഏത് ഭാഗം കൂടുതൽ വിശദീകരിക്കണം?',
+        'ബന്ധപ്പെട്ട ബദൽ ഓപ്ഷനുകൾ നിർദ്ദേശിക്കണോ?',
+        'ഘട്ടം ഘട്ടമായി എങ്ങനെ ചെയ്യാമെന്ന് പറയണോ?',
+      ],
+    },
+    bengali: {
+      current: [
+        `"${shortTopic}" সম্পর্কে সর্বশেষ আপডেট চান?`,
+        `"${shortTopic}"-এর মূল পার্থক্য তুলনা করব?`,
+        `"${shortTopic}" নিয়ে আরও বিস্তারিত বলব?`,
+      ],
+      generic: [
+        'কোন অংশটি আরও বিস্তারিত জানতে চান?',
+        'সম্পর্কিত বিকল্প বা টুল সাজেস্ট করব?',
+        'ধাপে ধাপে কীভাবে করবেন তা বলব?',
+      ],
+    },
+    arabic: {
+      current: [
+        `هل تريد أحدث تحديث حول "${shortTopic}"؟`,
+        `هل أقارن الفروقات الرئيسية لـ "${shortTopic}"؟`,
+        `هل تريد شرحًا أعمق حول "${shortTopic}"؟`,
+      ],
+      generic: [
+        'أي جزء تريد أن أشرحه بمزيد من التفصيل؟',
+        'هل أقترح بدائل أو أدوات ذات صلة؟',
+        'هل تريد خطوات عملية للتنفيذ؟',
+      ],
+    },
+    english: {
+      current: [
+        `Do you want the latest update on "${shortTopic}" with fresh sources?`,
+        `Should I compare top options and key differences for "${shortTopic}"?`,
+        `Want me to go deeper on "${shortTopic}"?`,
+      ],
+      generic: [
+        'Want me to go deeper on any part of this?',
+        'Should I suggest related tools or alternatives?',
+        'Want me to walk through how to actually do this step by step?',
+      ],
+    },
+  };
 
-  // Generic fallbacks. Earlier versions injected the literal query into
-  // each template ("Want a checklist for 'create 50 emoju'?"), which
-  // looked nonsensical when the query was a fragment, typo, follow-up
-  // affirmation, or unrelated to the actual answer content. Keep these
-  // topic-free so they always read sensibly.
-  return [
-    'Want me to go deeper on any part of this?',
-    'Should I suggest related tools or alternatives?',
-    'Want me to walk through how to actually do this step by step?',
-  ];
+  const pack = templates[lang];
+  return asksCurrentInfo ? pack.current : pack.generic;
+}
+
+function buildSuggestedQuestions(query: string, chatMode: ChatMode): string[] {
+  return buildLocalizedFallbackSuggestedQuestions(query, chatMode);
 }
 
 function isPsychologyMusicReliefQuery(query: string): boolean {
@@ -1299,9 +1440,14 @@ function buildChatLanguageReminder(
       return `\n\n🌐 LANGUAGE — MANDATORY (CURRENT MESSAGE ONLY):
 - The user's message above uses a native script (Telugu, Tamil, Hindi, Arabic, Chinese, Japanese, Korean, Thai, etc.).
 - Reply ENTIRELY in that EXACT same language and script — overview, headings, bullets, citations, everything.
+- IGNORE the language of older messages in chat history — ONLY this message sets your reply language.
 - FORBIDDEN: translating to English, romanizing, meta-commentary about their language, or mixing English into the reply.`;
     }
-    return '';
+    return `\n\n🌐 LANGUAGE — MANDATORY (CURRENT MESSAGE ONLY):
+- Reply in EXACTLY the same language and script as the user's message above (English, Spanish, French, Hinglish, etc.).
+- ONLY the current user message sets your reply language. IGNORE older turns — if they wrote in Tamil before but English now, reply entirely in English.
+- If they switched language in this message, switch with them instantly — no acknowledgement.
+- FORBIDDEN: replying in a different language than their current message (e.g. Tamil reply when they wrote English).`;
   }
 
   if (chatMode !== 'ai_friend' && chatMode !== 'ai_psychologist') return '';
@@ -1968,16 +2114,7 @@ export async function generateGeminiAnswer(
   const normalSmallTalkOverride = buildNormalSmallTalkSystemOverride(query, chatMode);
   if (normalSmallTalkOverride) sys += normalSmallTalkOverride;
   
-  // Build conversation context from history
-  let contextPrompt = '';
-  if (conversationHistory.length > 0) {
-    const recentHistory = conversationHistory;
-    contextPrompt = 'Previous conversation:\n';
-    for (const msg of recentHistory) {
-      contextPrompt += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
-    }
-    contextPrompt += '\n';
-  }
+  const contextPrompt = buildConversationContextPrefix(query, chatMode, conversationHistory);
   
   // Build prompt based on chat mode
   let prompt: string;
@@ -2243,19 +2380,12 @@ export async function* streamGeminiAnswer(
 After your complete answer, output ONE final line that starts EXACTLY with "${FOLLOWUP_MARKER}" followed by THREE short, specific follow-up questions a curious reader would naturally ask NEXT about this exact topic/answer — separated by " || ".
 - Make them concrete and tied to the actual content above (mention real names/items from the answer), NOT generic ("tell me more", "latest update").
 - Each under 12 words, phrased as a real question.
+${buildFollowupLanguageInstruction(query)}
 - Example: ${FOLLOWUP_MARKER} How does the Snapdragon 8 Elite Gen 5 compare to Apple's A19 Pro? || Which of these chips has the best battery efficiency? || When will phones with the Dimensity 9500 launch?
 - Output nothing after this line.`;
   }
 
-  // ── Conversation context ────────────────────────────────────────────────────
-  let contextPrompt = '';
-  if (conversationHistory.length > 0) {
-    contextPrompt = 'Previous conversation:\n';
-    for (const msg of conversationHistory) {
-      contextPrompt += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
-    }
-    contextPrompt += '\n';
-  }
+  const contextPrompt = buildConversationContextPrefix(query, chatMode, conversationHistory);
 
   let prompt: string;
   if (chatMode === 'ai_friend' || chatMode === 'ai_psychologist') {
@@ -2275,7 +2405,7 @@ After your complete answer, output ONE final line that starts EXACTLY with "${FO
   // gemini-lite skips it, falling back to generic templates. Restating it last
   // dramatically improves compliance.
   if (wantsFollowups) {
-    prompt += `\n\nWhen you finish your answer, on a NEW LINE output EXACTLY:\n${FOLLOWUP_MARKER} <question 1> || <question 2> || <question 3>\nEach question must reference REAL items from your answer above (not generic). Output NOTHING after that line.`;
+    prompt += `\n\nWhen you finish your answer, on a NEW LINE output EXACTLY:\n${FOLLOWUP_MARKER} <question 1> || <question 2> || <question 3>\nEach question must reference REAL items from your answer above (not generic). ${buildFollowupLanguageInstruction(query)} Output NOTHING after that line.`;
   }
   prompt = appendChatLanguageReminder(prompt, query, chatMode, friendName, friendDescription);
   parts.push({ text: `${sys}\n\n${prompt}` });
@@ -2470,11 +2600,13 @@ async function* streamOpenAICompatibleAnswer(
 After your complete answer, output ONE final line that starts EXACTLY with "${FOLLOWUP_MARKER}" followed by THREE short, specific follow-up questions a curious reader would naturally ask NEXT about this exact topic/answer — separated by " || ".
 - Make them concrete and tied to the actual content above.
 - Each under 12 words, phrased as a real question.
+${buildFollowupLanguageInstruction(query)}
 - Output nothing after this line.`;
   }
 
+  const historyForPrompt = shouldOmitConversationHistory(query, chatMode) ? [] : conversationHistory;
   const messages: any[] = [{ role: 'system', content: sys }];
-  for (const msg of conversationHistory) {
+  for (const msg of historyForPrompt) {
     messages.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content });
   }
   let prompt: string;
@@ -2637,11 +2769,14 @@ async function* streamClaudeAnswer(
   const wantsFollowups = wantsContextualFollowups(chatMode, query);
   if (wantsFollowups) {
     sys += `\n\nFOLLOW-UP QUESTIONS (MANDATORY, LAST LINE ONLY):
-After your complete answer, output ONE final line that starts EXACTLY with "${FOLLOWUP_MARKER}" followed by THREE short, specific follow-up questions separated by " || ". Each under 12 words. Output nothing after.`;
+After your complete answer, output ONE final line that starts EXACTLY with "${FOLLOWUP_MARKER}" followed by THREE short, specific follow-up questions separated by " || ". Each under 12 words.
+${buildFollowupLanguageInstruction(query)}
+Output nothing after.`;
   }
 
+  const historyForPrompt = shouldOmitConversationHistory(query, chatMode) ? [] : conversationHistory;
   const messages: any[] = [];
-  for (const msg of conversationHistory) {
+  for (const msg of historyForPrompt) {
     messages.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content });
   }
   let prompt: string;

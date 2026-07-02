@@ -436,7 +436,7 @@ export async function searchAPIStream(
     throw new Error('VITE_API_URL not set');
   }
 
-  const { getAuthHeaders } = await import('./auth');
+  const { authFetch, getAuthHeaders } = await import('./auth');
 
   // When files are attached we must send the request as multipart/form-data
   // so the backend's `/api/stream` route (which uses the same `uploadSearchFiles`
@@ -455,13 +455,13 @@ export async function searchAPIStream(
       { query: enrichedQuery, mode, model, newConversation, conversationId, conversationHistory, searchType, userContext },
       uploadedFiles,
     );
-    response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
+    response = await authFetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
       method: 'POST',
       headers: getAuthHeaders(false), // skip Content-Type so multipart boundary stays correct
       body: formData,
     });
   } else {
-    response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
+    response = await authFetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({

@@ -1036,11 +1036,10 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       oldestTimestampRef.current = null;
 
       const baseUrl = import.meta.env.VITE_API_URL as string;
-      const { getAuthHeaders } = await import('../utils/auth');
+      const { authFetch } = await import('../utils/auth');
 
-      const response = await fetch(
+      const response = await authFetch(
         `${baseUrl}/api/conversations/${conversationId}?limit=${PAGE_SIZE}`,
-        { headers: getAuthHeaders() },
       );
 
       if (response.ok) {
@@ -1088,9 +1087,9 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
 
     try {
       const baseUrl = import.meta.env.VITE_API_URL as string;
-      const { getAuthHeaders } = await import('../utils/auth');
+      const { authFetch } = await import('../utils/auth');
       const url = `${baseUrl}/api/conversations/${convId}?limit=${PAGE_SIZE}&before=${encodeURIComponent(before)}`;
-      const response = await fetch(url, { headers: getAuthHeaders() });
+      const response = await authFetch(url);
       if (!response.ok) return;
       const data = await response.json();
       const older: AnswerResult[] = (data.messages || []).map((msg: any) => ({

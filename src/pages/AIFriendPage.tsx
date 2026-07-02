@@ -1344,7 +1344,7 @@ export default function AIFriendPage() {
                     className="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-[var(--input-bg)] transition-colors min-w-0 max-w-full"
                     aria-label="Switch character"
                   >
-                    <div className="relative shrink-0">
+                    <div className="relative shrink-0 hidden md:block">
                       <img
                         src={isGroupChat && aiFriends.length > 0
                           ? friendAvatarUrl(aiFriends[0].name, aiFriends[0].logo_url)
@@ -1357,7 +1357,7 @@ export default function AIFriendPage() {
                     <div className="text-left min-w-0">
                       <div className="h3 mb-0.5 truncate text-base">{aiProfile.name}</div>
                       {isGroupChat ? (
-                        <div className="flex items-center" style={{ gap: 0, marginTop: 2 }}>
+                        <div className="flex items-center max-md:hidden" style={{ gap: 0, marginTop: 2 }}>
                           <div 
                             className="relative flex items-center shrink-0" 
                             style={{ height: 20, cursor: aiFriends.length > 5 ? 'pointer' : 'default' }}
@@ -1402,7 +1402,7 @@ export default function AIFriendPage() {
                               </div>
                             )}
                           </div>
-                          <span className="text-[10px] opacity-75 ml-1.5 whitespace-nowrap">
+                          <span className="text-[10px] opacity-75 ml-1.5 whitespace-nowrap hidden md:inline">
                             {aiFriends.length} friends joined
                           </span>
                         </div>

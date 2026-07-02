@@ -466,6 +466,34 @@ function parseOAuthCallbackParams(rawUrl: string): URLSearchParams {
  * Supabase configurations.
  */
 export async function completeGoogleOAuthFromCallbackUrl(callbackUrl: string): Promise<AuthResponse> {
+  const normalizedUrl = callbackUrl.split('#')[0];
+  if (processedOAuthCallbackUrls.has(normalizedUrl)) {
+    const token = getAuthToken();
+    const user = getUserData();
+    if (token && user) {
+      return {
+        token,
+        refreshToken: getRefreshToken() ?? undefined,
+        expiresAt: getTokenExpiresAt() ?? undefined,
+        user,
+      };
+    }
+  }
+  if (oauthCallbackInFlight === normalizedUrl) {
+    throw new Error('Sign-in already in progress. Please wait.');
+  }
+  oauthCallbackInFlight = normalizedUrl;
+
+  try {
+    const result = await completeGoogleOAuthFromCallbackUrlInner(callbackUrl);
+    processedOAuthCallbackUrls.add(normalizedUrl);
+    return result;
+  } finally {
+    oauthCallbackInFlight = null;
+  }
+}
+
+async function completeGoogleOAuthFromCallbackUrlInner(callbackUrl: string): Promise<AuthResponse> {
   const params = parseOAuthCallbackParams(callbackUrl);
 
   const oauthError = params.get('error') || params.get('error_description');
@@ -764,6 +792,8 @@ export async function initializeAuthSession(): Promise<void> {
 }
 
 let authSessionListenersRegistered = false;
+const processedOAuthCallbackUrls = new Set<string>();
+let oauthCallbackInFlight: string | null = null;
 
 export function registerAuthSessionListeners(): void {
   if (authSessionListenersRegistered || typeof document === 'undefined') {
@@ -776,6 +806,14 @@ export function registerAuthSessionListeners(): void {
       void initializeAuthSession();
     }
   });
+
+  if (Capacitor.isNativePlatform()) {
+    void App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) {
+        void initializeAuthSession();
+      }
+    });
+  }
 
   if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
     void App.addListener('appUrlOpen', (event) => {
@@ -802,9 +840,9 @@ export function isAuthenticated(): boolean {
   return getAuthToken() !== null || getRefreshToken() !== null;
 }
 
-/** True when we have a stored profile AND a session token (what the UI should show). */
+/** True when we have a valid session token (profile may still be loading). */
 export function isLoggedIn(): boolean {
-  return isAuthenticated() && getUserData() !== null;
+  return isAuthenticated();
 }
 
 const AUTH_CHANGE_EVENT = 'syntraiq-auth-change';

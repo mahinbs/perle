@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { generateAIAnswer, streamAIAnswer, type GeminiStreamEvent } from '../utils/aiProviders.js';
+import { generateAIAnswer, streamAIAnswer, buildLocalizedFallbackSuggestedQuestions, type GeminiStreamEvent } from '../utils/aiProviders.js';
 import { resolveActualSearchModel } from '../utils/modelRegistry.js';
 import type { AnswerResult, Mode, LLMModel, FileAttachment } from '../types.js';
 import { supabase } from '../lib/supabase.js';
@@ -18,47 +18,11 @@ import {
   fileToDataUrl,
   resolveQueryWithAttachments,
 } from '../utils/fileAttachments.js';
-import { isSmallTalkQuery } from '../utils/webSearch.js';
 
 const router = Router();
 
-const buildFallbackSuggestedQuestions = (query: string): string[] => {
-  const q = query.trim();
-  const lower = q.toLowerCase();
-  const isGreeting = isSmallTalkQuery(q);
-  const asksCurrentInfo =
-    /(latest|current|today|now|this week|this month|2026|price|cost|launch|release|news)/.test(lower);
-
-  if (isGreeting) {
-    return [
-      "What should we work on right now?",
-      "Do you want a quick update on a topic you care about?",
-      "Should I help with planning, research, or decision-making next?"
-    ];
-  }
-
-  if (!q) {
-    return [
-      "Can you explain this in simpler terms?",
-      "What are the key points to focus on?",
-      "Can you give me a practical example?"
-    ];
-  }
-
-  if (asksCurrentInfo) {
-    return [
-      `Do you want the latest update on "${q}" with fresh sources?`,
-      `Should I compare top options and key differences for "${q}"?`,
-      `Want prices, timeline, and availability for "${q}" in your region?`
-    ];
-  }
-
-  return [
-    `Do you want a concise summary of "${q}" first?`,
-    `Should I explain "${q}" in deeper detail with examples?`,
-    `Want a practical checklist or next steps for "${q}"?`
-  ];
-};
+const buildFallbackSuggestedQuestions = (query: string): string[] =>
+  buildLocalizedFallbackSuggestedQuestions(query, 'normal');
 
 const searchSchema = z.object({
   query: z.string().max(500, 'Query too long').default(''),
