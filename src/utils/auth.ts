@@ -160,9 +160,28 @@ export function getUserProfilePictureUrl(): string | null {
   return typeof url === 'string' && url.trim().length > 0 ? url.trim() : null;
 }
 
+/** First letter of the user's display name (for avatar fallbacks). */
+export function getUserNameInitial(name?: string | null): string {
+  const trimmed = (name ?? getUserData()?.name ?? 'U').trim();
+  if (!trimmed) return 'U';
+  return trimmed.charAt(0).toUpperCase();
+}
+
+/** Inline SVG avatar with the user's first initial — no external requests. */
+export function getUserInitialAvatarDataUrl(name?: string | null, size = 80): string {
+  const initial = getUserNameInitial(name);
+  const fontSize = Math.round(size * 0.45);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+    `<circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="#C7A869"/>` +
+    `<text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" fill="#111111" ` +
+    `font-family="Ubuntu, system-ui, sans-serif" font-weight="700" font-size="${fontSize}">${initial}</text>` +
+    `</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 export function getUserAvatarFallbackUrl(size = 80): string {
-  const name = getUserData()?.name?.trim() || 'User';
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=C7A869&color=111&size=${size}&bold=true&font-size=0.45`;
+  return getUserInitialAvatarDataUrl(getUserData()?.name, size);
 }
 
 export function setUserData(user: User): void {

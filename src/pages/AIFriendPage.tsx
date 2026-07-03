@@ -23,6 +23,10 @@ import {
   getAuthToken,
   authFetch,
   tryRecoverAuthOrLogout,
+  getUserProfilePictureUrl,
+  getUserAvatarFallbackUrl,
+  getUserInitialAvatarDataUrl,
+  setUserData,
 } from "../utils/auth";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
@@ -148,14 +152,54 @@ export default function AIFriendPage() {
     }
     setShowFriendSelector(true);
   };
-  const genericUserAvatar =
-    "https://ui-avatars.com/api/?name=+&background=444&color=ddd&size=120&bold=true";
-  const userProfile = {
-    name: userName,
-    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(
-      userName
-    )}&background=C7A869&color=111&size=120&bold=true&font-size=0.5`,
-  };
+
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string>(() => {
+    return getUserProfilePictureUrl() || getUserAvatarFallbackUrl(120);
+  });
+
+  // Keep avatar in sync with session + fetch profile photo if missing from cache.
+  useEffect(() => {
+    const cached = getUserProfilePictureUrl();
+    if (cached) {
+      setUserAvatarUrl(cached);
+      return;
+    }
+    setUserAvatarUrl(getUserAvatarFallbackUrl(120));
+
+    if (!isLoggedIn) return;
+
+    const API_URL = import.meta.env.VITE_API_URL;
+    if (!API_URL) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await authFetch(`${API_URL}/api/profile`);
+        if (!response.ok || cancelled) return;
+        const profile = await response.json();
+        if (cancelled) return;
+        setUserData(profile);
+        const photo = profile.dp || profile.displayPictureUrl;
+        if (typeof photo === "string" && photo.trim()) {
+          setUserAvatarUrl(photo.trim());
+        }
+      } catch {
+        // fallback avatar already set
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, sessionUser?.dp, sessionUser?.displayPictureUrl]);
+
+  const userProfile = useMemo(
+    () => ({
+      name: userName,
+      avatar: userAvatarUrl,
+    }),
+    [userName, userAvatarUrl]
+  );
   // Generate greeting based on selected friend or default
   const getGreeting = () => {
     // Group chat greeting
@@ -1523,18 +1567,13 @@ export default function AIFriendPage() {
               message.timestamp
             );
           // For group chat AI messages, get friend avatar and name
-          const isUserInGroup = message.role === "user" && isGroupChat;
           let messageAvatar =
             message.role === "user"
-              ? isUserInGroup
-                ? genericUserAvatar
-                : userProfile.avatar
+              ? userProfile.avatar
               : aiProfile.avatar;
           let messageName =
             message.role === "user"
-              ? isUserInGroup
-                ? "You"
-                : userProfile.name
+              ? userProfile.name
               : aiProfile.name;
 
           if (message.role === "ai") {
@@ -1568,6 +1607,13 @@ export default function AIFriendPage() {
             <img
                 src={messageAvatar}
                 alt={`${messageName} avatar`}
+                onError={(e) => {
+                  if (message.role !== "user") return;
+                  const fallback = getUserInitialAvatarDataUrl(userName, 36);
+                  if (e.currentTarget.src !== fallback) {
+                    e.currentTarget.src = fallback;
+                  }
+                }}
                 className={`w-9 h-9 rounded-full object-cover border-2 ${message.role === "user"
                   ? "border-[var(--accent)]"
                   : "border-[rgba(16,163,127,0.5)]"

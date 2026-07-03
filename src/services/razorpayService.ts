@@ -16,7 +16,7 @@ interface CreateSubscriptionResponse {
   message?: string;
 }
 
-interface RazorpayPaymentResponse {
+export interface RazorpayPaymentResponse {
   razorpay_subscription_id: string;
   razorpay_payment_id: string;
   razorpay_signature: string;
@@ -27,14 +27,18 @@ interface RazorpayCheckoutOptions {
   subscription_id: string;
   name: string;
   description: string;
+  image?: string;
+  callback_url?: string;
+  redirect?: boolean;
   prefill?: {
     name?: string;
     email?: string;
+    contact?: string;
   };
   theme?: {
     color?: string;
   };
-  handler: (response: RazorpayPaymentResponse) => void;
+  handler?: (response: RazorpayPaymentResponse) => void;
   modal?: {
     ondismiss?: () => void;
   };
@@ -94,7 +98,7 @@ async function createSubscription(plan: RazorpayPlanId, autoRenew = true): Promi
   return response.json();
 }
 
-async function verifySubscription(payment: RazorpayPaymentResponse) {
+export async function verifyRazorpaySubscription(payment: RazorpayPaymentResponse) {
   const response = await authenticatedFetch(`${API_URL}/api/payment/verify-subscription`, {
     method: 'POST',
     headers: getAuthHeaders(),
@@ -127,8 +131,18 @@ export interface RazorpayCheckoutResult {
   success: boolean;
   userCancelled?: boolean;
   error?: string;
+  /** Page is navigating to Razorpay hosted checkout */
+  redirecting?: boolean;
 }
 
+function getCallbackUrl(): string {
+  return `${window.location.origin}/payment/callback`;
+}
+
+/**
+ * Full-page Razorpay redirect avoids the embedded modal QR blur bug
+ * (QR image fails to render inside iframe on many browsers).
+ */
 export async function startRazorpaySubscription(plan: RazorpayPlanId): Promise<RazorpayCheckoutResult> {
   await loadRazorpayScript();
 
@@ -143,44 +157,25 @@ export async function startRazorpaySubscription(plan: RazorpayPlanId): Promise<R
     throw new Error('Razorpay checkout is not available');
   }
 
-  return new Promise((resolve) => {
-    const rzp = new window.Razorpay!({
-      key: subscription.keyId,
-      subscription_id: subscription.subscriptionId,
-      name: 'SyntraIQ',
-      description: `${PLAN_LABELS[plan]} Subscription`,
-      prefill: {
-        name: user?.name || undefined,
-        email: user?.email || undefined,
-      },
-      theme: {
-        color: '#C7A869',
-      },
-      handler: async (response) => {
-        try {
-          await verifySubscription(response);
-          resolve({ success: true });
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Payment verification failed';
-          resolve({ success: false, error: message });
-        }
-      },
-      modal: {
-        ondismiss: () => {
-          resolve({ success: false, userCancelled: true });
-        },
-      },
-    });
-
-    rzp.on('payment.failed', (response) => {
-      resolve({
-        success: false,
-        error: response.error?.description || 'Payment failed',
-      });
-    });
-
-    rzp.open();
+  const rzp = new window.Razorpay({
+    key: subscription.keyId,
+    subscription_id: subscription.subscriptionId,
+    name: 'SyntraIQ',
+    description: `${PLAN_LABELS[plan]} Subscription`,
+    image: `${window.location.origin}/app-icon.png`,
+    callback_url: getCallbackUrl(),
+    redirect: true,
+    prefill: {
+      name: user?.name || undefined,
+      email: user?.email || undefined,
+    },
+    theme: {
+      color: '#C7A869',
+    },
   });
+
+  rzp.open();
+  return { success: false, redirecting: true };
 }
 
 export async function restoreRazorpaySubscription(): Promise<{ isPremium: boolean; tier?: string }> {

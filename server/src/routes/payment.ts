@@ -4,7 +4,10 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { supabase } from '../lib/supabase.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
-import { RAZORPAY_PLAN_IDS } from '../utils/razorpayPlans.js';
+import {
+  getRazorpayCredentials,
+  getRazorpayPlanIds,
+} from '../utils/razorpayConfig.js';
 import {
   evaluateSubscriptionAccess,
   persistSubscriptionAccessFix,
@@ -12,46 +15,59 @@ import {
 
 const router = Router();
 
-// Lazy initialization of Razorpay (only when needed)
 function getRazorpayInstance() {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  
+  const { keyId, keySecret } = getRazorpayCredentials();
+
   if (!keyId || !keySecret) {
-    throw new Error('Razorpay API keys are not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your .env file.');
+    throw new Error(
+      'Razorpay API keys are not configured. Set production (RAZORPAY_KEY_ID/SECRET) or test (RAZORPAY_TEST_KEY_ID/SECRET) credentials in .env.'
+    );
   }
-  
+
   return new Razorpay({
     key_id: keyId,
-    key_secret: keySecret
+    key_secret: keySecret,
   });
 }
 
-// Plan configurations
-const PLANS = {
-  pro: {
-    name: 'IQ Pro',
-    amount: 39900, // ₹399 in paise
-    currency: 'INR',
-    description: 'Perfect for creators and strategists',
-    tier: 'pro' as const,
-    planId: RAZORPAY_PLAN_IDS.pro
-  },
-  max: {
-    name: 'IQ Max',
-    amount: 89900, // ₹899 in paise
-    currency: 'INR',
-    description: 'Built for teams running mission-critical workflows',
-    tier: 'max' as const,
-    planId: RAZORPAY_PLAN_IDS.max
-  }
-};
+function getPlans() {
+  const planIds = getRazorpayPlanIds();
+  return {
+    pro: {
+      name: 'IQ Pro',
+      amount: 39900,
+      currency: 'INR',
+      description: 'Perfect for creators and strategists',
+      tier: 'pro' as const,
+      planId: planIds.pro,
+    },
+    max: {
+      name: 'IQ Max',
+      amount: 89900,
+      currency: 'INR',
+      description: 'Built for teams running mission-critical workflows',
+      tier: 'max' as const,
+      planId: planIds.max,
+    },
+  };
+}
 
 // Helper to determine plan hierarchy
 function getPlanLevel(tier: string): number {
   if (tier === 'max') return 2;
   if (tier === 'pro') return 1;
   return 0; // free
+}
+
+/** Paid period still valid (active, cancelled-at-period-end, or paused). */
+function hasValidPaidPeriod(profile: Record<string, unknown> | null | undefined): boolean {
+  if (!profile?.razorpay_payment_id) return false;
+  const endRaw = profile.subscription_end_date as string | null | undefined;
+  if (!endRaw) return false;
+  const endDate = new Date(endRaw);
+  if (Number.isNaN(endDate.getTime()) || endDate <= new Date()) return false;
+  const status = (profile.subscription_status as string) || 'inactive';
+  return status === 'active' || status === 'cancelled' || status === 'paused';
 }
 
 // Create subscription (with auto-renewal support)
@@ -75,6 +91,7 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
     }
 
     const { plan, autoRenew } = parse.data;
+    const PLANS = getPlans();
     const planConfig = PLANS[plan];
 
     if (!planConfig) {
@@ -91,10 +108,14 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
     const existingTier = (existingProfile as any)?.premium_tier || 'free';
     const existingSubscriptionId = (existingProfile as any)?.razorpay_subscription_id;
     const hasCompletedRazorpayPayment = Boolean((existingProfile as any)?.razorpay_payment_id);
-    let isActive = (existingProfile as any)?.subscription_status === 'active';
+    const paidPeriodActive = hasValidPaidPeriod(existingProfile as never);
+    let isActive = paidPeriodActive;
 
-    // Profiles marked active before checkout completed (legacy bug) — treat as unpaid.
-    if (isActive && existingSubscriptionId && !hasCompletedRazorpayPayment) {
+    // Legacy: status active in DB but checkout never completed
+    if (!isActive && (existingProfile as any)?.subscription_status === 'active' && hasCompletedRazorpayPayment) {
+      isActive = true;
+    }
+    if ((existingProfile as any)?.subscription_status === 'active' && existingSubscriptionId && !hasCompletedRazorpayPayment) {
       isActive = false;
     }
 
@@ -264,17 +285,22 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
 
     // Store pending subscription only — activate premium after successful payment.
     const keepPaidTierDuringDowngrade = switchType === 'downgrade' && isActive;
+    const preservePaidSnapshot = paidPeriodActive && switchType !== 'new';
 
     await supabase
       .from('user_profiles')
       .update({
         razorpay_subscription_id: subscription.id,
         razorpay_plan_id: planConfig.planId,
-        razorpay_payment_id: null,
+        razorpay_payment_id: preservePaidSnapshot
+          ? (existingProfile as any).razorpay_payment_id
+          : null,
         auto_renew: autoRenew,
-        subscription_status: 'inactive',
-        premium_tier: keepPaidTierDuringDowngrade ? existingTier : 'free',
-        is_premium: keepPaidTierDuringDowngrade,
+        subscription_status: preservePaidSnapshot
+          ? (existingProfile as any).subscription_status
+          : 'inactive',
+        premium_tier: preservePaidSnapshot || keepPaidTierDuringDowngrade ? existingTier : 'free',
+        is_premium: preservePaidSnapshot || keepPaidTierDuringDowngrade ? existingTier !== 'free' : false,
         updated_at: new Date().toISOString(),
       } as any)
       .eq('user_id', req.userId);
@@ -284,7 +310,7 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
       planId: planConfig.planId,
       amount: planConfig.amount, // Full subscription amount (will be charged)
       currency: planConfig.currency,
-      keyId: process.env.RAZORPAY_KEY_ID,
+      keyId: getRazorpayCredentials().keyId,
       autoRenew: autoRenew,
       switchType: switchType,
       proratedAmount: proratedAmount > 0 ? proratedAmount : null,
@@ -336,7 +362,7 @@ router.post('/payment/verify-prorated', authenticateToken, async (req: AuthReque
     // Verify signature
     const text = `${razorpay_order_id}|${razorpay_payment_id}`;
     const generatedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
+      .createHmac('sha256', getRazorpayCredentials().keySecret)
       .update(text)
       .digest('hex');
 
@@ -384,7 +410,7 @@ router.post('/payment/verify-subscription', authenticateToken, async (req: AuthR
     // Verify signature
     const text = `${razorpay_subscription_id}|${razorpay_payment_id}`;
     const generatedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
+      .createHmac('sha256', getRazorpayCredentials().keySecret)
       .update(text)
       .digest('hex');
 
@@ -430,6 +456,7 @@ router.post('/payment/verify-subscription', authenticateToken, async (req: AuthR
     }
     
     // Determine plan from subscription
+    const PLANS = getPlans();
     const planId = (profile as any).razorpay_plan_id || subscription.plan_id;
     const plan = planId === PLANS.pro.planId ? 'pro' : 'max';
     const planConfig = PLANS[plan];
@@ -483,8 +510,9 @@ router.post('/payment/webhook', async (req, res) => {
     const webhookBody = JSON.stringify(req.body);
 
     // Verify webhook signature
+    const { webhookSecret, keySecret } = getRazorpayCredentials();
     const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET || '')
+      .createHmac('sha256', webhookSecret || keySecret)
       .update(webhookBody)
       .digest('hex');
 
@@ -495,6 +523,7 @@ router.post('/payment/webhook', async (req, res) => {
     const event = req.body.event;
     const subscription = req.body.payload.subscription?.entity || req.body.payload.subscription;
     const payment = req.body.payload.payment?.entity || req.body.payload.payment;
+    const PLANS = getPlans();
 
     // Handle different subscription events
     switch (event) {

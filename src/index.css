@@ -1342,3 +1342,9 @@ html.platform-ios .voice-overlay-controls-bar {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Razorpay — force light scheme if embedded checkout is ever used */
+iframe[src*="razorpay"],
+.razorpay-container iframe {
+  color-scheme: light !important;
+}

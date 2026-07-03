@@ -12,7 +12,12 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(OAuthSessionPlugin.class);
         super.onCreate(savedInstanceState);
-        bridge.getWebView().post(() -> handleOAuthCallbackIntent(getIntent()));
+        bridge.getWebView().post(() -> {
+            android.webkit.WebSettings settings = bridge.getWebView().getSettings();
+            settings.setUseWideViewPort(true);
+            settings.setLoadWithOverviewMode(true);
+            handleOAuthCallbackIntent(getIntent());
+        });
     }
 
     @Override
