@@ -15,6 +15,7 @@ import {
   fileToDataUrl,
   resolveQueryWithAttachments,
 } from '../utils/fileAttachments.js';
+import { getSubscriptionAccessForUser } from '../utils/subscriptionAccess.js';
 
 const router = Router();
 
@@ -396,21 +397,9 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
     let premiumTier = 'free';
     if (req.userId) {
       try {
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('is_premium, premium_tier, subscription_status, subscription_end_date')
-          .eq('user_id', req.userId)
-          .single();
-
-        if (profile) {
-          // Check if premium and subscription is active
-          const hasActiveSubscription = profile.subscription_status === 'active' &&
-            profile.subscription_end_date &&
-            new Date(profile.subscription_end_date) > new Date();
-
-          isPremium = (profile.is_premium === true || profile.premium_tier === 'pro' || profile.premium_tier === 'max') && hasActiveSubscription;
-          if (hasActiveSubscription) premiumTier = profile.premium_tier || 'free';
-        }
+        const access = await getSubscriptionAccessForUser(req.userId);
+        isPremium = access.isPremium;
+        premiumTier = access.premiumTier;
       } catch (e) {
         console.warn('Failed to fetch premium status, defaulting to free:', e);
       }

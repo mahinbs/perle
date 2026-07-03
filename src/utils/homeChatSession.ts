@@ -174,19 +174,39 @@ export function createChatSessionStore(storageKey: string): ChatSessionStore {
 }
 
 export const guestHomeChatStore = createChatSessionStore(STORAGE_KEYS.homeChatSessionGuest);
-export const authHomeChatStore = createChatSessionStore(STORAGE_KEYS.homeChatSessionAuth);
 
-/** Pick the session bucket for the current auth state (guest vs signed-in). */
-export function getHomeChatStore(loggedIn: boolean): ChatSessionStore {
-  return loggedIn ? authHomeChatStore : guestHomeChatStore;
+const authStoreCache = new Map<string, ChatSessionStore>();
+
+function authStoreKey(userId: string): string {
+  return `${STORAGE_KEYS.homeChatSessionAuth}:${userId}`;
 }
 
-/** Wipe both buckets — used on login/logout so chats never leak across auth. */
+/** Pick the session bucket for the current auth state (guest vs signed-in user). */
+export function getHomeChatStore(loggedIn: boolean, userId?: string | null): ChatSessionStore {
+  if (!loggedIn || !userId) return guestHomeChatStore;
+  let store = authStoreCache.get(userId);
+  if (!store) {
+    store = createChatSessionStore(authStoreKey(userId));
+    authStoreCache.set(userId, store);
+  }
+  return store;
+}
+
+/** Wipe guest + all per-user auth buckets — used on login/logout/account switch. */
 export function clearAllHomeChatSessions(): void {
   guestHomeChatStore.clear();
-  authHomeChatStore.clear();
+  authStoreCache.forEach((store) => store.clear());
+  authStoreCache.clear();
   if (typeof window !== 'undefined') {
     sessionStorage.removeItem(STORAGE_KEYS.homeChatSession);
+    sessionStorage.removeItem(STORAGE_KEYS.homeChatSessionAuth);
+    const prefix = `${STORAGE_KEYS.homeChatSessionAuth}:`;
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith(prefix)) {
+        sessionStorage.removeItem(key);
+      }
+    }
   }
 }
 

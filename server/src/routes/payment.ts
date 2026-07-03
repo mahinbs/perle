@@ -5,6 +5,10 @@ import crypto from 'crypto';
 import { supabase } from '../lib/supabase.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
 import { RAZORPAY_PLAN_IDS } from '../utils/razorpayPlans.js';
+import {
+  evaluateSubscriptionAccess,
+  persistSubscriptionAccessFix,
+} from '../utils/subscriptionAccess.js';
 
 const router = Router();
 
@@ -80,13 +84,35 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
     // Check if user has existing subscription
     const { data: existingProfile } = await supabase
       .from('user_profiles')
-      .select('premium_tier, razorpay_subscription_id, subscription_status, subscription_end_date')
+      .select('premium_tier, razorpay_subscription_id, razorpay_payment_id, subscription_status, subscription_end_date')
       .eq('user_id', req.userId)
       .single();
 
     const existingTier = (existingProfile as any)?.premium_tier || 'free';
     const existingSubscriptionId = (existingProfile as any)?.razorpay_subscription_id;
-    const isActive = (existingProfile as any)?.subscription_status === 'active';
+    const hasCompletedRazorpayPayment = Boolean((existingProfile as any)?.razorpay_payment_id);
+    let isActive = (existingProfile as any)?.subscription_status === 'active';
+
+    // Profiles marked active before checkout completed (legacy bug) — treat as unpaid.
+    if (isActive && existingSubscriptionId && !hasCompletedRazorpayPayment) {
+      isActive = false;
+    }
+
+    const razorpay = getRazorpayInstance();
+
+    // Cancel abandoned Razorpay subscriptions so checkout always gets a fresh sub.
+    if (existingSubscriptionId) {
+      try {
+        const existingSub = await razorpay.subscriptions.fetch(existingSubscriptionId) as any;
+        if (['created', 'authenticated'].includes(existingSub.status)) {
+          await razorpay.subscriptions.cancel(existingSubscriptionId);
+          isActive = false;
+        }
+      } catch (error: any) {
+        console.error('Could not fetch/cancel existing Razorpay subscription:', error);
+      }
+    }
+
     const newPlanLevel = getPlanLevel(planConfig.tier);
     const existingPlanLevel = getPlanLevel(existingTier);
 
@@ -130,7 +156,6 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
         
         // Cancel old subscription
         try {
-          const razorpay = getRazorpayInstance();
           await razorpay.subscriptions.cancel(existingSubscriptionId);
         } catch (error: any) {
           console.error('Error cancelling old subscription:', error);
@@ -145,7 +170,6 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
           keepAccessUntil = new Date((existingProfile as any).subscription_end_date);
         }
         try {
-          const razorpay = getRazorpayInstance();
           await razorpay.subscriptions.cancel(existingSubscriptionId);
         } catch (error: any) {
           console.error('Error cancelling old subscription:', error);
@@ -173,37 +197,19 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
       }
     }
 
-    // Calculate subscription start date
-    // If downgrading, new subscription starts after old one ends
-    // If upgrading, new subscription starts immediately
-    let subscriptionStartTime = Math.floor(Date.now() / 1000) + 60; // Default: start in 60 seconds
-    
-    if (switchType === 'downgrade' && keepAccessUntil) {
-      // For downgrades, schedule new subscription to start when old one ends
-      subscriptionStartTime = Math.floor(keepAccessUntil.getTime() / 1000);
-    }
-
-    // For upgrades with proration: Calculate what user should pay
-    // Since Razorpay subscriptions charge full amount, we have two options:
-    // Option 1: Charge prorated amount now, subscription starts from next cycle (complex)
-    // Option 2: Charge full subscription amount, then issue partial refund (simpler)
-    // We'll use Option 2: Create subscription (charges full), then refund unused lower plan value
-    
     let subscription: any;
-    let unusedLowerPlanValue = 0; // Amount to refund (unused lower plan value)
-    
+    let unusedLowerPlanValue = 0;
+
     if (switchType === 'upgrade' && proratedAmount > 0) {
-      // unusedLowerPlanValue is already calculated above in the upgrade logic
-      // It represents the value of unused days from the lower plan
       const existingEndDate = existingProfile && (existingProfile as any).subscription_end_date
         ? new Date((existingProfile as any).subscription_end_date)
         : null;
-      
+
       if (existingEndDate) {
         const now = new Date();
         const daysRemaining = Math.ceil((existingEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         const totalDaysInPeriod = 30;
-        
+
         if (daysRemaining > 0 && daysRemaining <= totalDaysInPeriod) {
           const lowerPlanAmount = existingTier === 'pro' ? PLANS.pro.amount : PLANS.max.amount;
           unusedLowerPlanValue = Math.floor((lowerPlanAmount * daysRemaining) / totalDaysInPeriod);
@@ -211,11 +217,19 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
       }
     }
 
-    // Create Razorpay subscription
-    const subscriptionOptions = {
+    // Razorpay requires total_count >= 1 (0 is invalid). For auto-renew monthly plans,
+    // use 1200 cycles (~100 years). Users can cancel anytime via /payment/cancel.
+    // Do NOT set start_at for new/upgrades — subscription must auth immediately at checkout.
+    const subscriptionOptions: {
+      plan_id: string;
+      customer_notify: 1;
+      total_count: number;
+      notes: Record<string, string>;
+      start_at?: number;
+    } = {
       plan_id: planConfig.planId,
-      customer_notify: 1 as 1,
-      total_count: autoRenew ? 0 : 1, // 0 = infinite (auto-renew), 1 = one-time
+      customer_notify: 1,
+      total_count: autoRenew ? 1200 : 1,
       notes: {
         userId: req.userId,
         plan: plan,
@@ -230,41 +244,38 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
           ? Math.ceil((new Date((existingProfile as any).subscription_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)).toString()
           : '0'
       },
-      start_at: subscriptionStartTime
     };
 
-    const razorpay = getRazorpayInstance();
+    if (switchType === 'downgrade' && keepAccessUntil) {
+      subscriptionOptions.start_at = Math.floor(keepAccessUntil.getTime() / 1000);
+    }
+
     subscription = await razorpay.subscriptions.create(subscriptionOptions) as any;
 
-    // Calculate subscription dates
-    const startDate = switchType === 'downgrade' && keepAccessUntil 
-      ? keepAccessUntil 
+    console.log(`Razorpay subscription created: ${subscription.id} status=${subscription.status} for user ${req.userId}`);
+
+    // Calculate subscription dates (used after payment verification / webhook)
+    const startDate = switchType === 'downgrade' && keepAccessUntil
+      ? keepAccessUntil
       : new Date();
-    
+
     let endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1); // Add 1 month
+    endDate.setMonth(endDate.getMonth() + 1);
 
-    // For upgrades: User gets new tier immediately
-    // For downgrades: User keeps old tier until old subscription ends, then gets new tier
-    const effectiveTier = switchType === 'upgrade' 
-      ? planConfig.tier  // Immediate upgrade
-      : (switchType === 'downgrade' 
-          ? existingTier  // Keep old tier until period ends
-          : planConfig.tier); // New subscription
+    // Store pending subscription only — activate premium after successful payment.
+    const keepPaidTierDuringDowngrade = switchType === 'downgrade' && isActive;
 
-    // Save subscription ID and auto-renew preference to user profile
     await supabase
       .from('user_profiles')
       .update({
         razorpay_subscription_id: subscription.id,
         razorpay_plan_id: planConfig.planId,
-        premium_tier: effectiveTier, // Current effective tier
-        is_premium: true,
+        razorpay_payment_id: null,
         auto_renew: autoRenew,
-        subscription_start_date: startDate.toISOString(),
-        subscription_end_date: endDate.toISOString(),
-        subscription_status: 'active',
-        updated_at: new Date().toISOString()
+        subscription_status: 'inactive',
+        premium_tier: keepPaidTierDuringDowngrade ? existingTier : 'free',
+        is_premium: keepPaidTierDuringDowngrade,
+        updated_at: new Date().toISOString(),
       } as any)
       .eq('user_id', req.userId);
 
@@ -288,9 +299,13 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
     });
   } catch (error: any) {
     console.error('Create subscription error:', error);
-    res.status(500).json({ 
-      error: 'Failed to create subscription',
-      message: error.message 
+    const razorpayMessage =
+      error?.error?.description ||
+      error?.error?.reason ||
+      error?.message;
+    res.status(500).json({
+      error: razorpayMessage || 'Failed to create subscription',
+      message: razorpayMessage,
     });
   }
 });
@@ -388,9 +403,31 @@ router.post('/payment/verify-subscription', authenticateToken, async (req: AuthR
       return res.status(400).json({ error: 'Subscription not found or does not belong to user' });
     }
 
-    // Get subscription details from Razorpay
     const razorpay = getRazorpayInstance();
     const subscription = await razorpay.subscriptions.fetch(razorpay_subscription_id) as any;
+
+    const validSubscriptionStatuses = ['active', 'authenticated'];
+    if (!validSubscriptionStatuses.includes(subscription.status)) {
+      return res.status(400).json({
+        error: 'Subscription payment is not complete yet',
+        message: `Razorpay subscription status: ${subscription.status}`,
+      });
+    }
+
+    let paymentStatus: string | null = null;
+    try {
+      const payment = await razorpay.payments.fetch(razorpay_payment_id) as any;
+      paymentStatus = payment.status;
+      if (paymentStatus !== 'captured' && paymentStatus !== 'authorized') {
+        return res.status(400).json({
+          error: 'Payment was not successful',
+          message: `Payment status: ${paymentStatus}`,
+        });
+      }
+    } catch (paymentError: any) {
+      console.error('Razorpay payment fetch error:', paymentError);
+      return res.status(400).json({ error: 'Could not verify payment with Razorpay' });
+    }
     
     // Determine plan from subscription
     const planId = (profile as any).razorpay_plan_id || subscription.plan_id;
@@ -412,7 +449,7 @@ router.post('/payment/verify-subscription', authenticateToken, async (req: AuthR
         subscription_id: `sub_${req.userId}_${Date.now()}`,
         subscription_start_date: startDate.toISOString(),
         subscription_end_date: endDate.toISOString(),
-        subscription_status: subscription.status === 'active' ? 'active' : 'inactive',
+        subscription_status: 'active',
         auto_renew: (profile as any).auto_renew ?? true,
         updated_at: new Date().toISOString()
       } as any)
@@ -594,7 +631,7 @@ router.get('/payment/subscription', authenticateToken, async (req: AuthRequest, 
 
     const { data: profile } = await supabase
       .from('user_profiles')
-      .select('premium_tier, subscription_status, subscription_start_date, subscription_end_date, auto_renew, razorpay_subscription_id')
+      .select('premium_tier, is_premium, subscription_status, subscription_start_date, subscription_end_date, auto_renew, razorpay_subscription_id, razorpay_payment_id, razorpay_plan_id, stripe_subscription_id, stripe_customer_id, subscription_id')
       .eq('user_id', req.userId)
       .single();
 
@@ -607,54 +644,21 @@ router.get('/payment/subscription', authenticateToken, async (req: AuthRequest, 
       });
     }
 
-    const profileData = profile as any;
-    const tier = profileData.premium_tier || 'free';
-    const status = profileData.subscription_status || 'inactive';
-    const endDate = profileData.subscription_end_date;
-    const autoRenew = profileData.auto_renew ?? true;
+    const profileData = profile as Record<string, unknown>;
+    const access = evaluateSubscriptionAccess(profileData as never);
+    await persistSubscriptionAccessFix(req.userId, access);
 
-    // Check if subscription is expired
-    let isActive = status === 'active';
-    let effectiveTier = tier;
-    
-    if (endDate) {
-      const expiryDate = new Date(endDate);
-      const now = new Date();
-      if (expiryDate < now) {
-        // Subscription period has ended
-        if (status === 'active' || status === 'cancelled') {
-          // If cancelled, user had access until period ended
-          // If active but expired, subscription ended
-          isActive = false;
-          // Update status to expired and downgrade
-          await supabase
-            .from('user_profiles')
-            .update({
-              subscription_status: 'expired',
-              premium_tier: 'free',
-              is_premium: false
-            } as any)
-            .eq('user_id', req.userId);
-          effectiveTier = 'free';
-        } else {
-          isActive = false;
-        }
-      } else if (status === 'cancelled') {
-        // Subscription is cancelled but period hasn't ended yet
-        // User still has access until endDate
-        isActive = true; // They still have access
-        effectiveTier = tier; // Keep current tier
-      }
-    }
+    const endDate = profileData.subscription_end_date as string | null | undefined;
+    const autoRenew = (profileData.auto_renew as boolean | undefined) ?? true;
 
     res.json({
-      tier: effectiveTier,
-      status: isActive ? 'active' : status,
-      isActive: isActive,
+      tier: access.premiumTier,
+      status: access.subscriptionStatus,
+      isActive: access.isPremium,
       subscriptionEndDate: endDate || null,
       autoRenew: autoRenew,
-      subscriptionId: profileData.razorpay_subscription_id || null,
-      isCancelled: status === 'cancelled' && isActive // Cancelled but still has access
+      subscriptionId: (profileData.razorpay_subscription_id as string | null) || null,
+      isCancelled: access.subscriptionStatus === 'cancelled' && access.isPremium
     });
   } catch (error: any) {
     console.error('Get subscription error:', error);

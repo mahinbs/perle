@@ -10,6 +10,9 @@ import { uploadSearchFiles } from '../utils/uploadConfig.js';
 import { LLM_MODEL_ENUM } from '../utils/modelRegistry.js';
 import { enforceConversationLimit } from '../utils/conversationLimits.js';
 import { checkFreeSearchAllowed, recordFreeSearchUsage } from '../utils/usageLimits.js';
+import {
+  getSubscriptionAccessForUser,
+} from '../utils/subscriptionAccess.js';
 import { buildCompressedContext } from '../utils/contextCompression.js';
 import {
   collectUploadedFiles,
@@ -148,35 +151,10 @@ router.post('/search', optionalAuth, uploadSearchFiles, async (req: AuthRequest,
     let premiumTier = 'free';
     if (req.userId) {
       try {
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('premium_tier, is_premium, subscription_status, subscription_end_date')
-          .eq('user_id', req.userId)
-          .single();
-        
-        if (profile) {
-          premiumTier = (profile as any)?.premium_tier || 'free';
-          // Check if subscription is active and not expired
-          const status = (profile as any)?.subscription_status || 'inactive';
-          const endDate = (profile as any)?.subscription_end_date;
-          
-          if (status === 'active' && endDate) {
-            const expiryDate = new Date(endDate);
-            const now = new Date();
-            if (expiryDate < now) {
-              // Subscription expired
-              isPremium = false;
-              premiumTier = 'free';
-            } else {
-              isPremium = premiumTier !== 'free';
-            }
-          } else {
-            // Fallback to is_premium for backward compatibility
-            isPremium = (profile as any)?.is_premium ?? (premiumTier !== 'free');
-          }
-        }
+        const access = await getSubscriptionAccessForUser(req.userId);
+        isPremium = access.isPremium;
+        premiumTier = access.premiumTier;
       } catch (e) {
-        // If profile fetch fails, assume free user
         console.warn('Failed to fetch premium status, defaulting to free:', e);
       }
     }
@@ -410,20 +388,9 @@ router.post('/stream', optionalAuth, uploadSearchFiles, async (req: AuthRequest,
   let premiumTier = 'free';
   if (req.userId) {
     try {
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('premium_tier, is_premium, subscription_status, subscription_end_date')
-        .eq('user_id', req.userId).single();
-      if (profile) {
-        premiumTier = (profile as any)?.premium_tier || 'free';
-        const status = (profile as any)?.subscription_status || 'inactive';
-        const endDate = (profile as any)?.subscription_end_date;
-        if (status === 'active' && endDate) {
-          isPremium = new Date(endDate) > new Date() && premiumTier !== 'free';
-        } else {
-          isPremium = (profile as any)?.is_premium ?? (premiumTier !== 'free');
-        }
-      }
+      const access = await getSubscriptionAccessForUser(req.userId);
+      isPremium = access.isPremium;
+      premiumTier = access.premiumTier;
     } catch { /* default free */ }
   }
 

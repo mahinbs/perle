@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { optionalAuth, type AuthRequest } from '../middleware/auth.js';
+import { getSubscriptionAccessForUser } from '../utils/subscriptionAccess.js';
 
 const router = Router();
 
@@ -181,18 +182,10 @@ router.patch('/conversations/:id', optionalAuth, async (req: AuthRequest, res) =
     // enforced when going from unpinned → pinned (unpin is always allowed).
     if (parse.data.pinned === true) {
       try {
-        // Resolve the user's tier (best-effort; defaults to free).
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('premium_tier, is_premium, subscription_status, subscription_end_date')
-          .eq('user_id', req.userId)
-          .single();
         let tier = 'free';
-        if (profile) {
-          const status = (profile as any)?.subscription_status || 'inactive';
-          const endDate = (profile as any)?.subscription_end_date;
-          const active = status === 'active' && endDate && new Date(endDate) > new Date();
-          tier = active ? ((profile as any)?.premium_tier || 'free') : 'free';
+        if (req.userId) {
+          const access = await getSubscriptionAccessForUser(req.userId);
+          tier = access.premiumTier;
         }
         // Pinning is a PAID feature — Pro 20 / Max 50. Caps are generous
         // enough that most users never hit them, but tight enough that the

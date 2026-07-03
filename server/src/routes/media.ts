@@ -13,6 +13,7 @@ import {
   saveMediaToConversationHistory,
   downloadImageAsDataUrl
 } from '../utils/mediaHelpers.js';
+import { getSubscriptionAccessForUser } from '../utils/subscriptionAccess.js';
 
 const router = Router();
 
@@ -146,19 +147,8 @@ router.post('/generate-image', authenticateToken, upload.single('referenceImage'
     // Check premium status (for free users, limit image generation)
     let isPremium = false;
     if (req.userId) {
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('premium_tier, subscription_status, subscription_end_date')
-        .eq('user_id', req.userId)
-        .single();
-      
-      if (profile) {
-        const hasActiveSubscription = 
-          profile.subscription_status === 'active' && 
-          profile.subscription_end_date && 
-          new Date(profile.subscription_end_date) > new Date();
-        isPremium = (profile.premium_tier === 'pro' || profile.premium_tier === 'max') && hasActiveSubscription;
-      }
+      const access = await getSubscriptionAccessForUser(req.userId);
+      isPremium = access.isPremium;
     }
 
     // Free users: check daily limit
@@ -441,22 +431,8 @@ router.post('/generate-video', authenticateToken, (req, res, next) => {
     // Check premium status (video requires Pro or Max tier)
     let premiumTier = 'free';
     if (req.userId) {
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('premium_tier, subscription_status, subscription_end_date')
-        .eq('user_id', req.userId)
-        .single();
-      
-      if (profile) {
-        const hasActiveSubscription = 
-          profile.subscription_status === 'active' && 
-          profile.subscription_end_date && 
-          new Date(profile.subscription_end_date) > new Date();
-        
-        if (hasActiveSubscription) {
-          premiumTier = profile.premium_tier || 'free';
-        }
-      }
+      const access = await getSubscriptionAccessForUser(req.userId);
+      premiumTier = access.premiumTier;
     }
 
     // Video generation requires Pro or Max tier
@@ -704,22 +680,8 @@ router.post('/generate-video-from-image', authenticateToken, upload.single('imag
     // Check premium status (video requires Pro or Max tier)
     let premiumTier = 'free';
     if (req.userId) {
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('premium_tier, subscription_status, subscription_end_date')
-        .eq('user_id', req.userId)
-        .single();
-      
-      if (profile) {
-        const hasActiveSubscription = 
-          profile.subscription_status === 'active' && 
-          profile.subscription_end_date && 
-          new Date(profile.subscription_end_date) > new Date();
-        
-        if (hasActiveSubscription) {
-          premiumTier = profile.premium_tier || 'free';
-        }
-      }
+      const access = await getSubscriptionAccessForUser(req.userId);
+      premiumTier = access.premiumTier;
     }
 
     // Video generation requires Pro or Max tier
@@ -879,24 +841,8 @@ router.get('/quota', authenticateToken, async (req: AuthRequest, res) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    // Get user's premium tier
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('premium_tier, subscription_status, subscription_end_date')
-      .eq('user_id', req.userId)
-      .single();
-    
-    let premiumTier = 'free';
-    if (profile) {
-      const hasActiveSubscription = 
-        profile.subscription_status === 'active' && 
-        profile.subscription_end_date && 
-        new Date(profile.subscription_end_date) > new Date();
-      
-      if (hasActiveSubscription) {
-        premiumTier = profile.premium_tier || 'free';
-      }
-    }
+    const access = await getSubscriptionAccessForUser(req.userId);
+    const premiumTier = access.premiumTier;
 
     // Get today's video count
     const todayStart = new Date();

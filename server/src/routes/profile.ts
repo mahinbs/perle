@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
 import multer from 'multer';
+import {
+  evaluateSubscriptionAccess,
+  persistSubscriptionAccessFix,
+} from '../utils/subscriptionAccess.js';
 
 const router = Router();
 
@@ -145,14 +149,11 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    // Check if subscription is active
-    const subscriptionEndDate = (profile as any).subscription_end_date;
-    const isSubscriptionActive = (profile as any).subscription_status === 'active' && 
-      subscriptionEndDate && 
-      new Date(subscriptionEndDate) > new Date();
-    
-    const premiumTier = (profile as any).premium_tier || 'free';
-    const isPremium = premiumTier !== 'free' && isSubscriptionActive;
+    // Resolve paid access — never grant Razorpay premium without razorpay_payment_id
+    const access = evaluateSubscriptionAccess(profile as never);
+    if (req.userId) {
+      await persistSubscriptionAccessFix(req.userId, access);
+    }
 
     res.json({
       id: user.id,
@@ -167,11 +168,11 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
       personality: (profile as any).personality || null,
       gender: (profile as any).gender || null,
       age: (profile as any).age || null,
-      isPremium: isPremium,
-      premiumTier: premiumTier, // 'free', 'pro', or 'max'
+      isPremium: access.isPremium,
+      premiumTier: access.premiumTier,
       subscription: {
-        status: (profile as any).subscription_status || 'inactive',
-        tier: premiumTier,
+        status: access.subscriptionStatus,
+        tier: access.premiumTier,
         startDate: (profile as any).subscription_start_date || null,
         endDate: (profile as any).subscription_end_date || null,
         autoRenew: (profile as any).auto_renew ?? false,
@@ -307,12 +308,10 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       }
     }
 
-    const premiumTier = (profileResult as any).premium_tier || 'free';
-    const subscriptionEndDate = (profileResult as any).subscription_end_date;
-    const isSubscriptionActive = (profileResult as any).subscription_status === 'active' && 
-      subscriptionEndDate && 
-      new Date(subscriptionEndDate) > new Date();
-    const isPremium = premiumTier !== 'free' && isSubscriptionActive;
+    const access = evaluateSubscriptionAccess(profileResult as never);
+    if (req.userId) {
+      await persistSubscriptionAccessFix(req.userId, access);
+    }
 
     res.json({
       id: req.userId,
@@ -327,11 +326,11 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       personality: (profileResult as any).personality || null,
       gender: (profileResult as any).gender || null,
       age: (profileResult as any).age || null,
-      isPremium: isPremium,
-      premiumTier: premiumTier,
+      isPremium: access.isPremium,
+      premiumTier: access.premiumTier,
       subscription: {
-        status: (profileResult as any).subscription_status || 'inactive',
-        tier: premiumTier,
+        status: access.subscriptionStatus,
+        tier: access.premiumTier,
         startDate: (profileResult as any).subscription_start_date || null,
         endDate: (profileResult as any).subscription_end_date || null,
         autoRenew: (profileResult as any).auto_renew ?? false,

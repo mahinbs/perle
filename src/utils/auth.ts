@@ -31,6 +31,7 @@ import {
   setTokenExpiresAt,
   STORAGE_KEYS,
 } from './storage';
+import { clearAllHomeChatSessions } from './homeChatSession';
 
 migrateLegacyStorageKeys();
 
@@ -166,6 +167,10 @@ export function getUserAvatarFallbackUrl(size = 80): string {
 
 export function setUserData(user: User): void {
   if (typeof window === 'undefined') return;
+  const previous = getUserData();
+  if (previous?.id !== user.id) {
+    clearAllHomeChatSessions();
+  }
   setLocalItem(USER_DATA_KEY, JSON.stringify(user));
   if (user && typeof user.darkMode === 'boolean') {
     applyTheme(user.darkMode);
@@ -737,6 +742,7 @@ export async function logout(): Promise<void> {
     }
   }
   removeAuthToken();
+  clearAllHomeChatSessions();
 }
 
 let refreshInFlight: Promise<boolean> | null = null;

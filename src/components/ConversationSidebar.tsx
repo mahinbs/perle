@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { FaPlus, FaTrash, FaComments, FaTimes, FaThumbtack } from 'react-icons/fa';
 import { formatTimestampIST } from '../utils/helpers';
-import { getUserData } from '../utils/auth';
+import { getUserData, getAuthToken, onAuthChange } from '../utils/auth';
 
 interface Conversation {
   id: string;
@@ -74,7 +74,17 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   };
 
   useEffect(() => {
-    fetchConversations();
+    const refresh = () => {
+      if (!getAuthToken()) {
+        setConversations([]);
+        setIsLoading(false);
+        return;
+      }
+      void fetchConversations();
+    };
+
+    refresh();
+    return onAuthChange(refresh);
   }, []);
 
   // Refresh conversations when active conversation changes

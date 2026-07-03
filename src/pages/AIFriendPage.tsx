@@ -1363,7 +1363,7 @@ export default function AIFriendPage() {
                     <div className="text-left min-w-0">
                       <div className="h3 mb-0.5 truncate text-base">{aiProfile.name}</div>
                       {isGroupChat ? (
-                        <div className="flex items-center max-md:hidden" style={{ gap: 0, marginTop: 2 }}>
+                        <div className="flex items-center" style={{ gap: 0, marginTop: 2 }}>
                           <div 
                             className="relative flex items-center shrink-0" 
                             style={{ height: 20, cursor: aiFriends.length > 5 ? 'pointer' : 'default' }}

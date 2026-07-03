@@ -80,7 +80,9 @@ type ChatWorkspaceProps = {
 export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const isAnalyzePage = variant === "analyze";
   const sessionStoreRef = useRef<ChatSessionStore>(
-    isAnalyzePage ? analyzeDocStore : getHomeChatStore(isLoggedIn())
+    isAnalyzePage
+      ? analyzeDocStore
+      : getHomeChatStore(isLoggedIn(), getUserData()?.id ?? null)
   );
   const [, bumpSessionStore] = useState(0);
   const sessionStore = sessionStoreRef.current;
@@ -88,7 +90,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const restoredSnapshotRef = useRef<HomeChatSnapshot>(
     isAnalyzePage
       ? analyzeDocStore.getInitial()
-      : getHomeChatStore(isLoggedIn()).getInitial()
+      : getHomeChatStore(isLoggedIn(), getUserData()?.id ?? null).getInitial()
   );
   const [mode, setMode] = useState<Mode>("Ask");
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>("normal");
@@ -286,7 +288,11 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
 
   // Clear guest ↔ signed-in chat on auth transitions — never show the other
   // session's messages after login or logout.
-  const wasLoggedInRef = useRef<boolean>(isLoggedIn());
+  const authScopeRef = useRef<string>(
+    isAnalyzePage
+      ? "analyze"
+      : `${isLoggedIn()}:${getUserData()?.id ?? "guest"}`
+  );
   const resetChatToBlank = useCallback(() => {
     const blank = getEmptyHomeChatSnapshot();
     restoredSnapshotRef.current = blank;
@@ -312,15 +318,15 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     if (isAnalyzePage) return undefined;
 
     const unsub = onAuthChange(() => {
-      const nowLoggedIn = isLoggedIn();
-      if (nowLoggedIn === wasLoggedInRef.current) return;
+      const userId = getUserData()?.id ?? null;
+      const scope = `${isLoggedIn()}:${userId ?? "guest"}`;
+      if (scope === authScopeRef.current) return;
 
-      // Discard both buckets so neither guest nor signed-in history leaks across.
       clearAllHomeChatSessions();
-      sessionStoreRef.current = getHomeChatStore(nowLoggedIn);
+      sessionStoreRef.current = getHomeChatStore(isLoggedIn(), userId);
       bumpSessionStore((v) => v + 1);
       resetChatToBlank();
-      wasLoggedInRef.current = nowLoggedIn;
+      authScopeRef.current = scope;
     });
     return unsub;
   }, [isAnalyzePage, resetChatToBlank]);

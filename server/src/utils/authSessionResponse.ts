@@ -1,5 +1,9 @@
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase.js';
+import {
+  evaluateSubscriptionAccess,
+  persistSubscriptionAccessFix,
+} from './subscriptionAccess.js';
 
 export type PremiumState = {
   isPremium: boolean;
@@ -51,52 +55,18 @@ export async function resolvePremiumState(
   userId: string,
   profile: Record<string, unknown> | null | undefined
 ): Promise<PremiumState> {
-  let premiumTier = (profile as { premium_tier?: string })?.premium_tier || 'free';
-  let subscriptionStatus =
-    (profile as { subscription_status?: string })?.subscription_status || 'inactive';
-  let isPremium = false;
+  const access = evaluateSubscriptionAccess(profile as never);
+  await persistSubscriptionAccessFix(userId, access);
+
   const subscriptionEndDate =
     (profile as { subscription_end_date?: string })?.subscription_end_date || null;
 
-  if (subscriptionEndDate) {
-    const endDate = new Date(subscriptionEndDate);
-    const now = new Date();
-
-    if (endDate < now) {
-      if (
-        subscriptionStatus === 'active' ||
-        subscriptionStatus === 'cancelled' ||
-        subscriptionStatus === 'paused'
-      ) {
-        subscriptionStatus = 'expired';
-        premiumTier = 'free';
-        isPremium = false;
-        await supabase
-          .from('user_profiles')
-          .update({
-            premium_tier: 'free',
-            is_premium: false,
-            subscription_status: 'expired',
-          } as never)
-          .eq('user_id', userId);
-      } else {
-        isPremium = false;
-        premiumTier = 'free';
-      }
-    } else if (subscriptionStatus === 'active' || subscriptionStatus === 'cancelled' || subscriptionStatus === 'paused') {
-      isPremium = premiumTier !== 'free';
-    } else {
-      isPremium = false;
-      if (premiumTier !== 'free') premiumTier = 'free';
-    }
-  } else if (subscriptionStatus === 'active') {
-    isPremium = premiumTier !== 'free';
-  } else {
-    isPremium = false;
-    premiumTier = 'free';
-  }
-
-  return { isPremium, premiumTier, subscriptionStatus, subscriptionEndDate };
+  return {
+    isPremium: access.isPremium,
+    premiumTier: access.premiumTier,
+    subscriptionStatus: access.subscriptionStatus,
+    subscriptionEndDate,
+  };
 }
 
 export function formatAuthUser(
