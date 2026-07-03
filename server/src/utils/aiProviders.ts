@@ -872,6 +872,28 @@ The user asked: "${query}"
 - Example: Tamil "நீங்கள் எப்படி இருக்கிறீர்கள்?" → "நான் நன்றாக இருக்கிறேன், நன்றி! இன்று உங்களுக்கு எப்படி உதவ முடியும்?" — NOT an essay about Tamil greetings and NOT a recap of prior answers.${topicLine}`;
 }
 
+/** Stop companion chats from repeating the previous assistant bubble on a new user turn. */
+function buildCompanionContinuationGuidance(
+  query: string,
+  conversationHistory: ConversationMessage[] = [],
+  chatMode: ChatMode = 'normal'
+): string {
+  if (chatMode !== 'ai_friend' && chatMode !== 'ai_psychologist') return '';
+  if (conversationHistory.length === 0) return '';
+  if (isSmallTalkQuery(query.trim())) return '';
+
+  const lastAssistant = [...conversationHistory].reverse().find((m) => m.role === 'assistant')?.content?.trim();
+  const lastUser = [...conversationHistory].reverse().find((m) => m.role === 'user')?.content?.trim();
+  const sameAsLastUser = lastUser && lastUser === query.trim();
+
+  return `\n\n━━━ NEW USER MESSAGE — DO NOT REPEAT YOUR LAST REPLY ━━━
+The user just sent a NEW message: "${query}"
+• Read it carefully — it is NOT the same as their previous message${lastUser ? ` ("${lastUser.slice(0, 80)}${lastUser.length > 80 ? '…' : ''}")` : ''}.
+• FORBIDDEN: copying, reusing, or lightly rephrasing your previous reply${lastAssistant ? ` (which started: "${lastAssistant.slice(0, 80)}${lastAssistant.length > 80 ? '…' : ''}")` : ''}.
+• If they answered something you asked (food, plans, mood, day), acknowledge THEIR answer and continue naturally.
+• If they changed topic, follow the new topic — do not re-greet or restart the conversation.${sameAsLastUser ? '\n• They repeated the same words — still vary your reply; do not paste the previous answer.' : ''}`;
+}
+
 /** True for home-page greetings / chit-chat in normal or space mode. */
 function isNormalSmallTalk(query: string, chatMode: ChatMode): boolean {
   return (chatMode === 'normal' || chatMode === 'space') && isSmallTalkQuery(query.trim());
@@ -1889,6 +1911,8 @@ export async function generateOpenAIAnswer(
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
+  if (companionContinuation) sys += companionContinuation;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
     if (psychCont) sys += psychCont;
@@ -2095,6 +2119,8 @@ export async function generateGeminiAnswer(
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
+  if (companionContinuation) sys += companionContinuation;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
     if (psychCont) sys += psychCont;
@@ -2144,9 +2170,9 @@ export async function generateGeminiAnswer(
   
   const generationRequest = {
     contents: [{ role: 'user', parts: parts }],
-    generationConfig: {
+      generationConfig: {
       maxOutputTokens: maxOutputTokens,
-      temperature: isCompanion ? 0.55 : 0.2,
+      temperature: isCompanion ? 0.65 : 0.2,
       topP: 0.9,
       topK: 40,
     }
@@ -2358,6 +2384,8 @@ export async function* streamGeminiAnswer(
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
+  if (companionContinuation) sys += companionContinuation;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
     if (psychCont) sys += psychCont;
@@ -2567,6 +2595,8 @@ async function* streamOpenAICompatibleAnswer(
   );
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
+  if (companionContinuation) sys += companionContinuation;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
     if (psychCont) sys += psychCont;
@@ -2754,6 +2784,8 @@ async function* streamClaudeAnswer(
   );
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
+  if (companionContinuation) sys += companionContinuation;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
     if (psychCont) sys += psychCont;
@@ -3242,6 +3274,8 @@ export async function generateClaudeAnswer(
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
+  if (companionContinuation) sys += companionContinuation;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
     if (psychCont) sys += psychCont;
@@ -3449,6 +3483,8 @@ export async function generateGrokAnswer(
   let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
+  if (companionContinuation) sys += companionContinuation;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
     if (psychCont) sys += psychCont;
@@ -3660,6 +3696,8 @@ async function generateOpenAICompatibleAnswer(
   );
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
+  const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
+  if (companionContinuation) sys += companionContinuation;
   if (chatMode === 'ai_psychologist') {
     const psychCont = buildPsychologyContinuationGuidance(query, conversationHistory);
     if (psychCont) sys += psychCont;

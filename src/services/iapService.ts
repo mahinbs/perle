@@ -56,14 +56,6 @@ export class IAPService {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
   }
 
-  private isNativeAndroid(): boolean {
-    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
-  }
-
-  private isNativeIAP(): boolean {
-    return this.isNativeIOS() || this.isNativeAndroid();
-  }
-
   public getProductIdForPlan(planId: IAPPlanId): string {
     return IAP_PRODUCT_IDS[planId];
   }
@@ -71,11 +63,10 @@ export class IAPService {
   public async initialize(): Promise<boolean> {
     if (this.isInitialized) return true;
 
-    if (!this.isNativeIAP()) {
-      console.warn('IAP is only supported on native iOS/Android. Initializing mock system.');
+    if (!this.isNativeIOS()) {
       this.isInitialized = true;
-      this.canMakePayments = true;
-      return true;
+      this.canMakePayments = false;
+      return false;
     }
 
     try {
@@ -94,24 +85,15 @@ export class IAPService {
   public async loadProducts(productIds: string[]): Promise<IAPProduct[]> {
     await this.initialize();
 
-    if (!this.isNativeIAP()) {
-      return productIds.map(id => ({
-        id,
-        displayName: id.includes('max') ? 'IQ Max (Mock)' : 'IQ Pro (Mock)',
-        description: id.includes('max')
-          ? 'Built for teams running mission-critical workflows'
-          : 'Perfect for creators and strategists',
-        price: id.includes('max') ? 899.00 : 399.00,
-        displayPrice: id.includes('max') ? '₹899' : '₹399',
-        type: 'autoRenewable'
-      }));
+    if (!this.isNativeIOS()) {
+      return [];
     }
 
     try {
       const result = await IAP.loadProducts({ productIds });
       return result.products;
     } catch (error) {
-      console.error('Failed to load products from store:', error);
+      console.error('Failed to load products from App Store:', error);
       throw error;
     }
   }
@@ -125,21 +107,11 @@ export class IAPService {
   }> {
     await this.initialize();
 
-    if (!this.isNativeIAP()) {
-      console.log(`Simulating mock purchase for product: ${productId}`);
-      return new Promise(resolve => {
-        setTimeout(() => {
-          resolve({
-            success: true,
-            transaction: {
-              transactionId: `mock_tx_${Date.now()}`,
-              productId,
-              purchaseDate: Date.now(),
-              receipt: 'MOCK_RECEIPT_DATA'
-            }
-          });
-        }, 1500);
-      });
+    if (!this.isNativeIOS()) {
+      return {
+        success: false,
+        error: { message: 'In-App Purchases are only available on iOS' },
+      };
     }
 
     if (!this.canMakePayments) {
@@ -161,16 +133,8 @@ export class IAPService {
   public async restorePurchases(): Promise<IAPTransaction[]> {
     await this.initialize();
 
-    if (!this.isNativeIAP()) {
-      console.log('Simulating mock restore purchases');
-      return [
-        {
-          transactionId: 'mock_restore_tx_123',
-          productId: IAP_PRODUCT_IDS.pro,
-          purchaseDate: Date.now() - 86400000 * 5,
-          receipt: 'MOCK_RECEIPT_DATA'
-        }
-      ];
+    if (!this.isNativeIOS()) {
+      return [];
     }
 
     try {
@@ -185,7 +149,7 @@ export class IAPService {
   public async getCurrentSubscriptions(): Promise<IAPTransaction[]> {
     await this.initialize();
 
-    if (!this.isNativeIAP()) {
+    if (!this.isNativeIOS()) {
       return [];
     }
 

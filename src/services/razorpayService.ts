@@ -1,0 +1,201 @@
+import { authenticatedFetch, getAuthHeaders, getUserData } from '../utils/auth';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
+
+export type RazorpayPlanId = 'pro' | 'max';
+
+interface CreateSubscriptionResponse {
+  subscriptionId: string;
+  planId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+  autoRenew: boolean;
+  switchType?: string;
+  proratedAmount?: number | null;
+  message?: string;
+}
+
+interface RazorpayPaymentResponse {
+  razorpay_subscription_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayCheckoutOptions {
+  key: string;
+  subscription_id: string;
+  name: string;
+  description: string;
+  prefill?: {
+    name?: string;
+    email?: string;
+  };
+  theme?: {
+    color?: string;
+  };
+  handler: (response: RazorpayPaymentResponse) => void;
+  modal?: {
+    ondismiss?: () => void;
+  };
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayCheckoutOptions) => {
+      open: () => void;
+      on: (event: string, handler: (response: { error: { description: string } }) => void) => void;
+    };
+  }
+}
+
+let scriptLoadPromise: Promise<void> | null = null;
+
+function loadRazorpayScript(): Promise<void> {
+  if (window.Razorpay) {
+    return Promise.resolve();
+  }
+
+  if (scriptLoadPromise) {
+    return scriptLoadPromise;
+  }
+
+  scriptLoadPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('Failed to load Razorpay checkout')));
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load Razorpay checkout'));
+    document.body.appendChild(script);
+  });
+
+  return scriptLoadPromise;
+}
+
+async function createSubscription(plan: RazorpayPlanId, autoRenew = true): Promise<CreateSubscriptionResponse> {
+  const response = await authenticatedFetch(`${API_URL}/api/payment/create-subscription`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ plan, autoRenew }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || error.message || 'Failed to create subscription');
+  }
+
+  return response.json();
+}
+
+async function verifySubscription(payment: RazorpayPaymentResponse) {
+  const response = await authenticatedFetch(`${API_URL}/api/payment/verify-subscription`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      razorpay_subscription_id: payment.razorpay_subscription_id,
+      razorpay_payment_id: payment.razorpay_payment_id,
+      razorpay_signature: payment.razorpay_signature,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || error.message || 'Payment verification failed');
+  }
+
+  const data = await response.json();
+  if (!data.success) {
+    throw new Error(data.error || 'Verification failed');
+  }
+
+  return data;
+}
+
+const PLAN_LABELS: Record<RazorpayPlanId, string> = {
+  pro: 'IQ Pro',
+  max: 'IQ Max',
+};
+
+export interface RazorpayCheckoutResult {
+  success: boolean;
+  userCancelled?: boolean;
+  error?: string;
+}
+
+export async function startRazorpaySubscription(plan: RazorpayPlanId): Promise<RazorpayCheckoutResult> {
+  await loadRazorpayScript();
+
+  const subscription = await createSubscription(plan);
+  const user = getUserData();
+
+  if (!subscription.keyId || !subscription.subscriptionId) {
+    throw new Error('Invalid subscription response from server');
+  }
+
+  if (!window.Razorpay) {
+    throw new Error('Razorpay checkout is not available');
+  }
+
+  return new Promise((resolve) => {
+    const rzp = new window.Razorpay!({
+      key: subscription.keyId,
+      subscription_id: subscription.subscriptionId,
+      name: 'SyntraIQ',
+      description: `${PLAN_LABELS[plan]} Subscription`,
+      prefill: {
+        name: user?.name || undefined,
+        email: user?.email || undefined,
+      },
+      theme: {
+        color: '#C7A869',
+      },
+      handler: async (response) => {
+        try {
+          await verifySubscription(response);
+          resolve({ success: true });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Payment verification failed';
+          resolve({ success: false, error: message });
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          resolve({ success: false, userCancelled: true });
+        },
+      },
+    });
+
+    rzp.on('payment.failed', (response) => {
+      resolve({
+        success: false,
+        error: response.error?.description || 'Payment failed',
+      });
+    });
+
+    rzp.open();
+  });
+}
+
+export async function restoreRazorpaySubscription(): Promise<{ isPremium: boolean; tier?: string }> {
+  const response = await authenticatedFetch(`${API_URL}/api/payment/subscription`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch subscription status');
+  }
+
+  const data = await response.json();
+  return {
+    isPremium: data.isActive === true && data.tier !== 'free',
+    tier: data.tier,
+  };
+}

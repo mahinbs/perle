@@ -83,6 +83,30 @@ const stripInlineCitations = (text: string): string =>
     .trim();
 
 const COMPANION_RECENT_MESSAGE_LIMIT = 10; // last 10 messages for model context
+
+function applyCompanionHistoryWindow(
+  history: ConversationMessage[]
+): { conversationHistory: ConversationMessage[]; priorSummary?: string } {
+  const splitIndex = Math.max(0, history.length - COMPANION_RECENT_MESSAGE_LIMIT);
+  const older = history.slice(0, splitIndex);
+  const recent = history.slice(splitIndex);
+  return {
+    conversationHistory: recent,
+    priorSummary: buildCompanionContextSummary(older) || undefined,
+  };
+}
+
+function normalizeClientConversationHistory(
+  client: Array<{ role: string; content: string; friendId?: string }>
+): ConversationMessage[] {
+  return client
+    .filter((m) => typeof m?.content === 'string' && m.content.trim().length > 0)
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
+      content: m.content.trim(),
+      ...(m.friendId ? { friendId: m.friendId } : {}),
+    }));
+}
 const COMPANION_CONTEXT_FETCH_EXCHANGES = 12; // DB page size — keep small for fast companion replies
 const HISTORY_PAGE_DEFAULT = 20; // exchanges per page (each = user + assistant bubble)
 const HISTORY_PAGE_MAX = 100;
@@ -418,7 +442,15 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
     // Context is isolated per user, chat mode, space, AND ai_friend_id (no mixing between friends)
     let conversationHistory: ConversationMessage[] = [];
     let priorSummary: string | undefined = undefined;
-    if (req.userId && !newConversation) {
+    const clientHistory = normalizeClientConversationHistory(clientConversationHistory);
+
+    // Companion: prefer the live UI transcript — DB writes are async and can lag one turn,
+    // which made the model repeat the previous reply for back-to-back messages.
+    if (isCompanionMode && clientHistory.length > 0) {
+      const applied = applyCompanionHistoryWindow(clientHistory);
+      conversationHistory = applied.conversationHistory;
+      priorSummary = applied.priorSummary;
+    } else if (req.userId && !newConversation) {
       try {
         let query = supabase
           .from('conversation_history')
@@ -470,17 +502,9 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
       }
     }
 
-    // Fallback context: if server-side history isn't available, use client-provided history
-    if ((!conversationHistory || conversationHistory.length === 0) && clientConversationHistory.length > 0) {
-      if (isCompanionMode) {
-        const splitIndex = Math.max(0, clientConversationHistory.length - COMPANION_RECENT_MESSAGE_LIMIT);
-        const older = clientConversationHistory.slice(0, splitIndex);
-        const recent = clientConversationHistory.slice(splitIndex);
-        priorSummary = buildCompanionContextSummary(older) || undefined;
-        conversationHistory = recent;
-      } else {
-        conversationHistory = clientConversationHistory.slice(-contextMessageLimit);
-      }
+    // Non-companion fallback when DB history is empty
+    if (!isCompanionMode && conversationHistory.length === 0 && clientHistory.length > 0) {
+      conversationHistory = clientHistory.slice(-contextMessageLimit);
     }
     
     // If starting new conversation, clear existing history for this user, chat mode, space, and ai friend
@@ -678,9 +702,9 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
       }
     };
 
-    // Companion replies feel instant — don't block the HTTP response on DB writes.
+    // Persist before responding so the next turn's DB fallback stays in sync.
     if (isCompanionMode) {
-      void persistConversationHistory();
+      await persistConversationHistory();
     } else if (req.userId) {
       await persistConversationHistory();
     }

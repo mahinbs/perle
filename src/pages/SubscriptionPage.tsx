@@ -7,6 +7,7 @@ import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { authenticatedFetch, getAuthHeaders, getUserData, verifyToken, isAuthenticated } from "../utils/auth";
 import { useToast } from "../contexts/ToastContext";
 import { IAPService, IAP_PRODUCT_IDS, type IAPPlanId } from "../services/iapService";
+import { startRazorpaySubscription, restoreRazorpaySubscription, type RazorpayPlanId } from "../services/razorpayService";
 
 const plans = [
   {
@@ -53,15 +54,13 @@ const plans = [
   },
 ];
 
-const isNativeIAPPlatform = () => {
-  const platform = Capacitor.getPlatform();
-  return Capacitor.isNativePlatform() && (platform === 'ios' || platform === 'android');
+const isIOSIAPPlatform = () => {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
 };
 
-const getStoreLabel = () => {
-  if (Capacitor.getPlatform() === 'android') return 'Google Play';
-  if (Capacitor.getPlatform() === 'ios') return 'App Store';
-  return 'store';
+const usesRazorpay = () => {
+  if (!Capacitor.isNativePlatform()) return true;
+  return Capacitor.getPlatform() === 'android';
 };
 
 async function verifyIAPPurchase(
@@ -69,8 +68,6 @@ async function verifyIAPPurchase(
   planId: IAPPlanId
 ) {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
-  const platform = Capacitor.getPlatform() === 'android' ? 'android' : 'ios';
-
   const response = await authenticatedFetch(`${API_URL}/api/payment/iap/verify`, {
     method: 'POST',
     headers: getAuthHeaders(),
@@ -79,7 +76,6 @@ async function verifyIAPPurchase(
       productId: transaction.productId,
       plan: planId,
       transactionId: transaction.transactionId,
-      platform,
     }),
   });
 
@@ -124,7 +120,7 @@ export default function SubscriptionPage() {
   }, []);
 
   useEffect(() => {
-    if (isNativeIAPPlatform()) {
+    if (isIOSIAPPlatform()) {
       const iapService = IAPService.getInstance();
       iapService.initialize().then(canPay => {
         if (canPay) {
@@ -140,7 +136,7 @@ export default function SubscriptionPage() {
               }
             })
             .catch(err => {
-              console.error('Error loading store products:', err);
+              console.error('Error loading App Store products:', err);
             });
         }
       });
@@ -188,19 +184,17 @@ export default function SubscriptionPage() {
 
     try {
       setIsLoading(true);
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
 
-      if (isNativeIAPPlatform()) {
+      if (isIOSIAPPlatform()) {
         const iapService = IAPService.getInstance();
         const planId = selectedPlanId as IAPPlanId;
         const productId = iapService.getProductIdForPlan(planId);
-        const storeLabel = getStoreLabel();
 
-        showToast({ message: `Initiating ${storeLabel} purchase...`, type: "info" });
+        showToast({ message: 'Initiating App Store purchase...', type: "info" });
         const result = await iapService.purchase(productId);
 
         if (result.success && result.transaction) {
-          showToast({ message: `Verifying purchase with ${storeLabel}...`, type: "info" });
+          showToast({ message: 'Verifying purchase with App Store...', type: "info" });
           await verifyIAPPurchase(result.transaction, planId);
 
           showToast({
@@ -218,21 +212,23 @@ export default function SubscriptionPage() {
         } else {
           throw new Error(result.error?.message || 'Purchase failed');
         }
-      } else {
-        const response = await authenticatedFetch(`${API_URL}/api/payment/stripe/create-checkout-session`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ plan: selectedPlanId }),
-        });
+      } else if (usesRazorpay()) {
+        showToast({ message: 'Opening Razorpay checkout...', type: "info" });
+        const result = await startRazorpaySubscription(selectedPlanId as RazorpayPlanId);
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to create checkout session');
-        }
-
-        const { url } = await response.json();
-        if (url) {
-          window.location.href = url;
+        if (result.success) {
+          showToast({
+            message: "Subscription successful! Welcome to premium.",
+            type: "success",
+            duration: 5000
+          });
+          await verifyToken().then((user) => {
+            if (user) setAuthUser(user);
+          });
+        } else if (result.userCancelled) {
+          showToast({ message: "Payment cancelled.", type: "info" });
+        } else {
+          throw new Error(result.error || 'Payment failed');
         }
       }
     } catch (error: any) {
@@ -250,11 +246,10 @@ export default function SubscriptionPage() {
   const handleRestore = async () => {
     showToast({ message: "Checking for active subscriptions...", type: "info" });
 
-    if (isNativeIAPPlatform()) {
+    if (isIOSIAPPlatform()) {
       try {
         const iapService = IAPService.getInstance();
         const transactions = await iapService.restorePurchases();
-        const storeLabel = getStoreLabel();
 
         if (transactions && transactions.length > 0) {
           const latestTx = transactions.sort((a, b) => b.purchaseDate - a.purchaseDate)[0];
@@ -270,10 +265,30 @@ export default function SubscriptionPage() {
           return;
         }
 
-        showToast({ message: `No active ${storeLabel} subscription found.`, type: "info" });
-      } catch (e: any) {
+        showToast({ message: "No active App Store subscription found.", type: "info" });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Restore failed';
         console.error('Restore error:', e);
-        showToast({ message: `Restore failed: ${e.message}`, type: "error" });
+        showToast({ message: `Restore failed: ${message}`, type: "error" });
+      }
+      return;
+    }
+
+    if (usesRazorpay()) {
+      try {
+        const status = await restoreRazorpaySubscription();
+        await verifyToken().then((user) => {
+          if (user) setAuthUser(user);
+        });
+        if (status.isPremium) {
+          showToast({ message: "Subscription restored!", type: "success" });
+        } else {
+          showToast({ message: "No active subscription found.", type: "info" });
+        }
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Restore failed';
+        console.error('Restore error:', e);
+        showToast({ message: `Restore failed: ${message}`, type: "error" });
       }
       return;
     }

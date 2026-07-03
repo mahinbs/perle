@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
-import { verifyGooglePlaySubscription } from '../utils/googlePlayVerification.js';
 
 const router = Router();
 
@@ -80,7 +79,6 @@ router.post('/payment/iap/verify', authenticateToken, async (req: AuthRequest, r
       productId: z.string(),
       plan: z.enum(['pro', 'max']),
       transactionId: z.string().optional(),
-      platform: z.enum(['ios', 'android']).optional()
     });
 
     const parseResult = iapSchema.safeParse(req.body);
@@ -91,37 +89,7 @@ router.post('/payment/iap/verify', authenticateToken, async (req: AuthRequest, r
       });
     }
 
-    const { receipt, productId, plan, transactionId, platform = 'ios' } = parseResult.data;
-
-    if (platform === 'android') {
-      console.log(`Verifying Google Play purchase for user: ${req.userId}, product: ${productId}, plan: ${plan}`);
-
-      const googleResult = await verifyGooglePlaySubscription(receipt, productId);
-
-      if (!googleResult.isActive) {
-        return res.status(400).json({
-          error: 'Subscription has expired',
-          expiredAt: googleResult.endDate
-        });
-      }
-
-      await activateSubscription(
-        req.userId,
-        plan,
-        googleResult.startDate,
-        googleResult.endDate,
-        googleResult.transactionId || transactionId || `gplay_${Date.now()}`
-      );
-
-      console.log(`Google Play IAP verified successfully for user ${req.userId}. Upgraded to tier ${plan}`);
-
-      return res.json({
-        success: true,
-        message: 'Google Play purchase verified and subscription activated successfully',
-        tier: plan,
-        subscriptionEndDate: googleResult.endDate
-      });
-    }
+    const { receipt, productId, plan, transactionId } = parseResult.data;
 
     console.log(`Verifying Apple receipt for user: ${req.userId}, product: ${productId}, plan: ${plan}`);
 

@@ -6,5 +6,6 @@ class ViewController: CAPBridgeViewController {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(IAPPlugin())
         bridge?.registerPluginInstance(OAuthSessionPlugin())
+        bridge?.registerPluginInstance(AppleSignInPlugin())
     }
 }

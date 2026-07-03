@@ -235,6 +235,10 @@ export default function AIFriendPage() {
       timestamp: new Date(),
     },
   ]);
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -696,7 +700,9 @@ export default function AIFriendPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    messagesRef.current = [...messagesRef.current, userMessage];
     const messageText = inputValue.trim();
+    const priorMessages = messagesRef.current.slice(0, -1);
     setInputValue("");
     setAttachedFile(null);
     if (attachedFileName) {
@@ -726,7 +732,7 @@ export default function AIFriendPage() {
       const freshThread = newConversation;
       const buildHistoryForFriend = (friendId?: string) =>
         buildCompanionHistoryPayload(
-          messages
+          priorMessages
             .filter((m) => {
               if (m.role === "user") return true;
               if (isGroupChat) return m.role === "ai";

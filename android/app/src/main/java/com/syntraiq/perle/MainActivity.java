@@ -10,7 +10,6 @@ import com.getcapacitor.PluginHandle;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        registerPlugin(IAPPlugin.class);
         registerPlugin(OAuthSessionPlugin.class);
         super.onCreate(savedInstanceState);
         bridge.getWebView().post(() -> handleOAuthCallbackIntent(getIntent()));

@@ -3,7 +3,7 @@ import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
 import { LoginForm } from "../components/LoginForm";
 import { SignupForm } from "../components/SignupForm";
-import { GoogleIcon } from "../assets/icons/GoogleIcon";
+import { SocialAuthButtons } from "../components/SocialAuthButtons";
 import { UpgradeCard } from "../components/UpgradeCard";
 import syntraGif from "../assets/gif/syntraiq.gif";
 import {
@@ -21,8 +21,10 @@ import {
   isLoggedIn,
   readOAuthReturnState,
   startGoogleAuth,
+  startAppleAuth,
   onNativeOAuthBrowserDismissed,
   type User,
+  type AuthResponse,
 } from "../utils/auth";
 import { IoIosArrowBack } from "react-icons/io";
 import {
@@ -530,6 +532,18 @@ export default function ProfilePage() {
     }
   };
 
+  const handleOAuthSuccess = (response?: AuthResponse | void) => {
+    if (response?.user) {
+      const navState = readOAuthReturnState();
+      const { path, useAuthRedirect } = getPostAuthNavigation(response.user, navState);
+      if (useAuthRedirect) {
+        navigateTo(path, { fromAuthRedirect: true }, { replace: true });
+      } else {
+        navigateTo(path, undefined, { replace: true });
+      }
+    }
+  };
+
   const handleGoogleAuth = async (_mode: "login" | "signup") => {
     setIsLoading(true);
     setAuthError("");
@@ -538,20 +552,32 @@ export default function ProfilePage() {
         returnTo: state?.returnTo,
         plan: state?.plan,
       });
-
-      if (response?.user) {
-        const navState = readOAuthReturnState();
-        const { path, useAuthRedirect } = getPostAuthNavigation(response.user, navState);
-        if (useAuthRedirect) {
-          navigateTo(path, { fromAuthRedirect: true }, { replace: true });
-        } else {
-          navigateTo(path, undefined, { replace: true });
-        }
-      }
+      handleOAuthSuccess(response);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Google sign-in failed";
       if (message !== "Google sign-in was cancelled.") {
+        setAuthError(message);
+        showToast({ message, type: "error", duration: 5000 });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAppleAuth = async (_mode: "login" | "signup") => {
+    setIsLoading(true);
+    setAuthError("");
+    try {
+      const response = await startAppleAuth({
+        returnTo: state?.returnTo,
+        plan: state?.plan,
+      });
+      handleOAuthSuccess(response);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Apple sign-in failed";
+      if (message !== "Apple sign-in was cancelled.") {
         setAuthError(message);
         showToast({ message, type: "error", duration: 5000 });
       }
@@ -600,6 +626,7 @@ export default function ProfilePage() {
             setAuthError("");
           }}
           onGoogleSignIn={() => handleGoogleAuth("login")}
+          onAppleSignIn={() => handleAppleAuth("login")}
           isLoading={isLoading}
           error={authError}
         />
@@ -639,6 +666,7 @@ export default function ProfilePage() {
             setAuthError("");
           }}
           onGoogleSignup={() => handleGoogleAuth("signup")}
+          onAppleSignup={() => handleAppleAuth("signup")}
           isLoading={isLoading}
           error={authError}
         />
@@ -723,25 +751,13 @@ export default function ProfilePage() {
               experience…
             </p>
           </div>
-          <button
-              className="btn-ghost glass-button"
-              onClick={() => handleGoogleAuth("signup")}
-              disabled={isLoading}
-              style={{
-                width: "100%",
-                marginTop: 16,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-                fontWeight: 600,
-                opacity: isLoading ? 0.6 : 1,
-                cursor: isLoading ? "not-allowed" : "pointer",
-              }}
-            >
-              <GoogleIcon width={22} height={22} />
-              Continue with Google
-            </button>
+          <div style={{ width: "100%", marginTop: 16 }}>
+          <SocialAuthButtons
+            onAppleSignIn={() => handleAppleAuth("signup")}
+            onGoogleSignIn={() => handleGoogleAuth("signup")}
+            isLoading={isLoading}
+          />
+          </div>
           <button
             className="btn-ghost glass-button"
             onClick={() => setShowSignup(true)}

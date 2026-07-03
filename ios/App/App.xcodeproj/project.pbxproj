@@ -20,6 +20,8 @@
 		868033D02FBDCC3700020A1A /* IAPPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 868033CF2FBDCC3700020A1A /* IAPPlugin.m */; };
 		868033D32FBDCC3700020A1B /* OAuthSessionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868033D42FBDCC3700020A1B /* OAuthSessionPlugin.swift */; };
 		868033D52FBDCC3700020A1B /* OAuthSessionPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 868033D62FBDCC3700020A1B /* OAuthSessionPlugin.m */; };
+		868033D72FBDCC3700020A1C /* AppleSignInPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868033D82FBDCC3700020A1C /* AppleSignInPlugin.swift */; };
+		868033D92FBDCC3700020A1C /* AppleSignInPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 868033DA2FBDCC3700020A1C /* AppleSignInPlugin.m */; };
 		868033D12FBDCC3700020A1A /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868033D22FBDCC3700020A1A /* ViewController.swift */; };
 /* End PBXBuildFile section */
 
@@ -38,6 +40,9 @@
 		868033CF2FBDCC3700020A1A /* IAPPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = IAPPlugin.m; sourceTree = "<group>"; };
 		868033D42FBDCC3700020A1B /* OAuthSessionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthSessionPlugin.swift; sourceTree = "<group>"; };
 		868033D62FBDCC3700020A1B /* OAuthSessionPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OAuthSessionPlugin.m; sourceTree = "<group>"; };
+		868033D82FBDCC3700020A1C /* AppleSignInPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInPlugin.swift; sourceTree = "<group>"; };
+		868033DA2FBDCC3700020A1C /* AppleSignInPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppleSignInPlugin.m; sourceTree = "<group>"; };
+		868033DB2FBDCC3700020A1C /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		868033D22FBDCC3700020A1A /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -83,12 +88,15 @@
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
+				868033DB2FBDCC3700020A1C /* App.entitlements */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
 				868033CD2FBDCC3700020A1A /* IAPPlugin.swift */,
 				868033CF2FBDCC3700020A1A /* IAPPlugin.m */,
 				868033D42FBDCC3700020A1B /* OAuthSessionPlugin.swift */,
 				868033D62FBDCC3700020A1B /* OAuthSessionPlugin.m */,
+				868033D82FBDCC3700020A1C /* AppleSignInPlugin.swift */,
+				868033DA2FBDCC3700020A1C /* AppleSignInPlugin.m */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -188,6 +196,8 @@
 				868033D02FBDCC3700020A1A /* IAPPlugin.m in Sources */,
 				868033D32FBDCC3700020A1B /* OAuthSessionPlugin.swift in Sources */,
 				868033D52FBDCC3700020A1B /* OAuthSessionPlugin.m in Sources */,
+				868033D72FBDCC3700020A1C /* AppleSignInPlugin.swift in Sources */,
+				868033D92FBDCC3700020A1C /* AppleSignInPlugin.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -327,6 +337,7 @@
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Q4AU696B7H;
@@ -356,6 +367,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Q4AU696B7H;

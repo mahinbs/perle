@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { GoogleIcon } from '../assets/icons/GoogleIcon';
+import { SocialAuthButtons } from './SocialAuthButtons';
 
 interface SignupFormProps {
   onSignup: (name: string, email: string, password: string) => void;
   onSwitchToLogin: () => void;
   onGoogleSignup?: () => void;
+  onAppleSignup?: () => void;
   isLoading?: boolean;
   error?: string;
 }
@@ -12,7 +13,8 @@ interface SignupFormProps {
 export const SignupForm: React.FC<SignupFormProps> = ({ 
   onSignup, 
   onSwitchToLogin,
-  onGoogleSignup, 
+  onGoogleSignup,
+  onAppleSignup,
   isLoading = false, 
   error 
 }) => {
@@ -64,52 +66,13 @@ export const SignupForm: React.FC<SignupFormProps> = ({
           </div>
         )}
 
-        {onGoogleSignup && (
-          <>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={onGoogleSignup}
-              disabled={isLoading}
-              style={{
-                width: '100%',
-                marginBottom: 16,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
-                fontWeight: 600,
-                opacity: isLoading ? 0.6 : 1,
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-              }}
-            >
-              <GoogleIcon width={22} height={22} />
-              Sign up with Google
-            </button>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                marginBottom: 16,
-              }}
-            >
-              <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-              <span
-                className="sub"
-                style={{
-                  fontSize: 'var(--font-sm)',
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  fontWeight: 600,
-                }}
-              >
-                or
-              </span>
-              <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-            </div>
-          </>
-        )}
+        <SocialAuthButtons
+          onAppleSignIn={onAppleSignup}
+          onGoogleSignIn={onGoogleSignup}
+          isLoading={isLoading}
+          appleLabel="Sign up with Apple"
+          googleLabel="Sign up with Google"
+        />
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>

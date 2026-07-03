@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { OAuthSession } from '../plugins/oauthSession';
+import { AppleSignIn } from '../plugins/appleSignIn';
 import { supabase } from '../lib/supabaseClient';
 
 // Vite exposes env variables via import.meta.env
@@ -435,6 +436,70 @@ async function buildGoogleAuthUrl(_returnState?: { returnTo?: string; plan?: str
   return data.url;
 }
 
+/**
+ * Sign in with Apple — iOS native app only (App Store Guideline 4.8).
+ *
+ * Supabase setup (native-only): enable Apple, add bundle ID under Client IDs
+ * (`com.syntraiq.com`), leave Secret Key empty. Do NOT paste the .p8 file —
+ * that field expects a JWT (OAuth only). See scripts/generate-apple-client-secret.mjs.
+ */
+export function isAppleSignInAvailable(): boolean {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+}
+
+/**
+ * Start Sign in with Apple (iOS native app only).
+ * Uses ASAuthorizationAppleID + Supabase signInWithIdToken.
+ */
+export async function startAppleAuth(
+  returnState?: { returnTo?: string; plan?: string },
+): Promise<AuthResponse> {
+  storeOAuthReturnState(returnState);
+
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'ios') {
+    throw new Error('Sign in with Apple is only available on the iOS app.');
+  }
+
+  const result = await AppleSignIn.signIn();
+
+  if (result.cancelled) {
+    throw new Error('Apple sign-in was cancelled.');
+  }
+
+  if (!result.identityToken || !result.nonce) {
+    throw new Error('Apple sign-in did not return a valid identity token.');
+  }
+
+  const { data, error } = await supabase.auth.signInWithIdToken({
+    provider: 'apple',
+    token: result.identityToken,
+    nonce: result.nonce,
+  });
+
+  if (error || !data.session) {
+    throw new Error(error?.message || 'Apple sign-in failed. Please try again.');
+  }
+
+  const givenName = result.fullName?.givenName?.trim();
+  const familyName = result.fullName?.familyName?.trim();
+  const fullName = [givenName, familyName].filter(Boolean).join(' ').trim();
+  if (fullName) {
+    await supabase.auth.updateUser({
+      data: {
+        full_name: fullName,
+        name: fullName,
+      },
+    });
+  }
+
+  return completeWithSupabaseSession(
+    data.session.access_token,
+    data.session.refresh_token,
+    data.session.expires_at,
+    data.session.expires_in,
+  );
+}
+
 function parseOAuthCallbackParams(rawUrl: string): URLSearchParams {
   const parsed = new URL(rawUrl);
   const params = new URLSearchParams(parsed.search);
@@ -575,7 +640,7 @@ async function completeWithSupabaseSession(
 
   if (!verifyRes.ok) {
     const err = await verifyRes.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to fetch user profile after Google sign-in');
+    throw new Error(err.error || 'Failed to fetch user profile after sign-in');
   }
 
   const data = await verifyRes.json();
