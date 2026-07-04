@@ -1530,6 +1530,18 @@ html.platform-ios .voice-overlay-controls-bar {
   box-sizing: border-box;
 }
 
+/* Scroll shell already applies safe-area — nested .container must not double it */
+.app-page-scroll .container,
+.profile-page-scroll .container {
+  padding: 0;
+}
+
+/* iOS native: tighter top inset (scroll shell handles the notch once) */
+html.platform-ios .app-page-scroll,
+html.platform-ios .profile-page-scroll {
+  padding-top: calc(8px + var(--safe-area-top));
+}
+
 html.layout-visual-viewport .app-page-shell,
 html.layout-visual-viewport .profile-page-shell {
   flex: 1;
