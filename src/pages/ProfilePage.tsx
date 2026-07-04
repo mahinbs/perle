@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
 import { LoginForm } from "../components/LoginForm";
@@ -75,6 +76,8 @@ export default function ProfilePage() {
   const [editAge, setEditAge] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showClearHistoryModal, setShowClearHistoryModal] = useState(false);
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [uploadingPicture, setUploadingPicture] = useState(false);
   const [pictureFile, setPictureFile] = useState<File | null>(null);
   const [picturePreview, setPicturePreview] = useState<string | null>(null);
@@ -175,6 +178,68 @@ export default function ProfilePage() {
       fetchSearchHistory();
     }
   }, [isAuthenticated, state?.returnTo, state?.plan]);
+
+  const handleClearSearchHistory = async () => {
+    setIsClearingHistory(true);
+    try {
+      if (API_URL) {
+        const response = await authFetch(`${API_URL}/api/search/history`, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        });
+        if (response.status === 401) {
+          const refreshed = await handleUnauthorizedResponse();
+          if (!refreshed) {
+            setIsAuthenticated(false);
+            setUserSettings(null);
+          }
+          return;
+        }
+        if (response.ok) {
+          setSearchHistory([]);
+          showToast({
+            message: "Search history cleared",
+            type: "success",
+            duration: 3000,
+          });
+        } else {
+          showToast({
+            message: "Failed to clear search history",
+            type: "error",
+            duration: 4000,
+          });
+        }
+      } else {
+        localStorage.removeItem("syntraiq-search-history");
+        setSearchHistory([]);
+        showToast({
+          message: "Search history cleared",
+          type: "success",
+          duration: 3000,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to clear history:", error);
+      showToast({
+        message: "Failed to clear search history",
+        type: "error",
+        duration: 4000,
+      });
+    } finally {
+      setIsClearingHistory(false);
+      setShowClearHistoryModal(false);
+    }
+  };
+
+  const requestClearSearchHistory = () => {
+    if (Capacitor.isNativePlatform()) {
+      setShowClearHistoryModal(true);
+      return;
+    }
+    if (confirm("Clear all search history? This cannot be undone.")) {
+      void handleClearSearchHistory();
+    }
+  };
 
   const handleLogin = async (email: string, password: string) => {
     setIsLoading(true);
@@ -1336,41 +1401,8 @@ export default function ProfilePage() {
               </div>
               <button
                 className="btn-ghost glass-button"
-                onClick={async () => {
-                  if (
-                    confirm("Clear all search history? This cannot be undone.")
-                  ) {
-                    if (API_URL) {
-                      try {
-                        const response = await authFetch(
-                          `${API_URL}/api/search/history`,
-                          {
-                            method: "DELETE",
-                            headers: getAuthHeaders(),
-                          },
-                        );
-                        if (response.status === 401) {
-                          const refreshed = await handleUnauthorizedResponse();
-                          if (!refreshed) {
-                            setIsAuthenticated(false);
-                            setUserSettings(null);
-                          }
-                          return;
-                        }
-                        if (response.ok) {
-                          setSearchHistory([]);
-                          alert("Search history cleared");
-                        }
-                      } catch (error) {
-                        console.error("Failed to clear history:", error);
-                        alert("Failed to clear history");
-                      }
-                    } else {
-                      localStorage.removeItem("syntraiq-search-history");
-                      setSearchHistory([]);
-                    }
-                  }
-                }}
+                onClick={requestClearSearchHistory}
+                disabled={isClearingHistory}
                 style={{
                   width: "100%",
                   color: "#ff4444",
@@ -1379,10 +1411,12 @@ export default function ProfilePage() {
                   alignItems: "center",
                   gap: 10,
                   justifyContent: "flex-start",
+                  opacity: isClearingHistory ? 0.6 : 1,
+                  cursor: isClearingHistory ? "not-allowed" : "pointer",
                 }}
               >
                 <FaTrashAlt size={18} />
-                Clear All Search History
+                {isClearingHistory ? "Clearing..." : "Clear All Search History"}
               </button>
             </>
           )}
@@ -2049,6 +2083,80 @@ export default function ProfilePage() {
       )}
 
       <div className="spacer-40" />
+
+      {/* Clear search history confirmation — native Android/iOS */}
+      {showClearHistoryModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+            padding: 20,
+          }}
+          onClick={() => {
+            if (!isClearingHistory) setShowClearHistoryModal(false);
+          }}
+        >
+          <div
+            className="card glass-card !bg-white/30 dark:!bg-black/30"
+            style={{
+              padding: 24,
+              maxWidth: 360,
+              width: "100%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="h3" style={{ marginBottom: 12 }}>
+              Clear Search History
+            </div>
+            <p
+              className="sub"
+              style={{ marginBottom: 24, lineHeight: 1.5, fontSize: "var(--font-md)" }}
+            >
+              Are you sure you want to delete all search history? This action cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                type="button"
+                className="btn-ghost glass-button"
+                onClick={() => setShowClearHistoryModal(false)}
+                disabled={isClearingHistory}
+                style={{
+                  flex: 1,
+                  opacity: isClearingHistory ? 0.6 : 1,
+                  cursor: isClearingHistory ? "not-allowed" : "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-ghost glass-button"
+                onClick={() => void handleClearSearchHistory()}
+                disabled={isClearingHistory}
+                style={{
+                  flex: 1,
+                  color: "#ff4444",
+                  borderColor: "#ff4444",
+                  opacity: isClearingHistory ? 0.6 : 1,
+                  cursor: isClearingHistory ? "not-allowed" : "pointer",
+                }}
+              >
+                {isClearingHistory ? "Clearing..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Upgrade Modal */}
       {showUpgradeModal && (
         <div

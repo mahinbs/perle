@@ -25,6 +25,11 @@ export type SubscriptionAccess = {
   shouldRevokeInDb: boolean;
 };
 
+function isManualAdminGrant(profile: SubscriptionProfile): boolean {
+  const id = profile.subscription_id;
+  return typeof id === 'string' && id.startsWith('manual_');
+}
+
 function usesRazorpayBilling(profile: SubscriptionProfile): boolean {
   return Boolean(
     profile.razorpay_subscription_id ||
@@ -49,7 +54,7 @@ export function evaluateSubscriptionAccess(
   const subscriptionStatus = p.subscription_status || 'inactive';
   let shouldRevokeInDb = false;
 
-  if (isUnpaidRazorpayProfile(p)) {
+  if (!isManualAdminGrant(p) && isUnpaidRazorpayProfile(p)) {
     if (premiumTier !== 'free' || subscriptionStatus === 'active' || p.is_premium === true) {
       shouldRevokeInDb = true;
     }
