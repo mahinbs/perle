@@ -201,6 +201,14 @@ export function notifyStorageChange(key: string): void {
 }
 
 let storageNotifierInstalled = false;
+let nativeLocalStorageSetItem: ((key: string, value: string) => void) | null = null;
+
+/** Write localStorage without firing syntraiq-storage-change listeners. */
+export function setLocalItemSilent(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  const setItem = nativeLocalStorageSetItem ?? localStorage.setItem.bind(localStorage);
+  setItem(key, value);
+}
 
 /** Dispatch events when legacy code writes syntraiq/perle keys directly. */
 export function installStorageNotifier(): void {
@@ -209,6 +217,7 @@ export function installStorageNotifier(): void {
 
   const originalSetItem = localStorage.setItem.bind(localStorage);
   const originalRemoveItem = localStorage.removeItem.bind(localStorage);
+  nativeLocalStorageSetItem = originalSetItem;
 
   localStorage.setItem = (key: string, value: string) => {
     originalSetItem(key, value);

@@ -26,6 +26,7 @@ import {
   removeSessionAuthToken,
   removeTokenExpiresAt,
   setLocalItem,
+  setLocalItemSilent,
   setRefreshToken,
   setSessionAuthToken,
   setTokenExpiresAt,
@@ -98,12 +99,114 @@ export function applyTheme(darkMode: boolean): void {
   document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
 }
 
+let themePreferenceSaveInFlight = false;
+
+/** Update cached user fields without firing auth/storage listeners. */
+function patchUserDataCache(patch: Partial<User>): void {
+  if (typeof window === 'undefined') return;
+  const user = getUserData();
+  if (!user) return;
+  setLocalItemSilent(USER_DATA_KEY, JSON.stringify({ ...user, ...patch }));
+}
+
+export function isThemePreferenceSaveInFlight(): boolean {
+  return themePreferenceSaveInFlight;
+}
+
+export function mergeProfileWithLocalThemePreference<T extends Pick<User, 'darkMode'>>(profile: T): T {
+  if (!themePreferenceSaveInFlight) return profile;
+  const localUser = getUserData();
+  if (localUser && typeof localUser.darkMode === 'boolean') {
+    return { ...profile, darkMode: localUser.darkMode };
+  }
+  return profile;
+}
+
 /** Apply theme + persist to cached user immediately (no network wait). */
 export function persistThemePreference(darkMode: boolean): void {
   applyTheme(darkMode);
-  const user = getUserData();
-  if (user) {
-    setUserData({ ...user, darkMode });
+  patchUserDataCache({ darkMode });
+  themePreferenceSaveInFlight = true;
+}
+
+/** Call after the server confirms (or local-only save completes). */
+export function completeThemePreferenceSave(savedDarkMode: boolean): void {
+  themePreferenceSaveInFlight = false;
+  applyTheme(savedDarkMode);
+  patchUserDataCache({ darkMode: savedDarkMode });
+}
+
+/** Revert an optimistic theme toggle when persistence fails. */
+export function cancelThemePreferenceSave(revertTo: boolean): void {
+  themePreferenceSaveInFlight = false;
+  applyTheme(revertTo);
+  patchUserDataCache({ darkMode: revertTo });
+}
+
+/** Persist a confirmed server profile without triggering a profile refetch. */
+export function applyConfirmedProfile(profile: User): void {
+  themePreferenceSaveInFlight = false;
+  if (typeof window === 'undefined') return;
+  const previous = getUserData();
+  if (previous?.id !== profile.id) {
+    clearAllHomeChatSessions();
+  }
+  const darkMode = profile.darkMode === true;
+  setLocalItemSilent(USER_DATA_KEY, JSON.stringify({ ...profile, darkMode }));
+  applyTheme(darkMode);
+}
+
+/** Update cached profile + theme without auth/storage listener side effects. */
+export function cacheUserProfile(user: User): void {
+  if (typeof window === 'undefined') return;
+  const previous = getUserData();
+  if (previous?.id !== user.id) {
+    clearAllHomeChatSessions();
+  }
+  const mergedUser = mergeProfileWithLocalThemePreference(user);
+  const darkMode = mergedUser.darkMode === true;
+  setLocalItemSilent(USER_DATA_KEY, JSON.stringify({ ...mergedUser, darkMode }));
+  applyTheme(darkMode);
+}
+
+/** Save dark mode to the backend with token refresh + one retry. */
+export async function syncDarkModePreference(
+  darkMode: boolean,
+): Promise<{ ok: boolean; profile?: User }> {
+  if (!API_URL || !isLoggedIn()) {
+    completeThemePreferenceSave(darkMode);
+    return { ok: true };
+  }
+
+  const save = async () =>
+    authFetch(`${API_URL}/api/profile`, {
+      method: 'PUT',
+      headers: await getAuthHeadersAsync(),
+      body: JSON.stringify({ darkMode }),
+    });
+
+  try {
+    let response = await save();
+
+    if (response.status === 401) {
+      const refreshed = await handleUnauthorizedResponse();
+      if (refreshed) {
+        response = await save();
+      }
+    }
+
+    if (!response.ok) {
+      return { ok: false };
+    }
+
+    const updatedProfile = (await response.json()) as User;
+    applyConfirmedProfile({
+      ...updatedProfile,
+      darkMode: updatedProfile.darkMode === true,
+    });
+    return { ok: true, profile: { ...updatedProfile, darkMode: updatedProfile.darkMode === true } };
+  } catch {
+    return { ok: false };
   }
 }
 
@@ -200,9 +303,10 @@ export function setUserData(user: User): void {
   if (previous?.id !== user.id) {
     clearAllHomeChatSessions();
   }
-  setLocalItem(USER_DATA_KEY, JSON.stringify(user));
-  if (user && typeof user.darkMode === 'boolean') {
-    applyTheme(user.darkMode);
+  const mergedUser = mergeProfileWithLocalThemePreference(user);
+  setLocalItem(USER_DATA_KEY, JSON.stringify(mergedUser));
+  if (mergedUser && typeof mergedUser.darkMode === 'boolean') {
+    applyTheme(mergedUser.darkMode);
   }
   notifyAuthChange();
 }

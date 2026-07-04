@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { RouterNavigationProvider } from './contexts/RouterNavigationContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AppRouter } from './components/Router';
+import { AppRouteLayout } from './components/AppRouteLayout';
 import { SplashScreen } from './components/SplashScreen';
 import { initializeTheme, initializeAuthSession, registerAuthSessionListeners } from './utils/auth';
 
@@ -23,7 +24,13 @@ export default function App() {
     <BrowserRouter>
       <RouterNavigationProvider>
         <ToastProvider>
-          {showSplash ? <SplashScreen /> : <AppRouter />}
+          <div className="app-root-outlet">
+            {showSplash ? <SplashScreen /> : (
+              <AppRouteLayout>
+                <AppRouter />
+              </AppRouteLayout>
+            )}
+          </div>
         </ToastProvider>
       </RouterNavigationProvider>
     </BrowserRouter>

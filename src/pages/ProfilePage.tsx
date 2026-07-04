@@ -15,11 +15,17 @@ import {
   setUserData,
   isLoggedIn,
   persistThemePreference,
+  completeThemePreferenceSave,
+  cancelThemePreferenceSave,
+  applyConfirmedProfile,
+  isThemePreferenceSaveInFlight,
+  syncDarkModePreference,
+  cacheUserProfile,
+  mergeProfileWithLocalThemePreference,
   getAuthHeaders,
   authFetch,
   handleUnauthorizedResponse,
   getPostAuthNavigation,
-  onAuthChange,
   readOAuthReturnState,
   startGoogleAuth,
   startAppleAuth,
@@ -81,12 +87,21 @@ export default function ProfilePage() {
   const [uploadingPicture, setUploadingPicture] = useState(false);
   const [pictureFile, setPictureFile] = useState<File | null>(null);
   const [picturePreview, setPicturePreview] = useState<string | null>(null);
+  const [isSavingDarkMode, setIsSavingDarkMode] = useState(false);
   const profileFetchGenerationRef = useRef(0);
+  const profileFetchInFlightRef = useRef(false);
+  const lastProfileFetchAtRef = useRef(0);
 
   // Fetch user profile from backend
   const fetchProfile = async () => {
-    if (!API_URL || !isLoggedIn()) return;
+    if (!API_URL || !isLoggedIn() || profileFetchInFlightRef.current) return;
+    if (isThemePreferenceSaveInFlight()) return;
 
+    const now = Date.now();
+    if (now - lastProfileFetchAtRef.current < 1500) return;
+
+    profileFetchInFlightRef.current = true;
+    lastProfileFetchAtRef.current = now;
     const fetchGeneration = profileFetchGenerationRef.current;
 
     try {
@@ -100,8 +115,6 @@ export default function ProfilePage() {
       }
 
       if (response.status === 401) {
-        // Try to refresh once; if it fails, just leave auth state as-is
-        // (don't aggressively log the user out from a background fetch)
         await handleUnauthorizedResponse();
         return;
       }
@@ -111,34 +124,52 @@ export default function ProfilePage() {
           return;
         }
         const profile = await response.json();
-        setUserSettings(profile);
-        setUserData(profile); // Update localStorage with full profile data
+        const mergedProfile = mergeProfileWithLocalThemePreference(profile);
+        setUserSettings(mergedProfile);
+        cacheUserProfile(mergedProfile);
         setIsAuthenticated(true);
       }
-      // Non-401 failure: keep showing whatever we already have
-    } catch (error) {
-      console.error("Failed to fetch profile:", error);
-      // Network error or similar — don't log the user out
+    } catch {
+      // Background refresh — keep cached profile, avoid console spam.
+    } finally {
+      profileFetchInFlightRef.current = false;
+    }
+  };
+
+  const hydrateProfileFromCache = () => {
+    const user = getUserData();
+    const loggedIn = isLoggedIn();
+    setIsAuthenticated(loggedIn);
+    if (user) {
+      setUserSettings(mergeProfileWithLocalThemePreference(user));
+    } else {
+      setUserSettings(null);
     }
   };
 
   // Check authentication and fetch profile on mount; stay in sync on logout/expiry.
   useEffect(() => {
-    const syncAuth = async () => {
-      const user = getUserData();
-      const loggedIn = isLoggedIn();
-      setIsAuthenticated(loggedIn);
-      if (user) {
-        setUserSettings(user);
-        await fetchProfile();
-      } else {
-        setUserSettings(null);
-      }
+    const refreshProfileFromServer = async () => {
+      hydrateProfileFromCache();
+      if (isThemePreferenceSaveInFlight()) return;
+      await fetchProfile();
     };
-    void syncAuth();
-    return onAuthChange(() => {
-      void syncAuth();
-    });
+
+    void refreshProfileFromServer();
+
+    const handleAuthChange = () => {
+      void refreshProfileFromServer();
+    };
+    const handleStorageChange = () => {
+      hydrateProfileFromCache();
+    };
+
+    window.addEventListener("syntraiq-auth-change", handleAuthChange);
+    window.addEventListener("syntraiq-storage-change", handleStorageChange);
+    return () => {
+      window.removeEventListener("syntraiq-auth-change", handleAuthChange);
+      window.removeEventListener("syntraiq-storage-change", handleStorageChange);
+    };
   }, []);
 
   // Handle redirect modes (like state.mode from landing page)
@@ -399,39 +430,38 @@ export default function ProfilePage() {
   };
 
   const handleDarkModeToggle = () => {
-    if (!userSettings) return;
-    const next = !userSettings.darkMode;
+    if (!userSettings || isSavingDarkMode) return;
+
+    const previousDarkMode = userSettings.darkMode === true;
+    const next = !previousDarkMode;
+
     persistThemePreference(next);
     setUserSettings({ ...userSettings, darkMode: next });
-
-    if (!API_URL || !isAuthenticated) return;
+    setIsSavingDarkMode(true);
 
     void (async () => {
       try {
-        const response = await authFetch(`${API_URL}/api/profile`, {
-          method: "PUT",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ darkMode: next }),
-        });
-        if (response.ok) {
-          const updatedProfile = await response.json();
-          setUserSettings(updatedProfile);
-          setUserData(updatedProfile);
+        const result = await syncDarkModePreference(next);
+        if (result.ok) {
+          if (result.profile) {
+            setUserSettings(result.profile);
+          } else {
+            completeThemePreferenceSave(next);
+          }
         } else {
-          persistThemePreference(!next);
-          setUserSettings({ ...userSettings, darkMode: !next });
-          showToast({
-            message: "Failed to save dark mode preference.",
-            type: "error",
-          });
+          // Keep the user's choice locally even if the server sync fails.
+          completeThemePreferenceSave(next);
+          setUserSettings((current) =>
+            current ? { ...current, darkMode: next } : current,
+          );
         }
       } catch {
-        persistThemePreference(!next);
-        setUserSettings({ ...userSettings, darkMode: !next });
-        showToast({
-          message: "Failed to save dark mode preference.",
-          type: "error",
-        });
+        completeThemePreferenceSave(next);
+        setUserSettings((current) =>
+          current ? { ...current, darkMode: next } : current,
+        );
+      } finally {
+        setIsSavingDarkMode(false);
       }
     })();
   };
@@ -484,8 +514,12 @@ export default function ProfilePage() {
 
       if (response.ok) {
         const updatedProfile = await response.json();
+        if (key === "darkMode") {
+          applyConfirmedProfile(updatedProfile);
+        } else {
+          setUserData(updatedProfile);
+        }
         setUserSettings(updatedProfile);
-        setUserData(updatedProfile); // Save to localStorage
         if (!options?.silent) {
           const fieldNames: Record<string, string> = {
             darkMode: "Dark mode",
@@ -511,7 +545,8 @@ export default function ProfilePage() {
         }
         // Refresh profile to ensure all data is synced. Skip when silent
         // (the caller — the Save modal — refreshes once at the end).
-        if (!options?.silent) {
+        // Skip for dark mode — a follow-up fetch can briefly revert the theme.
+        if (!options?.silent && key !== "darkMode") {
           await fetchProfile();
         }
       } else {
@@ -520,7 +555,7 @@ export default function ProfilePage() {
           setUserSettings({ ...userSettings, [key]: previousValue });
         }
         if (key === "darkMode") {
-          persistThemePreference(previousValue === true);
+          cancelThemePreferenceSave(previousValue === true);
         }
         showToast({
           message: "Failed to update setting. Please try again.",
@@ -534,7 +569,7 @@ export default function ProfilePage() {
         setUserSettings({ ...userSettings, [key]: previousValue });
       }
       if (key === "darkMode") {
-        persistThemePreference(previousValue === true);
+        cancelThemePreferenceSave(previousValue === true);
       }
       showToast({
         message: "Failed to update setting. Please try again.",
@@ -713,7 +748,7 @@ export default function ProfilePage() {
   // Show login form
   if (showLogin) {
     return (
-      <div className="container">
+      <>
         <div
           className="row"
           style={{
@@ -746,14 +781,14 @@ export default function ProfilePage() {
           isLoading={isLoading}
           error={authError}
         />
-      </div>
+      </>
     );
   }
 
   // Show signup form
   if (showSignup) {
     return (
-      <div className="container">
+      <>
         <div
           className="row"
           style={{
@@ -786,13 +821,13 @@ export default function ProfilePage() {
           isLoading={isLoading}
           error={authError}
         />
-      </div>
+      </>
     );
   }
 
   // Show profile content
   return (
-    <div className="container">
+    <>
       {/* Header */}
       <div
         className="row"
@@ -1216,9 +1251,10 @@ export default function ProfilePage() {
             <button
               className={`pill ${userSettings.darkMode ? "active" : ""}`}
               onClick={handleDarkModeToggle}
-              style={{ minWidth: 60 }}
+              disabled={isSavingDarkMode}
+              style={{ minWidth: 60, opacity: isSavingDarkMode ? 0.7 : 1 }}
             >
-              {userSettings.darkMode ? "On" : "Off"}
+              {isSavingDarkMode ? "..." : userSettings.darkMode ? "On" : "Off"}
             </button>
           </div>
 
@@ -2223,6 +2259,6 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
