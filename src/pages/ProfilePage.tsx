@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
@@ -13,13 +13,13 @@ import {
   logout,
   getUserData,
   setUserData,
+  isLoggedIn,
   persistThemePreference,
   getAuthHeaders,
   authFetch,
   handleUnauthorizedResponse,
   getPostAuthNavigation,
   onAuthChange,
-  isLoggedIn,
   readOAuthReturnState,
   startGoogleAuth,
   startAppleAuth,
@@ -81,16 +81,23 @@ export default function ProfilePage() {
   const [uploadingPicture, setUploadingPicture] = useState(false);
   const [pictureFile, setPictureFile] = useState<File | null>(null);
   const [picturePreview, setPicturePreview] = useState<string | null>(null);
+  const profileFetchGenerationRef = useRef(0);
 
   // Fetch user profile from backend
   const fetchProfile = async () => {
-    if (!API_URL) return;
+    if (!API_URL || !isLoggedIn()) return;
+
+    const fetchGeneration = profileFetchGenerationRef.current;
 
     try {
       const response = await authFetch(`${API_URL}/api/profile`, {
         method: "GET",
         headers: getAuthHeaders(),
       });
+
+      if (fetchGeneration !== profileFetchGenerationRef.current || !isLoggedIn()) {
+        return;
+      }
 
       if (response.status === 401) {
         // Try to refresh once; if it fails, just leave auth state as-is
@@ -100,6 +107,9 @@ export default function ProfilePage() {
       }
 
       if (response.ok) {
+        if (fetchGeneration !== profileFetchGenerationRef.current || !isLoggedIn()) {
+          return;
+        }
         const profile = await response.json();
         setUserSettings(profile);
         setUserData(profile); // Update localStorage with full profile data
@@ -375,13 +385,16 @@ export default function ProfilePage() {
   };
 
   const handleLogout = async () => {
+    profileFetchGenerationRef.current += 1;
+    setIsAuthenticated(false);
+    setUserSettings(null);
+    setShowLogin(false);
+    setShowSignup(false);
     try {
       await logout();
     } catch (error) {
       console.error("Logout error:", error);
     }
-    setIsAuthenticated(false);
-    setUserSettings(null);
     navigateTo("/app");
   };
 

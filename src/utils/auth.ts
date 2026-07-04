@@ -760,18 +760,24 @@ export async function completeGoogleOAuth(): Promise<AuthResponse> {
 
 export async function logout(): Promise<void> {
   const token = getAuthToken();
+  // Clear local session immediately so in-flight profile/verify requests
+  // cannot re-hydrate the user before the UI updates.
+  removeAuthToken();
+  clearAllHomeChatSessions();
+
   if (token && API_URL) {
     try {
       await fetch(`${API_URL}/api/auth/logout`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: {
+          ...getAuthHeaders(),
+          Authorization: `Bearer ${token}`,
+        },
       });
     } catch (error) {
       console.error('Logout error:', error);
     }
   }
-  removeAuthToken();
-  clearAllHomeChatSessions();
 }
 
 let refreshInFlight: Promise<boolean> | null = null;

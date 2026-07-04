@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { authenticatedFetch, getAuthHeaders, getUserData } from '../utils/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333';
@@ -139,9 +140,13 @@ function getCallbackUrl(): string {
   return `${window.location.origin}/payment/callback`;
 }
 
+function shouldUseInAppRazorpayHandler(): boolean {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+}
+
 /**
- * Full-page Razorpay redirect avoids the embedded modal QR blur bug
- * (QR image fails to render inside iframe on many browsers).
+ * Web: full-page Razorpay redirect avoids the embedded modal QR blur bug.
+ * Android app: in-app checkout handler keeps the user inside the WebView.
  */
 export async function startRazorpaySubscription(plan: RazorpayPlanId): Promise<RazorpayCheckoutResult> {
   await loadRazorpayScript();
@@ -155,6 +160,49 @@ export async function startRazorpaySubscription(plan: RazorpayPlanId): Promise<R
 
   if (!window.Razorpay) {
     throw new Error('Razorpay checkout is not available');
+  }
+
+  if (shouldUseInAppRazorpayHandler()) {
+    const Razorpay = window.Razorpay;
+    return new Promise((resolve) => {
+      const rzp = new Razorpay({
+        key: subscription.keyId,
+        subscription_id: subscription.subscriptionId,
+        name: 'SyntraIQ',
+        description: `${PLAN_LABELS[plan]} Subscription`,
+        image: `${window.location.origin}/app-icon.png`,
+        prefill: {
+          name: user?.name || undefined,
+          email: user?.email || undefined,
+        },
+        theme: {
+          color: '#C7A869',
+        },
+        handler: async (response: RazorpayPaymentResponse) => {
+          try {
+            await verifyRazorpaySubscription(response);
+            resolve({ success: true });
+          } catch (err) {
+            resolve({
+              success: false,
+              error: err instanceof Error ? err.message : 'Payment verification failed',
+            });
+          }
+        },
+        modal: {
+          ondismiss: () => resolve({ success: false, userCancelled: true }),
+        },
+      });
+
+      rzp.on('payment.failed', (response) => {
+        resolve({
+          success: false,
+          error: response.error?.description || 'Payment failed',
+        });
+      });
+
+      rzp.open();
+    });
   }
 
   const rzp = new window.Razorpay({
