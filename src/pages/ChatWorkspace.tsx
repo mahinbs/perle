@@ -935,7 +935,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
           case "k":
             e.preventDefault();
             document
-              .querySelector<HTMLTextAreaElement>("textarea.search-input-scrollbar")
+              .querySelector<HTMLTextAreaElement>("textarea.search-input-no-scroll")
               ?.focus();
             break;
           case "Enter":
@@ -1220,7 +1220,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       )}
 
       {/* Main Content */}
-      <div className="container !px-2 !pb-0 flex flex-col h-dvh overflow-hidden relative">
+      <div className="container !px-2 !pb-0 !pt-0 flex flex-col h-full app-shell overflow-hidden relative">
         {/* Background Logo */}
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none -translate-y-[5%] z-0 opacity-[0.1] select-none dark:invert">
           <img
@@ -1231,13 +1231,15 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         </div>
 
         <div className="relative z-10 flex flex-col flex-1 min-h-0">
-          <Header
-            showBackButton={isAnalyzePage}
-            backTo="/"
-            onOpenSidebar={
-              isAnalyzePage ? undefined : () => setIsSidebarOpen(true)
-            }
-          />
+          <div className="shrink-0 sticky top-0 z-20 bg-[var(--bg)] pt-[var(--safe-area-top)]">
+            <Header
+              showBackButton={isAnalyzePage}
+              backTo="/"
+              onOpenSidebar={
+                isAnalyzePage ? undefined : () => setIsSidebarOpen(true)
+              }
+            />
+          </div>
 
           <div
             ref={scrollContainerRef}

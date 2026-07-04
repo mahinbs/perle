@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "../contexts/ToastContext";
 import type { LLMModel, AnswerResult, ExperienceMode, Mode } from "../types";
@@ -340,15 +340,35 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   }, [isListening, isSpeaking]);
 
   // Reset textarea height when query changes externally (e.g., from voice input)
+  const resizeSearchTextarea = useCallback((el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${el.scrollHeight}px`;
+    el.scrollTop = 0;
+    el.scrollLeft = 0;
+  }, []);
+
   useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto";
-      inputRef.current.style.height = `${Math.min(
-        inputRef.current.scrollHeight,
-        120
-      )}px`;
-    }
-  }, [query]);
+    resizeSearchTextarea(inputRef.current);
+  }, [query, toolDescription, toolMode, resizeSearchTextarea]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    const lockScroll = () => {
+      el.scrollTop = 0;
+      el.scrollLeft = 0;
+    };
+    const blockWheel = (e: WheelEvent) => e.preventDefault();
+
+    el.addEventListener("scroll", lockScroll);
+    el.addEventListener("wheel", blockWheel, { passive: false });
+    return () => {
+      el.removeEventListener("scroll", lockScroll);
+      el.removeEventListener("wheel", blockWheel);
+    };
+  }, [toolMode]);
 
   // Clear input when answer is received (but keep searchedQuery for display in AnswerCard)
   useEffect(() => {
@@ -1783,11 +1803,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           />
         </div>
       )}
+      <div className="search-input-shell">
+        <div className="search-input-shell-inner">
       <div
-        className="glass-card font-ubuntu !px-3 !pt-1 !pb-2 no-scrollbar !overflow-x-hidden"
+        className="glass-card font-ubuntu !px-3 !pt-1 !pb-2 no-scrollbar !overflow-hidden"
         style={{
           position: "relative",
-          overflow: "visible",
           zIndex: 1,
         }}
       >
@@ -2010,7 +2031,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         />
 
 
-        <div className="row search-container !gap-0">
+        <div className="row search-container !gap-0 !overflow-hidden">
           {/* Tools Dropdown */}
 
           <div style={{ display: "flex", flexDirection: "column", maxWidth: "100%", minWidth: 0}}>
@@ -2206,9 +2227,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     <FaPlus size={14} style={{ color: "var(--text)" }} />
                   </button>
                 </div>
+                <div className="search-input-field-wrap">
                 <textarea
                   ref={inputRef}
-                  className="input search-input-scrollbar"
+                  className="input search-input-no-scroll"
                   aria-label={
                     toolMode === "image"
                       ? "Describe your image"
@@ -2224,11 +2246,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   value={toolDescription}
                   onChange={(e) => {
                     setToolDescription(e.target.value);
-                    e.target.style.height = "auto";
-                    e.target.style.height = `${Math.min(
-                      e.target.scrollHeight,
-                      120
-                    )}px`;
+                    resizeSearchTextarea(e.target);
+                  }}
+                  onScroll={(e) => {
+                    e.currentTarget.scrollTop = 0;
+                    e.currentTarget.scrollLeft = 0;
                   }}
                   onKeyDown={(e) => {
                     if (
@@ -2247,9 +2269,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     fontSize: "var(--font-lg)",
                     resize: "none",
                     minHeight: 44,
-                    maxHeight: 120,
                     lineHeight: 1.5,
-                    overflowY: "auto",
+                    overflow: "hidden",
                     fontFamily: "inherit",
                     borderRadius: ".5rem",
                     paddingRight: 8,
@@ -2260,12 +2281,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   }}
                   rows={1}
                 />
+                </div>
               </div>
             </div>
           ) : (
+            <div className="search-input-field-wrap">
             <textarea
               ref={inputRef}
-              className="input search-input-scrollbar"
+              className="input search-input-no-scroll"
               aria-label="Search"
               placeholder={
                 isAnalyzeContext
@@ -2281,26 +2304,26 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
-                e.target.style.height = "auto";
-                e.target.style.height = `${Math.min(
-                  e.target.scrollHeight,
-                  120
-                )}px`;
+                resizeSearchTextarea(e.target);
+              }}
+              onScroll={(e) => {
+                e.currentTarget.scrollTop = 0;
+                e.currentTarget.scrollLeft = 0;
               }}
               onKeyDown={handleKeyDown}
               style={{
                 fontSize: "var(--font-lg)",
                 resize: "none",
                 minHeight: 44,
-                maxHeight: 120,
                 lineHeight: 1.5,
-                overflowY: "auto",
+                overflow: "hidden",
                 fontFamily: "inherit",
                 borderRadius: ".5rem",
                 paddingInline: 8,
               }}
               rows={1}
             />
+            </div>
           )}
 
           <div
@@ -2450,7 +2473,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <>
                   {speechSupported && (
                     <button
-                      className={`btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]${isListening && voiceInputModeRef.current === "dictation" ? " mic-recording" : ""}`}
+                      className={`btn-ghost glass-button btn-shadow search-action-pulse aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]${isListening && voiceInputModeRef.current === "dictation" ? " mic-recording" : ""}`}
                       onClick={() => {
                         if (isListening && voiceInputModeRef.current === "dictation") {
                           stopVoiceInput();
@@ -2475,7 +2498,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
                   {speechSupported && (
                     <button
-                      className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                      className="btn-ghost glass-button btn-shadow search-action-pulse search-action-pulse--delay-1 aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
                       onClick={() => {
                         try {
                           if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -2499,7 +2522,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
                   <button
                     type="button"
-                    className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
+                    className="btn-ghost glass-button btn-shadow search-action-pulse search-action-pulse--delay-2 aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
                     onClick={triggerSearchWithScroll}
                     disabled={isLoading || !canSubmitSearch}
                     aria-label={queryLimitReached ? "Upgrade to continue" : "Send message"}
@@ -2624,6 +2647,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           ))}
         </div>
       )} */}
+      </div>
+        </div>
       </div>
 
       {showAttachModal === "menu" &&

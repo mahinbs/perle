@@ -239,7 +239,7 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
     }
 
     // Razorpay requires total_count >= 1 (0 is invalid). For auto-renew monthly plans,
-    // use 1200 cycles (~100 years). Users can cancel anytime via /payment/cancel.
+    // use 20 cycles (20 months). Users can cancel anytime via /payment/cancel.
     // Do NOT set start_at for new/upgrades — subscription must auth immediately at checkout.
     const subscriptionOptions: {
       plan_id: string;
@@ -250,7 +250,7 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
     } = {
       plan_id: planConfig.planId,
       customer_notify: 1,
-      total_count: autoRenew ? 1200 : 1,
+      total_count: autoRenew ? 20 : 1,
       notes: {
         userId: req.userId,
         plan: plan,

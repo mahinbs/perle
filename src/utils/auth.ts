@@ -95,6 +95,16 @@ export function setAuthCredentials(token: string, refreshToken?: string, expires
 export function applyTheme(darkMode: boolean): void {
   if (typeof window === 'undefined') return;
   document.documentElement.classList.toggle('dark', darkMode);
+  document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
+}
+
+/** Apply theme + persist to cached user immediately (no network wait). */
+export function persistThemePreference(darkMode: boolean): void {
+  applyTheme(darkMode);
+  const user = getUserData();
+  if (user) {
+    setUserData({ ...user, darkMode });
+  }
 }
 
 export function getStoredDarkModePreference(): boolean {

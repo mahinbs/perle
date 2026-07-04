@@ -12,7 +12,7 @@ import {
   logout,
   getUserData,
   setUserData,
-  applyTheme,
+  persistThemePreference,
   getAuthHeaders,
   authFetch,
   handleUnauthorizedResponse,
@@ -320,6 +320,44 @@ export default function ProfilePage() {
     navigateTo("/app");
   };
 
+  const handleDarkModeToggle = () => {
+    if (!userSettings) return;
+    const next = !userSettings.darkMode;
+    persistThemePreference(next);
+    setUserSettings({ ...userSettings, darkMode: next });
+
+    if (!API_URL || !isAuthenticated) return;
+
+    void (async () => {
+      try {
+        const response = await authFetch(`${API_URL}/api/profile`, {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ darkMode: next }),
+        });
+        if (response.ok) {
+          const updatedProfile = await response.json();
+          setUserSettings(updatedProfile);
+          setUserData(updatedProfile);
+        } else {
+          persistThemePreference(!next);
+          setUserSettings({ ...userSettings, darkMode: !next });
+          showToast({
+            message: "Failed to save dark mode preference.",
+            type: "error",
+          });
+        }
+      } catch {
+        persistThemePreference(!next);
+        setUserSettings({ ...userSettings, darkMode: !next });
+        showToast({
+          message: "Failed to save dark mode preference.",
+          type: "error",
+        });
+      }
+    })();
+  };
+
   const handleSettingChange = async (
     key: string,
     value: boolean | string | number | null,
@@ -338,7 +376,7 @@ export default function ProfilePage() {
     const updates: any = {};
     if (key === "darkMode") {
       updates.darkMode = value;
-      applyTheme(value === true);
+      persistThemePreference(value === true);
     } else if (key === "notifications") {
       updates.notifications = value;
     } else if (key === "searchHistory") {
@@ -404,7 +442,7 @@ export default function ProfilePage() {
           setUserSettings({ ...userSettings, [key]: previousValue });
         }
         if (key === "darkMode") {
-          applyTheme(previousValue === true);
+          persistThemePreference(previousValue === true);
         }
         showToast({
           message: "Failed to update setting. Please try again.",
@@ -418,7 +456,7 @@ export default function ProfilePage() {
         setUserSettings({ ...userSettings, [key]: previousValue });
       }
       if (key === "darkMode") {
-        applyTheme(previousValue === true);
+        persistThemePreference(previousValue === true);
       }
       showToast({
         message: "Failed to update setting. Please try again.",
@@ -1099,22 +1137,10 @@ export default function ProfilePage() {
             </div>
             <button
               className={`pill ${userSettings.darkMode ? "active" : ""}`}
-              onClick={() =>
-                handleSettingChange("darkMode", !userSettings.darkMode)
-              }
-              disabled={updatingSetting === "darkMode"}
-              style={{
-                minWidth: 60,
-                opacity: updatingSetting === "darkMode" ? 0.6 : 1,
-                cursor:
-                  updatingSetting === "darkMode" ? "not-allowed" : "pointer",
-              }}
+              onClick={handleDarkModeToggle}
+              style={{ minWidth: 60 }}
             >
-              {updatingSetting === "darkMode"
-                ? "..."
-                : userSettings.darkMode
-                  ? "On"
-                  : "Off"}
+              {userSettings.darkMode ? "On" : "Off"}
             </button>
           </div>
 
