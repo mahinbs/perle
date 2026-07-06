@@ -164,11 +164,9 @@ export function cacheUserProfile(user: User): void {
     clearAllHomeChatSessions();
   }
   const normalized = normalizeUserPremiumFlags(mergeProfileWithLocalThemePreference(user));
-  const previousPaid = hasPaidPremiumPlan(previous);
-  const nextPaid = hasPaidPremiumPlan(normalized);
   setLocalItemSilent(USER_DATA_KEY, JSON.stringify(normalized));
   applyTheme(normalized.darkMode === true);
-  if (nextPaid && !previousPaid) {
+  if (hasPaidPremiumPlan(normalized)) {
     void import('./queryLimit').then((m) => m.clearFreeUsageCounters());
   }
 }
@@ -308,13 +306,11 @@ export function setUserData(user: User): void {
     clearAllHomeChatSessions();
   }
   const mergedUser = normalizeUserPremiumFlags(mergeProfileWithLocalThemePreference(user));
-  const previousPaid = hasPaidPremiumPlan(previous);
-  const nextPaid = hasPaidPremiumPlan(mergedUser);
   setLocalItem(USER_DATA_KEY, JSON.stringify(mergedUser));
   if (mergedUser && typeof mergedUser.darkMode === 'boolean') {
     applyTheme(mergedUser.darkMode);
   }
-  if (nextPaid && !previousPaid) {
+  if (hasPaidPremiumPlan(mergedUser)) {
     void import('./queryLimit').then((m) => m.clearFreeUsageCounters());
   }
   notifyAuthChange();
@@ -1015,12 +1011,41 @@ export async function verifyToken(): Promise<User | null> {
   }
 }
 
+export async function refreshUserProfileFromServer(): Promise<User | null> {
+  if (!API_URL || !isLoggedIn()) {
+    return getUserData();
+  }
+
+  try {
+    const response = await authFetch(`${API_URL}/api/profile`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    if (response.status === 401) {
+      await handleUnauthorizedResponse();
+      return getUserData();
+    }
+
+    if (!response.ok) {
+      return getUserData();
+    }
+
+    const profile = (await response.json()) as User;
+    cacheUserProfile(profile);
+    return getUserData();
+  } catch {
+    return getUserData();
+  }
+}
+
 export async function initializeAuthSession(): Promise<void> {
   if (!getAuthToken() && !getRefreshToken()) {
     if (getUserData()) removeAuthToken();
     return;
   }
   await verifyToken();
+  await refreshUserProfileFromServer();
 }
 
 let authSessionListenersRegistered = false;

@@ -10,12 +10,15 @@ export type SubscriptionProfile = {
   is_premium?: boolean | null;
   subscription_status?: string | null;
   subscription_end_date?: string | null;
+  auto_renew?: boolean | null;
   razorpay_subscription_id?: string | null;
   razorpay_payment_id?: string | null;
   razorpay_plan_id?: string | null;
   stripe_subscription_id?: string | null;
   stripe_customer_id?: string | null;
   subscription_id?: string | null;
+  free_search_used?: number | null;
+  free_deep_used?: number | null;
 };
 
 export type SubscriptionAccess = {

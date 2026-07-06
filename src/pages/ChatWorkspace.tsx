@@ -368,6 +368,10 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     // Initial load only
     updatePremiumStatus(true);
 
+    const unsubscribeAuth = onAuthChange(() => {
+      updatePremiumStatus(false);
+    });
+
     // Listen for storage changes (when user logs in/out or premium status changes)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === STORAGE_KEYS.userData || e.key === "perle-user-data") {
@@ -414,6 +418,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     }, 2000);
 
     return () => {
+      unsubscribeAuth();
       window.removeEventListener("storage", handleStorageChange);
       clearInterval(interval);
     };

@@ -1,4 +1,7 @@
 import { supabase } from '../lib/supabase.js';
+import {
+  getSubscriptionAccessForUser,
+} from './subscriptionAccess.js';
 
 // Free-tier lifetime limits (server-authoritative for logged-in users).
 export const FREE_SEARCH_LIMIT = 4;
@@ -54,6 +57,15 @@ export async function checkFreeSearchAllowed(
   userId: string,
   isDeep: boolean
 ): Promise<{ kind: 'deep' | 'search'; message: string } | null> {
+  try {
+    const access = await getSubscriptionAccessForUser(userId);
+    if (access.isPremium) {
+      return null;
+    }
+  } catch {
+    // fall through to counter check
+  }
+
   const usage = await getFreeUsage(userId);
   if (isDeep && usage.deep >= FREE_DEEP_LIMIT) {
     return { kind: 'deep', message: DEEP_MSG };
@@ -66,6 +78,12 @@ export async function checkFreeSearchAllowed(
 
 /** Record a free user's search usage (call after a successful answer). */
 export async function recordFreeSearchUsage(userId: string, isDeep: boolean): Promise<void> {
+  try {
+    const access = await getSubscriptionAccessForUser(userId);
+    if (access.isPremium) return;
+  } catch {
+    // best-effort
+  }
   await incrementFreeUsage(userId, 'free_search_used');
   if (isDeep) await incrementFreeUsage(userId, 'free_deep_used');
 }
