@@ -25,7 +25,7 @@ export type SubscriptionAccess = {
   shouldRevokeInDb: boolean;
 };
 
-function isManualAdminGrant(profile: SubscriptionProfile): boolean {
+export function isManualAdminGrant(profile: SubscriptionProfile): boolean {
   const id = profile.subscription_id;
   if (typeof id === 'string' && id.startsWith('manual_')) {
     return true;
@@ -42,6 +42,45 @@ function isManualAdminGrant(profile: SubscriptionProfile): boolean {
     !profile.stripe_subscription_id &&
     !profile.stripe_customer_id
   );
+}
+
+/** Manual SQL grants — never auto-revoke; ignore stray Razorpay checkout fields. */
+function evaluateManualGrantAccess(profile: SubscriptionProfile): SubscriptionAccess | null {
+  if (!isManualAdminGrant(profile)) return null;
+
+  const endRaw = profile.subscription_end_date;
+  if (endRaw) {
+    const endDate = new Date(endRaw);
+    if (!Number.isNaN(endDate.getTime()) && endDate < new Date()) {
+      return {
+        isPremium: false,
+        premiumTier: 'free',
+        subscriptionStatus: 'expired',
+        shouldRevokeInDb: false,
+      };
+    }
+  }
+
+  let tier = profile.premium_tier || 'free';
+  if (tier !== 'pro' && tier !== 'max') {
+    if (profile.is_premium === true) {
+      tier = 'max';
+    } else {
+      return {
+        isPremium: false,
+        premiumTier: 'free',
+        subscriptionStatus: profile.subscription_status || 'inactive',
+        shouldRevokeInDb: false,
+      };
+    }
+  }
+
+  return {
+    isPremium: true,
+    premiumTier: tier,
+    subscriptionStatus: 'active',
+    shouldRevokeInDb: false,
+  };
 }
 
 function usesRazorpayBilling(profile: SubscriptionProfile): boolean {
@@ -64,6 +103,10 @@ export function evaluateSubscriptionAccess(
   profile: SubscriptionProfile | null | undefined
 ): SubscriptionAccess {
   const p = profile || {};
+
+  const manualAccess = evaluateManualGrantAccess(p);
+  if (manualAccess) return manualAccess;
+
   let premiumTier = p.premium_tier || 'free';
   const subscriptionStatus = p.subscription_status || 'inactive';
   let shouldRevokeInDb = false;
@@ -169,9 +212,15 @@ export function evaluateSubscriptionAccess(
 
 export async function persistSubscriptionAccessFix(
   userId: string,
-  access: SubscriptionAccess
+  access: SubscriptionAccess,
+  profile?: SubscriptionProfile | null
 ): Promise<void> {
   if (!access.shouldRevokeInDb) return;
+
+  // Never auto-revoke manual admin SQL grants on background verify/search.
+  if (profile && isManualAdminGrant(profile)) {
+    return;
+  }
 
   await supabase
     .from('user_profiles')
@@ -179,6 +228,27 @@ export async function persistSubscriptionAccessFix(
       premium_tier: access.premiumTier,
       is_premium: access.isPremium,
       subscription_status: access.subscriptionStatus,
+      updated_at: new Date().toISOString(),
+    } as never)
+    .eq('user_id', userId);
+}
+
+/** Keep manual grant rows consistent after login / verify (repair counters, re-assert tier). */
+export async function persistManualGrantSnapshot(
+  userId: string,
+  profile: SubscriptionProfile,
+  access: SubscriptionAccess
+): Promise<void> {
+  if (!isManualAdminGrant(profile) || !access.isPremium) return;
+
+  await supabase
+    .from('user_profiles')
+    .update({
+      premium_tier: access.premiumTier,
+      is_premium: true,
+      subscription_status: 'active',
+      free_search_used: 0,
+      free_deep_used: 0,
       updated_at: new Date().toISOString(),
     } as never)
     .eq('user_id', userId);
@@ -197,6 +267,7 @@ export async function getSubscriptionAccessForUser(
     .single();
 
   const access = evaluateSubscriptionAccess(profile as SubscriptionProfile | null);
-  await persistSubscriptionAccessFix(userId, access);
+  await persistSubscriptionAccessFix(userId, access, profile as SubscriptionProfile | null);
+  await persistManualGrantSnapshot(userId, (profile || {}) as SubscriptionProfile, access);
   return access;
 }

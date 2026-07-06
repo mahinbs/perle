@@ -6,6 +6,8 @@ import multer from 'multer';
 import {
   evaluateSubscriptionAccess,
   persistSubscriptionAccessFix,
+  persistManualGrantSnapshot,
+  type SubscriptionProfile,
 } from '../utils/subscriptionAccess.js';
 
 const router = Router();
@@ -150,9 +152,10 @@ router.get('/profile', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     // Resolve paid access — never grant Razorpay premium without razorpay_payment_id
-    const access = evaluateSubscriptionAccess(profile as never);
+    const access = evaluateSubscriptionAccess(profile as SubscriptionProfile);
     if (req.userId) {
-      await persistSubscriptionAccessFix(req.userId, access);
+      await persistSubscriptionAccessFix(req.userId, access, profile as SubscriptionProfile);
+      await persistManualGrantSnapshot(req.userId, profile as SubscriptionProfile, access);
     }
 
     res.json({
@@ -308,9 +311,10 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
       }
     }
 
-    const access = evaluateSubscriptionAccess(profileResult as never);
+    const access = evaluateSubscriptionAccess(profileResult as SubscriptionProfile);
     if (req.userId) {
-      await persistSubscriptionAccessFix(req.userId, access);
+      await persistSubscriptionAccessFix(req.userId, access, profileResult as SubscriptionProfile);
+      await persistManualGrantSnapshot(req.userId, profileResult as SubscriptionProfile, access);
     }
 
     res.json({

@@ -11,6 +11,9 @@ import {
 import {
   evaluateSubscriptionAccess,
   persistSubscriptionAccessFix,
+  persistManualGrantSnapshot,
+  isManualAdminGrant,
+  type SubscriptionProfile,
 } from '../utils/subscriptionAccess.js';
 
 const router = Router();
@@ -101,9 +104,21 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
     // Check if user has existing subscription
     const { data: existingProfile } = await supabase
       .from('user_profiles')
-      .select('premium_tier, razorpay_subscription_id, razorpay_payment_id, subscription_status, subscription_end_date')
+      .select('premium_tier, razorpay_subscription_id, razorpay_payment_id, subscription_status, subscription_end_date, subscription_id, is_premium')
       .eq('user_id', req.userId)
       .single();
+
+    const existingProfileData = existingProfile as SubscriptionProfile | null;
+    if (existingProfileData && isManualAdminGrant(existingProfileData)) {
+      const manualAccess = evaluateSubscriptionAccess(existingProfileData);
+      if (manualAccess.isPremium) {
+        const tierLabel = manualAccess.premiumTier === 'max' ? 'IQ Max' : 'IQ Pro';
+        return res.status(400).json({
+          error: 'You already have an active subscription',
+          message: `Your ${tierLabel} plan is active. Contact support if you need to change plans.`,
+        });
+      }
+    }
 
     const existingTier = (existingProfile as any)?.premium_tier || 'free';
     const existingSubscriptionId = (existingProfile as any)?.razorpay_subscription_id;
@@ -639,7 +654,8 @@ router.post('/payment/webhook', async (req, res) => {
               is_premium: false,
               updated_at: new Date().toISOString()
             } as any)
-            .eq('razorpay_subscription_id', subscription.id);
+            .eq('razorpay_subscription_id', subscription.id)
+            .not('subscription_id', 'like', 'manual_%');
         }
         break;
     }
@@ -673,9 +689,10 @@ router.get('/payment/subscription', authenticateToken, async (req: AuthRequest, 
       });
     }
 
-    const profileData = profile as Record<string, unknown>;
-    const access = evaluateSubscriptionAccess(profileData as never);
-    await persistSubscriptionAccessFix(req.userId, access);
+    const profileData = profile as SubscriptionProfile;
+    const access = evaluateSubscriptionAccess(profileData);
+    await persistSubscriptionAccessFix(req.userId, access, profileData);
+    await persistManualGrantSnapshot(req.userId, profileData, access);
 
     const endDate = profileData.subscription_end_date as string | null | undefined;
     const autoRenew = (profileData.auto_renew as boolean | undefined) ?? true;

@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase.js';
 import {
   evaluateSubscriptionAccess,
   persistSubscriptionAccessFix,
+  persistManualGrantSnapshot,
+  type SubscriptionProfile,
 } from './subscriptionAccess.js';
 
 export type PremiumState = {
@@ -55,8 +57,10 @@ export async function resolvePremiumState(
   userId: string,
   profile: Record<string, unknown> | null | undefined
 ): Promise<PremiumState> {
-  const access = evaluateSubscriptionAccess(profile as never);
-  await persistSubscriptionAccessFix(userId, access);
+  const subscriptionProfile = profile as SubscriptionProfile | null | undefined;
+  const access = evaluateSubscriptionAccess(subscriptionProfile);
+  await persistSubscriptionAccessFix(userId, access, subscriptionProfile);
+  await persistManualGrantSnapshot(userId, subscriptionProfile || {}, access);
 
   const subscriptionEndDate =
     (profile as { subscription_end_date?: string })?.subscription_end_date || null;
