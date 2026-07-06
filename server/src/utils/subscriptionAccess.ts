@@ -1,6 +1,14 @@
 /**
  * Single source of truth for whether a user_profile row grants paid access.
  * Razorpay: requires razorpay_payment_id (set only after successful checkout).
+ *
+ * Manual admin grants (set via SQL) are detected by:
+ *  1. subscription_id starting with 'manual_' (e.g. 'manual_admin_grant')
+ *  2. OR: is_premium=true + active status + paid tier + no payment provider IDs
+ *
+ * IMPORTANT: Never auto-revoke a manual admin grant. The DB write order is:
+ *   persistManualGrantSnapshot FIRST → then persistSubscriptionAccessFix
+ * so the grant is always re-asserted before any potential downgrade write.
  */
 
 import { supabase } from '../lib/supabase.js';
@@ -30,10 +38,14 @@ export type SubscriptionAccess = {
 
 export function isManualAdminGrant(profile: SubscriptionProfile): boolean {
   const id = profile.subscription_id;
+
+  // Explicit manual grant IDs (e.g. 'manual_admin_grant', 'manual_override', etc.)
   if (typeof id === 'string' && id.startsWith('manual_')) {
     return true;
   }
-  // SQL admin grants without subscription_id still count as manual
+
+  // Heuristic: paid tier + active + is_premium + no Razorpay/Stripe payment IDs
+  // This covers SQL grants that set a custom subscription_id OR a non-'manual_*' id.
   const tier = profile.premium_tier;
   const paidTier = tier === 'pro' || tier === 'max';
   return (
@@ -51,6 +63,7 @@ export function isManualAdminGrant(profile: SubscriptionProfile): boolean {
 function evaluateManualGrantAccess(profile: SubscriptionProfile): SubscriptionAccess | null {
   if (!isManualAdminGrant(profile)) return null;
 
+  // If there's an explicit end date and it's past, the grant is expired.
   const endRaw = profile.subscription_end_date;
   if (endRaw) {
     const endDate = new Date(endRaw);
@@ -59,13 +72,15 @@ function evaluateManualGrantAccess(profile: SubscriptionProfile): SubscriptionAc
         isPremium: false,
         premiumTier: 'free',
         subscriptionStatus: 'expired',
-        shouldRevokeInDb: false,
+        shouldRevokeInDb: false, // Never revoke manual grants in DB; admin must do it manually
       };
     }
   }
+  // No end date = indefinite admin grant → always active
 
   let tier = profile.premium_tier || 'free';
   if (tier !== 'pro' && tier !== 'max') {
+    // If tier is somehow not pro/max but is_premium is true, default to 'max'
     if (profile.is_premium === true) {
       tier = 'max';
     } else {
@@ -107,6 +122,7 @@ export function evaluateSubscriptionAccess(
 ): SubscriptionAccess {
   const p = profile || {};
 
+  // ── Manual admin grant check (highest priority — never revoke) ────────────
   const manualAccess = evaluateManualGrantAccess(p);
   if (manualAccess) return manualAccess;
 
@@ -114,6 +130,7 @@ export function evaluateSubscriptionAccess(
   const subscriptionStatus = p.subscription_status || 'inactive';
   let shouldRevokeInDb = false;
 
+  // ── Razorpay initiated checkout but no payment captured yet ───────────────
   if (!isManualAdminGrant(p) && isUnpaidRazorpayProfile(p)) {
     if (premiumTier !== 'free' || subscriptionStatus === 'active' || p.is_premium === true) {
       shouldRevokeInDb = true;
@@ -178,6 +195,7 @@ export function evaluateSubscriptionAccess(
     };
   }
 
+  // No end date — requires a confirmed payment provider to grant premium
   if (subscriptionStatus === 'active') {
     const hasPaidProvider =
       (usesRazorpayBilling(p) && Boolean(p.razorpay_payment_id)) ||
@@ -220,11 +238,15 @@ export async function persistSubscriptionAccessFix(
 ): Promise<void> {
   if (!access.shouldRevokeInDb) return;
 
-  // Never auto-revoke manual admin SQL grants on background verify/search.
+  // CRITICAL GUARD: Never auto-revoke manual admin SQL grants.
+  // This is checked in evaluateSubscriptionAccess too, but double-safety here
+  // ensures a coding mistake upstream can never silently downgrade an admin grant.
   if (profile && isManualAdminGrant(profile)) {
+    console.warn('⚠️  subscriptionAccess: attempted to revoke a manual admin grant — blocked.');
     return;
   }
 
+  console.log(`🔧 subscriptionAccess: revoking stale premium for user ${userId}`);
   await supabase
     .from('user_profiles')
     .update({
@@ -244,6 +266,7 @@ export async function persistManualGrantSnapshot(
 ): Promise<void> {
   if (!isManualAdminGrant(profile) || !access.isPremium) return;
 
+  console.log(`✅ subscriptionAccess: re-asserting manual admin grant for user ${userId} (tier=${access.premiumTier})`);
   await supabase
     .from('user_profiles')
     .update({
@@ -270,7 +293,14 @@ export async function getSubscriptionAccessForUser(
     .single();
 
   const access = evaluateSubscriptionAccess(profile as SubscriptionProfile | null);
-  await persistSubscriptionAccessFix(userId, access, profile as SubscriptionProfile | null);
+
+  // ── IMPORTANT: snapshot FIRST, revoke check SECOND ───────────────────────
+  // persistManualGrantSnapshot re-asserts premium in DB for admin grants.
+  // persistSubscriptionAccessFix may downgrade stale rows.
+  // Running snapshot first ensures a manual grant is never accidentally wiped
+  // by the revoke pass on the same request cycle.
   await persistManualGrantSnapshot(userId, (profile || {}) as SubscriptionProfile, access);
+  await persistSubscriptionAccessFix(userId, access, profile as SubscriptionProfile | null);
+
   return access;
 }

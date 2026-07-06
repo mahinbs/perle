@@ -468,58 +468,81 @@ router.post('/profile/upload-picture', authenticateToken, upload.single('picture
 });
 
 // Delete user account
+// Password is optional — Google/Apple OAuth users don't have one.
+// The client must send { confirm: 'DELETE' } to prove intentional deletion.
 router.delete('/profile', authenticateToken, async (req: AuthRequest, res) => {
   try {
     if (!req.userId) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    // Require password confirmation
-    const PasswordSchema = z.object({
-      password: z.string().min(6, 'Password is required')
+    // Require explicit confirmation text to prevent accidental deletions
+    const DeleteSchema = z.object({
+      confirm: z.literal('DELETE', {
+        errorMap: () => ({ message: 'Please type DELETE to confirm account deletion' })
+      }),
+      password: z.string().min(1).optional(), // Optional — only for email/password accounts
     });
-    const parsed = PasswordSchema.safeParse(req.body ?? {});
+    const parsed = DeleteSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({
-        error: 'Password confirmation required',
+        error: parsed.error.flatten().fieldErrors?.confirm?.[0] || 'Confirmation required',
         details: parsed.error.flatten().fieldErrors
       });
     }
 
-    // Re-authenticate user with Supabase Auth using email + password
     const email = req.userEmail;
-    if (!email) {
-      return res.status(400).json({ error: 'Email not found for user' });
-    }
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password: parsed.data.password
-    });
-    if (signInError) {
-      return res.status(403).json({ error: 'Invalid password' });
+
+    // If a password was provided, re-authenticate to verify identity.
+    // Skip this for OAuth users (no password) — they're already authenticated via token.
+    if (parsed.data.password && email) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: parsed.data.password
+      });
+      if (signInError) {
+        return res.status(403).json({ error: 'Invalid password. Account not deleted.' });
+      }
     }
 
-    // Delete all user data (cascade should handle related records)
-    // Delete in order: sessions, library items, search history, profile
-    await supabase.from('sessions').delete().eq('user_id', req.userId);
-    await supabase.from('library_items').delete().eq('user_id', req.userId);
-    await supabase.from('search_history').delete().eq('user_id', req.userId);
-    await supabase.from('user_profiles').delete().eq('user_id', req.userId);
-    
-    // Delete user from Supabase Auth using Admin API (requires service role key)
-    // Since we're using service role key, we can delete the user
+    console.log(`🗑️  Deleting account for user ${req.userId} (${email || 'no-email'})`);
+
+    // Delete all user data in dependency order.
+    // Best-effort: continue even if some tables don't exist or have no rows.
+    const tables = [
+      'ai_friend_user_memory',
+      'ai_friends',
+      'conversation_history',
+      'conversations',
+      'library_items',
+      'search_history',
+      'sessions',
+      'spaces',
+      'user_profiles',
+    ];
+
+    for (const table of tables) {
+      try {
+        await supabase.from(table).delete().eq('user_id', req.userId);
+      } catch (tableErr) {
+        console.warn(`Failed to delete from ${table}:`, tableErr);
+        // Continue — don't abort the whole deletion
+      }
+    }
+
+    // Delete user from Supabase Auth (requires service role key)
     const { error: deleteUserError } = await supabase.auth.admin.deleteUser(req.userId);
-    
+
     if (deleteUserError) {
       console.error('Failed to delete user from Supabase Auth:', deleteUserError);
-      // Still return success since all data is deleted
-      // The user account in auth.users will be orphaned but can't log in
-      return res.json({ 
-        message: 'Account data deleted successfully. Note: User may still exist in auth system.',
-        warning: deleteUserError.message 
+      // All data is gone — return partial success so client can still log out
+      return res.json({
+        message: 'Account data deleted successfully.',
+        warning: 'Auth record removal failed: ' + deleteUserError.message
       });
     }
 
+    console.log(`✅ Account fully deleted for user ${req.userId}`);
     res.json({ message: 'Account deleted successfully' });
   } catch (error) {
     console.error('Delete account error:', error);

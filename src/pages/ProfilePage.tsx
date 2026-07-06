@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Capacitor } from "@capacitor/core";
+
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
 import { LoginForm } from "../components/LoginForm";
@@ -89,6 +89,9 @@ export default function ProfilePage() {
   const [pictureFile, setPictureFile] = useState<File | null>(null);
   const [picturePreview, setPicturePreview] = useState<string | null>(null);
   const [isSavingDarkMode, setIsSavingDarkMode] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const profileFetchGenerationRef = useRef(0);
   const profileFetchInFlightRef = useRef(false);
   const lastProfileFetchAtRef = useRef(0);
@@ -276,13 +279,8 @@ export default function ProfilePage() {
   };
 
   const requestClearSearchHistory = () => {
-    if (Capacitor.isNativePlatform()) {
-      setShowClearHistoryModal(true);
-      return;
-    }
-    if (confirm("Clear all search history? This cannot be undone.")) {
-      void handleClearSearchHistory();
-    }
+    // Always use the in-app modal — works on web and native (Capacitor)
+    setShowClearHistoryModal(true);
   };
 
   const handleLogin = async (email: string, password: string) => {
@@ -641,26 +639,12 @@ export default function ProfilePage() {
 
   const handleDeleteAccount = async () => {
     if (!API_URL) return;
-
-    if (
-      !confirm(
-        "Are you sure you want to delete your account? This action cannot be undone.\n\nYou'll be asked to confirm with your password.",
-      )
-    ) {
-      return;
-    }
-
-    // Ask for password confirmation
-    const password = prompt("Please enter your password to confirm deletion:");
-    if (!password) {
-      return;
-    }
-
+    setIsDeletingAccount(true);
     try {
       const response = await authFetch(`${API_URL}/api/profile`, {
         method: "DELETE",
         headers: getAuthHeaders(),
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ confirm: "DELETE" }),
       });
 
       if (response.status === 401) {
@@ -669,6 +653,7 @@ export default function ProfilePage() {
           setIsAuthenticated(false);
           setUserSettings(null);
         }
+        setShowDeleteModal(false);
         return;
       }
 
@@ -676,13 +661,30 @@ export default function ProfilePage() {
         await logout();
         setIsAuthenticated(false);
         setUserSettings(null);
+        setShowDeleteModal(false);
         navigateTo("/app");
+        showToast({
+          message: "Account deleted successfully.",
+          type: "success",
+          duration: 4000,
+        });
       } else {
-        alert("Failed to delete account. Please try again.");
+        const errData = await response.json().catch(() => ({}));
+        showToast({
+          message: errData.error || "Failed to delete account. Please try again.",
+          type: "error",
+          duration: 5000,
+        });
       }
     } catch (error) {
       console.error("Delete account error:", error);
-      alert("Failed to delete account. Please try again.");
+      showToast({
+        message: "Failed to delete account. Please try again.",
+        type: "error",
+        duration: 5000,
+      });
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -1680,7 +1682,10 @@ export default function ProfilePage() {
 
           <button
             className="btn-ghost glass-button"
-            onClick={handleDeleteAccount}
+            onClick={() => {
+              setDeleteConfirmText("");
+              setShowDeleteModal(true);
+            }}
             style={{
               width: "100%",
               color: "#ff4444",
@@ -2203,6 +2208,213 @@ export default function ProfilePage() {
                 }}
               >
                 {isClearingHistory ? "Clearing..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.65)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+            padding: 20,
+          }}
+          onClick={() => {
+            if (!isDeletingAccount) {
+              setShowDeleteModal(false);
+              setDeleteConfirmText("");
+            }
+          }}
+        >
+          <div
+            className="card glass-card !bg-white/30 dark:!bg-black/30"
+            style={{
+              padding: 28,
+              maxWidth: 380,
+              width: "100%",
+              borderRadius: "var(--radius)",
+              border: "1.5px solid rgba(255,68,68,0.35)",
+              boxShadow: "0 8px 32px rgba(255,68,68,0.18), 0 2px 8px rgba(0,0,0,0.3)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Icon */}
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: "50%",
+                background: "rgba(255,68,68,0.12)",
+                border: "1.5px solid rgba(255,68,68,0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              <FaTrashAlt size={22} color="#ff4444" />
+            </div>
+
+            {/* Title */}
+            <div
+              className="h3"
+              style={{ marginBottom: 8, color: "#ff4444", fontWeight: 700 }}
+            >
+              Delete Account
+            </div>
+
+            {/* Warning text */}
+            <p
+              className="sub"
+              style={{
+                marginBottom: 8,
+                lineHeight: 1.6,
+                fontSize: "var(--font-md)",
+              }}
+            >
+              This action is <strong>permanent and irreversible</strong>. All your
+              data — search history, conversations, AI friends, saved items, and
+              your account — will be permanently deleted.
+            </p>
+
+            {/* Confirmation input */}
+            <div style={{ marginBottom: 20 }}>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: 8,
+                  fontSize: "var(--font-sm)",
+                  fontWeight: 500,
+                  color: "var(--text)",
+                  opacity: 0.85,
+                }}
+              >
+                Type{" "}
+                <code
+                  style={{
+                    background: "rgba(255,68,68,0.12)",
+                    color: "#ff4444",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    fontWeight: 700,
+                    fontSize: "var(--font-sm)",
+                    letterSpacing: 1,
+                  }}
+                >
+                  DELETE
+                </code>{" "}
+                to confirm:
+              </label>
+              <input
+                id="delete-confirm-input"
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="Type DELETE here"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                disabled={isDeletingAccount}
+                className="input"
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: `1.5px solid ${
+                    deleteConfirmText === "DELETE"
+                      ? "rgba(255,68,68,0.7)"
+                      : "var(--border)"
+                  }`,
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--card)",
+                  fontSize: "var(--font-md)",
+                  transition: "border-color 0.2s",
+                  outline: "none",
+                  letterSpacing: deleteConfirmText ? 1 : 0,
+                }}
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                type="button"
+                className="btn-ghost glass-button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText("");
+                }}
+                disabled={isDeletingAccount}
+                style={{
+                  flex: 1,
+                  opacity: isDeletingAccount ? 0.5 : 1,
+                  cursor: isDeletingAccount ? "not-allowed" : "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteAccount()}
+                disabled={deleteConfirmText !== "DELETE" || isDeletingAccount}
+                style={{
+                  flex: 1,
+                  padding: "10px 16px",
+                  borderRadius: "var(--radius-sm)",
+                  border: "none",
+                  background:
+                    deleteConfirmText === "DELETE" && !isDeletingAccount
+                      ? "#ff4444"
+                      : "rgba(255,68,68,0.25)",
+                  color:
+                    deleteConfirmText === "DELETE" && !isDeletingAccount
+                      ? "#fff"
+                      : "rgba(255,68,68,0.5)",
+                  fontWeight: 600,
+                  fontSize: "var(--font-md)",
+                  cursor:
+                    deleteConfirmText === "DELETE" && !isDeletingAccount
+                      ? "pointer"
+                      : "not-allowed",
+                  transition: "all 0.2s",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                {isDeletingAccount ? (
+                  <>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: 14,
+                        height: 14,
+                        border: "2px solid rgba(255,255,255,0.4)",
+                        borderTopColor: "#fff",
+                        borderRadius: "50%",
+                        animation: "spin 0.7s linear infinite",
+                      }}
+                    />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <FaTrashAlt size={14} />
+                    Delete Account
+                  </>
+                )}
               </button>
             </div>
           </div>

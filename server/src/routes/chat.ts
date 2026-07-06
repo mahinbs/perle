@@ -203,15 +203,21 @@ function applyAiFriendHistoryScope(
   opts: { chatMode: ChatMode; aiFriendId?: string; groupChat?: boolean }
 ) {
   const { chatMode, aiFriendId, groupChat } = opts;
-  if (chatMode === 'ai_friend' && groupChat) {
-    return query.eq('mode', GROUP_CHAT_MODE);
-  }
-  if (chatMode === 'ai_friend' && aiFriendId) {
-    return query.eq('ai_friend_id', aiFriendId).neq('mode', GROUP_CHAT_MODE);
-  }
-  if (chatMode === 'ai_friend') {
+  if (chatMode !== 'ai_friend') {
+    // Normal / psychologist modes: exclude all ai_friend rows
     return query.is('ai_friend_id', null);
   }
+  if (groupChat) {
+    // Group chat: only rows explicitly saved as 'Group' mode
+    return query.eq('mode', GROUP_CHAT_MODE);
+  }
+  if (aiFriendId) {
+    // Personal chat with a specific friend: must match friend + NOT be a group row
+    return query
+      .eq('ai_friend_id', aiFriendId)
+      .neq('mode', GROUP_CHAT_MODE);
+  }
+  // ai_friend mode but no friend selected and not group — exclude all friend rows
   return query.is('ai_friend_id', null);
 }
 
@@ -296,16 +302,12 @@ router.post('/chat', optionalAuth, uploadSearchFiles, async (req: AuthRequest, r
 
     const { message, model, newConversation, conversationHistory: clientConversationHistory, userContext, searchType, chatMode, aiFriendId, groupChat, mentionedFriendIds, spaceId } = parse.data;
 
-    const inferredGroupChat =
-      chatMode === 'ai_friend' &&
-      !!aiFriendId &&
-      (
-        clientConversationHistory.some(
-          (m) => m.role === 'assistant' && m.friendId && m.friendId !== aiFriendId
-        ) ||
-        clientConversationHistory.filter((m) => m.role === 'assistant').length >= 2
-      );
-    const effectiveGroupChat = groupChat || inferredGroupChat;
+    // IMPORTANT: Never infer group-chat from conversation history length.
+    // Doing so incorrectly classified personal chats with ≥2 AI replies as
+    // group chats, causing personal messages to be saved with mode='Group'
+    // and then appear in the group chat view.
+    // The client ALWAYS sends an explicit groupChat flag — trust it exclusively.
+    const effectiveGroupChat = Boolean(groupChat);
 
     const uploadedFilesEarly = collectUploadedFiles(req);
     const trimmedMessage = resolveQueryWithAttachments(message, uploadedFilesEarly.length);
