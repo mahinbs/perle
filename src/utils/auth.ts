@@ -163,10 +163,14 @@ export function cacheUserProfile(user: User): void {
   if (previous?.id !== user.id) {
     clearAllHomeChatSessions();
   }
-  const mergedUser = mergeProfileWithLocalThemePreference(user);
-  const darkMode = mergedUser.darkMode === true;
-  setLocalItemSilent(USER_DATA_KEY, JSON.stringify({ ...mergedUser, darkMode }));
-  applyTheme(darkMode);
+  const normalized = normalizeUserPremiumFlags(mergeProfileWithLocalThemePreference(user));
+  const previousPaid = hasPaidPremiumPlan(previous);
+  const nextPaid = hasPaidPremiumPlan(normalized);
+  setLocalItemSilent(USER_DATA_KEY, JSON.stringify(normalized));
+  applyTheme(normalized.darkMode === true);
+  if (nextPaid && !previousPaid) {
+    void import('./queryLimit').then((m) => m.clearFreeUsageCounters());
+  }
 }
 
 /** Save dark mode to the backend with token refresh + one retry. */
@@ -303,19 +307,37 @@ export function setUserData(user: User): void {
   if (previous?.id !== user.id) {
     clearAllHomeChatSessions();
   }
-  const mergedUser = mergeProfileWithLocalThemePreference(user);
+  const mergedUser = normalizeUserPremiumFlags(mergeProfileWithLocalThemePreference(user));
+  const previousPaid = hasPaidPremiumPlan(previous);
+  const nextPaid = hasPaidPremiumPlan(mergedUser);
   setLocalItem(USER_DATA_KEY, JSON.stringify(mergedUser));
   if (mergedUser && typeof mergedUser.darkMode === 'boolean') {
     applyTheme(mergedUser.darkMode);
+  }
+  if (nextPaid && !previousPaid) {
+    void import('./queryLimit').then((m) => m.clearFreeUsageCounters());
   }
   notifyAuthChange();
 }
 
 export function hasPaidPremiumPlan(
-  user?: Pick<User, 'isPremium' | 'premiumTier'> | null,
+  user?: Pick<User, 'isPremium' | 'premiumTier' | 'subscription'> | null,
 ): boolean {
-  if (!user?.isPremium) return false;
-  return user.premiumTier === 'pro' || user.premiumTier === 'max';
+  if (!user) return false;
+  const tier = user.premiumTier ?? 'free';
+  if (tier !== 'pro' && tier !== 'max') return false;
+  if (user.subscription?.status === 'expired') return false;
+  return true;
+}
+
+/** Keep isPremium in sync with tier + subscription status from the server. */
+export function normalizeUserPremiumFlags(user: User): User {
+  const paid = hasPaidPremiumPlan(user);
+  return {
+    ...user,
+    isPremium: paid,
+    premiumTier: paid ? (user.premiumTier === 'max' ? 'max' : 'pro') : 'free',
+  };
 }
 
 type PostAuthNavState = { returnTo?: string; plan?: string };

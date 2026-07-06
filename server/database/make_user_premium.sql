@@ -21,16 +21,18 @@ WHERE u.email = 'animeshbms@gmail.com';
 -- the backend revokes premium on login even after this UPDATE. You MUST clear Razorpay fields
 -- (or set razorpay_payment_id) — see STEP 2.
 
--- STEP 2: Grant IQ Pro (₹399/month tier)
+-- STEP 2: Grant IQ Max (₹899/month tier)
 UPDATE user_profiles
 SET
-  premium_tier = 'pro',
+  premium_tier = 'max',
   is_premium = true,
   subscription_status = 'active',
   subscription_start_date = NOW(),
-  subscription_end_date = NOW() + INTERVAL '5 months',
+  subscription_end_date = NOW() + INTERVAL '12 months',
   subscription_id = 'manual_admin_grant',
   auto_renew = false,
+  free_search_used = 0,
+  free_deep_used = 0,
   -- Clear unpaid Razorpay checkout leftovers (required for manual grants)
   razorpay_subscription_id = NULL,
   razorpay_plan_id = NULL,
@@ -40,25 +42,6 @@ SET
 WHERE user_id = (
   SELECT id FROM auth.users WHERE email = 'animeshbms@gmail.com'
 );
-
--- Option: IQ Max (₹899/month) — use instead of STEP 2
--- UPDATE user_profiles
--- SET
---   premium_tier = 'max',
---   is_premium = true,
---   subscription_status = 'active',
---   subscription_start_date = NOW(),
---   subscription_end_date = NOW() + INTERVAL '5 months',
---   subscription_id = 'manual_admin_grant',
---   auto_renew = false,
---   razorpay_subscription_id = NULL,
---   razorpay_plan_id = NULL,
---   razorpay_order_id = NULL,
---   razorpay_payment_id = NULL,
---   updated_at = NOW()
--- WHERE user_id = (
---   SELECT id FROM auth.users WHERE email = 'animeshbms@gmail.com'
--- );
 
 -- STEP 3: Verify
 SELECT

@@ -1,5 +1,5 @@
 import { getLocalItem, setLocalItem } from "./storage";
-import { getUserData, isAuthenticated } from "./auth";
+import { getUserData, isAuthenticated, hasPaidPremiumPlan } from "./auth";
 
 const LEGACY_DAILY_QUERY_KEY = "syntraiq-daily-query-count";
 const LIFETIME_QUERY_KEY = "syntraiq-lifetime-query-count";
@@ -68,9 +68,15 @@ function writeCount(key: string, count: number): void {
   setLocalItem(key, JSON.stringify(count));
 }
 
+export function clearFreeUsageCounters(): void {
+  writeCount(LIFETIME_QUERY_KEY, 0);
+  writeCount(LIFETIME_ANALYZE_KEY, 0);
+  writeCount(LIFETIME_MEDIA_KEY, 0);
+  writeCount(LIFETIME_DEEP_KEY, 0);
+}
+
 export function isPremiumUser(): boolean {
-  const user = getUserData();
-  return Boolean(user?.isPremium);
+  return hasPaidPremiumPlan(getUserData());
 }
 
 export function shouldEnforceUsageLimits(): boolean {

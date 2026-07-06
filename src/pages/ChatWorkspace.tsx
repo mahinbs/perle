@@ -7,7 +7,7 @@ import { ConversationSidebar } from "../components/ConversationSidebar";
 import { searchAPIStream, FILE_ONLY_DEFAULT_QUERY } from "../utils/answerEngine";
 import { formatQuery, getUserFriendlyErrorMessage } from "../utils/helpers";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import { getUserData, onAuthChange, isLoggedIn } from "../utils/auth";
+import { getUserData, onAuthChange, isLoggedIn, hasPaidPremiumPlan } from "../utils/auth";
 import { getLocalItem, removeLocalItem, setLocalItem, STORAGE_KEYS } from "../utils/storage";
 import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode, Source } from "../types";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
@@ -341,7 +341,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     const updatePremiumStatus = (isInitialLoad = false) => {
       const user = getUserData();
       if (user) {
-        const premium = user.isPremium ?? false;
+        const premium = hasPaidPremiumPlan(user);
         setIsPremium(premium);
 
         // Only set default model on initial load or if no saved preference
@@ -373,7 +373,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       if (e.key === STORAGE_KEYS.userData || e.key === "perle-user-data") {
         const user = getUserData();
         if (user) {
-          const premium = user.isPremium ?? false;
+          const premium = hasPaidPremiumPlan(user);
           setIsPremium(premium);
           // Don't reset model - keep user's selection
           if (!premium && selectedModel !== "gemini-lite") {
@@ -397,7 +397,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         STORAGE_KEYS.selectedModel
       ) as LLMModel | null;
       if (user) {
-        const premium = user.isPremium ?? false;
+        const premium = hasPaidPremiumPlan(user);
         setIsPremium(premium);
         // Don't reset model - keep user's selection
         // Only force gemini-lite for free users

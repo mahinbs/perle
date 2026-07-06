@@ -27,7 +27,21 @@ export type SubscriptionAccess = {
 
 function isManualAdminGrant(profile: SubscriptionProfile): boolean {
   const id = profile.subscription_id;
-  return typeof id === 'string' && id.startsWith('manual_');
+  if (typeof id === 'string' && id.startsWith('manual_')) {
+    return true;
+  }
+  // SQL admin grants without subscription_id still count as manual
+  const tier = profile.premium_tier;
+  const paidTier = tier === 'pro' || tier === 'max';
+  return (
+    paidTier &&
+    profile.is_premium === true &&
+    profile.subscription_status === 'active' &&
+    !profile.razorpay_subscription_id &&
+    !profile.razorpay_payment_id &&
+    !profile.stripe_subscription_id &&
+    !profile.stripe_customer_id
+  );
 }
 
 function usesRazorpayBilling(profile: SubscriptionProfile): boolean {

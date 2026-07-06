@@ -21,6 +21,7 @@ import {
   isThemePreferenceSaveInFlight,
   syncDarkModePreference,
   cacheUserProfile,
+  normalizeUserPremiumFlags,
   mergeProfileWithLocalThemePreference,
   getAuthHeaders,
   authFetch,
@@ -124,7 +125,9 @@ export default function ProfilePage() {
           return;
         }
         const profile = await response.json();
-        const mergedProfile = mergeProfileWithLocalThemePreference(profile);
+        const mergedProfile = normalizeUserPremiumFlags(
+          mergeProfileWithLocalThemePreference(profile),
+        );
         setUserSettings(mergedProfile);
         cacheUserProfile(mergedProfile);
         setIsAuthenticated(true);
@@ -141,7 +144,7 @@ export default function ProfilePage() {
     const loggedIn = isLoggedIn();
     setIsAuthenticated(loggedIn);
     if (user) {
-      setUserSettings(mergeProfileWithLocalThemePreference(user));
+      setUserSettings(mergeProfileWithLocalThemePreference(normalizeUserPremiumFlags(user)));
     } else {
       setUserSettings(null);
     }
