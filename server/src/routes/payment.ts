@@ -676,7 +676,7 @@ router.get('/payment/subscription', authenticateToken, async (req: AuthRequest, 
 
     const { data: profile } = await supabase
       .from('user_profiles')
-      .select('premium_tier, is_premium, subscription_status, subscription_start_date, subscription_end_date, auto_renew, razorpay_subscription_id, razorpay_payment_id, razorpay_plan_id, stripe_subscription_id, stripe_customer_id, subscription_id')
+      .select('premium_tier, is_premium, subscription_status, subscription_start_date, subscription_end_date, auto_renew, razorpay_subscription_id, razorpay_payment_id, razorpay_plan_id, subscription_id')
       .eq('user_id', req.userId)
       .single();
 

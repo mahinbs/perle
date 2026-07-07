@@ -22,8 +22,6 @@ export type SubscriptionProfile = {
   razorpay_subscription_id?: string | null;
   razorpay_payment_id?: string | null;
   razorpay_plan_id?: string | null;
-  stripe_subscription_id?: string | null;
-  stripe_customer_id?: string | null;
   subscription_id?: string | null;
   free_search_used?: number | null;
   free_deep_used?: number | null;
@@ -303,7 +301,7 @@ export async function persistManualGrantSnapshot(
 }
 
 const SUBSCRIPTION_PROFILE_SELECT =
-  'premium_tier, is_premium, subscription_status, subscription_end_date, razorpay_subscription_id, razorpay_payment_id, razorpay_plan_id, stripe_subscription_id, stripe_customer_id, subscription_id';
+  'premium_tier, is_premium, subscription_status, subscription_end_date, razorpay_subscription_id, razorpay_payment_id, razorpay_plan_id, subscription_id';
 
 export async function getSubscriptionAccessForUser(
   userId: string
