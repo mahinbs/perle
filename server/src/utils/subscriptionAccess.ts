@@ -39,24 +39,51 @@ export type SubscriptionAccess = {
 export function isManualAdminGrant(profile: SubscriptionProfile): boolean {
   const id = profile.subscription_id;
 
-  // Explicit manual grant IDs (e.g. 'manual_admin_grant', 'manual_override', etc.)
-  if (typeof id === 'string' && id.startsWith('manual_')) {
+  // 1) Explicit manual/admin keywords in subscription_id (case-insensitive)
+  if (typeof id === 'string') {
+    const lowerId = id.toLowerCase();
+    if (
+      lowerId.startsWith('manual') ||
+      lowerId.startsWith('admin') ||
+      lowerId.startsWith('sql') ||
+      lowerId.startsWith('override') ||
+      lowerId.startsWith('gift') ||
+      lowerId.startsWith('promo') ||
+      lowerId === 'system' ||
+      lowerId === 'free_pass'
+    ) {
+      return true;
+    }
+  }
+
+  // 2) Heuristic: user profile has:
+  //  - premium_tier is 'pro' or 'max'
+  //  - is_premium is true
+  //  - subscription_status is 'active'
+  //  - subscription_end_date is NULL or in the future
+  //  - and NO active automated subscription ID format (e.g. not starting with 'sub_')
+  const tier = profile.premium_tier;
+  const paidTier = tier === 'pro' || tier === 'max';
+  if (paidTier && profile.is_premium === true && profile.subscription_status === 'active') {
+    // If the subscription ID is a Stripe/Razorpay sub ID format (e.g. starts with 'sub_'),
+    // we do not treat it as a manual grant.
+    if (typeof id === 'string' && id.toLowerCase().startsWith('sub_')) {
+      return false;
+    }
+
+    // If there is an end date and it is in the past, it's expired
+    const endRaw = profile.subscription_end_date;
+    if (endRaw) {
+      const endDate = new Date(endRaw);
+      if (!Number.isNaN(endDate.getTime()) && endDate < new Date()) {
+        return false;
+      }
+    }
+
     return true;
   }
 
-  // Heuristic: paid tier + active + is_premium + no Razorpay/Stripe payment IDs
-  // This covers SQL grants that set a custom subscription_id OR a non-'manual_*' id.
-  const tier = profile.premium_tier;
-  const paidTier = tier === 'pro' || tier === 'max';
-  return (
-    paidTier &&
-    profile.is_premium === true &&
-    profile.subscription_status === 'active' &&
-    !profile.razorpay_subscription_id &&
-    !profile.razorpay_payment_id &&
-    !profile.stripe_subscription_id &&
-    !profile.stripe_customer_id
-  );
+  return false;
 }
 
 /** Manual SQL grants — never auto-revoke; ignore stray Razorpay checkout fields. */
@@ -107,10 +134,6 @@ function usesRazorpayBilling(profile: SubscriptionProfile): boolean {
     profile.razorpay_payment_id ||
     profile.razorpay_plan_id
   );
-}
-
-function usesStripeBilling(profile: SubscriptionProfile): boolean {
-  return Boolean(profile.stripe_subscription_id || profile.stripe_customer_id);
 }
 
 export function isUnpaidRazorpayProfile(profile: SubscriptionProfile): boolean {
@@ -199,8 +222,7 @@ export function evaluateSubscriptionAccess(
   if (subscriptionStatus === 'active') {
     const hasPaidProvider =
       (usesRazorpayBilling(p) && Boolean(p.razorpay_payment_id)) ||
-      usesStripeBilling(p) ||
-      (Boolean(p.subscription_id) && !usesRazorpayBilling(p) && !usesStripeBilling(p));
+      (Boolean(p.subscription_id) && !usesRazorpayBilling(p));
 
     if (hasPaidProvider && (premiumTier === 'pro' || premiumTier === 'max')) {
       return {
