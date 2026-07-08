@@ -694,6 +694,7 @@ async function fetchGeminiNews(
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash-lite',
       tools: [{ googleSearch: {} } as any],
+      generationConfig: { responseMimeType: 'application/json' },
     });
     const subject = topicQuery ? `${topicQuery} news` : 'top news headlines';
     const prompt = `List the top ${limit} most important real ${subject} from ${label} from the last 2 days.
@@ -1151,13 +1152,29 @@ export async function getLiveNews(countries: string[], perCountry = 8, forceRefr
   for (const s of settled) {
     if (s.status === 'fulfilled') out.push(...s.value);
   }
-  // Best-effort image enrichment — never blocks the request beyond its own
-  // hard timeouts. Items that don't get a real image keep their topical
-  // Unsplash fallback so the UI never shows a broken card.
-  try {
-    await enrichDiscoverImages(out);
-  } catch (e) {
-    console.warn('Discover image enrichment failed:', e instanceof Error ? e.message : e);
+  // Best-effort image enrichment — runs asynchronously in the background so it
+  // never blocks the response. Once finished, L1 and L2 caches are updated.
+  if (out.length > 0) {
+    enrichDiscoverImages(out).then(async () => {
+      console.log('🖼️ Background image enrichment completed. Writing to Redis...');
+      for (const country of countries) {
+        const code = country.toUpperCase();
+        const cycle = newsRefreshCycle(code);
+        const l1Key = `${code}:${cycle}`;
+        const l2Key = `news:${NEWS_CACHE_VERSION}:${code}:${cycle}`;
+        
+        // Filter out items belonging to this country
+        const countryItems = out.filter(it => it.nationCode === code || it.id.startsWith(`news-${code.toLowerCase()}`));
+        if (countryItems.length > 0) {
+          NEWS_L1.set(l1Key, { items: countryItems, ts: Date.now() });
+          await redisSetJSON(l2Key, countryItems, NEWS_L2_TTL_SEC);
+          NEWS_LAST_GOOD.set(code, countryItems);
+          await redisSetJSON(`news:lastgood:${NEWS_CACHE_VERSION}:${code}`, countryItems, LAST_GOOD_REDIS_TTL_SEC);
+        }
+      }
+    }).catch((e) => {
+      console.warn('Background discover image enrichment failed:', e instanceof Error ? e.message : e);
+    });
   }
   return out;
 }

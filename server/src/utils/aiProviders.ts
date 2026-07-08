@@ -1586,6 +1586,14 @@ NORMAL / WEB / DEEP SEARCH — UNIFIED FORMAT (all models must follow):
 • EVERY section heading needs a leading emoji + colon. Use a DIFFERENT emoji per section.
 • NO ## markdown headers. NO **bold** for headings. Tables only when comparing or listing.`;
 
+function detectQueryLanguageName(query: string): string {
+  const q = query.trim();
+  if (/[஀-௿]/.test(q)) return 'Tamil (தமிழ் script)';
+  if (/[ऀ-ॿ]/.test(q)) return 'Hindi (Devanagari script)';
+  if (/[؀-ۿ]/.test(q)) return 'Urdu (Arabic/Urdu script)';
+  return 'English (or the Latin-script language used in the query)';
+}
+
 function getSystemPrompt(
   chatMode: ChatMode = 'normal',
   friendDescription?: string | null,
@@ -1597,8 +1605,10 @@ function getSystemPrompt(
   forTableFormat = false,
   forPremium = false,
   forDeepResearch = false,
-  priorSummary?: string | null
+  priorSummary?: string | null,
+  query?: string
 ): string {
+  const detectedLang = query ? detectQueryLanguageName(query) : "the user's language/script";
   // Use IST for AI Friend and AI Psychology modes, regular timezone for normal mode
   const currentDate = (chatMode === 'ai_friend' || chatMode === 'ai_psychologist')
     ? getCurrentDateContextIST()
@@ -1661,7 +1671,8 @@ IMPORTANT: When asked about time, date, current events, or prices, prioritize th
       return `You are a warm, supportive friend having a casual conversation. Be empathetic, understanding, and conversational. Use natural language like you're texting a close friend. Share relatable thoughts, ask follow-up questions, and show genuine interest in what they're saying. Be encouraging and positive. Keep responses conversational and friendly - not formal or robotic. You can use casual language, emojis occasionally, and show personality. Remember previous parts of the conversation to maintain context. NEVER use bullet points or formal structure - just talk naturally like a real human friend would.
 
 🌐 LANGUAGE MIRRORING — ABSOLUTE RULE, OVERRIDES EVERYTHING ELSE:
-- Look at the USER'S MOST RECENT MESSAGE ONLY (the one you are replying to right now). Reply in EXACTLY that language and script — any language in the world.
+- You MUST write your ENTIRE response in ${detectedLang} only!
+- Look at the USER'S MOST RECENT MESSAGE ONLY (the one you are replying to right now) which is detected as ${detectedLang}. Reply in EXACTLY that language and script.
 - If they switch language mid-chat, you switch too — ignore what language earlier turns were in.
 - If their CURRENT message is English (or any Latin-script language), reply in that same language even if older messages were Telugu/Tamil/Hindi/Arabic/etc.
 - Examples:
@@ -1691,7 +1702,8 @@ CRITICAL AI PSYCHOLOGY RULES:
 - Always include at least one gentle clarifying or reflective question when appropriate.
 
 🌐 LANGUAGE MIRRORING — ABSOLUTE RULE, OVERRIDES EVERYTHING ELSE:
-- Look at the USER'S MOST RECENT MESSAGE ONLY (the one you are replying to right now). Reply in EXACTLY that language and script — any language in the world.
+- You MUST write your ENTIRE response in ${detectedLang} only!
+- Look at the USER'S MOST RECENT MESSAGE ONLY (the one you are replying to right now) which is detected as ${detectedLang}. Reply in EXACTLY that language and script.
 - If they switch language mid-chat, you switch too — ignore what language earlier turns were in.
 - If their CURRENT message is English (or any Latin-script language), reply in that same language even if older messages were Telugu/Tamil/Hindi/Arabic/etc.
 - All follow-up questions and clarifying questions MUST be in the user's language too.
@@ -1705,8 +1717,9 @@ IMPORTANT: When asked about time, date, current events, or prices, prioritize th
       return `You are SyntraIQ, an AI-powered answer engine like Perplexity AI. 
 
 🌐 LANGUAGE MIRRORING — #1 ABSOLUTE RULE — HIGHEST PRIORITY — OVERRIDES ALL OTHER INSTRUCTIONS:
-STEP 1: Before doing ANYTHING else, look at the user's most recent message and identify its language and script.
-STEP 2: Write your ENTIRE response — overview, section headings, bullet points, citations, follow-up questions, everything — in EXACTLY that same language and script.
+- You MUST write your ENTIRE response — overview, section headings, bullet points, citations, follow-up questions, everything — in EXACTLY ${detectedLang}!
+- DO NOT reply in any other language under any circumstances.
+- Ignore the language of older messages in chat history — if they wrote in Tamil before but English now, reply entirely in English.
 - User writes Tamil script (தமிழ்) → reply ENTIRELY in Tamil script. Every word. Every heading. Every bullet. No English.
 - User writes Hindi Devanagari (हिंदी) → reply ENTIRELY in Hindi Devanagari. Not Hinglish. Not English.
 - User writes Hinglish (Hindi+English mix) → match that same mix.
@@ -1908,7 +1921,7 @@ export async function generateOpenAIAnswer(
   
   // Get system prompt based on chat mode, friend description, and space context
   const useTableFormat = chatMode === 'normal' && wantsTableFormat(query, mode);
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary, query);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
   const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
@@ -2116,7 +2129,7 @@ export async function generateGeminiAnswer(
 
   // Get system prompt based on chat mode, friend description, and space context
   const useTableFormat = chatMode === 'normal' && wantsTableFormat(query, mode);
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary, query);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
   const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
@@ -2381,7 +2394,7 @@ export async function* streamGeminiAnswer(
 
   // ── System prompt ───────────────────────────────────────────────────────────
   const useTableFormat = chatMode === 'normal' && wantsTableFormat(query, mode);
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary, query);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
   const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
@@ -2591,7 +2604,7 @@ async function* streamOpenAICompatibleAnswer(
   let sys = getSystemPrompt(
     chatMode, friendDescription, friendName, friendMemoryContext,
     spaceTitle, spaceDescription, userContext, useTableFormat,
-    isPremium, searchType === 'deep', priorSummary,
+    isPremium, searchType === 'deep', priorSummary, query
   );
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
@@ -2780,7 +2793,7 @@ async function* streamClaudeAnswer(
   let sys = getSystemPrompt(
     chatMode, friendDescription, friendName, friendMemoryContext,
     spaceTitle, spaceDescription, userContext, useTableFormat,
-    isPremium, searchType === 'deep', priorSummary,
+    isPremium, searchType === 'deep', priorSummary, query
   );
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
@@ -3271,7 +3284,7 @@ export async function generateClaudeAnswer(
 
   // Get system prompt based on chat mode, friend description, and space context
   const useTableFormat = chatMode === 'normal' && wantsTableFormat(query, mode);
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary, query);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
   const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
@@ -3480,7 +3493,7 @@ export async function generateGrokAnswer(
   
   // Get system prompt based on chat mode, friend description, and space context
   const useTableFormat = chatMode === 'normal' && wantsTableFormat(query, mode);
-  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary);
+  let sys = getSystemPrompt(chatMode, friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription, userContext, useTableFormat, isPremium, searchType === 'deep', priorSummary, query);
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;
   const companionContinuation = buildCompanionContinuationGuidance(query, conversationHistory, chatMode);
@@ -3692,7 +3705,7 @@ async function generateOpenAICompatibleAnswer(
   let sys = getSystemPrompt(
     chatMode, friendDescription, friendName, friendMemoryContext,
     spaceTitle, spaceDescription, userContext, useTableFormat,
-    isPremium, searchType === 'deep', priorSummary,
+    isPremium, searchType === 'deep', priorSummary, query
   );
   const smallTalkGuidance = buildSmallTalkContextGuidance(query, conversationHistory, chatMode, friendName);
   if (smallTalkGuidance) sys += smallTalkGuidance;

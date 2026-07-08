@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, useLayoutEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import logo from "../assets/images/logo-1.png";
 import { Header } from "../components/Header";
 import { SearchBar } from "../components/SearchBar";
@@ -78,6 +79,7 @@ type ChatWorkspaceProps = {
 };
 
 export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
+  const location = useLocation();
   const isAnalyzePage = variant === "analyze";
   const sessionStoreRef = useRef<ChatSessionStore>(
     isAnalyzePage
@@ -222,13 +224,13 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const experienceModeRef = useRef<ExperienceMode>(experienceMode);
   const isSearchingRef = useRef<boolean>(false);
   const queryRef = useRef<string>(""); // Keep query in ref to avoid stale closures
-  const navigatedSearchHandledRef = useRef(false);
+  const lastHandledLocationKeyRef = useRef<string | null>(null);
   const navReturnToRef = useRef<string | undefined>(undefined);
   const isFirstExperienceModeEffectRef = useRef(true);
   const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
 
   const queryLimitReached =
-    shouldEnforceQueryLimit() && hasReachedDailyQueryLimit();
+    shouldEnforceQueryLimit() && conversationHistory.length >= 4;
 
   const goToSubscriptionForLimit = useCallback((options?: {
     message?: string;
@@ -252,6 +254,15 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       lastSearchedQuery: lastSearchedQueryRef.current,
       skipTypewriter: skipTypewriterOnRestoreRef.current,
     });
+
+    const checkGuestAndSave = async () => {
+      const { getAuthToken } = await import('../utils/auth');
+      if (!getAuthToken() && activeConversationId && conversationHistory.length > 0) {
+        const { saveGuestConversationHistory } = await import('../utils/guestConversations');
+        saveGuestConversationHistory(activeConversationId, conversationHistory);
+      }
+    };
+    checkGuestAndSave();
   }, [conversationHistory, answer, activeConversationId, searchedQuery, sessionStore]);
 
   // Save snapshot synchronously on unmount so the next mount hydrates instantly
@@ -527,7 +538,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         return;
       }
 
-      if (shouldEnforceQueryLimit() && hasReachedDailyQueryLimit()) {
+      if (shouldEnforceQueryLimit() && conversationHistory.length >= 4) {
         const isProgrammaticQuery =
           typeof searchQuery === "string" && searchQuery.trim().length > 0;
         goToSubscriptionForLimit({
@@ -672,18 +683,27 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         // now drip in tokens just like plain queries. Was previously
         // split-pathed into a one-shot searchAPI which gave the user a
         // stuck-on-spinner experience until the full answer arrived.
+        let currentConvId = activeConversationId;
+        const { getAuthToken } = await import('../utils/auth');
+        if (!getAuthToken()) {
+          if (!currentConvId) {
+            currentConvId = 'guest-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+            setActiveConversationId(currentConvId);
+          }
+        }
+
         {
           await searchAPIStream(
             q,
             backendMode,
             effectiveModel,
             newConversation,
-            activeConversationId,
+            currentConvId,
             localConversationHistory,
             effectiveSearchType,
             {
               onMeta: (convId) => {
-                if (convId) {
+                if (convId && getAuthToken()) {
                   setActiveConversationId(convId);
                   lastLoadedConversationIdRef.current = null;
                 }
@@ -894,8 +914,8 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
 
     const navQuery = currentData?.searchQuery?.trim();
     if (!navQuery) return;
-    if (navigatedSearchHandledRef.current) return;
-    navigatedSearchHandledRef.current = true;
+    if (lastHandledLocationKeyRef.current === location.key) return;
+    lastHandledLocationKeyRef.current = location.key;
     navReturnToRef.current =
       typeof currentData?.returnTo === "string" ? currentData.returnTo : undefined;
 
@@ -1045,6 +1065,37 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       setIsLoadingOldConversation(true); // Disable animations
       hasMoreOlderRef.current = false;
       oldestTimestampRef.current = null;
+
+      const { getAuthToken } = await import('../utils/auth');
+      if (!getAuthToken()) {
+        const { getGuestConversations } = await import('../utils/guestConversations');
+        const guestConvs = getGuestConversations();
+        const conv = guestConvs.find(c => c.id === conversationId);
+        if (conv) {
+          setActiveConversationId(conversationId);
+          lastLoadedConversationIdRef.current = conversationId;
+
+          const history: AnswerResult[] = conv.messages.map((msg: any) => ({
+            query: msg.query,
+            chunks: [{ text: msg.answer, sourceIds: [], citationIds: [] }],
+            sources: [],
+            mode: 'Ask' as Mode,
+            timestamp: new Date(msg.created_at).getTime(),
+          }));
+
+          setConversationHistory(history);
+          pendingScrollToBottomRef.current = true;
+          hasMoreOlderRef.current = false;
+          oldestTimestampRef.current = null;
+
+          setAnswer(null);
+          setQuery("");
+          setSearchedQuery("");
+          setIsSidebarOpen(false);
+        }
+        setTimeout(() => setIsLoadingOldConversation(false), 100);
+        return;
+      }
 
       const baseUrl = import.meta.env.VITE_API_URL as string;
       const { authFetch } = await import('../utils/auth');

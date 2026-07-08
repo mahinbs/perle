@@ -18,6 +18,7 @@ import {
 import { isImageFile } from "../utils/imagePicker";
 import { downsampleImageFile } from "../utils/imageResize";
 import { useToast } from "../contexts/ToastContext";
+import { shouldEnforceQueryLimit, getQueryLimitMessage } from "../utils/queryLimit";
 import {
   getUserData,
   getAuthToken,
@@ -613,7 +614,7 @@ export default function AIFriendPage() {
     };
   }, []);
 
-  const startVoiceInput = () => {
+  const startVoiceInput = async () => {
     const hasSpeechRecognition =
       "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
 
@@ -623,6 +624,20 @@ export default function AIFriendPage() {
         type: "error",
         duration: 2000,
       });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+    } catch (err) {
+      console.error("Microphone permission denied:", err);
+      showToast({
+        message: "Microphone permission is required for voice search. Please enable it in device settings.",
+        type: "error",
+        duration: 3000,
+      });
+      setIsListening(false);
       return;
     }
 
@@ -718,6 +733,14 @@ export default function AIFriendPage() {
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
+
+    if (shouldEnforceQueryLimit() && messages.filter(m => m.role === "user").length >= 4) {
+      navigateTo("/subscription", {
+        limitReached: true,
+        message: getQueryLimitMessage(),
+      });
+      return;
+    }
 
     if (isLoggedIn && !isGroupChat && !selectedFriendId) {
       showToast({
@@ -1927,7 +1950,7 @@ export default function AIFriendPage() {
       {/* Friend Management Modal */}
       {showFriendModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[101] p-4">
-          <div className="glass-card rounded-lg border border-[var(--border)] max-w-md w-full max-h-[90vh] !overflow-y-auto no-scrollbar">
+          <div className="rounded-lg border border-[var(--border)] max-w-md w-full max-h-[90vh] !overflow-y-auto no-scrollbar" style={{ background: "var(--bg)" }}>
             <div className="p-6">
               <h2 className="text-xl font-bold mb-4">
                 {editingFriend ? "Edit Character" : "Create Character"}
@@ -2100,7 +2123,11 @@ export default function AIFriendPage() {
                     !friendDescription.trim() ||
                     friendDescription.length < 10
                   }
-                  className="flex-1 px-4 py-2 bg-[var(--accent)] text-[#111] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                  className={`flex-1 px-4 py-2 rounded-lg transition-all ${
+                    friendName.trim() && friendDescription.trim() && friendDescription.length >= 10
+                      ? "bg-[var(--accent)] text-[#111] font-extrabold shadow-[0_0_12px_var(--accent)] scale-[1.02] cursor-pointer"
+                      : "bg-[var(--accent)] text-[#111] opacity-50 cursor-not-allowed font-semibold"
+                  }`}
                 >
                   {editingFriend ? "Update" : "Create"}
                 </button>

@@ -128,14 +128,14 @@ export function createChatSessionStore(storageKey: string): ChatSessionStore {
   function read(): HomeChatSnapshot | null {
     if (memoryCache) return memoryCache;
     if (typeof window === "undefined") return null;
-    const raw = sessionStorage.getItem(storageKey);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = parseSnapshot(raw);
     if (parsed) {
       memoryCache = parsed;
       return parsed;
     }
-    sessionStorage.removeItem(storageKey);
+    localStorage.removeItem(storageKey);
     return null;
   }
 
@@ -148,21 +148,21 @@ export function createChatSessionStore(storageKey: string): ChatSessionStore {
     if (!hasContent) {
       memoryCache = null;
       if (typeof window !== "undefined") {
-        sessionStorage.removeItem(storageKey);
+        localStorage.removeItem(storageKey);
       }
       return;
     }
 
     memoryCache = snapshot;
     if (typeof window !== "undefined") {
-      sessionStorage.setItem(storageKey, serializeSnapshot(snapshot));
+      localStorage.setItem(storageKey, serializeSnapshot(snapshot));
     }
   }
 
   function clear(): void {
     memoryCache = null;
     if (typeof window !== "undefined") {
-      sessionStorage.removeItem(storageKey);
+      localStorage.removeItem(storageKey);
     }
   }
 
@@ -198,13 +198,13 @@ export function clearAllHomeChatSessions(): void {
   authStoreCache.forEach((store) => store.clear());
   authStoreCache.clear();
   if (typeof window !== 'undefined') {
-    sessionStorage.removeItem(STORAGE_KEYS.homeChatSession);
-    sessionStorage.removeItem(STORAGE_KEYS.homeChatSessionAuth);
+    localStorage.removeItem(STORAGE_KEYS.homeChatSession);
+    localStorage.removeItem(STORAGE_KEYS.homeChatSessionAuth);
     const prefix = `${STORAGE_KEYS.homeChatSessionAuth}:`;
-    for (let i = sessionStorage.length - 1; i >= 0; i--) {
-      const key = sessionStorage.key(i);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
       if (key?.startsWith(prefix)) {
-        sessionStorage.removeItem(key);
+        localStorage.removeItem(key);
       }
     }
   }

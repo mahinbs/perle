@@ -432,9 +432,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   // NOTE: query copy UX is currently disabled in the UI (button commented out).
 
-  const startVoiceInput = (mode: "dictation" | "session" = "session") => {
+  const startVoiceInput = async (mode: "dictation" | "session" = "session") => {
     if (!speechSupported) {
       alert("Voice input is not supported in this browser");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+    } catch (err) {
+      console.error("Microphone permission denied:", err);
+      alert("Microphone permission is required for voice search. Please enable it in your device settings.");
+      setIsListening(false);
       return;
     }
 

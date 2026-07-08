@@ -1071,15 +1071,14 @@ export default function ProfilePage() {
                     Free Plan
                   </span>
                 )}
-                {userSettings.subscription?.endDate &&
-                  userSettings.isPremium && (
-                    <span className="sub text-xs" style={{ opacity: 0.7 }}>
-                      Expires:{" "}
-                      {new Date(
-                        userSettings.subscription.endDate,
-                      ).toLocaleDateString()}
-                    </span>
-                  )}
+                {userSettings.isPremium && (
+                  <span className="sub text-xs" style={{ opacity: 0.7 }}>
+                    Expires:{" "}
+                    {userSettings.subscription?.endDate
+                      ? new Date(userSettings.subscription.endDate).toLocaleDateString()
+                      : "Never (Indefinite)"}
+                  </span>
+                )}
                 {userSettings.subscription?.status === "expired" && (
                   <span
                     className="sub text-xs"
@@ -1240,46 +1239,42 @@ export default function ProfilePage() {
 
           {/* Dark Mode */}
           <div
-            className="row"
             style={{
-              justifyContent: "space-between",
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
               alignItems: "center",
+              gap: "16px",
               marginBottom: 16,
             }}
           >
+            <button
+              className={`pill ${userSettings.darkMode ? "active" : ""}`}
+              onClick={handleDarkModeToggle}
+              disabled={isSavingDarkMode}
+              style={{ minWidth: 60, opacity: isSavingDarkMode ? 0.7 : 1, flexShrink: 0 }}
+            >
+              {isSavingDarkMode ? "..." : userSettings.darkMode ? "On" : "Off"}
+            </button>
             <div>
               <div style={{ fontWeight: 500, marginBottom: 2 }}>Dark Mode</div>
               <div className="sub text-sm">
                 Switch between light and dark themes
               </div>
             </div>
-            <button
-              className={`pill ${userSettings.darkMode ? "active" : ""}`}
-              onClick={handleDarkModeToggle}
-              disabled={isSavingDarkMode}
-              style={{ minWidth: 60, opacity: isSavingDarkMode ? 0.7 : 1 }}
-            >
-              {isSavingDarkMode ? "..." : userSettings.darkMode ? "On" : "Off"}
-            </button>
           </div>
 
           {/* Search History */}
           <div
-            className="row"
             style={{
-              justifyContent: "space-between",
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
               alignItems: "center",
+              gap: "16px",
               marginBottom: 16,
             }}
           >
-            <div>
-              <div style={{ fontWeight: 500, marginBottom: 2 }}>
-                Search History
-              </div>
-              <div className="sub text-sm">
-                Save your search queries for quick access
-              </div>
-            </div>
             <button
               className={`pill ${userSettings.searchHistory ? "active" : ""}`}
               onClick={() =>
@@ -1296,6 +1291,7 @@ export default function ProfilePage() {
                   updatingSetting === "searchHistory"
                     ? "not-allowed"
                     : "pointer",
+                flexShrink: 0,
               }}
             >
               {updatingSetting === "searchHistory"
@@ -1304,19 +1300,26 @@ export default function ProfilePage() {
                   ? "On"
                   : "Off"}
             </button>
+            <div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                Search History
+              </div>
+              <div className="sub text-sm">
+                Save your search queries for quick access
+              </div>
+            </div>
           </div>
 
           {/* Voice Search */}
           <div
-            className="row"
-            style={{ justifyContent: "space-between", alignItems: "center" }}
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              alignItems: "center",
+              gap: "16px",
+            }}
           >
-            <div>
-              <div style={{ fontWeight: 500, marginBottom: 2 }}>
-                Voice Search
-              </div>
-              <div className="sub text-sm">Enable voice input for searches</div>
-            </div>
             <button
               className={`pill ${userSettings.voiceSearch ? "active" : ""}`}
               onClick={() =>
@@ -1328,6 +1331,7 @@ export default function ProfilePage() {
                 opacity: updatingSetting === "voiceSearch" ? 0.6 : 1,
                 cursor:
                   updatingSetting === "voiceSearch" ? "not-allowed" : "pointer",
+                flexShrink: 0,
               }}
             >
               {updatingSetting === "voiceSearch"
@@ -1336,6 +1340,12 @@ export default function ProfilePage() {
                   ? "On"
                   : "Off"}
             </button>
+            <div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                Voice Search
+              </div>
+              <div className="sub text-sm">Enable voice input for searches</div>
+            </div>
           </div>
         </div>
       )}

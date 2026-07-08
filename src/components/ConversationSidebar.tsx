@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { FaPlus, FaTrash, FaComments, FaTimes, FaThumbtack } from 'react-icons/fa';
 import { formatTimestampIST } from '../utils/helpers';
-import { getUserData, getAuthToken, onAuthChange } from '../utils/auth';
+import { getUserData, onAuthChange } from '../utils/auth';
 
 interface Conversation {
   id: string;
@@ -52,7 +52,16 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       const { getAuthHeaders, getAuthToken } = await import('../utils/auth');
 
       if (!getAuthToken()) {
-        setConversations([]);
+        const { getGuestConversations } = await import('../utils/guestConversations');
+        const guestConvs = getGuestConversations();
+        setConversations(guestConvs.map(gc => ({
+          id: gc.id,
+          title: gc.title,
+          chat_mode: gc.chat_mode,
+          created_at: gc.created_at,
+          updated_at: gc.updated_at
+        })));
+        setIsLoading(false);
         return;
       }
       
@@ -75,11 +84,6 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
   useEffect(() => {
     const refresh = () => {
-      if (!getAuthToken()) {
-        setConversations([]);
-        setIsLoading(false);
-        return;
-      }
       void fetchConversations();
     };
 
@@ -87,21 +91,21 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     return onAuthChange(refresh);
   }, []);
 
-  // Refresh conversations when active conversation changes
-  useEffect(() => {
-    const refresh = async () => {
-      const { getAuthToken } = await import('../utils/auth');
-      if (activeConversationId && getAuthToken()) {
-        fetchConversations();
-      }
-    };
-    refresh();
-  }, [activeConversationId]);
+      fetchConversations();
 
   const handleDelete = async (e: React.MouseEvent, conversationId: string) => {
     e.stopPropagation(); // Prevent selecting the conversation
 
     if (!confirm('Delete this conversation? This cannot be undone.')) {
+      return;
+    }
+
+    const { getAuthToken } = await import('../utils/auth');
+    if (!getAuthToken()) {
+      const { deleteGuestConversation } = await import('../utils/guestConversations');
+      deleteGuestConversation(conversationId);
+      onDeleteConversation(conversationId);
+      fetchConversations();
       return;
     }
 

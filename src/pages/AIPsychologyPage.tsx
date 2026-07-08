@@ -13,6 +13,7 @@ import {
   FaComments,
 } from "react-icons/fa";
 import { useToast } from "../contexts/ToastContext";
+import { shouldEnforceQueryLimit, getQueryLimitMessage } from "../utils/queryLimit";
 import { getUserData, authFetch, tryRecoverAuthOrLogout } from "../utils/auth";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
@@ -263,7 +264,7 @@ export default function AIPsychologyPage() {
     };
   }, []);
 
-  const startVoiceInput = () => {
+  const startVoiceInput = async () => {
     const hasSpeechRecognition =
       "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
 
@@ -273,6 +274,20 @@ export default function AIPsychologyPage() {
         type: "error",
         duration: 2000,
       });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+    } catch (err) {
+      console.error("Microphone permission denied:", err);
+      showToast({
+        message: "Microphone permission is required for voice search. Please enable it in device settings.",
+        type: "error",
+        duration: 3000,
+      });
+      setIsListening(false);
       return;
     }
 
@@ -333,6 +348,14 @@ export default function AIPsychologyPage() {
   const handleSendMessage = async (overrideText?: string) => {
     const textToSend = (overrideText ?? inputValue).trim();
     if (!textToSend || isLoading) return;
+
+    if (shouldEnforceQueryLimit() && messages.filter(m => m.role === "user").length >= 4) {
+      navigateTo("/subscription", {
+        limitReached: true,
+        message: getQueryLimitMessage(),
+      });
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
