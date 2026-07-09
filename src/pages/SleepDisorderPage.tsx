@@ -6,7 +6,7 @@ export default function SleepDisorderPage() {
   const { navigateTo } = useRouterNavigation();
 
   return (
-    <div className="container h-screen flex flex-col !p-0 bg-[var(--bg)]">
+    <div className="container h-full flex flex-col !p-0 bg-[var(--bg)]">
       <div className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]" style={{ paddingTop: "var(--safe-area-top)" }}>
         <div className="flex items-center gap-3 p-4">
           <button className="btn-ghost glass-button p-2!" onClick={() => navigateTo("/app")} aria-label="Back">

@@ -377,7 +377,7 @@ export default function MediaStudioPage() {
   };
 
   return (
-    <div className="container h-screen flex flex-col !p-0">
+    <div className="container h-full flex flex-col !p-0">
       <div
         className="border-b border-[var(--border)] sticky top-0 z-[100] bg-[var(--bg)]"
         style={{ paddingTop: "var(--safe-area-top)" }}

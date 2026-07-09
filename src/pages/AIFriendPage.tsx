@@ -1406,7 +1406,7 @@ export default function AIFriendPage() {
 
   return (
     <div
-      className="container h-screen flex flex-col !p-0"
+      className="container h-full flex flex-col !p-0"
       style={{ position: "relative" }}
     >
       {/* AI Data Consent Modal — shown once before first AI interaction */}

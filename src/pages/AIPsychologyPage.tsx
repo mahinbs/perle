@@ -499,7 +499,7 @@ export default function AIPsychologyPage() {
   };
 
   return (
-    <div className="container h-screen flex flex-col !p-0" style={{ position: "relative" }}>
+    <div className="container h-full flex flex-col !p-0" style={{ position: "relative" }}>
       {/* AI Data Consent Modal — shown once before first AI interaction */}
       {showConsentModal && (
         <AIDataConsentModal onAccept={() => setShowConsentModal(false)} />
