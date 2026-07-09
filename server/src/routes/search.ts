@@ -31,7 +31,7 @@ const searchSchema = z.object({
   query: z.string().max(500, 'Query too long').default(''),
   mode: z.enum(['Ask', 'Research', 'Summarize', 'Compare']).default('Ask'),
   newConversation: z.boolean().optional().default(false), // Flag to start new conversation
-  conversationId: z.union([z.string().uuid(), z.null()]).optional(), // Optional conversation ID to continue existing conversation (can be null)
+  conversationId: z.union([z.string(), z.null()]).optional(), // Optional conversation ID to continue existing conversation (can be null)
   conversationHistory: z
     .preprocess((val) => {
       if (!Array.isArray(val)) return [];

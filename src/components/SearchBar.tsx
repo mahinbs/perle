@@ -438,14 +438,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       return;
     }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-    } catch (err) {
-      console.error("Microphone permission denied:", err);
-      alert("Microphone permission is required for voice search. Please enable it in your device settings.");
-      setIsListening(false);
-      return;
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err) {
+        console.error("Microphone permission denied:", err);
+        alert("Microphone permission is required for voice search. Please enable it in your device settings.");
+        setIsListening(false);
+        return;
+      }
     }
 
     voiceInputModeRef.current = mode;

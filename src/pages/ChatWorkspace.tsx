@@ -528,8 +528,10 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       }
 
       if (q && /\b(sleep disorder|sleep disorders|insomnia|can't sleep|cannot sleep|trouble sleeping)\b/i.test(q)) {
-        navigateTo("/sleep-disorders");
-        return;
+        if (!currentData?.bypassSleepDisorderRedirect) {
+          navigateTo("/sleep-disorders");
+          return;
+        }
       }
       if (!q) {
         setAnswer(null);
@@ -893,7 +895,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       // Removed 'query' from dependencies to prevent re-creation on every query change
       // The function uses query from closure, which is fine since we pass it explicitly when needed
     },
-    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode, navigateTo, appendConversationAnswer, goToSubscriptionForLimit]
+    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode, navigateTo, appendConversationAnswer, goToSubscriptionForLimit, currentData]
   );
 
   const handleFollowUpSearch = useCallback(

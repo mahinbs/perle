@@ -38,7 +38,7 @@ export default function SleepDisorderPage() {
           type="button"
           className="btn glass-button"
           style={{ background: "var(--accent)", color: "#111" }}
-          onClick={() => navigateTo("/app", { searchQuery: "How can I improve my sleep if I have a sleep disorder" })}
+          onClick={() => navigateTo("/app", { searchQuery: "How can I improve my sleep if I have a sleep disorder", bypassSleepDisorderRedirect: true })}
         >
           Ask IQ about sleep disorders
         </button>

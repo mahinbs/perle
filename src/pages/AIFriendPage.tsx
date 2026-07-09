@@ -627,18 +627,20 @@ export default function AIFriendPage() {
       return;
     }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-    } catch (err) {
-      console.error("Microphone permission denied:", err);
-      showToast({
-        message: "Microphone permission is required for voice search. Please enable it in device settings.",
-        type: "error",
-        duration: 3000,
-      });
-      setIsListening(false);
-      return;
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err) {
+        console.error("Microphone permission denied:", err);
+        showToast({
+          message: "Microphone permission is required for voice search. Please enable it in device settings.",
+          type: "error",
+          duration: 3000,
+        });
+        setIsListening(false);
+        return;
+      }
     }
 
     if (isListening) {
@@ -1210,6 +1212,16 @@ export default function AIFriendPage() {
   };
 
   const handleCreateFriend = async () => {
+    if (!isLoggedIn) {
+      navigateTo("/profile", { mode: "login" });
+      return;
+    }
+
+    if (!isPremium) {
+      navigateTo("/subscription");
+      return;
+    }
+
     if (!friendName.trim() || !friendDescription.trim()) {
       showToast({
         message: "Please fill in name and description",
@@ -1366,6 +1378,10 @@ export default function AIFriendPage() {
   };
 
   const openCreateFriendModal = () => {
+    if (!isLoggedIn) {
+      navigateTo("/profile", { mode: "login" });
+      return;
+    }
     resetFriendForm();
     setShowFriendModal(true);
   };
@@ -1557,16 +1573,14 @@ export default function AIFriendPage() {
                 <span>New</span>
               </button>
             )}
-            {isLoggedIn && (
-              <button
-                className="btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors hover:bg-[var(--input-bg)] disabled:opacity-50 disabled:cursor-not-allowed text-xs whitespace-nowrap"
-                onClick={openCreateFriendModal}
-                title="Create Character"
-              >
-                <FaPlus size={12} />
-                <span>Create</span>
-              </button>
-            )}
+            <button
+              className="btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors hover:bg-[var(--input-bg)] disabled:opacity-50 disabled:cursor-not-allowed text-xs whitespace-nowrap"
+              onClick={openCreateFriendModal}
+              title="Create Character"
+            >
+              <FaPlus size={12} />
+              <span>Create</span>
+            </button>
             {/* <button
               className="btn-ghost p-2"
               aria-label="Favorite conversation"

@@ -56,7 +56,7 @@ import earthVideo from "../assets/earth.mp4";
 const API_URL = import.meta.env.VITE_API_URL as string | undefined;
 
 export default function ProfilePage() {
-  const { navigateTo, state } = useRouterNavigation();
+  const { navigateTo, goBack, state } = useRouterNavigation();
   const { showToast } = useToast();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -766,7 +766,11 @@ export default function ProfilePage() {
           <button
             className="btn-ghost glass-button"
             onClick={() => {
-              setShowLogin(false);
+              if (state?.mode) {
+                goBack();
+              } else {
+                setShowLogin(false);
+              }
               setAuthError("");
             }}
             style={{ fontSize: "var(--font-md)" }}
@@ -806,7 +810,11 @@ export default function ProfilePage() {
           <button
             className="btn-ghost glass-button"
             onClick={() => {
-              setShowSignup(false);
+              if (state?.mode) {
+                goBack();
+              } else {
+                setShowSignup(false);
+              }
               setAuthError("");
             }}
             style={{ fontSize: "var(--font-md)" }}
@@ -1071,22 +1079,6 @@ export default function ProfilePage() {
                     Free Plan
                   </span>
                 )}
-                {userSettings.isPremium && (
-                  <span className="sub text-xs" style={{ opacity: 0.7 }}>
-                    Expires:{" "}
-                    {userSettings.subscription?.endDate
-                      ? new Date(userSettings.subscription.endDate).toLocaleDateString()
-                      : "Never (Indefinite)"}
-                  </span>
-                )}
-                {userSettings.subscription?.status === "expired" && (
-                  <span
-                    className="sub text-xs"
-                    style={{ color: "var(--accent)", opacity: 0.9 }}
-                  >
-                    (Expired)
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -1161,7 +1153,7 @@ export default function ProfilePage() {
               <div className="sub text-sm" style={{ marginBottom: 4 }}>
                 {userSettings?.isPremium
                   ? userSettings.subscription?.endDate
-                    ? `Active until ${new Date(userSettings.subscription.endDate).toLocaleDateString()}`
+                    ? `Expires: ${new Date(userSettings.subscription.endDate).toLocaleDateString()}`
                     : "Active subscription"
                   : "Unlock premium features and models"}
               </div>
@@ -1243,11 +1235,18 @@ export default function ProfilePage() {
               display: "flex",
               flexDirection: "row",
               flexWrap: "nowrap",
+              justifyContent: "space-between",
               alignItems: "center",
               gap: "16px",
               marginBottom: 16,
             }}
           >
+            <div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>Dark Mode</div>
+              <div className="sub text-sm">
+                Switch between light and dark themes
+              </div>
+            </div>
             <button
               className={`pill ${userSettings.darkMode ? "active" : ""}`}
               onClick={handleDarkModeToggle}
@@ -1256,12 +1255,6 @@ export default function ProfilePage() {
             >
               {isSavingDarkMode ? "..." : userSettings.darkMode ? "On" : "Off"}
             </button>
-            <div>
-              <div style={{ fontWeight: 500, marginBottom: 2 }}>Dark Mode</div>
-              <div className="sub text-sm">
-                Switch between light and dark themes
-              </div>
-            </div>
           </div>
 
           {/* Search History */}
@@ -1270,11 +1263,20 @@ export default function ProfilePage() {
               display: "flex",
               flexDirection: "row",
               flexWrap: "nowrap",
+              justifyContent: "space-between",
               alignItems: "center",
               gap: "16px",
               marginBottom: 16,
             }}
           >
+            <div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                Search History
+              </div>
+              <div className="sub text-sm">
+                Save your search queries for quick access
+              </div>
+            </div>
             <button
               className={`pill ${userSettings.searchHistory ? "active" : ""}`}
               onClick={() =>
@@ -1300,14 +1302,6 @@ export default function ProfilePage() {
                   ? "On"
                   : "Off"}
             </button>
-            <div>
-              <div style={{ fontWeight: 500, marginBottom: 2 }}>
-                Search History
-              </div>
-              <div className="sub text-sm">
-                Save your search queries for quick access
-              </div>
-            </div>
           </div>
 
           {/* Voice Search */}
@@ -1316,10 +1310,17 @@ export default function ProfilePage() {
               display: "flex",
               flexDirection: "row",
               flexWrap: "nowrap",
+              justifyContent: "space-between",
               alignItems: "center",
               gap: "16px",
             }}
           >
+            <div>
+              <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                Voice Search
+              </div>
+              <div className="sub text-sm">Enable voice input for searches</div>
+            </div>
             <button
               className={`pill ${userSettings.voiceSearch ? "active" : ""}`}
               onClick={() =>
@@ -1340,12 +1341,6 @@ export default function ProfilePage() {
                   ? "On"
                   : "Off"}
             </button>
-            <div>
-              <div style={{ fontWeight: 500, marginBottom: 2 }}>
-                Voice Search
-              </div>
-              <div className="sub text-sm">Enable voice input for searches</div>
-            </div>
           </div>
         </div>
       )}

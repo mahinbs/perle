@@ -348,40 +348,33 @@ export function requiresCurrentInfo(query: string): boolean {
  * Detect small-talk / chit-chat queries that should NOT trigger web search.
  */
 export function isSmallTalkQuery(query: string): boolean {
-  const lower = query.toLowerCase().trim();
+  // Clean trailing punctuation like ?, !, ., ,, ;, :, or trailing/leading spaces.
+  const lower = query.toLowerCase().replace(/[!?.,;:]+$/, '').trim();
   if (!lower) return true;
 
   const directMatches = new Set([
-    'hi',
-    'hello',
-    'hey',
-    'yo',
-    'sup',
-    'how are you',
-    'how are u',
-    'how r you',
-    'how do you do',
-    'good morning',
-    'good afternoon',
-    'good evening',
-    'good night',
-    'thanks',
-    'thank you',
-    'ok',
-    'okay',
-    'cool',
-    'great',
-    'nice',
-    'bye',
-    'goodbye',
-    'see you',
+    'hi', 'hii', 'hiii', 'hiiii',
+    'hello', 'helloo', 'hellooo', 'hlo', 'hloo', 'hlooo',
+    'hey', 'heyy', 'heyyy', 'heyyyy',
+    'hy', 'hyy', 'hyyy', 'hyyyy',
+    'yo', 'yoo',
+    'sup', 'suup',
+    'whats up', "what's up", 'what is up', 'wassup', 'wazzup',
+    'how are you', 'how are u', 'how r you', 'how r u', 'how do you do',
+    'good morning', 'good afternoon', 'good evening', 'good night',
+    'thanks', 'thank you', 'thank u', 'thx', 'tanks', 'ty',
+    'ok', 'okay', 'okk', 'okey', 'cool', 'great', 'nice',
+    'bye', 'goodbye', 'see you', 'cya',
+    'hola', 'bonjour', 'salut', 'salam', 'namaste', 'namaskar', 'vanakkam',
+    'howdy', 'heya', 'heyla'
   ]);
   if (directMatches.has(lower)) return true;
 
   // Short conversational phrases
   const smallTalkPatterns = [
-    /^(hi|hello|hey)[!. ]*$/i,
-    /^how (are|r) (you|u)\??$/i,
+    /^(hi+|hello+|hey+|hy+|hlo+)[!. ]*$/i,
+    /^(whats?\s*up|wass?up)[!. ]*$/i,
+    /^how\s+(are|r)\s+(you|u)\??$/i,
     /^(i am|i'm)\s+(good|fine|ok|okay|great|well)\b/i,
     /^(thanks|thank you)[!. ]*$/i,
     /^(good morning|good afternoon|good evening|good night)[!. ]*$/i,

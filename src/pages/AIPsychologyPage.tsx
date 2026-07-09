@@ -277,18 +277,20 @@ export default function AIPsychologyPage() {
       return;
     }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-    } catch (err) {
-      console.error("Microphone permission denied:", err);
-      showToast({
-        message: "Microphone permission is required for voice search. Please enable it in device settings.",
-        type: "error",
-        duration: 3000,
-      });
-      setIsListening(false);
-      return;
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err) {
+        console.error("Microphone permission denied:", err);
+        showToast({
+          message: "Microphone permission is required for voice search. Please enable it in device settings.",
+          type: "error",
+          duration: 3000,
+        });
+        setIsListening(false);
+        return;
+      }
     }
 
     if (isListening) {
