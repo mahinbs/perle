@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { FaEllipsisV } from "react-icons/fa";
 import { IoIosArrowBack } from "react-icons/io";
 import { Link, useLocation } from "react-router-dom";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
-import { getAllDiscoverItems } from "../services/discoverService";
+import { getAllDiscoverItems, isRealDiscoverImage, DISCOVER_NEWS_UPDATED_EVENT } from "../services/discoverService";
 import {
   getUserProfilePictureUrl,
   getUserAvatarFallbackUrl,
@@ -22,6 +22,22 @@ interface HeaderProps {
   backTo?: string;
 }
 
+/** Collect unique real http(s) image URLs for the Discover header stack. */
+function collectPreviewCandidates(items: DiscoverItem[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    const img = typeof item.image === "string" ? item.image.trim() : "";
+    if (!isRealDiscoverImage(img)) continue;
+    const key = img.split("?")[0].toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(img);
+    if (out.length >= 24) break;
+  }
+  return out;
+}
+
 export const Header: React.FC<HeaderProps> = ({
   onOpenSidebar,
   showBackButton = false,
@@ -29,7 +45,10 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { navigateTo } = useRouterNavigation();
   const location = useLocation();
-  const [previewItems, setPreviewItems] = useState<DiscoverItem[]>([]);
+  const [previewCandidates, setPreviewCandidates] = useState<string[]>([]);
+  const [img1, setImg1] = useState<string | null>(null);
+  const [img2, setImg2] = useState<string | null>(null);
+  const candidateCursorRef = useRef(0);
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(() =>
     getUserProfilePictureUrl()
   );
@@ -40,34 +59,86 @@ export const Header: React.FC<HeaderProps> = ({
 
   const isActive = (path: string) => location.pathname === path;
 
-  useEffect(() => {
-    const updateDiscoverItems = () => {
-      getAllDiscoverItems()
-        .then((items) => {
-          const withImages = (Array.isArray(items) ? items : []).filter((i) =>
-            typeof i.image === "string" &&
-            /^https?:\/\//i.test(i.image) &&
-            !i.image.startsWith("data:") &&
-            !/images\.unsplash\.com/i.test(i.image)
-          );
-          setPreviewItems(withImages.slice(0, 2));
-        })
-        .catch(() => setPreviewItems([]));
-    };
+  const assignFromCandidates = useCallback((candidates: string[]) => {
+    setPreviewCandidates(candidates);
+    candidateCursorRef.current = 0;
+    const first = candidates[0] || null;
+    const second = candidates[1] || null;
+    // Always replace both slots when news updates so the stack reflects fresh stories.
+    setImg1(first);
+    setImg2(second || first);
+    candidateCursorRef.current = Math.min(candidates.length, second ? 2 : first ? 1 : 0);
+  }, []);
 
-    updateDiscoverItems();
+  const replaceBrokenSlot = useCallback(
+    (slot: 1 | 2, current1: string | null, current2: string | null) => {
+      const exclude = new Set<string>();
+      if (current1) exclude.add(current1);
+      if (current2) exclude.add(current2);
+
+      while (candidateCursorRef.current < previewCandidates.length) {
+        const next = previewCandidates[candidateCursorRef.current++];
+        if (next && !exclude.has(next)) {
+          if (slot === 1) setImg1(next);
+          else setImg2(next);
+          return;
+        }
+      }
+
+      // No unused candidate left — if the other slot has an image, mirror it;
+      // otherwise clear the broken slot.
+      if (slot === 1) {
+        setImg1(current2 && current2 !== current1 ? current2 : null);
+      } else {
+        setImg2(current1 && current1 !== current2 ? current1 : null);
+      }
+    },
+    [previewCandidates]
+  );
+
+  const updateDiscoverItems = useCallback((forceRefresh = false) => {
+    getAllDiscoverItems(forceRefresh)
+      .then((items) => {
+        const candidates = collectPreviewCandidates(Array.isArray(items) ? items : []);
+        assignFromCandidates(candidates);
+      })
+      .catch(() => {
+        assignFromCandidates([]);
+      });
+  }, [assignFromCandidates]);
+
+  useEffect(() => {
+    updateDiscoverItems(false);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        updateDiscoverItems();
+        // Soft refresh: uses cache if fresh, otherwise hits the API for new news.
+        updateDiscoverItems(false);
       }
     };
+    const handlePageShow = () => updateDiscoverItems(false);
+    const handleFocus = () => updateDiscoverItems(false);
+    const handleNewsUpdated = () => updateDiscoverItems(false);
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener(DISCOVER_NEWS_UPDATED_EVENT, handleNewsUpdated);
+
+    // When the 3h news cycle rolls, pull fresh items so both preview images update.
+    const refreshIntervalMs = 15 * 60 * 1000; // check every 15 min
+    const intervalId = window.setInterval(() => {
+      updateDiscoverItems(false);
+    }, refreshIntervalMs);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener(DISCOVER_NEWS_UPDATED_EVENT, handleNewsUpdated);
+      window.clearInterval(intervalId);
     };
-  }, [location.pathname]);
+  }, [location.pathname, updateDiscoverItems]);
 
   useEffect(() => {
     refreshProfileImage();
@@ -103,9 +174,6 @@ export const Header: React.FC<HeaderProps> = ({
       cancelled = true;
     };
   }, []);
-
-  const img1 = previewItems[0]?.image;
-  const img2 = previewItems[1]?.image;
 
   return (
     <>
@@ -160,18 +228,28 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="discover-preview-stack">
               {img1 ? (
                 <img
+                  key={`back-${img1}`}
                   src={img1}
                   alt="Discover preview"
                   className="discover-preview-img discover-preview-img--back"
                   draggable={false}
+                  loading="eager"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  onError={() => replaceBrokenSlot(1, img1, img2)}
                 />
               ) : null}
               {img2 ? (
                 <img
+                  key={`front-${img2}`}
                   src={img2}
                   alt="Discover preview"
                   className="discover-preview-img discover-preview-img--front"
                   draggable={false}
+                  loading="eager"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  onError={() => replaceBrokenSlot(2, img1, img2)}
                 />
               ) : null}
               {!img1 && !img2 ? (
@@ -318,6 +396,7 @@ export const Header: React.FC<HeaderProps> = ({
             transition: transform 0.2s ease;
             pointer-events: none;
             user-select: none;
+            background: var(--input-bg, #eee);
           }
 
           .discover-preview-img--back {

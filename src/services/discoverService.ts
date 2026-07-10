@@ -302,6 +302,8 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
 //      is never a blank "loading…" screen for returning users.
 const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v15';
 const FRONTEND_NEWS_TTL_MS = 3 * 60 * 60 * 1000; // 3h — matches NEWS_L2_TTL_SEC
+/** Fired (same-tab) whenever live news is written to localStorage so Header previews can refresh. */
+export const DISCOVER_NEWS_UPDATED_EVENT = 'syntraiq-discover-news-updated';
 
 if (typeof localStorage !== 'undefined') {
   // Drop older cache keys from past deploys so users never see stale data
@@ -357,6 +359,13 @@ function writeFrontendCache(regions: string, items: DiscoverItem[]): void {
   try {
     const payload: FrontendNewsCache = { ts: Date.now(), regions, items };
     localStorage.setItem(FRONTEND_NEWS_CACHE_KEY, JSON.stringify(payload));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent(DISCOVER_NEWS_UPDATED_EVENT, {
+          detail: { regions, count: items.length, ts: payload.ts },
+        })
+      );
+    }
   } catch {
     // Quota exceeded or storage disabled — silent fallback to network-only.
   }
