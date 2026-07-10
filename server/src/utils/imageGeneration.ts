@@ -87,10 +87,32 @@ export function extractImagePrompt(query: string, answer: string): string | null
 }
 
 // Generate image using Gemini Imagen API - tries fast model first, then falls back to detailed
+/** Normalize a single data URL or an array into a capped list (max 5). */
+export function normalizeReferenceImages(
+  refs?: string | string[] | null
+): string[] {
+  if (!refs) return [];
+  const list = Array.isArray(refs) ? refs : [refs];
+  return list.filter((r) => typeof r === 'string' && r.length > 0).slice(0, 5);
+}
+
+function parseImageDataUrl(dataUrl: string): { mimeType: string; base64: string } {
+  let mimeType = 'image/png';
+  let base64 = dataUrl;
+  if (dataUrl.startsWith('data:')) {
+    const matches = dataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+    if (matches) {
+      mimeType = matches[1];
+      base64 = matches[2];
+    }
+  }
+  return { mimeType, base64 };
+}
+
 export async function generateImageWithGemini(
   prompt: string, 
   aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1',
-  referenceImageDataUrl?: string // Optional reference image for style/content guidance
+  referenceImageDataUrl?: string | string[] // One or more reference images
 ): Promise<GeneratedImage | null> {
   // Use the same API key as your Gemini chat
   // Always use the free Gemini API key for image generation
@@ -100,6 +122,9 @@ export async function generateImageWithGemini(
     console.warn('Google API key not configured. Skipping image generation.');
     return null;
   }
+
+  const referenceImages = normalizeReferenceImages(referenceImageDataUrl);
+  const hasRefs = referenceImages.length > 0;
   
   // Try models in order: Gemini 3 Pro Image (with ref support) -> Imagen 4.0 models (fallback)
   // Order = first-try first. Verified live against the deployment's Gemini
@@ -118,11 +143,11 @@ export async function generateImageWithGemini(
 
   // When we have a reference image (edit request), only use models that support it.
   // Otherwise we'd fall back to Imagen 4.0 which ignores the reference and generates a new image.
-  const models = referenceImageDataUrl
+  const models = hasRefs
     ? allModels.filter((m) => m.supportsRef)
     : allModels;
 
-  if (referenceImageDataUrl && models.length === 0) {
+  if (hasRefs && models.length === 0) {
     console.warn('⚠️ No Gemini model with reference support available');
     return null;
   }
@@ -133,9 +158,9 @@ export async function generateImageWithGemini(
       console.log(`🎨 [${model.displayName.toUpperCase()}] Generating image`);
       console.log(`   Prompt: "${prompt}"`);
       console.log(`   Aspect Ratio: ${aspectRatio}`);
-      if (referenceImageDataUrl && model.supportsRef) {
-        console.log(`   📎 Using reference image for style guidance`);
-      } else if (referenceImageDataUrl && !model.supportsRef) {
+      if (hasRefs && model.supportsRef) {
+        console.log(`   📎 Using ${referenceImages.length} reference image(s) for style/content guidance`);
+      } else if (hasRefs && !model.supportsRef) {
         console.log(`   ⚠️  Reference images not supported, using prompt only`);
       }
       console.log(`   API: ${model.api === 'gemini' ? 'Gemini API' : 'Vertex AI'}`);
@@ -146,29 +171,22 @@ export async function generateImageWithGemini(
       if (model.api === 'gemini') {
         // NEW GEMINI API FORMAT (Gemini 3 Pro Image)
         // Correct structure: contents + generationConfig (not just config)
-        const parts: any[] = [{ text: prompt }];
+        const guidedPrompt =
+          referenceImages.length > 1
+            ? `${prompt}\n\nUse ALL ${referenceImages.length} attached reference images together — combine their subjects, style, colors, and composition into one cohesive result. Do not ignore any of them.`
+            : prompt;
+        const parts: any[] = [{ text: guidedPrompt }];
         
-        // Add reference image in contents.parts
-        if (referenceImageDataUrl) {
-          let imageBase64 = referenceImageDataUrl;
-          let mimeType = 'image/png';
-          
-          if (referenceImageDataUrl.startsWith('data:')) {
-            const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-            if (matches) {
-              mimeType = matches[1];
-              imageBase64 = matches[2];
-            }
-          }
-          
+        // Add every reference image as an inline_data part so the model sees all of them
+        for (let i = 0; i < referenceImages.length; i++) {
+          const { mimeType, base64 } = parseImageDataUrl(referenceImages[i]);
           parts.push({
             inline_data: {
               mime_type: mimeType,
-              data: imageBase64
+              data: base64
             }
           });
-          
-          console.log(`   📷 Reference image added (${(imageBase64.length / 1024).toFixed(1)}KB)`);
+          console.log(`   📷 Reference image ${i + 1}/${referenceImages.length} added (${(base64.length / 1024).toFixed(1)}KB)`);
         }
         
         const requestBody = {
@@ -256,7 +274,7 @@ export async function generateImageWithGemini(
   }
   
   // All Gemini models failed
-  if (referenceImageDataUrl) {
+  if (hasRefs) {
     console.log('❌ Gemini ref-capable model(s) failed — caller can try OpenAI GPT Image edit');
   } else {
     console.error('❌ All Gemini Imagen models failed or hit rate limits');
@@ -265,11 +283,11 @@ export async function generateImageWithGemini(
 }
 
 // OpenAI GPT Image edit (for when we have a reference image and Gemini failed)
-// Uses /v1/images/edits with gpt-image-1.5 - supports editing from reference image
+// Uses /v1/images/edits with gpt-image-1.5 - supports one or more reference images
 export async function generateImageWithOpenAIGPTImageEdit(
   prompt: string,
   aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1',
-  referenceImageDataUrl: string
+  referenceImageDataUrl: string | string[]
 ): Promise<GeneratedImage | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -277,29 +295,32 @@ export async function generateImageWithOpenAIGPTImageEdit(
     return null;
   }
 
+  const referenceImages = normalizeReferenceImages(referenceImageDataUrl);
+  if (referenceImages.length === 0) return null;
+
   try {
     console.log('═'.repeat(60));
-    console.log('🎨 [OPENAI GPT IMAGE EDIT] Editing image with reference');
+    console.log('🎨 [OPENAI GPT IMAGE EDIT] Editing image with reference(s)');
     console.log(`   Prompt: "${prompt}"`);
+    console.log(`   References: ${referenceImages.length}`);
     console.log('   API: https://api.openai.com/v1/images/edits (gpt-image-1.5)');
     console.log('═'.repeat(60));
 
-    let imageBase64 = referenceImageDataUrl;
-    let mimeType = 'image/png';
-    if (referenceImageDataUrl.startsWith('data:')) {
-      const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-      if (matches) {
-        mimeType = matches[1];
-        imageBase64 = matches[2];
-      }
-    }
-    const imageBuffer = Buffer.from(imageBase64, 'base64');
-    const ext = mimeType === 'image/jpeg' || mimeType === 'image/jpg' ? 'jpg' : 'png';
+    const guidedPrompt =
+      referenceImages.length > 1
+        ? `${prompt}\n\nCombine all ${referenceImages.length} attached reference images into one cohesive result.`
+        : prompt;
 
     const formData = new FormData();
     formData.append('model', 'gpt-image-1.5');
-    formData.append('prompt', prompt);
-    formData.append('image', new Blob([imageBuffer], { type: mimeType }), `reference.${ext}`);
+    formData.append('prompt', guidedPrompt);
+    // gpt-image-1.5 accepts multiple images via repeated `image[]` fields
+    for (let i = 0; i < referenceImages.length; i++) {
+      const { mimeType, base64 } = parseImageDataUrl(referenceImages[i]);
+      const imageBuffer = Buffer.from(base64, 'base64');
+      const ext = mimeType === 'image/jpeg' || mimeType === 'image/jpg' ? 'jpg' : 'png';
+      formData.append('image[]', new Blob([imageBuffer], { type: mimeType }), `reference-${i + 1}.${ext}`);
+    }
 
     const response = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
@@ -547,8 +568,12 @@ type Step = {
   id: ImageModel;
   // Returns null on failure so the loop can try the next step. Each step is
   // wrapped here so the fallback driver is provider-agnostic.
-  run: (prompt: string, aspect: '1:1' | '16:9' | '9:16' | '4:3' | '3:4', refUrl?: string) => Promise<GeneratedImage | null>;
-  // Edit-capable steps can accept a reference image. Non-edit steps are
+  run: (
+    prompt: string,
+    aspect: '1:1' | '16:9' | '9:16' | '4:3' | '3:4',
+    refs?: string | string[]
+  ) => Promise<GeneratedImage | null>;
+  // Edit-capable steps can accept reference image(s). Non-edit steps are
   // skipped when the user supplied a reference (we never silently strip it).
   supportsRef: boolean;
 };
@@ -603,13 +628,15 @@ function reorderForPreferred(chain: Step[], preferred: ImageModel): Step[] {
 export async function generateImage(
   prompt: string,
   aspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1',
-  referenceImageDataUrl?: string,
+  referenceImageDataUrl?: string | string[],
   preferredModel: ImageModel = 'auto',
 ): Promise<GeneratedImage | null> {
+  const refs = normalizeReferenceImages(referenceImageDataUrl);
+  const hasRefs = refs.length > 0;
   const baseChain = buildDefaultChain();
-  // When editing with a reference image, the chain is filtered to edit-capable
+  // When editing with reference image(s), the chain is filtered to edit-capable
   // steps first; non-edit fallbacks come after only if no edit step works.
-  const chain = referenceImageDataUrl
+  const chain = hasRefs
     ? [
         ...baseChain.filter((s) => s.supportsRef),
         ...baseChain.filter((s) => !s.supportsRef),
@@ -619,7 +646,7 @@ export async function generateImage(
 
   for (const step of ordered) {
     try {
-      const result = await step.run(prompt, aspectRatio, referenceImageDataUrl);
+      const result = await step.run(prompt, aspectRatio, hasRefs ? refs : undefined);
       if (result) {
         if (step.id !== preferredModel && preferredModel !== 'auto') {
           console.log(`ℹ️ Image-gen fallback: requested ${preferredModel} unavailable, served via ${step.id}`);

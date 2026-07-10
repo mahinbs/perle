@@ -114,7 +114,7 @@ export async function generateVideoWithGemini(
   prompt: string, 
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  referenceImageDataUrl?: string, // Optional reference image for style/content guidance
+  referenceImageDataUrl?: string | string[], // One or more reference images for style/content guidance
   referenceVideoFileUri?: string  // Optional: file_uri from File API for video-to-video / "make it better"
 ): Promise<GeneratedVideo | null> {
   let sawRateLimit = false;
@@ -128,6 +128,13 @@ export async function generateVideoWithGemini(
     console.warn('Google API key not configured. Skipping video generation.');
     return null;
   }
+
+  const referenceImages = (Array.isArray(referenceImageDataUrl)
+    ? referenceImageDataUrl
+    : referenceImageDataUrl
+      ? [referenceImageDataUrl]
+      : []
+  ).filter((r) => typeof r === 'string' && r.length > 0).slice(0, 5);
   
   // Calculate dimensions based on aspect ratio
   let width = 1280;
@@ -155,8 +162,8 @@ export async function generateVideoWithGemini(
       console.log(`   Prompt: "${prompt}"`);
       console.log(`   Duration: ${duration}s`);
       console.log(`   Aspect Ratio: ${aspectRatio}`);
-      if (referenceImageDataUrl && model.api === 'gemini') {
-        console.log(`   📎 Using reference image for style guidance (Veo 3.1)`);
+      if (referenceImages.length > 0 && model.api === 'gemini') {
+        console.log(`   📎 Using ${referenceImages.length} reference image(s) for style guidance (Veo 3.1)`);
       }
       if (referenceVideoFileUri && model.api === 'gemini') {
         console.log(`   🎬 Using reference VIDEO (file_uri) for video-to-video / extension (Veo 3.1)`);
@@ -168,9 +175,13 @@ export async function generateVideoWithGemini(
       let endpoint: string;
 
       if (model.api === 'gemini') {
-         // Veo 3.1 Preview - reference image and/or reference video (file_uri)
+         // Veo 3.1 Preview - reference image(s) and/or reference video (file_uri)
+         const guidedPrompt =
+           referenceImages.length > 1
+             ? `${prompt}\n\nUse ALL ${referenceImages.length} reference images together — combine their subjects, style, and composition in the video. Do not ignore any of them.`
+             : prompt;
          const instance: any = {
-           prompt: prompt
+           prompt: guidedPrompt
          };
          
          // Reference VIDEO: pass whole video as reference (video-to-video / extension)
@@ -178,29 +189,29 @@ export async function generateVideoWithGemini(
            instance.video = { uri: referenceVideoFileUri };
          }
          
-         if (referenceImageDataUrl) {
-           let imageBase64 = referenceImageDataUrl;
-           let mimeType = 'image/jpeg';
-           
-           if (referenceImageDataUrl.startsWith('data:')) {
-             const matches = referenceImageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-             if (matches) {
-               mimeType = matches[1];
-               imageBase64 = matches[2];
-             }
-           }
-           
+         if (referenceImages.length > 0) {
            // CORRECT STRUCTURE from official Vertex AI docs:
            // https://docs.cloud.google.com/vertex-ai/generative-ai/docs/video/use-reference-images-to-guide-video-generation
-           instance.referenceImages = [{
-             image: {
-               bytesBase64Encoded: imageBase64,
-               mimeType: mimeType
-             },
-             referenceType: 'style'  // Can be 'style' or other types
-           }];
-           
-           console.log(`   📷 Reference image added (${(imageBase64.length / 1024).toFixed(1)}KB, type: ${mimeType})`);
+           instance.referenceImages = referenceImages.map((dataUrl, idx) => {
+             let imageBase64 = dataUrl;
+             let mimeType = 'image/jpeg';
+             if (dataUrl.startsWith('data:')) {
+               const matches = dataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+               if (matches) {
+                 mimeType = matches[1];
+                 imageBase64 = matches[2];
+               }
+             }
+             console.log(`   📷 Reference image ${idx + 1}/${referenceImages.length} added (${(imageBase64.length / 1024).toFixed(1)}KB, type: ${mimeType})`);
+             return {
+               image: {
+                 bytesBase64Encoded: imageBase64,
+                 mimeType: mimeType
+               },
+               // First image anchors content; additional images guide style/assets
+               referenceType: idx === 0 ? 'asset' : 'style'
+             };
+           });
          }
          
          const requestBody = {
@@ -549,12 +560,15 @@ export async function generateVideo(
   prompt: string,
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  referenceImageDataUrl?: string,
+  referenceImageDataUrl?: string | string[],
   referenceVideoFileUri?: string // file_uri from File API for video-to-video / "make it better"
 ): Promise<GeneratedVideo | null> {
   let geminiError: VideoGenerationError | null = null;
+  const hasRefs = Array.isArray(referenceImageDataUrl)
+    ? referenceImageDataUrl.length > 0
+    : Boolean(referenceImageDataUrl);
 
-  // Try Gemini Veo first (with optional reference image or reference video)
+  // Try Gemini Veo first (with optional reference image(s) or reference video)
   try {
     const geminiVideo = await generateVideoWithGemini(prompt, duration, aspectRatio, referenceImageDataUrl, referenceVideoFileUri);
     if (geminiVideo) {
@@ -590,7 +604,7 @@ export async function generateVideo(
   // Try xAI Grok as third fallback. Grok Imagine Video doesn't accept a
   // reference image, so we only call it for pure text-to-video — passing a
   // ref would silently ignore it which is worse than skipping the rung.
-  if (!referenceImageDataUrl && !referenceVideoFileUri) {
+  if (!hasRefs && !referenceVideoFileUri) {
     try {
       console.log('🔄 Trying Grok Imagine Video fallback...');
       const grokVideo = await generateVideoWithGrok(prompt, duration, aspectRatio);
@@ -617,13 +631,31 @@ export async function generateVideo(
   return null;
 }
 
-// Generate video from image using Gemini Veo - tries fast model first, then falls back to standard
+// Generate video from image(s) using Gemini Veo - tries fast model first, then falls back to standard
 export async function generateVideoFromImage(
-  imageDataUrl: string, // Base64 data URL or image URL
+  imageDataUrl: string | string[], // One or more base64 data URLs
   prompt?: string, // Optional description/prompt
   duration: number = 5,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9'
 ): Promise<GeneratedVideo | null> {
+  const refs = (Array.isArray(imageDataUrl) ? imageDataUrl : [imageDataUrl])
+    .filter((r) => typeof r === 'string' && r.length > 0)
+    .slice(0, 5);
+  if (refs.length === 0) return null;
+
+  // Multiple reference images → Veo 3.1 referenceImages path (single-image I2V
+  // APIs only accept one frame and would silently drop the rest).
+  if (refs.length > 1) {
+    console.log(`🎥 Multi-image video: routing ${refs.length} refs through Veo 3.1 referenceImages`);
+    return generateVideoWithGemini(
+      prompt || 'Animate these reference images into a cohesive video with smooth, natural motion',
+      duration,
+      aspectRatio,
+      refs
+    );
+  }
+
+  const singleImage = refs[0];
   const apiKey = process.env.GEMINI_API_KEY_FREE || process.env.GOOGLE_API_KEY_FREE || process.env.GOOGLE_API_KEY;
   
   if (!apiKey) {
@@ -660,11 +692,11 @@ export async function generateVideoFromImage(
       console.log('═'.repeat(60));
       
       // Extract base64 data from data URL
-      let imageBase64 = imageDataUrl;
+      let imageBase64 = singleImage;
       let imageMimeType = 'image/jpeg';
       
-      if (imageDataUrl.startsWith('data:')) {
-        const matches = imageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (singleImage.startsWith('data:')) {
+        const matches = singleImage.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
         if (matches) {
           imageMimeType = matches[1];
           imageBase64 = matches[2];

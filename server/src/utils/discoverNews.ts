@@ -140,11 +140,38 @@ function categoryFromTag(tag: string): string {
   }
 }
 
+/** Strict relevance check so Politics/Tech/etc. tabs don't get off-topic filler. */
+function matchesDiscoverCategory(title: string, description: string, category: string): boolean {
+  if (!category || category === 'For You') return true;
+  const text = `${title} ${description || ''}`;
+  if (category === 'Psychology') {
+    return /\b(psycholog|mental health|wellbeing|well-being|therapy|therapist|counseling|counsellor|mindfulness|depression|anxiety|ptsd|trauma|cognitive|behaviour|behavior|emotion|stress|burnout|self[- ]esteem|psychiatr)\b/i.test(text);
+  }
+  // Prefer the keyword table used for tagging — must land on this category.
+  const { tag } = pickImageAndTag(text, title);
+  if (categoryFromTag(tag) === category) return true;
+  // Extra category-specific anchors (World News API sometimes mislabels).
+  const extra: Record<string, RegExp> = {
+    Politics: /\b(election|parliament|congress|minister|government|govt|president|prime minister|senate|cabinet|legislation|ballot|campaign|politic|bjp|tmc|aap|mla|mp\b|cm\b|supreme court|high court)\b/i,
+    Technology: /\b(tech|technology|software|startup|ai\b|artificial intelligence|chip|semiconductor|app\b|gadget|cyber|robot|smartphone|iphone|android)\b/i,
+    Science: /\b(science|scientist|research|discovery|space|nasa|isro|physics|biology|chemistry|genome|telescope)\b/i,
+    Health: /\b(health|hospital|vaccine|medical|doctor|disease|patient|pharma|treatment|clinic|covid|virus)\b/i,
+    Environment: /\b(climate|environment|pollution|carbon|wildlife|flood|earthquake|renewable|emissions|biodiversity)\b/i,
+    Finance: /\b(stock|market|economy|inflation|gdp|finance|investor|ipo|earnings|rupee|dollar|sensex|nifty|bank|tariff)\b/i,
+    Sports: /\b(sport|cricket|football|soccer|tennis|olympic|nba|fifa|ipl|match|tournament|championship|athlete)\b/i,
+  };
+  return Boolean(extra[category]?.test(text));
+}
+
 function categoryFromWorldNewsCategory(
   apiCategory: string | undefined,
   forceCategory?: string,
   fallbackTag?: string
 ): string {
+  // Don't blindly trust forceCategory — only apply when the story actually matches.
+  if (forceCategory && forceCategory !== 'For You') {
+    // Caller still sets forceCategory for bucket labeling; relevance is filtered later.
+  }
   if (forceCategory) return forceCategory;
   const c = (apiCategory || '').toLowerCase();
   const map: Record<string, string> = {
@@ -348,7 +375,8 @@ const NEWS_L2_TTL_SEC = NEWS_REFRESH_INTERVAL_HOURS * 60 * 60;
 //   v14 = 50 articles/category + drop SVG placeholder images (real images only).
 //   v15 = keep previous Exa/Gemini pipeline AND World News; merge both; filter SVG.
 //   v16 = stricter real-image filter (no SVG/Unsplash/data URLs) + strip after enrichment.
-const NEWS_CACHE_VERSION = 'v16';
+//   v17 = no blind category top-up; strict keyword relevance per section; For You global dedupe.
+const NEWS_CACHE_VERSION = 'v17';
 
 // Refresh-cycle timezone per country. Cycle rotates every NEWS_REFRESH_INTERVAL_HOURS.
 const COUNTRY_TIMEZONES: Record<string, string> = {
@@ -979,7 +1007,6 @@ export async function getLiveNewsForCountry(
 
   const PER_CAT_TARGET = 50;
   const PER_CAT_CAP = 50;
-  const MIN_PER_CAT = 40;
   const topics: Array<{
     q: string;
     cat: string;
@@ -1042,8 +1069,10 @@ export async function getLiveNewsForCountry(
         }
 
         // Drop SVG / missing images — Discover cards need real photos.
+        // Also drop off-topic items forced into a category bucket.
         fresh = fresh
           .filter((it) => isRealArticleImage(it.image))
+          .filter((it) => matchesDiscoverCategory(it.title, it.description || '', t.cat))
           .map((it) => ({ ...it, category: t.cat }));
 
         if (fresh.length > 0) {
@@ -1080,7 +1109,10 @@ export async function getLiveNewsForCountry(
         forceCategory: t.cat,
         forceTag: t.tag,
       });
-      fresh = fresh.filter((it) => isRealArticleImage(it.image)).slice(0, t.n);
+      fresh = fresh
+        .filter((it) => isRealArticleImage(it.image))
+        .filter((it) => matchesDiscoverCategory(it.title, it.description || '', t.cat))
+        .slice(0, t.n);
       if (fresh.length > 0) {
         const lgKey = `${code}:${t.cat}`;
         const existing = NEWS_CATEGORY_LAST_GOOD.get(lgKey) || [];
@@ -1146,51 +1178,16 @@ export async function getLiveNewsForCountry(
       }
     }
 
-    const TOP_UP_DONORS: Array<{ target: string; donors: string[] }> = [
-      { target: 'Psychology', donors: ['Health', 'For You'] },
-      { target: 'Politics', donors: ['For You'] },
-      { target: 'Technology', donors: ['For You'] },
-      { target: 'Science', donors: ['For You'] },
-      { target: 'Health', donors: ['For You'] },
-      { target: 'Environment', donors: ['For You'] },
-      { target: 'Finance', donors: ['For You'] },
-      { target: 'Sports', donors: ['For You'] },
-    ];
-    for (const { target, donors } of TOP_UP_DONORS) {
-      const have = perCatCount.get(target) || 0;
-      if (have >= MIN_PER_CAT) continue;
-      for (const donor of donors) {
-        const need = MIN_PER_CAT - (perCatCount.get(target) || 0);
-        if (need <= 0) break;
-        const donorItems = collected.filter(
-          (it) => (it.category || 'For You') === donor && isRealArticleImage(it.image)
-        );
-        let added = 0;
-        for (const di of donorItems) {
-          if (added >= need) break;
-          const targetCatUrls = seenUrlsByCat.get(target) || new Set<string>();
-          if (di.url && targetCatUrls.has(di.url)) continue;
-          const copy: DiscoverItem = {
-            ...di,
-            category: target,
-            id: `${di.id}-${target.toLowerCase().replace(/\s+/g, '-')}-${++dupSuffix}`,
-          };
-          if (di.url) targetCatUrls.add(di.url);
-          seenUrlsByCat.set(target, targetCatUrls);
-          collected.push(copy);
-          perCatCount.set(target, (perCatCount.get(target) || 0) + 1);
-          added++;
-        }
-        if (added > 0) {
-          console.log(`📥 ${code} ${target}: topped up with ${added} items from ${donor}`);
-        }
-      }
-    }
+    // Intentionally NO blind top-up from For You into Politics/Tech/etc.
+    // That was copying unrelated headlines into category tabs. Prefer fewer
+    // on-topic stories over padded off-topic ones.
 
     items = collected.filter(
       (it) =>
         isRealArticleImage(it.image) &&
-        !isLikelyJunkNewsItem(it.title, it.description || '', it.url || '')
+        !isLikelyJunkNewsItem(it.title, it.description || '', it.url || '') &&
+        ((it.category || 'For You') === 'For You' ||
+          matchesDiscoverCategory(it.title, it.description || '', it.category || 'For You'))
     );
   }
 

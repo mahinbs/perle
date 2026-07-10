@@ -37,11 +37,49 @@ export function mapDiscoverCategory(item: DiscoverItem): string {
   return item.category || 'Other';
 }
 
-// "For You" is curated to ~12 items mixed across categories — NOT the full firehose.
+// "For You" is curated to ~40 items mixed across categories — NOT the full firehose.
 // Picks the freshest story from each category in round-robin order so the user
 // sees variety (1 Tech, 1 Sports, 1 Finance, 1 Health, …) instead of a long
 // monotonous list of one topic.
 const FOR_YOU_MAX = 40;
+
+function normalizeDiscoverUrl(url?: string | null): string {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    u.hash = '';
+    u.search = '';
+    return u.href.replace(/\/$/, '').toLowerCase();
+  } catch {
+    return url.trim().toLowerCase();
+  }
+}
+
+function storyTitleTokens(title: string): Set<string> {
+  const stop = new Set([
+    'the', 'a', 'an', 'and', 'or', 'of', 'in', 'on', 'to', 'for', 'with', 'as', 'at', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'after', 'over', 'into', 'about', 'says', 'said',
+  ]);
+  return new Set(
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => (w.length > 2 && !stop.has(w)) || /^\d+$/.test(w))
+  );
+}
+
+function isSameDiscoverStory(a: string, b: string): boolean {
+  const ta = storyTitleTokens(a);
+  const tb = storyTitleTokens(b);
+  if (ta.size === 0 || tb.size === 0) return false;
+  let overlap = 0;
+  for (const t of ta) if (tb.has(t)) overlap++;
+  if (overlap < 3) return false;
+  const minSize = Math.min(ta.size, tb.size);
+  const union = ta.size + tb.size - overlap;
+  return overlap / minSize >= 0.4 || (overlap / union >= 0.28 && overlap >= 4);
+}
+
 function buildForYouMix(newsOnly: DiscoverItem[]): DiscoverItem[] {
   const byCat = new Map<string, DiscoverItem[]>();
   for (const it of newsOnly) {
@@ -50,16 +88,25 @@ function buildForYouMix(newsOnly: DiscoverItem[]): DiscoverItem[] {
     byCat.get(cat)!.push(it);
   }
   // Round-robin: take one from each non-empty bucket, in turn, until we hit FOR_YOU_MAX.
+  // Global URL + near-duplicate title dedupe so the same story never appears 2–3×.
   const result: DiscoverItem[] = [];
+  const seenUrls = new Set<string>();
+  const seenTitles: string[] = [];
   let added = true;
   while (added && result.length < FOR_YOU_MAX) {
     added = false;
     for (const list of byCat.values()) {
       if (result.length >= FOR_YOU_MAX) break;
-      const next = list.shift();
-      if (next) {
+      while (list.length > 0) {
+        const next = list.shift()!;
+        const urlKey = normalizeDiscoverUrl(next.url);
+        if (urlKey && seenUrls.has(urlKey)) continue;
+        if (seenTitles.some((t) => isSameDiscoverStory(next.title, t))) continue;
+        if (urlKey) seenUrls.add(urlKey);
+        seenTitles.push(next.title);
         result.push(next);
         added = true;
+        break;
       }
     }
   }
@@ -79,7 +126,25 @@ export function filterByDiscoverCategory(
     const pool = mine.length > 0 ? mine : newsOnly;
     return buildForYouMix(pool);
   }
-  return newsOnly.filter((i) => mapDiscoverCategory(i) === category);
+  // Category tabs: require both the stored category AND a relevance keyword hit
+  // so off-topic top-ups / mislabels never show in Politics, Tech, etc.
+  const relevance: Record<string, RegExp> = {
+    Politics: /\b(election|parliament|congress|minister|government|govt|president|prime minister|senate|cabinet|legislation|ballot|campaign|politic|bjp|tmc|aap|mla|\bmp\b|\bcm\b|supreme court|high court|opposition|vote|protest)\b/i,
+    Technology: /\b(tech|technology|software|startup|ai\b|artificial intelligence|chip|semiconductor|app\b|gadget|cyber|robot|smartphone|iphone|android|openai|nvidia)\b/i,
+    Science: /\b(science|scientist|research|discovery|space|nasa|isro|physics|biology|chemistry|genome|telescope|mars|moon)\b/i,
+    Psychology: /\b(psycholog|mental health|wellbeing|well-being|therapy|therapist|counseling|mindfulness|depression|anxiety|trauma|stress|burnout)\b/i,
+    Health: /\b(health|hospital|vaccine|medical|doctor|disease|patient|pharma|treatment|clinic|covid|virus|medicine)\b/i,
+    Environment: /\b(climate|environment|pollution|carbon|wildlife|flood|earthquake|renewable|emissions|biodiversity|wildfire)\b/i,
+    Finance: /\b(stock|market|economy|inflation|gdp|finance|investor|ipo|earnings|rupee|dollar|sensex|nifty|bank|tariff|revenue)\b/i,
+    Sports: /\b(sport|cricket|football|soccer|tennis|olympic|nba|fifa|ipl|match|tournament|championship|athlete)\b/i,
+  };
+  const re = relevance[category];
+  return newsOnly.filter((i) => {
+    if (mapDiscoverCategory(i) !== category) return false;
+    if (!re) return true;
+    const text = `${i.title} ${i.description || ''}`;
+    return re.test(text);
+  });
 }
 
 // Map an IANA timezone to an ISO 3166-1 alpha-2 country code.
@@ -230,7 +295,7 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
 //      read is < 1ms. Visible difference on tab switch / back-navigation.
 //   2. Lets the page render BEFORE the network call returns, so Discover
 //      is never a blank "loading…" screen for returning users.
-const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v9';
+const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v10';
 const FRONTEND_NEWS_TTL_MS = 3 * 60 * 60 * 1000; // 3h — matches NEWS_L2_TTL_SEC
 
 if (typeof localStorage !== 'undefined') {

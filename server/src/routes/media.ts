@@ -148,15 +148,16 @@ router.post('/generate-image', authenticateToken, mediaUploadMiddleware, async (
     // so prompts like "create a brighter version" or "make a forest scene"
     // are interpreted by *meaning*, not just by leading verb. See
     // resolveImageIntent for the full decision tree.
-    let referenceImageDataUrl: string | undefined;
+    let referenceImageDataUrls: string[] = [];
     if (req.userId && referenceFiles.length === 0) {
       const lastImage = await getLastGeneratedImage(req.userId);
       const intent = await resolveImageIntent(prompt, lastImage?.prompt);
 
       if (intent === 'edit' && lastImage) {
         console.log(`🎨 Editing previous image: "${lastImage.prompt}"`);
-        referenceImageDataUrl = (await downloadImageAsDataUrl(lastImage.url)) || undefined;
-        if (referenceImageDataUrl) {
+        const dataUrl = (await downloadImageAsDataUrl(lastImage.url)) || undefined;
+        if (dataUrl) {
+          referenceImageDataUrls = [dataUrl];
           console.log('✅ Using previous image as reference for editing');
         }
       } else if (intent === 'edit' && !lastImage) {
@@ -166,12 +167,17 @@ router.post('/generate-image', authenticateToken, mediaUploadMiddleware, async (
     
     // Handle reference image(s) if uploaded (takes priority over auto-detected)
     if (referenceFiles.length > 0) {
-      const primaryFile = referenceFiles[0];
       console.log(
-        `📸 Reference image(s) uploaded: ${referenceFiles.length} file(s), primary ${primaryFile.mimetype}, ${(primaryFile.size / 1024).toFixed(2)}KB`
+        `📸 Reference image(s) uploaded: ${referenceFiles.length} file(s) — all will be sent to the model`
       );
-      referenceImageDataUrl = await processReferenceFile(primaryFile, req.userId);
-      console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio}) WITH reference image`);
+      referenceImageDataUrls = [];
+      for (const file of referenceFiles.slice(0, 5)) {
+        const dataUrl = await processReferenceFile(file, req.userId);
+        if (dataUrl) referenceImageDataUrls.push(dataUrl);
+      }
+      console.log(
+        `🎨 Image generation request: "${prompt}" (${aspectRatio}) WITH ${referenceImageDataUrls.length} reference image(s)`
+      );
     } else {
       console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio})`);
     }
@@ -208,7 +214,12 @@ router.post('/generate-image', authenticateToken, mediaUploadMiddleware, async (
     // in the chain); free users always get the default auto chain.
     const preferredModel = isPremium ? imageModel : 'auto';
     console.log(`🎨 Generating image with ${isPremium ? 'premium' : 'free'} tier (model=${preferredModel})`);
-    const image = await generateImage(prompt, aspectRatio, referenceImageDataUrl, preferredModel);
+    const image = await generateImage(
+      prompt,
+      aspectRatio,
+      referenceImageDataUrls.length > 0 ? referenceImageDataUrls : undefined,
+      preferredModel
+    );
 
     if (!image) {
       return res.status(500).json({ 
@@ -347,7 +358,7 @@ router.post('/generate-video', authenticateToken, mediaUploadMiddleware, async (
     const referenceFiles = collectReferenceFiles(req);
     
     // Check if this is an edit request: use WHOLE VIDEO as reference (File API file_uri) when available
-    let referenceImageDataUrl: string | undefined;
+    let referenceImageDataUrls: string[] = [];
     let referenceVideoFileUri: string | undefined;
     if (req.userId && referenceFiles.length === 0) {
       // Get last media first to check context
@@ -381,9 +392,10 @@ router.post('/generate-video', authenticateToken, mediaUploadMiddleware, async (
         }
         if (!referenceVideoFileUri && lastImage) {
           console.log(`🎨 No video reference - using previous image as reference: ${lastImage.prompt}`);
-          referenceImageDataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
+          const dataUrl = await downloadImageAsDataUrl(lastImage.url) || undefined;
+          if (dataUrl) referenceImageDataUrls = [dataUrl];
         }
-        if (!referenceVideoFileUri && !referenceImageDataUrl) {
+        if (!referenceVideoFileUri && referenceImageDataUrls.length === 0) {
           console.log('⚠️ No previous media found for editing');
         }
       } else if (isEdit && !lastVideo && !lastImage) {
@@ -391,21 +403,26 @@ router.post('/generate-video', authenticateToken, mediaUploadMiddleware, async (
       }
     }
     
-    // Handle reference image if uploaded (takes priority over auto-detected)
+    // Handle reference image(s) if uploaded (takes priority over auto-detected)
     if (referenceFiles.length > 0) {
-      const primaryFile = referenceFiles[0];
       console.log(
-        `📸 Video reference image(s) uploaded: ${referenceFiles.length} file(s), primary ${primaryFile.mimetype}, ${(primaryFile.size / 1024).toFixed(2)}KB`
+        `📸 Video reference image(s) uploaded: ${referenceFiles.length} file(s) — all will be sent to the model`
       );
-      referenceImageDataUrl = await processReferenceFile(primaryFile, req.userId);
-      console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio}) WITH reference image`);
+      referenceImageDataUrls = [];
+      for (const file of referenceFiles.slice(0, 5)) {
+        const dataUrl = await processReferenceFile(file, req.userId);
+        if (dataUrl) referenceImageDataUrls.push(dataUrl);
+      }
+      console.log(
+        `🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio}) WITH ${referenceImageDataUrls.length} reference image(s)`
+      );
     } else {
       console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio})`);
     }
 
     // Client may pass imageDataUrl from search/chat attachment
-    if (!referenceImageDataUrl && bodyImageDataUrl?.startsWith('data:')) {
-      referenceImageDataUrl = bodyImageDataUrl;
+    if (referenceImageDataUrls.length === 0 && bodyImageDataUrl?.startsWith('data:')) {
+      referenceImageDataUrls = [bodyImageDataUrl];
       console.log('🎬 Using client-provided imageDataUrl for image-to-video');
     }
 
@@ -451,19 +468,19 @@ router.post('/generate-video', authenticateToken, mediaUploadMiddleware, async (
     // Ensure duration is a number
     const durationNum = typeof duration === 'string' ? parseInt(duration) || 5 : duration;
     
-    // Generate video using Gemini Veo (with optional reference image or reference video file_uri)
+    // Generate video using Gemini Veo (with optional reference image(s) or reference video file_uri)
     console.log(`🎥 Generating video with ${premiumTier} tier (${videoCount || 0}/${dailyLimit} used today)`);
-    // Image-to-video when a reference image is present (Veo I2V); else text-to-video
+    const refs = referenceImageDataUrls.length > 0 ? referenceImageDataUrls : undefined;
     let video;
-    if (referenceImageDataUrl && !referenceVideoFileUri) {
-      console.log('🎬 Reference image detected — using image-to-video pipeline (Veo)');
-      video = await generateVideoFromImage(referenceImageDataUrl, prompt, durationNum, aspectRatio);
+    if (refs && !referenceVideoFileUri) {
+      console.log(`🎬 ${refs.length} reference image(s) detected — using image-to-video pipeline (Veo)`);
+      video = await generateVideoFromImage(refs, prompt, durationNum, aspectRatio);
       if (!video) {
-        console.log('🔄 I2V failed, falling back to text-to-video with style reference');
-        video = await generateVideo(prompt, durationNum, aspectRatio, referenceImageDataUrl);
+        console.log('🔄 I2V failed, falling back to text-to-video with style reference(s)');
+        video = await generateVideo(prompt, durationNum, aspectRatio, refs);
       }
     } else {
-      video = await generateVideo(prompt, durationNum, aspectRatio, referenceImageDataUrl, referenceVideoFileUri ?? undefined);
+      video = await generateVideo(prompt, durationNum, aspectRatio, refs, referenceVideoFileUri ?? undefined);
     }
 
     if (!video) {
