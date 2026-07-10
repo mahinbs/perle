@@ -213,7 +213,9 @@ export function _renderStreamingContent(text: string): React.ReactNode[] {
       return (
         <div key={lineKey} style={{ display: "flex", gap: 10, alignItems: "flex-start", margin: "4px 0" }}>
           <AnswerBulletDot />
-          <span style={{ flex: 1, lineHeight: 1.6 }}>{renderInlineMd(bulletMatch[1], lineKey)}</span>
+          <span style={{ flex: 1, lineHeight: 1.6, fontWeight: 600 }}>
+            {renderInlineMd(bulletMatch[1], lineKey)}
+          </span>
         </div>
       );
     }
@@ -1181,7 +1183,13 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
                   ) : (
                     <AnswerBulletDot />
                   )}
-                  <span style={{ flex: 1 }}>
+                  <span
+                    style={{
+                      flex: 1,
+                      fontWeight:
+                        item.bullet !== "sub" && !isNumbered ? 600 : undefined,
+                    }}
+                  >
                     {renderLeadBoldContent(item.content, renderTextContent)}
                     {isLastItem && (
                       <span

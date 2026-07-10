@@ -91,8 +91,6 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     return onAuthChange(refresh);
   }, []);
 
-      fetchConversations();
-
   const handleDelete = async (e: React.MouseEvent, conversationId: string) => {
     e.stopPropagation(); // Prevent selecting the conversation
 
@@ -216,17 +214,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
   return (
     <>
-      {/* Hover trigger on left edge — desktop only */}
-      <div
-        className="hidden lg:block fixed top-0 left-0 bottom-0 w-2 z-40"
-        onMouseEnter={() => !isOpen && onToggle()}
-        style={{
-          cursor: "pointer",
-          backgroundColor: "transparent",
-        }}
-      />
-
-      {/* Sidebar */}
+      {/* Sidebar — open/close only via the three-dots control (no edge hover) */}
       <div
         className={`
           fixed lg:absolute top-0 left-0 h-screen
@@ -236,12 +224,6 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           backdrop-blur-sm
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
-        onMouseLeave={() => {
-          // Don't toggle if we're on mobile or if we just clicked a button
-          if (window.innerWidth >= 1024 && !isClosingRef.current) {
-            onToggle();
-          }
-        }}
       >
         {/* Header */}
         <div className="p-4 border-b border-[var(--border)] bg-[var(--card)] bg-opacity-80 backdrop-blur-sm" style={{ paddingTop: "calc(16px + var(--safe-area-top))" }}>

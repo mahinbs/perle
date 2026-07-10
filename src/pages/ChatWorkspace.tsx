@@ -13,7 +13,6 @@ import { getLocalItem, removeLocalItem, setLocalItem, STORAGE_KEYS } from "../ut
 import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode, Source } from "../types";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
 import {
-  hasReachedDailyQueryLimit,
   incrementDailyQueryCount,
   shouldEnforceQueryLimit,
   getQueryLimitMessage,
@@ -181,6 +180,8 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   // Release streaming buffers if the component unmounts mid-stream.
   useEffect(() => {
     return () => {
+      searchAbortRef.current?.abort();
+      searchAbortRef.current = null;
       if (flushTimerRef.current) {
         clearInterval(flushTimerRef.current);
         flushTimerRef.current = null;
@@ -223,11 +224,36 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
   const skipTypewriterOnRestoreRef = useRef(restoredSnapshotRef.current.skipTypewriter);
   const experienceModeRef = useRef<ExperienceMode>(experienceMode);
   const isSearchingRef = useRef<boolean>(false);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchGenerationRef = useRef(0);
   const queryRef = useRef<string>(""); // Keep query in ref to avoid stale closures
   const lastHandledLocationKeyRef = useRef<string | null>(null);
   const navReturnToRef = useRef<string | undefined>(undefined);
   const isFirstExperienceModeEffectRef = useRef(true);
   const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
+
+  const killDrip = useCallback(() => {
+    if (flushTimerRef.current) {
+      window.clearInterval(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    pendingBufferRef.current = "";
+  }, []);
+
+  /** Abort in-flight search/stream and clear thinking/streaming UI. */
+  const abortActiveSearch = useCallback(() => {
+    searchAbortRef.current?.abort();
+    searchAbortRef.current = null;
+    searchGenerationRef.current += 1;
+    isSearchingRef.current = false;
+    killDrip();
+    streamingTextRef.current = "";
+    streamingSourcesRef.current = [];
+    setStreamingText("");
+    setStreamingSources([]);
+    setIsStreaming(false);
+    setIsLoading(false);
+  }, [killDrip]);
 
   const queryLimitReached =
     shouldEnforceQueryLimit() && conversationHistory.length >= 4;
@@ -305,6 +331,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       : `${isLoggedIn()}:${getUserData()?.id ?? "guest"}`
   );
   const resetChatToBlank = useCallback(() => {
+    abortActiveSearch();
     const blank = getEmptyHomeChatSnapshot();
     restoredSnapshotRef.current = blank;
     lastSearchedKeyRef.current = "";
@@ -316,14 +343,8 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     setSearchedQuery("");
     setQuery("");
     setActiveConversationId(null);
-    setStreamingText("");
-    setStreamingSources([]);
-    setIsStreaming(false);
-    streamingTextRef.current = "";
-    streamingSourcesRef.current = [];
-    pendingBufferRef.current = "";
     setNewConversation(true);
-  }, []);
+  }, [abortActiveSearch]);
 
   useEffect(() => {
     if (isAnalyzePage) return undefined;
@@ -579,6 +600,14 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         return;
       }
 
+      // Start a fresh abortable generation for this request.
+      searchAbortRef.current?.abort();
+      const abortController = new AbortController();
+      searchAbortRef.current = abortController;
+      const searchGeneration = ++searchGenerationRef.current;
+      const isStale = () =>
+        searchGeneration !== searchGenerationRef.current || abortController.signal.aborted;
+
       isSearchingRef.current = true;
       lastSearchedKeyRef.current = searchKey;
       lastSearchedQueryRef.current = finalQuery;
@@ -596,7 +625,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
       pendingFollowUpRef.current = conversationHistory.length > 0;
       setIsLoading(true);
       setIsStreaming(false);
-      stopDripAndFlush();
+      killDrip();
       streamingTextRef.current = "";
       streamingSourcesRef.current = [];
       pendingBufferRef.current = "";
@@ -705,6 +734,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
             effectiveSearchType,
             {
               onMeta: (convId) => {
+                if (isStale()) return;
                 if (convId && getAuthToken()) {
                   setActiveConversationId(convId);
                   lastLoadedConversationIdRef.current = null;
@@ -712,6 +742,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
               },
 
               onSources: (sources) => {
+                if (isStale()) return;
                 streamingSourcesRef.current = sources;
                 setStreamingSources(sources);
                 setIsLoading(false);
@@ -719,16 +750,19 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
               },
 
               onToken: (text) => {
+                if (isStale()) return;
                 pendingBufferRef.current += text;
                 startDrip();
               },
 
               onDone: async (suggestedQuestions, cleanText) => {
+                if (isStale()) return;
                 // Wait for the drip to finish revealing the pending buffer
                 // word-by-word — keeps the streaming feel intact all the
                 // way to the last character. ONLY after the user has seen
                 // every word do we flip out of streaming mode.
                 await stopDripAndFlush();
+                if (isStale()) return;
                 skipTypewriterOnRestoreRef.current = true;
                 setIsStreaming(false);
 
@@ -823,16 +857,27 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
               },
 
               onError: (msg) => {
-                stopDripAndFlush();
+                if (isStale()) return;
+                killDrip();
                 throw new Error(msg);
               },
             },
             filesToProcess,
+            abortController.signal,
           );
         }
       } catch (error: any) {
+        // User started a new chat (or navigated away) — ignore abort noise.
+        if (
+          isStale() ||
+          error?.name === "AbortError" ||
+          abortController.signal.aborted
+        ) {
+          return;
+        }
+
         console.error("Search API error:", error);
-        stopDripAndFlush();
+        killDrip();
         setIsStreaming(false);
         streamingTextRef.current = "";
         streamingSourcesRef.current = [];
@@ -889,13 +934,18 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
 
         setAnswer(errorAnswer);
       } finally {
-        setIsLoading(false);
-        isSearchingRef.current = false;
+        if (!isStale()) {
+          setIsLoading(false);
+          isSearchingRef.current = false;
+          if (searchAbortRef.current === abortController) {
+            searchAbortRef.current = null;
+          }
+        }
       }
       // Removed 'query' from dependencies to prevent re-creation on every query change
       // The function uses query from closure, which is fine since we pass it explicitly when needed
     },
-    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode, navigateTo, appendConversationAnswer, goToSubscriptionForLimit, currentData]
+    [mode, selectedModel, saveToHistory, uploadedFiles, activeConversationId, newConversation, conversationHistory, experienceMode, navigateTo, appendConversationAnswer, goToSubscriptionForLimit, currentData, killDrip]
   );
 
   const handleFollowUpSearch = useCallback(
@@ -1201,14 +1251,10 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     return () => container.removeEventListener('scroll', handler);
   }, [loadOlderMessages]);
 
-  // Handle new conversation
+  // Handle new conversation — always abort in-flight work so "IQ is thinking" stops.
   const handleNewConversation = useCallback(() => {
-    if (shouldEnforceQueryLimit() && hasReachedDailyQueryLimit()) {
-      goToSubscriptionForLimit();
-      return;
-    }
-
-    console.log(`🆕 NEW CHAT CLICKED - Clearing activeConversationId`);
+    console.log(`🆕 NEW CHAT CLICKED - Aborting active search and clearing chat`);
+    abortActiveSearch();
     sessionStore.clear();
     lastSearchedKeyRef.current = "";
     lastSearchedQueryRef.current = "";
@@ -1221,7 +1267,7 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
     setSearchedQuery("");
     setQuery("");
     setIsSidebarOpen(false);
-  }, [navigateTo, goToSubscriptionForLimit, sessionStore]);
+  }, [sessionStore, abortActiveSearch]);
 
   // Handle conversation deletion
   const handleDeleteConversation = useCallback((conversationId: string) => {
@@ -1513,7 +1559,10 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
             uploadedFiles={uploadedFiles}
             onFilesChange={setUploadedFiles}
             hasAnswer={
-              !isLoading && !isStreaming && (!!answer || conversationHistory.length > 0)
+              !!answer ||
+              conversationHistory.length > 0 ||
+              isLoading ||
+              isStreaming
             }
             answer={answer}
             streamingSources={streamingSources}

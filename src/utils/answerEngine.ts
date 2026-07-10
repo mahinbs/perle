@@ -429,6 +429,7 @@ export async function searchAPIStream(
     onError: (message: string) => void;
   },
   uploadedFiles: UploadedFile[] = [],
+  signal?: AbortSignal,
 ): Promise<void> {
   const baseUrl = import.meta.env.VITE_API_URL as string | undefined;
 
@@ -459,6 +460,7 @@ export async function searchAPIStream(
       method: 'POST',
       headers: getAuthHeaders(false), // skip Content-Type so multipart boundary stays correct
       body: formData,
+      signal,
     });
   } else {
     response = await authFetch(`${baseUrl.replace(/\/+$/, '')}/api/stream`, {
@@ -473,6 +475,7 @@ export async function searchAPIStream(
         conversationHistory,
         searchType,
       }),
+      signal,
     });
   }
 
@@ -492,43 +495,60 @@ export async function searchAPIStream(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
 
+  const cancelReader = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  if (signal) {
+    if (signal.aborted) {
+      cancelReader();
+      return;
+    }
+    signal.addEventListener('abort', cancelReader, { once: true });
+  }
+
   let buffer = '';
   let currentEvent = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
+  try {
+    while (true) {
+      if (signal?.aborted) break;
 
-    if (done) break;
+      const { done, value } = await reader.read();
 
-    buffer += decoder.decode(value, { stream: true });
+      if (done) break;
 
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
+      buffer += decoder.decode(value, { stream: true });
 
-    for (const line of lines) {
-      if (line.startsWith('event:')) {
-        currentEvent = line.slice(6).trim();
-      } else if (line.startsWith('data:')) {
-        try {
-          const data = JSON.parse(line.slice(5).trim());
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
 
-          if (currentEvent === 'meta') {
-            callbacks.onMeta(data.conversationId ?? null);
-          } else if (currentEvent === 'sources') {
-            callbacks.onSources(data.sources ?? []);
-          } else if (currentEvent === 'token') {
-            callbacks.onToken(data.text ?? '');
-          } else if (currentEvent === 'done') {
-            callbacks.onDone(data.suggestedQuestions ?? [], data.cleanText);
-          } else if (currentEvent === 'error') {
-            callbacks.onError(data.message ?? 'Error');
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          currentEvent = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          try {
+            const data = JSON.parse(line.slice(5).trim());
+
+            if (currentEvent === 'meta') {
+              callbacks.onMeta(data.conversationId ?? null);
+            } else if (currentEvent === 'sources') {
+              callbacks.onSources(data.sources ?? []);
+            } else if (currentEvent === 'token') {
+              callbacks.onToken(data.text ?? '');
+            } else if (currentEvent === 'done') {
+              callbacks.onDone(data.suggestedQuestions ?? [], data.cleanText);
+            } else if (currentEvent === 'error') {
+              callbacks.onError(data.message ?? 'Error');
+            }
+          } catch {
+            // Skip malformed line
           }
-        } catch {
-          // Skip malformed line
-        }
 
-        currentEvent = '';
+          currentEvent = '';
+        }
       }
     }
+  } finally {
+    signal?.removeEventListener('abort', cancelReader);
   }
 }

@@ -2414,7 +2414,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                       setQuery("");
                     }
                   }}
-                  disabled={isLoading}
                   style={{
                     padding: hasAnswer ? 6 : 8,
                     fontSize: "var(--font-md)",

@@ -28,6 +28,7 @@ import {
   getUserAvatarFallbackUrl,
   getUserInitialAvatarDataUrl,
   setUserData,
+  hasPaidPremiumPlan,
 } from "../utils/auth";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { chatAPI, COMPANION_CHAT_MODEL } from "../utils/answerEngine";
@@ -397,7 +398,7 @@ export default function AIFriendPage() {
   useEffect(() => {
     const user = getUserData();
     if (user) {
-      setIsPremium(user.isPremium ?? false);
+      setIsPremium(hasPaidPremiumPlan(user));
     } else {
       setIsPremium(false);
     }
@@ -1382,6 +1383,11 @@ export default function AIFriendPage() {
       navigateTo("/profile", { mode: "login" });
       return;
     }
+    // Free accounts: Create stays clickable but routes to upgrade.
+    if (!isPremium) {
+      navigateTo("/subscription");
+      return;
+    }
     resetFriendForm();
     setShowFriendModal(true);
   };
@@ -1535,7 +1541,7 @@ export default function AIFriendPage() {
               </button>
             )}
             <button
-              className="btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors hover:bg-[var(--input-bg)] disabled:opacity-50 disabled:cursor-not-allowed text-xs whitespace-nowrap"
+              className="btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors hover:bg-[var(--input-bg)] text-xs whitespace-nowrap"
               onClick={openCreateFriendModal}
               title="Create Character"
             >
