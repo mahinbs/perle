@@ -29,16 +29,27 @@ const upload = multer({
   }
 });
 
+const optionalUrl = z.preprocess(
+  (val) => (val === '' || val === undefined ? null : val),
+  z.string().url().optional().nullable()
+);
+
 const profileUpdateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   notifications: z.boolean().optional(),
   darkMode: z.boolean().optional(),
   searchHistory: z.boolean().optional(),
   voiceSearch: z.boolean().optional(),
-  displayPictureUrl: z.string().url().optional().nullable(),
-  dp: z.string().url().optional().nullable(), // Alias for displayPictureUrl (frontend uses 'dp')
-  personality: z.string().max(500).optional().nullable(),
-  gender: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']).optional().nullable(),
+  displayPictureUrl: optionalUrl,
+  dp: optionalUrl, // Alias for displayPictureUrl (frontend uses 'dp')
+  personality: z.preprocess(
+    (val) => (val === '' ? null : val),
+    z.string().max(500).optional().nullable()
+  ),
+  gender: z.preprocess(
+    (val) => (val === '' ? null : val),
+    z.enum(['Male', 'Female', 'Other', 'Prefer not to say']).optional().nullable()
+  ),
   age: z.number().int().min(1).max(150).optional().nullable()
 });
 

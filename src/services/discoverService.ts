@@ -15,6 +15,23 @@ export const DISCOVER_CATEGORIES = [
 
 export type DiscoverCategory = (typeof DISCOVER_CATEGORIES)[number];
 
+/** Real publisher photos only — no SVG gradients, data URIs, or Unsplash stock. */
+export function isRealDiscoverImage(image: string | null | undefined): boolean {
+  if (!image || typeof image !== 'string') return false;
+  const trimmed = image.trim();
+  if (!trimmed) return false;
+  if (/^data:/i.test(trimmed)) return false;
+  if (/image\/svg/i.test(trimmed)) return false;
+  if (/images\.unsplash\.com/i.test(trimmed)) return false;
+  if (/via\.placeholder\.com|placehold\.co|placeholder\.com|picsum\.photos/i.test(trimmed)) return false;
+  try {
+    const u = new URL(trimmed);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function mapDiscoverCategory(item: DiscoverItem): string {
   if (item.category === 'Health Care') return 'Health';
   return item.category || 'Other';
@@ -24,7 +41,7 @@ export function mapDiscoverCategory(item: DiscoverItem): string {
 // Picks the freshest story from each category in round-robin order so the user
 // sees variety (1 Tech, 1 Sports, 1 Finance, 1 Health, …) instead of a long
 // monotonous list of one topic.
-const FOR_YOU_MAX = 12;
+const FOR_YOU_MAX = 40;
 function buildForYouMix(newsOnly: DiscoverItem[]): DiscoverItem[] {
   const byCat = new Map<string, DiscoverItem[]>();
   for (const it of newsOnly) {
@@ -202,8 +219,8 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
 // -------------------------------------------------------------------
 // Live news ("For You" + region-localized category tabs) — real only.
 // -------------------------------------------------------------------
-// Frontend cache — matches the backend's 6h L2 TTL. Since the backend's
-// data is shared across all users and only rotates every 6 hours, there's
+// Frontend cache — matches the backend's 3h L2 TTL. Since the backend's
+// data is shared across all users and rotates every 3 hours, there's
 // no point making the same user hit /api/discover/news on every navigation.
 // We persist the last-fetched payload + its timestamp in localStorage and
 // serve it instantly on repeat visits within the TTL window.
@@ -213,8 +230,8 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
 //      read is < 1ms. Visible difference on tab switch / back-navigation.
 //   2. Lets the page render BEFORE the network call returns, so Discover
 //      is never a blank "loading…" screen for returning users.
-const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v5';
-const FRONTEND_NEWS_TTL_MS = 6 * 60 * 60 * 1000; // 6h — matches NEWS_L2_TTL_SEC
+const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v9';
+const FRONTEND_NEWS_TTL_MS = 3 * 60 * 60 * 1000; // 3h — matches NEWS_L2_TTL_SEC
 
 if (typeof localStorage !== 'undefined') {
   // Drop older cache keys from past deploys so users never see stale data
@@ -225,6 +242,10 @@ if (typeof localStorage !== 'undefined') {
     'syntraiq-live-news-cache-v2',
     'syntraiq-live-news-cache-v3',
     'syntraiq-live-news-cache-v4',
+    'syntraiq-live-news-cache-v5',
+    'syntraiq-live-news-cache-v6',
+    'syntraiq-live-news-cache-v7',
+    'syntraiq-live-news-cache-v8',
   ]) {
     try { localStorage.removeItem(oldKey); } catch { /* ignore */ }
   }
@@ -248,7 +269,8 @@ function readFrontendCache(regions: string): DiscoverItem[] | null {
     // someone else's geography.
     if (parsed.regions !== regions) return null;
     if (Date.now() - parsed.ts > FRONTEND_NEWS_TTL_MS) return null;
-    return parsed.items;
+    const realOnly = parsed.items.filter((i) => isRealDiscoverImage(i.image));
+    return realOnly.length > 0 ? realOnly : null;
   } catch {
     return null;
   }
@@ -278,7 +300,7 @@ export async function fetchLiveNewsItems(forceRefresh = false): Promise<Discover
   if (!forceRefresh) {
     const cached = readFrontendCache(order);
     if (cached) {
-      console.log(`[discover/news] ⚡ served ${cached.length} items from localStorage (TTL 6h)`);
+      console.log(`[discover/news] ⚡ served ${cached.length} items from localStorage (TTL 3h)`);
       return cached;
     }
   }
@@ -304,9 +326,10 @@ export async function fetchLiveNewsItems(forceRefresh = false): Promise<Discover
       console.error('[discover/news] backend returned empty.');
       return [];
     }
-    console.log(`[discover/news] ✅ loaded ${items.length} real items from backend (regions=${order}, refresh=${forceRefresh})`);
-    writeFrontendCache(order, items);
-    return items;
+    const realOnly = items.filter((i: DiscoverItem) => isRealDiscoverImage(i.image));
+    console.log(`[discover/news] ✅ loaded ${realOnly.length} real-image items (from ${items.length}, regions=${order}, refresh=${forceRefresh})`);
+    writeFrontendCache(order, realOnly);
+    return realOnly;
   } catch (err) {
     console.error('[discover/news] fetch failed:', err);
     return [];

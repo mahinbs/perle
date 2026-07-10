@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type { Request } from 'express';
 import { optionalAuth, authenticateToken, type AuthRequest } from '../middleware/auth.js';
 import { generateImage } from '../utils/imageGeneration.js';
 import { generateVideo, generateVideoFromImage, uploadVideoToGeminiFileAPI, VideoGenerationError } from '../utils/videoGeneration.js';
 import { supabase } from '../lib/supabase.js';
 import multer from 'multer';
+import { uploadMediaReferences } from '../utils/uploadConfig.js';
 import {
   isEditRequest,
   resolveImageIntent,
@@ -17,7 +19,78 @@ import { getSubscriptionAccessForUser } from '../utils/subscriptionAccess.js';
 
 const router = Router();
 
-// Configure multer for image uploads
+type UploadedFields = { [fieldname: string]: Express.Multer.File[] };
+
+function collectReferenceFiles(req: Request): Express.Multer.File[] {
+  const grouped = req.files as UploadedFields | undefined;
+  if (grouped && typeof grouped === 'object') {
+    const collected: Express.Multer.File[] = [];
+    for (const field of ['files', 'referenceImages', 'images', 'referenceImage', 'image']) {
+      const arr = grouped[field];
+      if (Array.isArray(arr)) collected.push(...arr);
+    }
+    if (collected.length > 0) return collected;
+  }
+  return req.file ? [req.file] : [];
+}
+
+function bufferToDataUrl(file: Express.Multer.File): string {
+  const imageBase64 = file.buffer.toString('base64');
+  return `data:${file.mimetype};base64,${imageBase64}`;
+}
+
+async function processReferenceFile(
+  file: Express.Multer.File,
+  userId?: string
+): Promise<string> {
+  if (!userId) return bufferToDataUrl(file);
+
+  try {
+    const fileName = `reference-images/${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${file.mimetype.split('/')[1]}`;
+    const { error: uploadError } = await supabase.storage
+      .from('files')
+      .upload(fileName, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('Failed to upload reference image to Supabase:', uploadError);
+      return bufferToDataUrl(file);
+    }
+
+    const { data: urlData } = supabase.storage.from('files').getPublicUrl(fileName);
+    const imageResponse = await fetch(urlData.publicUrl);
+    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    return `data:${file.mimetype};base64,${imageBuffer.toString('base64')}`;
+  } catch (error) {
+    console.error('Error processing reference image:', error);
+    return bufferToDataUrl(file);
+  }
+}
+
+function mediaUploadMiddleware(
+  req: Request,
+  res: import('express').Response,
+  next: import('express').NextFunction
+) {
+  uploadMediaReferences(req, res, (err: unknown) => {
+    if (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Invalid file upload';
+      return res.status(400).json({
+        error: message.includes('image')
+          ? 'Reference must be an image file'
+          : message,
+      });
+    }
+    next();
+  });
+}
+
+// Configure multer for image uploads (legacy single-field routes)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -58,7 +131,7 @@ const imageToVideoSchema = z.object({
 });
 
 // POST /api/media/generate-image - REQUIRES AUTHENTICATION (plan-based limits enforced)
-router.post('/generate-image', authenticateToken, upload.single('referenceImage'), async (req: AuthRequest, res) => {
+router.post('/generate-image', authenticateToken, mediaUploadMiddleware, async (req: AuthRequest, res) => {
   try {
     const parse = imageSchema.safeParse(req.body);
     if (!parse.success) {
@@ -69,13 +142,14 @@ router.post('/generate-image', authenticateToken, upload.single('referenceImage'
     }
 
     const { prompt, aspectRatio, imageModel } = parse.data;
+    const referenceFiles = collectReferenceFiles(req);
     
     // Edit vs. create detection — uses the hybrid keyword + LLM classifier
     // so prompts like "create a brighter version" or "make a forest scene"
     // are interpreted by *meaning*, not just by leading verb. See
     // resolveImageIntent for the full decision tree.
     let referenceImageDataUrl: string | undefined;
-    if (req.userId && !req.file) {
+    if (req.userId && referenceFiles.length === 0) {
       const lastImage = await getLastGeneratedImage(req.userId);
       const intent = await resolveImageIntent(prompt, lastImage?.prompt);
 
@@ -90,56 +164,14 @@ router.post('/generate-image', authenticateToken, upload.single('referenceImage'
       }
     }
     
-    // Handle reference image if uploaded (takes priority over auto-detected)
-    if (req.file && req.userId) {
-      try {
-        console.log(`📸 Reference image uploaded: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
-        
-        // Step 1: Upload to Supabase 'files' bucket (supports all MIME types!)
-        const fileName = `reference-images/${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${req.file.mimetype.split('/')[1]}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('files')
-          .upload(fileName, req.file.buffer, {
-            contentType: req.file.mimetype,
-            upsert: false
-          });
-        
-        if (uploadError) {
-          console.error('Failed to upload reference image to Supabase:', uploadError);
-          // Fallback: use buffer directly
-          const imageBase64 = req.file.buffer.toString('base64');
-          referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
-        } else {
-          // Step 2: Get public URL
-          const { data: urlData } = supabase.storage
-            .from('files')
-            .getPublicUrl(fileName);
-          
-          console.log(`✅ Reference image uploaded to Supabase: ${fileName}`);
-          
-          // Step 3: Download from Supabase and convert to base64
-          const imageResponse = await fetch(urlData.publicUrl);
-          const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-          const imageBase64 = imageBuffer.toString('base64');
-          referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
-          
-          console.log(`✅ Reference image converted to base64 (${imageBase64.length} chars)`);
-        }
-        
-        console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio}) WITH reference image`);
-      } catch (error) {
-        console.error('Error processing reference image:', error);
-        // Fallback: use buffer directly
-        const imageBase64 = req.file.buffer.toString('base64');
-        referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
-        console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio}) WITH reference image (direct buffer)`);
-      }
-    } else if (req.file) {
-      // No userId but image uploaded - use buffer directly
-      const imageBase64 = req.file.buffer.toString('base64');
-      referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
-      console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio}) WITH reference image (no user)`);
+    // Handle reference image(s) if uploaded (takes priority over auto-detected)
+    if (referenceFiles.length > 0) {
+      const primaryFile = referenceFiles[0];
+      console.log(
+        `📸 Reference image(s) uploaded: ${referenceFiles.length} file(s), primary ${primaryFile.mimetype}, ${(primaryFile.size / 1024).toFixed(2)}KB`
+      );
+      referenceImageDataUrl = await processReferenceFile(primaryFile, req.userId);
+      console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio}) WITH reference image`);
     } else {
       console.log(`🎨 Image generation request: "${prompt}" (${aspectRatio})`);
     }
@@ -301,17 +333,7 @@ router.post('/generate-image', authenticateToken, upload.single('referenceImage'
 });
 
 // POST /api/media/generate-video - REQUIRES AUTHENTICATION (plan-based limits enforced)
-router.post('/generate-video', authenticateToken, (req, res, next) => {
-  upload.single('referenceImage')(req, res, (err: any) => {
-    if (err) {
-      console.error('Generate-video upload error:', err.message);
-      return res.status(400).json({
-        error: err.message?.includes('image') ? 'Reference must be an image file (video not supported as reference yet)' : (err.message || 'Invalid file')
-      });
-    }
-    next();
-  });
-}, async (req: AuthRequest, res) => {
+router.post('/generate-video', authenticateToken, mediaUploadMiddleware, async (req: AuthRequest, res) => {
   try {
     const parse = videoSchema.safeParse(req.body);
     if (!parse.success) {
@@ -322,11 +344,12 @@ router.post('/generate-video', authenticateToken, (req, res, next) => {
     }
 
     const { prompt, duration, aspectRatio, imageDataUrl: bodyImageDataUrl } = parse.data;
+    const referenceFiles = collectReferenceFiles(req);
     
     // Check if this is an edit request: use WHOLE VIDEO as reference (File API file_uri) when available
     let referenceImageDataUrl: string | undefined;
     let referenceVideoFileUri: string | undefined;
-    if (req.userId && !req.file) {
+    if (req.userId && referenceFiles.length === 0) {
       // Get last media first to check context
       const lastVideo = await getLastGeneratedVideo(req.userId);
       const lastImage = await getLastGeneratedImage(req.userId);
@@ -369,55 +392,13 @@ router.post('/generate-video', authenticateToken, (req, res, next) => {
     }
     
     // Handle reference image if uploaded (takes priority over auto-detected)
-    if (req.file && req.userId) {
-      try {
-        console.log(`📸 Reference image uploaded: ${req.file.mimetype}, ${(req.file.size / 1024).toFixed(2)}KB`);
-        
-        // Step 1: Upload to Supabase 'files' bucket (supports all MIME types!)
-        const fileName = `reference-images/${req.userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${req.file.mimetype.split('/')[1]}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('files')
-          .upload(fileName, req.file.buffer, {
-            contentType: req.file.mimetype,
-            upsert: false
-          });
-        
-        if (uploadError) {
-          console.error('Failed to upload reference image to Supabase:', uploadError);
-          // Fallback: use buffer directly
-          const imageBase64 = req.file.buffer.toString('base64');
-          referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
-        } else {
-          // Step 2: Get public URL
-          const { data: urlData } = supabase.storage
-            .from('files')
-            .getPublicUrl(fileName);
-          
-          console.log(`✅ Reference image uploaded to Supabase: ${fileName}`);
-          
-          // Step 3: Download from Supabase and convert to base64
-          const imageResponse = await fetch(urlData.publicUrl);
-          const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-          const imageBase64 = imageBuffer.toString('base64');
-          referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
-          
-          console.log(`✅ Reference image converted to base64 (${imageBase64.length} chars)`);
-        }
-        
-        console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio}) WITH reference image`);
-      } catch (error) {
-        console.error('Error processing reference image:', error);
-        // Fallback: use buffer directly
-        const imageBase64 = req.file.buffer.toString('base64');
-        referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
-        console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio}) WITH reference image (direct buffer)`);
-      }
-    } else if (req.file) {
-      // No userId but image uploaded - use buffer directly
-      const imageBase64 = req.file.buffer.toString('base64');
-      referenceImageDataUrl = `data:${req.file.mimetype};base64,${imageBase64}`;
-      console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio}) WITH reference image (no user)`);
+    if (referenceFiles.length > 0) {
+      const primaryFile = referenceFiles[0];
+      console.log(
+        `📸 Video reference image(s) uploaded: ${referenceFiles.length} file(s), primary ${primaryFile.mimetype}, ${(primaryFile.size / 1024).toFixed(2)}KB`
+      );
+      referenceImageDataUrl = await processReferenceFile(primaryFile, req.userId);
+      console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio}) WITH reference image`);
     } else {
       console.log(`🎥 Video generation request: "${prompt}" (${duration}s, ${aspectRatio})`);
     }
@@ -1121,6 +1102,48 @@ router.get('/proxy-openai-video/:videoId', async (req, res) => {
     return res.send(buffer);
   } catch (error) {
     console.error('OpenAI video proxy error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/media/download?url=...&filename=... — same-origin download proxy for mobile WebViews
+router.get('/download', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const rawUrl = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+    const filename =
+      typeof req.query.filename === 'string' && req.query.filename.trim()
+        ? req.query.filename.trim().replace(/[^\w.\-]+/g, '_')
+        : `media-${Date.now()}`;
+
+    if (!rawUrl) {
+      return res.status(400).json({ error: 'url query parameter is required' });
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      return res.status(400).json({ error: 'Invalid url' });
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return res.status(400).json({ error: 'Only http(s) URLs are allowed' });
+    }
+
+    const upstream = await fetch(rawUrl, { signal: AbortSignal.timeout(120_000) });
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ error: `Failed to fetch media (${upstream.status})` });
+    }
+
+    const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'private, max-age=60');
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    return res.send(buffer);
+  } catch (error) {
+    console.error('Media download proxy error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -43,13 +43,20 @@ export const Header: React.FC<HeaderProps> = ({
   useEffect(() => {
     const updateDiscoverItems = () => {
       getAllDiscoverItems()
-        .then((items) => setPreviewItems(Array.isArray(items) ? items.slice(0, 2) : []))
+        .then((items) => {
+          const withImages = (Array.isArray(items) ? items : []).filter((i) =>
+            typeof i.image === "string" &&
+            /^https?:\/\//i.test(i.image) &&
+            !i.image.startsWith("data:") &&
+            !/images\.unsplash\.com/i.test(i.image)
+          );
+          setPreviewItems(withImages.slice(0, 2));
+        })
         .catch(() => setPreviewItems([]));
     };
 
     updateDiscoverItems();
 
-    // Re-fetch when page becomes visible (handles app foregrounding on iOS/Android!)
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         updateDiscoverItems();
@@ -72,7 +79,6 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [refreshProfileImage]);
 
-  // Load profile picture from API when missing from cache (e.g. right after login).
   useEffect(() => {
     if (!isLoggedIn() || getUserProfilePictureUrl()) return;
 
@@ -103,148 +109,165 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header
-        className="row header-container !gap-3"
-        style={{
-          justifyContent: "space-between",
-          alignItems: "center",
-          paddingBlock: "8px",
-          flexWrap: "nowrap",
-        }}
-      >
-        <div
-          className="row header-left items-center justify-between w-full"
-          style={{
-            gap: "clamp(2px, 1vw, 12px)",
-            flexShrink: 0,
-            padding: 0,
-          }}
-        >
-          <div className="flex items-center min-w-0" style={{ gap: "clamp(2px, 1vw, 12px)", flexShrink: 0 }}>
-            {showBackButton ? (
+      <header className="row header-container header-row">
+        <div className="header-nav-group">
+          {showBackButton ? (
+            <button
+              type="button"
+              className="btn-ghost glass-button header-icon-btn"
+              onClick={() => navigateTo(backTo)}
+              aria-label="Back"
+            >
+              <IoIosArrowBack size={24} />
+            </button>
+          ) : (
+            onOpenSidebar && (
               <button
                 type="button"
-                className="btn-ghost glass-button flex items-center justify-center rounded-xl shrink-0"
-                onClick={() => navigateTo(backTo)}
-                aria-label="Back"
-                style={{
-                  width: 40,
-                  height: 40,
-                  minWidth: 40,
-                  minHeight: 40,
-                  padding: 0,
-                  touchAction: "manipulation",
-                }}
+                className="lg:hidden btn-ghost glass-button header-icon-btn"
+                onClick={onOpenSidebar}
+                aria-label="Open conversations"
               >
-                <IoIosArrowBack size={24} />
+                <FaEllipsisV size={18} />
               </button>
-            ) : (
-              onOpenSidebar && (
-                <button
-                  type="button"
-                  className="lg:hidden btn-ghost glass-button flex items-center justify-center rounded-xl"
-                  onClick={onOpenSidebar}
-                  aria-label="Open conversations"
-                  style={{
-                    width: 40,
-                    height: 40,
-                    minWidth: 40,
-                    minHeight: 40,
-                    padding: 0,
-                    touchAction: "manipulation",
-                  }}
-                >
-                  <FaEllipsisV size={18} />
-                </button>
-              )
-            )}
-            <button
-              type="button"
-              className="glass-button !font-bold font-ubuntu dark:border-yellow-300/25 rounded-lg px-2 md:px-3 text-[14px] md:text-[14px] h-[32px] md:h-[40px] flex items-center justify-center cursor-pointer whitespace-nowrap"
-              onClick={() => navigateTo("/ai-friend")}
-              aria-label="AI Friend"
-            >
-              AI Friend
-            </button>
-
-            <button
-              type="button"
-              className="glass-button !font-bold font-ubuntu dark:border-yellow-300/25 rounded-lg px-2 md:px-3 text-[14px] md:text-[14px] h-[32px] md:h-[40px] flex items-center justify-center cursor-pointer whitespace-nowrap"
-              onClick={() => navigateTo("/ai-psychology")}
-              aria-label="AI Psychology"
-            >
-              AI Psychology
-            </button>
-          </div>
-          <div
-            className="flex items-center shrink-0 header-actions-right"
-            style={{ gap: 6, marginLeft: 4 }}
+            )
+          )}
+          <button
+            type="button"
+            className="glass-button header-pill-btn"
+            onClick={() => navigateTo("/ai-friend")}
+            aria-label="AI Friend"
           >
-            <Link
-              to="/discover"
-              className={`discover-header-btn ${isActive("/discover") ? "discover-header-btn--active" : ""}`}
-              aria-label="Discover"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <span className="discover-preview-stack">
-                {img1 ? (
-                  <img
-                    src={img1}
-                    alt="Discover preview"
-                    className="discover-preview-img discover-preview-img--back"
-                    draggable={false}
-                  />
-                ) : null}
-                {img2 ? (
-                  <img
-                    src={img2}
-                    alt="Discover preview"
-                    className="discover-preview-img discover-preview-img--front"
-                    draggable={false}
-                  />
-                ) : null}
-                {!img1 && !img2 ? (
-                  <span className="discover-preview-fallback text-xs text-[var(--accent)] font-semibold">
-                    Discover
-                  </span>
-                ) : null}
-              </span>
-            </Link>
-            <button
-              type="button"
-              className={`header-profile-btn btn-ghost glass-button flex items-center justify-center rounded-xl overflow-hidden ${isActive("/profile") ? "active" : ""}`}
-              onClick={() => navigateTo("/profile")}
-              aria-label="Profile"
-              style={{
-                touchAction: "manipulation",
-                WebkitTapHighlightColor: "transparent",
-                position: "relative",
-                zIndex: 1,
-              }}
-            >
-              {profileImageUrl ? (
+            AI Friend
+          </button>
+          <button
+            type="button"
+            className="glass-button header-pill-btn"
+            onClick={() => navigateTo("/ai-psychology")}
+            aria-label="AI Psychology"
+          >
+            AI Psychology
+          </button>
+        </div>
+
+        <div className="header-actions-right">
+          <Link
+            to="/discover"
+            className={`discover-header-btn ${isActive("/discover") ? "discover-header-btn--active" : ""}`}
+            aria-label="Discover"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="discover-preview-stack">
+              {img1 ? (
                 <img
-                  src={profileImageUrl}
-                  alt="Your profile"
-                  className="header-profile-avatar"
-                  draggable={false}
-                  onError={() => setProfileImageUrl(null)}
-                />
-              ) : (
-                <img
-                  src={getUserAvatarFallbackUrl(80)}
-                  alt="Your profile"
-                  className="header-profile-avatar"
+                  src={img1}
+                  alt="Discover preview"
+                  className="discover-preview-img discover-preview-img--back"
                   draggable={false}
                 />
-              )}
-            </button>
-          </div>
+              ) : null}
+              {img2 ? (
+                <img
+                  src={img2}
+                  alt="Discover preview"
+                  className="discover-preview-img discover-preview-img--front"
+                  draggable={false}
+                />
+              ) : null}
+              {!img1 && !img2 ? (
+                <span className="discover-preview-fallback text-xs text-[var(--accent)] font-semibold">
+                  Discover
+                </span>
+              ) : null}
+            </span>
+          </Link>
+          <button
+            type="button"
+            className={`header-profile-btn btn-ghost glass-button ${isActive("/profile") ? "active" : ""}`}
+            onClick={() => navigateTo("/profile")}
+            aria-label="Profile"
+          >
+            {profileImageUrl ? (
+              <img
+                src={profileImageUrl}
+                alt="Your profile"
+                className="header-profile-avatar"
+                draggable={false}
+                onError={() => setProfileImageUrl(null)}
+              />
+            ) : (
+              <img
+                src={getUserAvatarFallbackUrl(80)}
+                alt="Your profile"
+                className="header-profile-avatar"
+                draggable={false}
+              />
+            )}
+          </button>
         </div>
       </header>
       <style>
         {`
+          .header-row {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 4px !important;
+            width: 100%;
+            min-height: auto !important;
+            padding-block: 8px !important;
+            overflow: hidden;
+          }
+
+          .header-nav-group {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            flex: 1 1 auto;
+            gap: clamp(2px, 1vw, 8px);
+            overflow: hidden;
+          }
+
+          .header-icon-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            min-height: 36px;
+            padding: 0;
+            flex-shrink: 0;
+            touch-action: manipulation;
+          }
+
+          .header-pill-btn {
+            font-weight: 700;
+            font-family: Ubuntu, sans-serif;
+            border-radius: 8px;
+            height: 32px;
+            padding: 0 8px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            touch-action: manipulation;
+          }
+
           .header-actions-right {
+            display: flex;
+            align-items: center;
+            flex: 0 0 auto;
+            flex-shrink: 0;
+            gap: 6px;
+            margin-left: 4px;
             position: relative;
             z-index: 5;
           }
@@ -253,8 +276,8 @@ export const Header: React.FC<HeaderProps> = ({
             display: flex;
             align-items: center;
             justify-content: center;
-            min-width: 2.75rem;
-            min-height: 2.5rem;
+            min-width: 2.5rem;
+            min-height: 2.25rem;
             padding: 2px 4px;
             margin: 0;
             border: none;
@@ -275,18 +298,19 @@ export const Header: React.FC<HeaderProps> = ({
 
           .discover-preview-stack {
             position: relative;
-            width: 3.25rem;
-            height: 2.25rem;
+            width: 2.75rem;
+            height: 2rem;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             pointer-events: none;
+            flex-shrink: 0;
           }
 
           .discover-preview-img {
             position: absolute;
-            width: 1.75rem;
-            height: 2.1rem;
+            width: 1.5rem;
+            height: 1.85rem;
             object-fit: cover;
             border-radius: 6px;
             border: 1px solid var(--border);
@@ -297,35 +321,43 @@ export const Header: React.FC<HeaderProps> = ({
           }
 
           .discover-preview-img--back {
-            transform: rotate(-7deg) translateX(-8px);
+            transform: rotate(-7deg) translateX(-7px);
             z-index: 1;
             opacity: 0.92;
           }
 
           .discover-preview-img--front {
-            transform: rotate(8deg) translateX(8px);
+            transform: rotate(8deg) translateX(7px);
             z-index: 2;
           }
 
           .discover-header-btn:active .discover-preview-img--back {
-            transform: rotate(-7deg) translateX(-8px) scale(0.96);
+            transform: rotate(-7deg) translateX(-7px) scale(0.96);
           }
 
           .discover-header-btn:active .discover-preview-img--front {
-            transform: rotate(8deg) translateX(8px) scale(0.96);
+            transform: rotate(8deg) translateX(7px) scale(0.96);
           }
 
           .discover-preview-fallback {
             pointer-events: none;
+            white-space: nowrap;
           }
 
           .header-profile-btn {
-            width: 40px;
-            height: 40px;
-            min-width: 40px;
-            min-height: 40px;
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            min-height: 36px;
             padding: 0 !important;
             flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            overflow: hidden;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
           }
 
           .header-profile-avatar {
@@ -336,38 +368,50 @@ export const Header: React.FC<HeaderProps> = ({
             display: block;
           }
 
-          .header-profile-icon {
-            width: 30px;
-            height: 30px;
-            flex-shrink: 0;
+          @media (min-width: 390px) {
+            .header-icon-btn {
+              width: 40px;
+              height: 40px;
+              min-width: 40px;
+              min-height: 40px;
+            }
+
+            .header-pill-btn {
+              height: 36px;
+              padding: 0 10px;
+              font-size: 13px;
+            }
+
+            .header-profile-btn {
+              width: 40px;
+              height: 40px;
+              min-width: 40px;
+              min-height: 40px;
+            }
+
+            .discover-preview-stack {
+              width: 3.25rem;
+              height: 2.25rem;
+            }
+
+            .discover-preview-img {
+              width: 1.75rem;
+              height: 2.1rem;
+            }
           }
 
           @media (min-width: 768px) {
+            .header-pill-btn {
+              height: 40px;
+              padding: 0 12px;
+              font-size: 14px;
+            }
+
             .header-profile-btn {
               width: 48px;
               height: 48px;
               min-width: 48px;
               min-height: 48px;
-            }
-
-            .header-profile-icon {
-              width: 34px;
-              height: 34px;
-            }
-          }
-
-          .header-container {
-            min-height: auto !important;
-          }
-          
-          @media (max-width: 768px) {
-            .header-container {
-              padding-block: 8px !important;
-              gap: 8px !important;
-            }
-            
-            .header-left {
-              gap: 6px !important;
             }
           }
         `}

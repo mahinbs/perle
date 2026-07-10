@@ -5,72 +5,11 @@ import {
   DISCOVER_CATEGORIES,
   filterByDiscoverCategory,
   getForYouNews,
+  isRealDiscoverImage,
   type DiscoverCategory,
 } from "../services/discoverService";
 import type { DiscoverItem } from "../types";
 import { IoIosArrowBack } from "react-icons/io";
-
-// Per-tag fallback pools — used ONLY when the article's own image fails to
-// load (broken hot-link, blocked referrer, 404 from the publisher CDN). Each
-// pool has 4 images so two stories in the same tag pick different photos via
-// a stable hash on their id/title.
-const TAG_FALLBACK_POOLS: Record<string, string[]> = {
-  Tech: [
-    "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?w=600&h=300&fit=crop",
-  ],
-  Politics: [
-    "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1591189863430-ab87e120f312?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1575320181282-9afab399332c?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1604881991720-f91add269bed?w=600&h=300&fit=crop",
-  ],
-  Health: [
-    "https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1631815588090-d4bfec5b1ccb?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1584982751601-97dcc096659c?w=600&h=300&fit=crop",
-  ],
-  Science: [
-    "https://images.unsplash.com/photo-1446776877081-d282a0f896e2?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1457369804613-52c61a468e7d?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1614935151651-0bea6508db6b?w=600&h=300&fit=crop",
-  ],
-  Environment: [
-    "https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1473773508845-188df298d2d1?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?w=600&h=300&fit=crop",
-  ],
-  Finance: [
-    "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1554260570-e9689a3418b8?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=600&h=300&fit=crop",
-  ],
-  Sports: [
-    "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1517649763962-0c623066013b?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=600&h=300&fit=crop",
-  ],
-  News: [
-    "https://images.unsplash.com/photo-1495020689067-958852a7765e?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=600&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=600&h=300&fit=crop",
-  ],
-};
-
-function pickFallbackImage(tag: string | undefined, seed: string): string {
-  const pool = TAG_FALLBACK_POOLS[tag || ""] || TAG_FALLBACK_POOLS.News;
-  if (!seed) return pool[0];
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
-  return pool[Math.abs(h) % pool.length];
-}
 
 // Strip leftover markdown/scraped junk that may sneak in from raw Exa text.
 function sanitizeCardDescription(raw?: string): string {
@@ -87,14 +26,17 @@ function sanitizeCardDescription(raw?: string): string {
 function DiscoverCard({
   item,
   onClick,
+  onImageBroken,
   hideNationLabel = false,
 }: {
   item: DiscoverItem;
   onClick: () => void;
+  onImageBroken: (id: string) => void;
   hideNationLabel?: boolean;
 }) {
   const cleanDesc = sanitizeCardDescription(item.description);
-  const fallbackImage = pickFallbackImage(item.tag, item.id || item.title);
+  if (!isRealDiscoverImage(item.image)) return null;
+
   return (
     <div
       className="glass-card"
@@ -117,16 +59,11 @@ function DiscoverCard({
         }}
       >
         <img
-          src={item.image || fallbackImage}
+          src={item.image}
           alt={item.alt || item.title}
           loading="lazy"
           referrerPolicy="no-referrer"
-          onError={(e) => {
-            const img = e.currentTarget;
-            if (img.src !== fallbackImage) {
-              img.src = fallbackImage;
-            }
-          }}
+          onError={() => onImageBroken(item.id)}
           style={{
             display: "block",
             width: "100%",
@@ -198,16 +135,23 @@ export default function DiscoverPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  // Show 15 cards first; "See more" reveals the next batch.
+  const INITIAL_VISIBLE = 15;
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+  // Cards whose publisher image failed to load — remove them (no Unsplash placeholders).
+  const [brokenImageIds, setBrokenImageIds] = useState<Set<string>>(new Set());
 
   const loadItems = async (forceRefresh = false) => {
     setIsLoading(true);
     setFetchError(null);
+    setBrokenImageIds(new Set());
     try {
       const items = await getAllDiscoverItems(forceRefresh);
-      console.log(`[DiscoverPage] loaded ${items.length} items (`,
-        items.filter((i) => i.category === 'For You' || i.nation).length,
-        'news,', items.filter((i) => !i.nation && i.category !== 'For You').length, 'topics)');
-      setDiscoverItems(Array.isArray(items) ? items : []);
+      const realOnly = (Array.isArray(items) ? items : []).filter((i) =>
+        isRealDiscoverImage(i.image)
+      );
+      console.log(`[DiscoverPage] loaded ${realOnly.length} items with real images (from ${items?.length ?? 0})`);
+      setDiscoverItems(realOnly);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error("[DiscoverPage] fetch failed:", msg);
@@ -223,6 +167,11 @@ export default function DiscoverPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reset pagination when switching tabs or search.
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE);
+  }, [selectedCategory, searchQuery]);
+
   const matchesSearch = (item: DiscoverItem) =>
     searchQuery === "" ||
     item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -232,9 +181,34 @@ export default function DiscoverPage() {
   const categoryItems = filterByDiscoverCategory(
     discoverItems,
     selectedCategory
-  ).filter(matchesSearch);
+  )
+    .filter(matchesSearch)
+    .filter((i) => isRealDiscoverImage(i.image) && !brokenImageIds.has(i.id));
 
-  const forYouItems = getForYouNews(categoryItems);
+  const forYouItems = getForYouNews(categoryItems).filter(
+    (i) => isRealDiscoverImage(i.image) && !brokenImageIds.has(i.id)
+  );
+
+  const sectionItems =
+    selectedCategory === "For You" ? forYouItems : categoryItems;
+  const visibleItems = sectionItems.slice(0, visibleCount);
+  const hasMore = sectionItems.length > visibleCount;
+  const remaining = Math.max(0, sectionItems.length - visibleCount);
+
+  const handleSeeMore = () => {
+    setVisibleCount((prev) =>
+      Math.min(prev + INITIAL_VISIBLE, sectionItems.length)
+    );
+  };
+
+  const handleImageBroken = (id: string) => {
+    setBrokenImageIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
 
   const handleItemClick = (item: DiscoverItem) => {
     navigateTo(`/details/${item.id}`, { item });
@@ -253,10 +227,9 @@ export default function DiscoverPage() {
         <div className="h1">Discover</div>
         <div style={{ display: "flex", gap: 8 }}>
           {/* Refresh button removed — it bypassed the upstream news cache
-              and let users hammer Exa/Gemini + the og:image scraper at
-              will, which is an easy abuse surface. Server-side cache TTL
-              already cycles fresh stories every few minutes; the next
-              normal page open will see them. */}
+              and let users hammer the news API at will. Server-side cache TTL
+              already cycles fresh stories every 3 hours; the next normal page
+              open after that window will see them. */}
           <button
             className="btn-ghost glass-button"
             onClick={() => navigateTo("/app")}
@@ -315,31 +288,14 @@ export default function DiscoverPage() {
         </div>
       )}
 
-      {!isLoading && selectedCategory === "For You" && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-            gap: 16,
-          }}
-        >
-          {forYouItems.map((item) => (
-            <DiscoverCard
-              key={item.id}
-              item={item}
-              onClick={() => handleItemClick(item)}
-              hideNationLabel
-            />
-          ))}
-        </div>
-      )}
-
-      {!isLoading && selectedCategory !== "For You" && (
+      {!isLoading && sectionItems.length > 0 && (
         <>
-          <div className="sub text-sm" style={{ marginBottom: 16 }}>
-            {categoryItems.length}{" "}
-            {categoryItems.length === 1 ? "result" : "results"} found
-          </div>
+          {selectedCategory !== "For You" && (
+            <div className="sub text-sm" style={{ marginBottom: 16 }}>
+              {sectionItems.length}{" "}
+              {sectionItems.length === 1 ? "result" : "results"} found
+            </div>
+          )}
           <div
             style={{
               display: "grid",
@@ -347,14 +303,49 @@ export default function DiscoverPage() {
               gap: 16,
             }}
           >
-            {categoryItems.map((item) => (
+            {visibleItems.map((item) => (
               <DiscoverCard
                 key={item.id}
                 item={item}
                 onClick={() => handleItemClick(item)}
+                onImageBroken={handleImageBroken}
+                hideNationLabel={selectedCategory === "For You"}
               />
             ))}
           </div>
+
+          {hasMore && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                marginTop: 24,
+                marginBottom: 8,
+              }}
+            >
+              <button
+                type="button"
+                className="btn glass-button"
+                onClick={handleSeeMore}
+                style={{
+                  padding: "10px 28px",
+                  borderRadius: 999,
+                  fontWeight: 600,
+                  fontSize: "var(--font-md)",
+                  cursor: "pointer",
+                  touchAction: "manipulation",
+                }}
+              >
+                See more
+                <span
+                  className="sub"
+                  style={{ marginLeft: 8, fontWeight: 500, opacity: 0.8 }}
+                >
+                  ({remaining} more)
+                </span>
+              </button>
+            </div>
+          )}
         </>
       )}
 

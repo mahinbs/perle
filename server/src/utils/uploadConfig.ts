@@ -25,3 +25,12 @@ export const uploadSearchFiles = upload.fields([
   { name: 'images', maxCount: 20 },
   { name: 'image', maxCount: 1 },
 ]);
+
+/** Media create/edit — accepts all common attachment field names from web + mobile */
+export const uploadMediaReferences = upload.fields([
+  { name: 'files', maxCount: 5 },
+  { name: 'referenceImages', maxCount: 5 },
+  { name: 'images', maxCount: 5 },
+  { name: 'referenceImage', maxCount: 1 },
+  { name: 'image', maxCount: 1 },
+]);

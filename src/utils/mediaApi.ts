@@ -46,13 +46,8 @@ function appendReferenceImages(formData: FormData, referenceImages?: File | File
   const files = referenceImages
     ? (Array.isArray(referenceImages) ? referenceImages : [referenceImages])
     : [];
-  // Use "referenceImage" (single field) for a single file, "referenceImages" for multiple.
-  // Never append the same file to both fields — server combines them and would get duplicates.
-  if (files.length === 1) {
-    formData.append("referenceImage", files[0]);
-  } else {
-    files.forEach((file) => formData.append("referenceImages", file));
-  }
+  // Server accepts "files" (preferred), plus legacy field names.
+  files.forEach((file) => formData.append("files", file));
 }
 
 export type ImageModelChoice =

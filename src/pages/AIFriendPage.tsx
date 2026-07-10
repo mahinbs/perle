@@ -1525,45 +1525,6 @@ export default function AIFriendPage() {
             </div>
           </div>
             <div className="flex items-center gap-1.5 shrink-0">
-            {isLoggedIn && aiFriends.length > 0 && (
-            <button
-                className={`btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors text-xs whitespace-nowrap max-w-[120px] ${
-                  isGroupChat
-                    ? "bg-[rgba(199,168,105,0.15)] glass-panel"
-                    : selectedFriendId
-                      ? "bg-[rgba(199,168,105,0.15)] glass-panel"
-                      : ""
-                }`}
-                onClick={() => {
-                  // Group is the home surface — only switch back to group from individual.
-                  if (!isGroupChat) {
-                    setIsGroupChat(true);
-                    setSelectedFriendId(null);
-                  }
-                }}
-                aria-label={
-                  isGroupChat
-                    ? "Group chat"
-                    : `Individual chat with ${selectedFriend?.name ?? "friend"} — tap to return to group`
-                }
-                title={
-                  isGroupChat
-                    ? "Group chat with all friends"
-                    : "Tap to return to group chat"
-                }
-              >
-                <span
-                  className={
-                    isGroupChat || selectedFriendId
-                      ? "text-[var(--accent)]"
-                      : "text-[var(--text)]"
-                  }
-                  style={{ overflow: "hidden", textOverflow: "ellipsis" }}
-                >
-                  {isGroupChat ? "Group" : selectedFriend?.name ?? "Friend"}
-                </span>
-              </button>
-            )}
             {isLoggedIn && (
               <button
                 className="btn-ghost glass-button !px-2 !py-1.5 flex gap-1 rounded-lg transition-colors hover:bg-[var(--input-bg)] text-xs whitespace-nowrap"

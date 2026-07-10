@@ -2058,17 +2058,12 @@ export default function ProfilePage() {
                       editAge !== ((userSettings as any).age?.toString() || "");
 
                     if (hasChanges) {
-                      // Run each field update silently — we'll show ONE
-                      // "Profile saved" toast at the end instead of a
-                      // separate toast per field. Each silent call still
-                      // optimistically updates userSettings, so the UI
-                      // reflects new values immediately.
-                      const silent = { silent: true };
+                      const updates: Record<string, unknown> = {};
                       if (
                         editName.trim() &&
                         editName.trim() !== userSettings.name
                       ) {
-                        await handleSettingChange("name", editName.trim(), silent);
+                        updates.name = editName.trim();
                       }
                       if (
                         editDp !==
@@ -2076,20 +2071,16 @@ export default function ProfilePage() {
                           (userSettings as any).displayPictureUrl ||
                           "")
                       ) {
-                        await handleSettingChange("dp", editDp || null, silent);
+                        updates.dp = editDp || null;
                       }
                       if (
                         editPersonality !==
                         ((userSettings as any).personality || "")
                       ) {
-                        await handleSettingChange(
-                          "personality",
-                          editPersonality,
-                          silent,
-                        );
+                        updates.personality = editPersonality || null;
                       }
                       if (editGender !== ((userSettings as any).gender || "")) {
-                        await handleSettingChange("gender", editGender, silent);
+                        updates.gender = editGender || null;
                       }
                       if (
                         editAge !==
@@ -2097,11 +2088,30 @@ export default function ProfilePage() {
                       ) {
                         const ageNum = editAge ? parseInt(editAge, 10) : null;
                         if (ageNum && ageNum > 0 && ageNum < 150) {
-                          await handleSettingChange("age", ageNum, silent);
+                          updates.age = ageNum;
                         } else if (editAge === "") {
-                          await handleSettingChange("age", null, silent);
+                          updates.age = null;
                         }
                       }
+
+                      const response = await authFetch(`${API_URL}/api/profile`, {
+                        method: "PUT",
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify(updates),
+                      });
+
+                      if (!response.ok) {
+                        const errorData = await response
+                          .json()
+                          .catch(() => ({ error: "Failed to save profile" }));
+                        throw new Error(
+                          errorData.error || "Failed to save profile",
+                        );
+                      }
+
+                      const updatedProfile = await response.json();
+                      setUserData(updatedProfile);
+                      setUserSettings(updatedProfile);
                     }
                     setShowEditProfile(false);
                     setEditName("");

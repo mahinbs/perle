@@ -46,6 +46,7 @@ import { getUserData } from "../utils/auth";
 
 import { UploadedFile, type Source } from "../types";
 import { downsampleImageFile } from "../utils/imageResize";
+import { downloadMedia } from "../utils/downloadMedia";
 import { normalizeSources } from "../utils/sourceFavicon";
 
 interface SearchBarProps {
@@ -760,8 +761,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         : referenceImages
           ? [referenceImages]
           : [];
-      files.forEach((file) => formData.append("referenceImages", file));
-      if (files[0]) formData.append("referenceImage", files[0]);
+      files.forEach((file) => formData.append("files", file));
 
       const token = getAuthToken();
       const res = await fetch(
@@ -846,8 +846,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         : referenceImages
           ? [referenceImages]
           : [];
-      files.forEach((file) => formData.append("referenceImages", file));
-      if (files[0]) formData.append("referenceImage", files[0]);
+      files.forEach((file) => formData.append("files", file));
 
       const token = getAuthToken();
       const res = await fetch(
@@ -1089,21 +1088,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (!generatedMedia) return;
 
     try {
-      const response = await fetch(generatedMedia.url);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `generated-${generatedMedia.type}-${Date.now()}.${generatedMedia.type === "image" ? "png" : "mp4"
-        }`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      const filename = `generated-${generatedMedia.type}-${Date.now()}.${generatedMedia.type === "image" ? "png" : "mp4"}`;
+      await downloadMedia(generatedMedia.url, filename);
 
       showToast({
-        message: `${generatedMedia.type === "image" ? "Image" : "Video"
-          } downloaded successfully!`,
+        message: `${generatedMedia.type === "image" ? "Image" : "Video"} saved successfully!`,
         type: "success",
         duration: 2000,
       });

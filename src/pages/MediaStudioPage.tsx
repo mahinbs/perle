@@ -399,7 +399,11 @@ export default function MediaStudioPage() {
         </div>
       </div>
 
-      <div ref={conversationScrollRef} className="flex-1 overflow-y-auto overflow-anchor-none overflow-x-hidden px-4 py-5 flex flex-col">
+      <div
+        ref={conversationScrollRef}
+        className="flex-1 overflow-y-auto overflow-anchor-none overflow-x-hidden px-4 pt-5 flex flex-col"
+        style={{ paddingBottom: 8 }}
+      >
         {!hasStarted && (
           <>
             <div className="sub text-sm font-semibold mb-3 uppercase tracking-wide opacity-70">
@@ -536,15 +540,15 @@ export default function MediaStudioPage() {
                     />
                   )}
                   <div
-                    className="flex items-center justify-between px-3 py-2 border-t border-[var(--border)]"
+                    className="flex items-center justify-between gap-2 px-3 py-2.5 border-t border-[var(--border)]"
                     style={{ background: "var(--card)" }}
                   >
-                    <span className="text-xs opacity-60">
+                    <span className="text-xs opacity-60 truncate min-w-0">
                       {entry.type === "image" ? "Generated image" : "Generated video"}
                     </span>
                     <button
                       type="button"
-                      className="btn-ghost glass-button flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full"
+                      className="btn-ghost glass-button flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full shrink-0"
                       onClick={() => void handleDownload(entry.resultUrl!, entry.type)}
                       title="Download"
                     >
@@ -558,17 +562,19 @@ export default function MediaStudioPage() {
           </div>
           );
         })}
+        {/* Spacer so last result Download isn't hidden behind sticky input bar */}
+        <div className="shrink-0" style={{ height: 24 }} aria-hidden />
       </div>
 
       <div
-        className="px-4 pt-2 sticky bottom-0 bg-[var(--bg)] input-bar-safe-bottom"
+        className="px-3 sm:px-4 pt-2 sticky bottom-0 z-20 bg-[var(--bg)] input-bar-safe-bottom shrink-0"
       >
         <div
-          className="glass-card border border-[var(--border)] rounded-[28px] p-4 shadow-lg"
+          className="glass-card border border-[var(--border)] rounded-[24px] sm:rounded-[28px] p-3 sm:p-4 shadow-lg"
           style={{ background: "var(--bg)" }}
         >
           {/* Top row: + attach & prompt */}
-          <div className="flex items-start gap-3 mb-4">
+          <div className="flex items-start gap-2 sm:gap-3 mb-3">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -624,45 +630,41 @@ export default function MediaStudioPage() {
             </div>
           </div>
 
-          {/* Bottom row: mode toggle, submit */}
-          <div className="flex items-center justify-between gap-3">
+          {/* Bottom row: mode toggle + optional model + send (send never wraps off-screen) */}
+          <div className="flex items-center gap-2 min-w-0">
             <div
-              className="flex items-center rounded-full p-1 shrink-0"
+              className="flex items-center rounded-full p-1 shrink-0 min-w-0"
               style={{ background: "var(--input-bg)" }}
             >
               <button
                 type="button"
                 onClick={() => setMediaMode("image")}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all"
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
                 style={{
                   background: mediaMode === "image" ? "var(--card)" : "transparent",
                   color: mediaMode === "image" ? "var(--text)" : "var(--sub)",
                   boxShadow: mediaMode === "image" ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
                 }}
               >
-                <FaImage size={13} />
+                <FaImage size={12} />
                 Image
               </button>
               <button
                 type="button"
                 onClick={() => setMediaMode("video")}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all"
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap"
                 style={{
                   background: mediaMode === "video" ? "var(--card)" : "transparent",
                   color: mediaMode === "video" ? "var(--text)" : "var(--sub)",
                   boxShadow: mediaMode === "video" ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
                 }}
               >
-                <FaVideo size={13} />
+                <FaVideo size={12} />
                 Video
               </button>
             </div>
 
-            <div className="flex items-center gap-2 relative">
-              {/* Image-model picker — premium only. Free users get the
-                  default auto chain silently. Custom dropdown shows each
-                  provider's brand logo + description so users can pick
-                  by recognising the icon, not just the name. */}
+            <div className="flex items-center gap-1.5 sm:gap-2 ml-auto shrink-0 relative min-w-0">
               {mediaMode === "image" && isPremiumUser && (
                 <>
                   <button
@@ -672,15 +674,17 @@ export default function MediaStudioPage() {
                     aria-label="Image model"
                     aria-expanded={imageModelOpen}
                     aria-haspopup="listbox"
-                    className="flex items-center gap-1.5 text-xs rounded-full px-2.5 py-1.5 outline-none border-none shrink-0"
+                    className="flex items-center gap-1 text-xs rounded-full px-2 py-1.5 outline-none border-none shrink min-w-0 max-w-[72px] sm:max-w-[140px]"
                     style={{ background: "var(--input-bg)", color: "var(--text)" }}
                   >
                     <ProviderLogo
                       provider={selectedImageModelOption.provider}
                       modelId={selectedImageModelOption.value === "auto" ? "auto" : undefined}
-                      size={20}
+                      size={18}
                     />
-                    <span className="font-medium max-w-[120px] truncate">{selectedImageModelOption.label}</span>
+                    <span className="font-medium truncate">
+                      {selectedImageModelOption.label}
+                    </span>
                     <span style={{ opacity: 0.6, fontSize: 10 }} aria-hidden>▾</span>
                   </button>
                   {imageModelOpen && imageModelMenuStyle &&

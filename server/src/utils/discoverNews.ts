@@ -140,6 +140,184 @@ function categoryFromTag(tag: string): string {
   }
 }
 
+function categoryFromWorldNewsCategory(
+  apiCategory: string | undefined,
+  forceCategory?: string,
+  fallbackTag?: string
+): string {
+  if (forceCategory) return forceCategory;
+  const c = (apiCategory || '').toLowerCase();
+  const map: Record<string, string> = {
+    politics: 'Politics',
+    technology: 'Technology',
+    science: 'Science',
+    health: 'Health',
+    environment: 'Environment',
+    business: 'Finance',
+    sports: 'Sports',
+    entertainment: 'For You',
+    lifestyle: 'For You',
+    travel: 'For You',
+    culture: 'For You',
+    education: 'Science',
+    other: 'For You',
+  };
+  if (map[c]) return map[c];
+  return fallbackTag ? categoryFromTag(fallbackTag) : 'For You';
+}
+
+/** True for real http(s) publisher images — rejects SVG/data/Unsplash placeholders. */
+function isRealArticleImage(image: string | null | undefined): boolean {
+  if (!image || typeof image !== 'string') return false;
+  const trimmed = image.trim();
+  if (!trimmed) return false;
+  // Category gradient SVGs and any other data-URI placeholders
+  if (/^data:/i.test(trimmed)) return false;
+  if (/image\/svg/i.test(trimmed)) return false;
+  // Legacy Unsplash topical stock photos (not article photos)
+  if (/images\.unsplash\.com/i.test(trimmed)) return false;
+  if (/via\.placeholder\.com|placehold\.co|placeholder\.com|picsum\.photos/i.test(trimmed)) return false;
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    // Tiny / default logo-style paths that aren't article photos
+    if (/\/favicon|\/logo[-_.]|\/default[-_.]?(image|thumb|news)?\./i.test(u.pathname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function mapWorldNewsArticle(
+  article: {
+    id?: number;
+    title?: string;
+    text?: string;
+    summary?: string;
+    url?: string;
+    image?: string | null;
+    category?: string;
+  },
+  country: string,
+  idx: number,
+  opts?: { forceCategory?: string; forceTag?: string }
+): DiscoverItem | null {
+  const title = typeof article?.title === 'string' ? article.title.trim() : '';
+  const url = typeof article?.url === 'string' ? article.url.trim() : '';
+  if (!title || !url) return null;
+
+  // Drop stories without a real publisher image (no SVG category placeholders).
+  const image = typeof article.image === 'string' ? article.image.trim() : '';
+  if (!isRealArticleImage(image)) return null;
+
+  const rawDescription =
+    (typeof article.summary === 'string' && article.summary.trim()) ||
+    (typeof article.text === 'string' ? article.text.slice(0, 400) : '') ||
+    title;
+  const description = cleanDescription(rawDescription, title);
+  if (isLikelyJunkNewsItem(title, description, url)) return null;
+
+  const label = countryLabel(country);
+  const { tag: autoTag } = pickImageAndTag(title, title);
+  const tag = opts?.forceTag || autoTag;
+  const category = categoryFromWorldNewsCategory(article.category, opts?.forceCategory, tag);
+  let domain = '';
+  try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
+
+  return {
+    id: `news-${country.toLowerCase()}-${category}-${slugify(title) || article.id || idx}`,
+    title,
+    tag,
+    image,
+    alt: title,
+    description,
+    category,
+    nation: label,
+    nationCode: country,
+    ...(url ? { url, sourceDomain: domain } : {}),
+  } as DiscoverItem;
+}
+
+// ── World News API (primary source) ─────────────────────────────────────────
+async function fetchWorldNewsSearch(
+  country: string,
+  apiKey: string,
+  limit: number,
+  opts: { categories?: string; text?: string; forceCategory?: string; forceTag?: string }
+): Promise<DiscoverItem[]> {
+  const code = country.toLowerCase();
+  const params = new URLSearchParams({
+    'source-country': code,
+    language: 'en',
+    // World News API max per request is 100. Request the max so after
+    // filtering out no-image / SVG-placeholder articles we still hit 40–50.
+    number: String(Math.min(Math.max(limit, 50), 100)),
+    sort: 'publish-time',
+    'sort-direction': 'DESC',
+  });
+  const earliest = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  params.set('earliest-publish-date', earliest.toISOString().slice(0, 10));
+  if (opts.categories) params.set('categories', opts.categories);
+  if (opts.text) params.set('text', opts.text);
+  if (!opts.categories && !opts.text) params.set('text', 'news');
+
+  try {
+    const response = await fetch(`https://api.worldnewsapi.com/search-news?${params}`, {
+      headers: { 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) {
+      console.warn(`World News API search failed for ${country}: HTTP ${response.status}`);
+      return [];
+    }
+    const data: any = await response.json();
+    const articles: any[] = Array.isArray(data?.news) ? data.news : [];
+    return articles
+      .map((item, idx) => mapWorldNewsArticle(item, country, idx, opts))
+      .filter((x): x is DiscoverItem => x !== null)
+      .slice(0, limit);
+  } catch (err) {
+    console.warn(`World News API search error for ${country}:`, err);
+    return [];
+  }
+}
+
+async function fetchWorldNewsTop(
+  country: string,
+  apiKey: string,
+  limit: number
+): Promise<DiscoverItem[]> {
+  const params = new URLSearchParams({
+    'source-country': country.toLowerCase(),
+    language: 'en',
+  });
+  try {
+    const response = await fetch(`https://api.worldnewsapi.com/top-news?${params}`, {
+      headers: { 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      console.warn(`World News API top-news failed for ${country}: HTTP ${response.status}`);
+      return [];
+    }
+    const data: any = await response.json();
+    const clusters: any[] = Array.isArray(data?.top_news) ? data.top_news : [];
+    const articles: any[] = [];
+    for (const cluster of clusters) {
+      if (Array.isArray(cluster?.news)) articles.push(...cluster.news);
+    }
+    return articles
+      .map((item, idx) =>
+        mapWorldNewsArticle(item, country, idx, { forceCategory: 'For You', forceTag: 'News' })
+      )
+      .filter((x): x is DiscoverItem => x !== null)
+      .slice(0, limit);
+  } catch (err) {
+    console.warn(`World News API top-news error for ${country}:`, err);
+    return [];
+  }
+}
+
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
 }
@@ -150,13 +328,11 @@ function slugify(s: string): string {
 interface CacheEntry { items: DiscoverItem[]; ts: number; }
 const NEWS_L1 = new Map<string, CacheEntry>();
 const NEWS_L1_TTL_MS = 60 * 1000;
-// 6 hours — Discover articles get rotated 4× per day (effectively at 06:00,
-// 12:00, 18:00, 00:00 local). Previously 30 min, which was overkill for
-// news that doesn't shift that fast and let the manual refresh button (now
-// removed) hammer Exa/Gemini. The 6h cadence is the typical refresh window
-// users expect from a news feed; combined with the daily cycle-key roll
-// (06:00 local) the full SET of stories still turns over every morning.
-const NEWS_L2_TTL_SEC = 6 * 60 * 60;
+// World News API refresh cadence — refetch upstream every 3 hours (within the
+// user's 2–3h target). L2 Redis TTL + the 3-hour cycle key below both align
+// so stories rotate ~8× per day instead of the old 6h / daily-only model.
+export const NEWS_REFRESH_INTERVAL_HOURS = 3;
+const NEWS_L2_TTL_SEC = NEWS_REFRESH_INTERVAL_HOURS * 60 * 60;
 // Bump this whenever the news pipeline shape changes (new categories, new tag
 // → category mapping, new topic list) so stale Redis data from older versions
 // is dropped instead of served.
@@ -167,9 +343,14 @@ const NEWS_L2_TTL_SEC = 6 * 60 * 60;
 //         Politics / Psychology aren't starved when For You eats their
 //         articles first. Force rotates because the old v10 cache holds
 //         3-item Politics tabs we no longer want to serve.
-const NEWS_CACHE_VERSION = 'v11';
+//   v12 = World News API as primary news source (Exa/Gemini remain fallback).
+//   v13 = 3-hour World News API refresh cadence (was 6h).
+//   v14 = 50 articles/category + drop SVG placeholder images (real images only).
+//   v15 = keep previous Exa/Gemini pipeline AND World News; merge both; filter SVG.
+//   v16 = stricter real-image filter (no SVG/Unsplash/data URLs) + strip after enrichment.
+const NEWS_CACHE_VERSION = 'v16';
 
-// Refresh-cycle timezone per country. Cycle changes daily at 06:00 local time.
+// Refresh-cycle timezone per country. Cycle rotates every NEWS_REFRESH_INTERVAL_HOURS.
 const COUNTRY_TIMEZONES: Record<string, string> = {
   IN: 'Asia/Kolkata',
   US: 'America/New_York',
@@ -212,10 +393,10 @@ function newsRefreshCycle(countryCode: string): string {
   const code = countryCode.toUpperCase();
   const timeZone = COUNTRY_TIMEZONES[code] || 'Asia/Kolkata';
   const now = new Date();
+  const ymd = formatYmdInTz(now, timeZone);
   const localHour = localHourInTz(now, timeZone);
-  // Before 06:00 local time, keep using previous day's cycle.
-  const basis = localHour >= 6 ? now : new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  return formatYmdInTz(basis, timeZone);
+  const slot = Math.floor(localHour / NEWS_REFRESH_INTERVAL_HOURS);
+  return `${ymd}-h${slot}`;
 }
 
 const GENERIC_HEADLINE_RE =
@@ -574,7 +755,7 @@ async function fetchExaNews(
     const exaPayload: any = {
       query,
       type: 'auto',
-      numResults: Math.min(limit, 25),
+      numResults: Math.min(limit, 50),
       useAutoprompt: true,
       startPublishedDate: new Date(Date.now() - (strict ? 3 : 7) * 24 * 60 * 60 * 1000).toISOString(),
       contents: { text: { maxCharacters: 400 }, highlights: true },
@@ -605,7 +786,10 @@ async function fetchExaNews(
         const description = cleanDescription(rawDescription, title);
         if (isLikelyJunkNewsItem(title, description, url)) return null;
         // Classify from headline only — nav crumbs in scraped text must not mis-tag (e.g. "Cricket" → Sports).
-        const { image, tag: autoTag } = pickImageAndTag(title, title);
+        const { tag: autoTag } = pickImageAndTag(title, title);
+        const realImage = typeof item?.image === 'string' ? item.image.trim() : '';
+        // Skip SVG / missing images — Discover only shows stories with real photos.
+        if (!isRealArticleImage(realImage)) return null;
         // When a topic-specific fetch ("technology news") finds a story, trust the
         // topic over the keyword guess — the search itself already qualified it.
         const tag = forceTag || autoTag;
@@ -615,7 +799,7 @@ async function fetchExaNews(
           id: `news-${country.toLowerCase()}-${forceCategory || tag}-${slugify(title) || idx}`,
           title,
           tag,
-          image: typeof item?.image === 'string' && item.image ? item.image : image,
+          image: realImage,
           alt: title,
           description,
           category: forceCategory || categoryFromTag(tag),
@@ -718,7 +902,10 @@ Respond ONLY with a JSON array (no markdown, no code fences), each item:
         const description = cleanDescription(rawDescription, title);
         const url: string = typeof item?.url === 'string' ? item.url : '';
         if (!url || isLikelyJunkNewsItem(title, description, url)) return null;
-        const { image, tag: autoTag } = pickImageAndTag(
+        // Gemini rarely has real photos — skip SVG category placeholders entirely.
+        const itemImage = typeof (item as any)?.image === 'string' ? String((item as any).image).trim() : '';
+        if (!isRealArticleImage(itemImage)) return null;
+        const { tag: autoTag } = pickImageAndTag(
           forceTag ? `${title} ${item?.topic || ''}` : title,
           title
         );
@@ -728,7 +915,7 @@ Respond ONLY with a JSON array (no markdown, no code fences), each item:
           id: `news-${country.toLowerCase()}-${forceCategory || tag}-${slugify(title) || idx}`,
           title,
           tag,
-          image,
+          image: itemImage,
           alt: title,
           description: description.slice(0, 220),
           category: forceCategory || categoryFromTag(tag),
@@ -783,116 +970,149 @@ export async function getLiveNewsForCountry(
     NEWS_L1.delete(l1Key);
   }
 
-  // Live fetch (Exa first, Gemini fallback). To keep EVERY category tab populated
-  // (Technology, Science, Health, Finance, Environment, Sports), we fan out into
-  // topic-specific searches in parallel instead of one generic "top headlines"
-  // query — that query historically returned mostly politics.
+  // Live fetch — keep the previous Exa (+ Gemini) pipeline AND World News API.
+  // Both run; results are merged, deduped, and SVG placeholder images are dropped.
+  const worldNewsKey = getApiKey('worldnews');
   const exaKey = getApiKey('exa');
   const geminiKey = getApiKey('gemini');
   let items: DiscoverItem[] = [];
-  if (exaKey) {
-    // Every category gets ≥12 items so no tab ever feels empty. Psychology
-    // included via "mental health and psychology" since pure "psychology news"
-    // is too sparse.
-    // Target 10–15 stories per category. We request 15 from Exa so a couple
-    // can be deduped without dropping the visible count below 10.
-    const PER_CAT_TARGET = 15;
-    const topics: Array<{ q: string; cat: string; tag: string; n: number }> = [
-      { q: '',                                                  cat: 'For You',     tag: 'News',        n: PER_CAT_TARGET },
-      { q: 'politics government parliament election minister',  cat: 'Politics',    tag: 'Politics',    n: PER_CAT_TARGET },
-      { q: 'technology AI startup software',                    cat: 'Technology',  tag: 'Tech',        n: PER_CAT_TARGET },
-      { q: 'science research discovery space',                  cat: 'Science',     tag: 'Science',     n: PER_CAT_TARGET },
-      { q: 'mental health psychology wellbeing therapy',        cat: 'Psychology',  tag: 'Health',      n: PER_CAT_TARGET },
-      { q: 'health medicine hospital vaccine',                  cat: 'Health',      tag: 'Health',      n: PER_CAT_TARGET },
-      { q: 'environment climate pollution weather',             cat: 'Environment', tag: 'Environment', n: PER_CAT_TARGET },
-      { q: 'business finance stock market economy',             cat: 'Finance',     tag: 'Finance',     n: PER_CAT_TARGET },
-      { q: 'sports cricket football',                           cat: 'Sports',      tag: 'Sports',      n: PER_CAT_TARGET },
-    ];
-    // Per-category resolution order (each topic runs in parallel):
-    //   1. Exa (fast, real URLs + images)
-    //   2. Gemini grounding fallback (when Exa rate-limits THIS topic)
-    //   3. Per-category last-known-good (in-memory)
-    //   4. Per-category last-known-good (Redis, 7-day persistence)
-    //   5. [] (only if nothing ever worked for this category)
-    const settled = await Promise.allSettled(
+
+  const PER_CAT_TARGET = 50;
+  const PER_CAT_CAP = 50;
+  const MIN_PER_CAT = 40;
+  const topics: Array<{
+    q: string;
+    cat: string;
+    tag: string;
+    n: number;
+    categories?: string;
+    text?: string;
+  }> = [
+    { q: '', cat: 'For You', tag: 'News', n: PER_CAT_TARGET },
+    { q: 'politics government parliament election minister', cat: 'Politics', tag: 'Politics', n: PER_CAT_TARGET, categories: 'politics' },
+    { q: 'technology AI startup software', cat: 'Technology', tag: 'Tech', n: PER_CAT_TARGET, categories: 'technology' },
+    { q: 'science research discovery space', cat: 'Science', tag: 'Science', n: PER_CAT_TARGET, categories: 'science' },
+    { q: 'mental health psychology wellbeing therapy', cat: 'Psychology', tag: 'Health', n: PER_CAT_TARGET, text: 'psychology mental health wellbeing therapy' },
+    { q: 'health medicine hospital vaccine', cat: 'Health', tag: 'Health', n: PER_CAT_TARGET, categories: 'health' },
+    { q: 'environment climate pollution weather', cat: 'Environment', tag: 'Environment', n: PER_CAT_TARGET, categories: 'environment' },
+    { q: 'business finance stock market economy', cat: 'Finance', tag: 'Finance', n: PER_CAT_TARGET, categories: 'business' },
+    { q: 'sports cricket football', cat: 'Sports', tag: 'Sports', n: PER_CAT_TARGET, categories: 'sports' },
+  ];
+
+  const categoryBuckets: DiscoverItem[][] = [];
+
+  // ── 1) Previous pipeline: Exa (primary) → Gemini (fallback) — parallel ──
+  if (exaKey || geminiKey) {
+    const exaSettled = await Promise.allSettled(
       topics.map(async (t) => {
         const lgKey = `${code}:${t.cat}`;
+        let fresh: DiscoverItem[] = [];
 
-        // Step 1: try Exa STRICT — news category + country domain allowlist.
-        let fresh = await fetchExaNews(
-          code, exaKey, t.n,
-          t.q || undefined,
-          t.q ? t.cat : undefined,
-          t.q ? t.tag : undefined,
-        );
-
-        // Step 1b: if strict returned 0, widen — drop `category: 'news'` and
-        // expand the time window. Common for Politics where some publishers
-        // tag stories as "blog"/"opinion" instead of "news".
-        if (fresh.length === 0) {
+        if (exaKey) {
           fresh = await fetchExaNews(
             code, exaKey, t.n,
             t.q || undefined,
             t.q ? t.cat : undefined,
             t.q ? t.tag : undefined,
-            { strict: false }
           );
-          if (fresh.length > 0) {
-            console.log(`🔓 ${code} ${t.cat}: widened Exa search (no news category) → ${fresh.length} items`);
+          if (fresh.length === 0) {
+            fresh = await fetchExaNews(
+              code, exaKey, t.n,
+              t.q || undefined,
+              t.q ? t.cat : undefined,
+              t.q ? t.tag : undefined,
+              { strict: false }
+            );
+            if (fresh.length > 0) {
+              console.log(`🔓 ${code} ${t.cat}: widened Exa search → ${fresh.length} items`);
+            }
           }
         }
 
-        // Step 2: Exa still empty → try Gemini for THIS topic.
         if (fresh.length === 0 && geminiKey) {
-          fresh = await fetchGeminiNews(code, geminiKey, t.n, t.q || undefined, t.q ? t.cat : undefined, t.q ? t.tag : undefined);
+          fresh = await fetchGeminiNews(
+            code, geminiKey, t.n,
+            t.q || undefined,
+            t.q ? t.cat : undefined,
+            t.q ? t.tag : undefined,
+          );
           if (fresh.length > 0) {
             console.log(`✅ ${code} ${t.cat}: Exa empty, Gemini fallback succeeded (${fresh.length} items)`);
           }
         }
 
-        // Success → persist as per-category last-known-good and return.
+        // Drop SVG / missing images — Discover cards need real photos.
+        fresh = fresh
+          .filter((it) => isRealArticleImage(it.image))
+          .map((it) => ({ ...it, category: t.cat }));
+
         if (fresh.length > 0) {
           NEWS_CATEGORY_LAST_GOOD.set(lgKey, fresh);
           void redisSetJSON(`news:lastgood-cat:${lgKey}`, fresh, LAST_GOOD_REDIS_TTL_SEC);
           return fresh;
         }
 
-        // Step 3 + 4: both providers failed → fall back to last good (memory → Redis).
-        const memGood = NEWS_CATEGORY_LAST_GOOD.get(lgKey);
-        if (memGood && memGood.length) {
-          console.warn(`♻️ ${code} ${t.cat}: Exa+Gemini both failed — using last-known-good (memory).`);
-          return memGood;
-        }
+        const memGood = (NEWS_CATEGORY_LAST_GOOD.get(lgKey) || []).filter((it) =>
+          isRealArticleImage(it.image)
+        );
+        if (memGood.length) return memGood;
         const redisGood = await redisGetJSON<DiscoverItem[]>(`news:lastgood-cat:${lgKey}`);
-        if (redisGood && redisGood.length) {
-          console.warn(`♻️ ${code} ${t.cat}: Exa+Gemini both failed — using last-known-good (Redis).`);
-          NEWS_CATEGORY_LAST_GOOD.set(lgKey, redisGood);
-          return redisGood;
+        const filtered = (redisGood || []).filter((it) => isRealArticleImage(it.image));
+        if (filtered.length) {
+          NEWS_CATEGORY_LAST_GOOD.set(lgKey, filtered);
+          return filtered;
         }
         return [];
       })
     );
-    // Cap each category at PER_CAT_CAP (15) so the UI doesn't drown in 25+
-    // items per tab. With dedup we still typically end up with 10-15 per tab.
-    const PER_CAT_CAP = 15;
+    for (const r of exaSettled) {
+      if (r.status === 'fulfilled' && r.value.length) categoryBuckets.push(r.value);
+    }
+  }
+
+  // ── 2) World News API — sequential (rate-limit friendly), merged in ──
+  if (worldNewsKey) {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    for (const t of topics) {
+      let fresh = await fetchWorldNewsSearch(code, worldNewsKey, 100, {
+        categories: t.categories,
+        text: t.text || (t.q || (t.cat === 'For You' ? 'news' : undefined)),
+        forceCategory: t.cat,
+        forceTag: t.tag,
+      });
+      fresh = fresh.filter((it) => isRealArticleImage(it.image)).slice(0, t.n);
+      if (fresh.length > 0) {
+        const lgKey = `${code}:${t.cat}`;
+        const existing = NEWS_CATEGORY_LAST_GOOD.get(lgKey) || [];
+        const merged = [...existing];
+        const seen = new Set(existing.map((i) => i.url).filter(Boolean));
+        for (const item of fresh) {
+          if (item.url && seen.has(item.url)) continue;
+          if (item.url) seen.add(item.url);
+          merged.push(item);
+        }
+        NEWS_CATEGORY_LAST_GOOD.set(lgKey, merged);
+        void redisSetJSON(`news:lastgood-cat:${lgKey}`, merged, LAST_GOOD_REDIS_TTL_SEC);
+        categoryBuckets.push(fresh);
+      }
+      await sleep(350);
+    }
+  }
+
+  // ── 3) Merge + dedupe + real-image filter + per-category caps ──
+  if (categoryBuckets.length > 0) {
     const collected: DiscoverItem[] = [];
-    // Per-category dedup sets. URL dedup used to be GLOBAL across categories,
-    // which meant "For You" (which runs first and pulls from the generic
-    // headlines query) was eating most political/tech/etc. items — Politics
-    // tab would then find those URLs already claimed and silently drop them,
-    // so users saw 3 items where the topic search had returned 15. Scoping
-    // dedup per-category lets the same article appear in BOTH For You AND
-    // its topic tab, which is what users expect.
     const seenUrlsByCat = new Map<string, Set<string>>();
     const seenNormUrlsByCat = new Map<string, Set<string>>();
     const seenArticleIdsByCat = new Map<string, Set<string>>();
-    const seenIds = new Set<string>(); // React key uniqueness stays global
+    const seenIds = new Set<string>();
     const seenTitlesByCat = new Map<string, DiscoverItem[]>();
     const perCatCount = new Map<string, number>();
     let dupSuffix = 0;
-    for (const r of settled) {
-      if (r.status !== 'fulfilled') continue;
-      for (const it of r.value) {
+
+    for (const bucket of categoryBuckets) {
+      for (const it of bucket) {
+        if (!isRealArticleImage(it.image)) continue;
         const cat = (it.category || 'For You').toString();
         if ((perCatCount.get(cat) || 0) >= PER_CAT_CAP) continue;
         const urlKey = (it.url || '').trim();
@@ -909,8 +1129,6 @@ export async function getLiveNewsForCountry(
         const catTitles = seenTitlesByCat.get(cat) || [];
         if (catTitles.some((prev) => isSameStory(it.title, prev.title))) continue;
 
-        // Same slugified title across two different URLs would collide as a
-        // React key — make `id` unique so the rendered list never warns.
         if (seenIds.has(it.id)) {
           it.id = `${it.id}-${++dupSuffix}`;
         }
@@ -928,24 +1146,15 @@ export async function getLiveNewsForCountry(
       }
     }
 
-    // Per-category top-up: if a topic search returned thin results (Exa
-    // sometimes only finds 0-3 items for niche queries like Psychology),
-    // borrow from a related category so the tab isn't empty. The MIN
-    // threshold is intentionally lower than PER_CAT_CAP so we top up only
-    // when a category is genuinely starved, not just below the visual ideal.
-    const MIN_PER_CAT = 8;
-    // Each (target, donor) pair: when `target` is below MIN_PER_CAT, copy
-    // up to N items from `donor` whose tag matches that donor, rewriting
-    // their `category` field so they show under `target` too.
     const TOP_UP_DONORS: Array<{ target: string; donors: string[] }> = [
-      { target: 'Psychology',  donors: ['Health', 'For You'] },
-      { target: 'Politics',    donors: ['For You'] },
-      { target: 'Technology',  donors: ['For You'] },
-      { target: 'Science',     donors: ['For You'] },
-      { target: 'Health',      donors: ['For You'] },
+      { target: 'Psychology', donors: ['Health', 'For You'] },
+      { target: 'Politics', donors: ['For You'] },
+      { target: 'Technology', donors: ['For You'] },
+      { target: 'Science', donors: ['For You'] },
+      { target: 'Health', donors: ['For You'] },
       { target: 'Environment', donors: ['For You'] },
-      { target: 'Finance',     donors: ['For You'] },
-      { target: 'Sports',      donors: ['For You'] },
+      { target: 'Finance', donors: ['For You'] },
+      { target: 'Sports', donors: ['For You'] },
     ];
     for (const { target, donors } of TOP_UP_DONORS) {
       const have = perCatCount.get(target) || 0;
@@ -953,11 +1162,9 @@ export async function getLiveNewsForCountry(
       for (const donor of donors) {
         const need = MIN_PER_CAT - (perCatCount.get(target) || 0);
         if (need <= 0) break;
-        // Pull from the already-collected items: copies of donor items get
-        // a fresh category + id (so React keys stay unique). We don't move
-        // the donor item — we duplicate it into the target tab. Users see
-        // the same story in both For You + Politics, which is correct UX.
-        const donorItems = collected.filter((it) => (it.category || 'For You') === donor);
+        const donorItems = collected.filter(
+          (it) => (it.category || 'For You') === donor && isRealArticleImage(it.image)
+        );
         let added = 0;
         for (const di of donorItems) {
           if (added >= need) break;
@@ -975,37 +1182,48 @@ export async function getLiveNewsForCountry(
           added++;
         }
         if (added > 0) {
-          console.log(`📥 ${code} ${target}: topped up with ${added} items from ${donor} (had ${have}, target ${MIN_PER_CAT})`);
+          console.log(`📥 ${code} ${target}: topped up with ${added} items from ${donor}`);
         }
       }
     }
 
     items = collected.filter(
-      (it) => !isLikelyJunkNewsItem(it.title, it.description || '', it.url || '')
+      (it) =>
+        isRealArticleImage(it.image) &&
+        !isLikelyJunkNewsItem(it.title, it.description || '', it.url || '')
     );
   }
-  if (items.length === 0 && geminiKey) items = await fetchGeminiNews(code, geminiKey, limit);
+
+  // Last resort: Gemini-only (usually SVG images → filtered out if no real photo).
+  if (items.length === 0 && geminiKey) {
+    items = (await fetchGeminiNews(code, geminiKey, limit)).filter((it) =>
+      isRealArticleImage(it.image)
+    );
+  }
+
+  // Never serve placeholder SVG cards from cache either.
+  items = items.filter((it) => isRealArticleImage(it.image));
 
   if (items.length > 0) {
     NEWS_L1.set(l1Key, { items, ts: Date.now() });
     void redisSetJSON(l2Key, items, NEWS_L2_TTL_SEC);
-    // Persist as "last known good" — survives the 30-min L2 expiry.
     NEWS_LAST_GOOD.set(code, items);
     void redisSetJSON(`news:lastgood:${NEWS_CACHE_VERSION}:${code}`, items, LAST_GOOD_REDIS_TTL_SEC);
     return items;
   }
 
   // Live fetch returned 0. Try the "last known good" backup (memory → Redis).
-  const memGood = NEWS_LAST_GOOD.get(code);
-  if (memGood && memGood.length) {
+  const memGood = (NEWS_LAST_GOOD.get(code) || []).filter((it) => isRealArticleImage(it.image));
+  if (memGood.length) {
     console.warn(`⚠️ live news ${code} returned 0 — serving last-known-good (memory).`);
     return memGood;
   }
   const redisGood = await redisGetJSON<DiscoverItem[]>(`news:lastgood:${NEWS_CACHE_VERSION}:${code}`);
-  if (redisGood && redisGood.length) {
+  const redisFiltered = (redisGood || []).filter((it) => isRealArticleImage(it.image));
+  if (redisFiltered.length) {
     console.warn(`⚠️ live news ${code} returned 0 — serving last-known-good (Redis).`);
-    NEWS_LAST_GOOD.set(code, redisGood);
-    return redisGood;
+    NEWS_LAST_GOOD.set(code, redisFiltered);
+    return redisFiltered;
   }
 
   return [];
@@ -1124,7 +1342,7 @@ async function enrichDiscoverImages(items: DiscoverItem[]): Promise<void> {
   // as "fallback only — try harder to find the real article image".
   // Real article images live on publisher CDNs (cdn.ndtv.com, hindustantimes.com, etc.).
   const isFallbackImage = (url: string) =>
-    url.startsWith('data:image/') || /images\.unsplash\.com/i.test(url);
+    !isRealArticleImage(url) || url.startsWith('data:image/') || /images\.unsplash\.com/i.test(url);
   const queue: DiscoverItem[] = items.filter(
     (it) => (it as any).url && (!it.image || isFallbackImage(it.image)),
   );
@@ -1136,7 +1354,9 @@ async function enrichDiscoverImages(items: DiscoverItem[]): Promise<void> {
       const it = queue[i];
       const articleUrl = (it as any).url as string;
       const resolved = await resolveArticleImage(articleUrl);
-      if (resolved) it.image = resolved; // mutate in place; same object lives in the parent items[] array
+      if (resolved && isRealArticleImage(resolved)) {
+        it.image = resolved;
+      }
     }
   };
 
@@ -1152,19 +1372,26 @@ export async function getLiveNews(countries: string[], perCountry = 8, forceRefr
   for (const s of settled) {
     if (s.status === 'fulfilled') out.push(...s.value);
   }
+  // Drop any leftover placeholder images before responding.
+  const withRealImages = out.filter((it) => isRealArticleImage(it.image));
+
   // Best-effort image enrichment — runs asynchronously in the background so it
-  // never blocks the response. Once finished, L1 and L2 caches are updated.
-  if (out.length > 0) {
-    enrichDiscoverImages(out).then(async () => {
+  // never blocks the response. Once finished, L1 and L2 caches are updated
+  // with ONLY items that still have real images.
+  if (withRealImages.length > 0) {
+    enrichDiscoverImages(withRealImages).then(async () => {
       console.log('🖼️ Background image enrichment completed. Writing to Redis...');
       for (const country of countries) {
         const code = country.toUpperCase();
         const cycle = newsRefreshCycle(code);
         const l1Key = `${code}:${cycle}`;
         const l2Key = `news:${NEWS_CACHE_VERSION}:${code}:${cycle}`;
-        
-        // Filter out items belonging to this country
-        const countryItems = out.filter(it => it.nationCode === code || it.id.startsWith(`news-${code.toLowerCase()}`));
+
+        const countryItems = withRealImages.filter(
+          (it) =>
+            isRealArticleImage(it.image) &&
+            (it.nationCode === code || it.id.startsWith(`news-${code.toLowerCase()}`))
+        );
         if (countryItems.length > 0) {
           NEWS_L1.set(l1Key, { items: countryItems, ts: Date.now() });
           await redisSetJSON(l2Key, countryItems, NEWS_L2_TTL_SEC);
@@ -1176,5 +1403,5 @@ export async function getLiveNews(countries: string[], perCountry = 8, forceRefr
       console.warn('Background discover image enrichment failed:', e instanceof Error ? e.message : e);
     });
   }
-  return out;
+  return withRealImages;
 }

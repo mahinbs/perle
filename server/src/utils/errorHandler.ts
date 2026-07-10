@@ -29,7 +29,7 @@ export function errorHandler(
   if (err instanceof multer.MulterError) {
     const message =
       err.code === 'LIMIT_UNEXPECTED_FILE'
-        ? `Unexpected upload field "${err.field}". Use "files" for attachments (legacy: "image" or "images").`
+        ? `Unexpected upload field "${err.field}". Use "files" for attachments (legacy: "image", "images", "referenceImage", or "referenceImages").`
         : err.message;
     res.status(400).json({ error: message, statusCode: 400 });
     return;
