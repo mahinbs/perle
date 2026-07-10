@@ -15,6 +15,7 @@ import { UsageLimitModal } from "../components/UsageLimitModal";
 import { downloadMedia } from "../utils/downloadMedia";
 import { generateImageApi, generateVideoApi, type ImageModelChoice } from "../utils/mediaApi";
 import { getUserData } from "../utils/auth";
+import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import type { UploadedFile } from "../types";
 import { ProviderLogo } from "../components/ProviderLogos";
 import {
@@ -350,14 +351,15 @@ export default function MediaStudioPage() {
         }
       }
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Generation failed";
+      const raw = e instanceof Error ? e.message : "Generation failed";
+      const message = getUserFriendlyErrorMessage(raw);
       setModalView(null);
       setConversation((prev) =>
         prev.map((entry) =>
           entry.id === entryId ? { ...entry, status: "error", error: message } : entry
         )
       );
-      if (message.toLowerCase().includes("pro") || message.toLowerCase().includes("subscription")) {
+      if (raw.toLowerCase().includes("pro") || raw.toLowerCase().includes("subscription")) {
         setModalView("upgrade");
       } else {
         showToast({ message, type: "error", duration: 5000 });
@@ -818,7 +820,7 @@ export default function MediaStudioPage() {
         view={modalView}
         mediaType={mediaMode}
         prompt={activePrompt}
-        previewUrl={activeSourcePreviews[0] || null}
+        previewUrls={activeSourcePreviews}
         resultUrl={modalResultUrl}
         onClose={() => setModalView(null)}
         onLogin={() => navigateTo("/profile", { mode: "login" })}

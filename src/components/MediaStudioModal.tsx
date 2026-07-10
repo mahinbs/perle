@@ -11,7 +11,10 @@ type MediaStudioModalProps = {
   view: MediaStudioModalView | null;
   mediaType: "image" | "video";
   prompt?: string;
+  /** @deprecated Prefer previewUrls — kept for single-image callers */
   previewUrl?: string | null;
+  /** All uploaded reference images shown while generating */
+  previewUrls?: string[] | null;
   resultUrl?: string | null;
   onClose: () => void;
   onLogin: () => void;
@@ -24,6 +27,7 @@ export function MediaStudioModal({
   mediaType,
   prompt,
   previewUrl,
+  previewUrls,
   resultUrl,
   onClose,
   onLogin,
@@ -33,6 +37,13 @@ export function MediaStudioModal({
   if (!view) return null;
 
   const label = mediaType === "image" ? "Image" : "Video";
+  const sourcePreviews = (
+    previewUrls && previewUrls.length > 0
+      ? previewUrls
+      : previewUrl
+        ? [previewUrl]
+        : []
+  ).filter(Boolean);
 
   return createPortal(
     <>
@@ -118,12 +129,31 @@ export function MediaStudioModal({
                 {prompt}
               </div>
             ) : null}
-            {previewUrl && mediaType === "image" ? (
-              <img
-                src={previewUrl}
-                alt="Source"
-                className="w-full max-h-36 object-contain rounded-lg border border-[var(--border)] mb-4"
-              />
+            {sourcePreviews.length > 0 && mediaType === "image" ? (
+              <div
+                className="mb-4 grid gap-2"
+                style={{
+                  gridTemplateColumns:
+                    sourcePreviews.length === 1
+                      ? "1fr"
+                      : sourcePreviews.length === 2
+                        ? "repeat(2, minmax(0, 1fr))"
+                        : "repeat(auto-fill, minmax(72px, 1fr))",
+                }}
+              >
+                {sourcePreviews.map((src, i) => (
+                  <img
+                    key={`${src.slice(0, 48)}-${i}`}
+                    src={src}
+                    alt={`Reference ${i + 1}`}
+                    className={
+                      sourcePreviews.length === 1
+                        ? "w-full max-h-36 object-contain rounded-lg border border-[var(--border)]"
+                        : "w-full aspect-square object-cover rounded-lg border border-[var(--border)]"
+                    }
+                  />
+                ))}
+              </div>
             ) : null}
             <div className="flex items-center justify-center gap-3 py-6">
               <FaSpinner className="animate-spin text-[var(--accent)]" size={22} />

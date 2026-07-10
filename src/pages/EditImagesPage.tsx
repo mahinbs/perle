@@ -4,6 +4,7 @@ import { FaImage, FaSpinner, FaTimes } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
 import { generateImageApi } from "../utils/mediaApi";
+import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import {
   hasReachedLifetimeMediaLimit,
   incrementLifetimeMediaCount,
@@ -79,7 +80,9 @@ export default function EditImagesPage() {
       }
       showToast({ message: "Image edited!", type: "success", duration: 3000 });
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Image edit failed";
+      const message = getUserFriendlyErrorMessage(
+        e instanceof Error ? e.message : "Image edit failed"
+      );
       setModalView(null);
       showToast({ message, type: "error", duration: 4000 });
     } finally {

@@ -180,16 +180,28 @@ export function formatDateTimeIST(date: Date): string {
  * Maps technical errors (e.g. Failed to fetch or rate limits) into clear, friendly error messages.
  */
 export function getUserFriendlyErrorMessage(message: string): string {
-  if (!message) return "Failed to get a response from AI. Please try again.";
+  if (!message) return "Something went wrong. Please try again.";
   const msg = message.toLowerCase();
-  
-  if (msg.includes("failed to fetch") || msg.includes("load failed") || msg.includes("network error") || !navigator.onLine) {
-    return "We are unable to reach the model right now. This could be due to a temporary network issue or internet connectivity. Please check your connection and try again in a few moments.";
+
+  if (
+    msg.includes("failed to fetch") ||
+    msg.includes("load failed") ||
+    msg.includes("network error") ||
+    msg.includes("networkerror") ||
+    msg.includes("fetch failed") ||
+    msg.includes("timeout") ||
+    msg.includes("timed out") ||
+    msg.includes("abort") ||
+    msg.includes("econnreset") ||
+    msg.includes("econnrefused") ||
+    (typeof navigator !== "undefined" && !navigator.onLine)
+  ) {
+    return "Looks like a slow or unstable internet connection. Please check your connection and speed, then try again.";
   }
-  
+
   if (msg.includes("rate limit") || msg.includes("too many requests") || msg.includes("429")) {
     return "The AI model is currently receiving too many requests. Please wait a moment and try again.";
   }
-  
+
   return message;
 }

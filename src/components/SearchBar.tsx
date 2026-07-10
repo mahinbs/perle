@@ -9,6 +9,7 @@ import {
   shouldEnforceUsageLimits,
 } from "../utils/queryLimit";
 import { searchAPI } from "../utils/answerEngine";
+import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import { speakAnswerWithVoicePlan, stopVoiceSpeechOutput } from "../utils/voiceSpeechOutput";
 import { Capacitor } from "@capacitor/core";
 import {
@@ -1041,18 +1042,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       }
     } catch (error: any) {
       console.error("Media generation error:", error);
-      let errorMessage = "Failed to generate media. Please try again.";
-
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
-      }
+      const raw =
+        (error?.message as string) ||
+        (typeof error === "string" ? error : "") ||
+        "Failed to generate media. Please try again.";
+      const errorMessage = getUserFriendlyErrorMessage(raw);
 
       // Handle specific error cases
       if (
-        errorMessage.includes("limit reached") ||
-        errorMessage.includes("Daily")
+        raw.includes("limit reached") ||
+        raw.includes("Daily")
       ) {
         showToast({
           message: errorMessage,
@@ -1060,9 +1059,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           duration: 5000,
         });
       } else if (
-        errorMessage.includes("requires") ||
-        errorMessage.includes("subscription") ||
-        errorMessage.includes("tier")
+        raw.includes("requires") ||
+        raw.includes("subscription") ||
+        raw.includes("tier")
       ) {
         showToast({
           message: errorMessage,

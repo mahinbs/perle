@@ -143,6 +143,10 @@ export interface DiscoverItem {
   /** Live-news items carry the original article URL + source domain. */
   url?: string;
   sourceDomain?: string;
+  /** ISO publish time from upstream when available */
+  publishedAt?: string;
+  /** Epoch ms when we ingested this item into cache */
+  fetchedAt?: number;
 }
 
 export interface UserProfile {

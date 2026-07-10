@@ -120,31 +120,35 @@ export function filterByDiscoverCategory(
   // Only real news items (those carry `nation`).
   const newsOnly = items.filter((i) => !!i.nation);
   if (category === 'For You') {
-    // "For You" = user's own region headlines only, mixed across topics.
+    // Prefer user's region, then worldwide, then everything — mixed across topics.
     const userCode = getUserNationCode();
     const mine = newsOnly.filter((i) => i.nationCode === userCode);
-    const pool = mine.length > 0 ? mine : newsOnly;
+    const world = newsOnly.filter((i) => i.nationCode === 'WW');
+    const pool =
+      mine.length > 0
+        ? [...mine, ...world]
+        : world.length > 0
+          ? world
+          : newsOnly;
     return buildForYouMix(pool);
   }
-  // Category tabs: require both the stored category AND a relevance keyword hit
-  // so off-topic top-ups / mislabels never show in Politics, Tech, etc.
-  const relevance: Record<string, RegExp> = {
-    Politics: /\b(election|parliament|congress|minister|government|govt|president|prime minister|senate|cabinet|legislation|ballot|campaign|politic|bjp|tmc|aap|mla|\bmp\b|\bcm\b|supreme court|high court|opposition|vote|protest)\b/i,
-    Technology: /\b(tech|technology|software|startup|ai\b|artificial intelligence|chip|semiconductor|app\b|gadget|cyber|robot|smartphone|iphone|android|openai|nvidia)\b/i,
-    Science: /\b(science|scientist|research|discovery|space|nasa|isro|physics|biology|chemistry|genome|telescope|mars|moon)\b/i,
-    Psychology: /\b(psycholog|mental health|wellbeing|well-being|therapy|therapist|counseling|mindfulness|depression|anxiety|trauma|stress|burnout)\b/i,
-    Health: /\b(health|hospital|vaccine|medical|doctor|disease|patient|pharma|treatment|clinic|covid|virus|medicine)\b/i,
-    Environment: /\b(climate|environment|pollution|carbon|wildlife|flood|earthquake|renewable|emissions|biodiversity|wildfire)\b/i,
-    Finance: /\b(stock|market|economy|inflation|gdp|finance|investor|ipo|earnings|rupee|dollar|sensex|nifty|bank|tariff|revenue)\b/i,
-    Sports: /\b(sport|cricket|football|soccer|tennis|olympic|nba|fifa|ipl|match|tournament|championship|athlete)\b/i,
-  };
-  const re = relevance[category];
-  return newsOnly.filter((i) => {
-    if (mapDiscoverCategory(i) !== category) return false;
-    if (!re) return true;
-    const text = `${i.title} ${i.description || ''}`;
-    return re.test(text);
-  });
+  // Trust server-assigned category; dedupe URL + near-identical titles
+  // (same story often arrives from local + worldwide sources).
+  const seenUrls = new Set<string>();
+  const seenTitles: string[] = [];
+  const out: DiscoverItem[] = [];
+  const sorted = newsOnly
+    .filter((i) => mapDiscoverCategory(i) === category)
+    .sort((a, b) => (a.nationCode === 'WW' ? 1 : 0) - (b.nationCode === 'WW' ? 1 : 0));
+  for (const i of sorted) {
+    const urlKey = normalizeDiscoverUrl(i.url);
+    if (urlKey && seenUrls.has(urlKey)) continue;
+    if (seenTitles.some((t) => isSameDiscoverStory(i.title, t))) continue;
+    if (urlKey) seenUrls.add(urlKey);
+    seenTitles.push(i.title);
+    out.push(i);
+  }
+  return out;
 }
 
 // Map an IANA timezone to an ISO 3166-1 alpha-2 country code.
@@ -275,10 +279,11 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
     (i) => (i.nation || i.category === 'For You') && i.nationCode
   );
 
-  // "For You" = user's region headlines only. Fall back to all regions
-  // only if nothing matches (so the tab is never empty).
   const mine = newsOnly.filter((i) => i.nationCode === userCode);
-  return mine.length > 0 ? mine : newsOnly;
+  const world = newsOnly.filter((i) => i.nationCode === 'WW');
+  if (mine.length > 0) return [...mine, ...world];
+  if (world.length > 0) return world;
+  return newsOnly;
 }
 
 // -------------------------------------------------------------------
@@ -295,7 +300,7 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
 //      read is < 1ms. Visible difference on tab switch / back-navigation.
 //   2. Lets the page render BEFORE the network call returns, so Discover
 //      is never a blank "loading…" screen for returning users.
-const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v10';
+const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v15';
 const FRONTEND_NEWS_TTL_MS = 3 * 60 * 60 * 1000; // 3h — matches NEWS_L2_TTL_SEC
 
 if (typeof localStorage !== 'undefined') {
@@ -311,6 +316,12 @@ if (typeof localStorage !== 'undefined') {
     'syntraiq-live-news-cache-v6',
     'syntraiq-live-news-cache-v7',
     'syntraiq-live-news-cache-v8',
+    'syntraiq-live-news-cache-v9',
+    'syntraiq-live-news-cache-v10',
+    'syntraiq-live-news-cache-v11',
+    'syntraiq-live-news-cache-v12',
+    'syntraiq-live-news-cache-v13',
+    'syntraiq-live-news-cache-v14',
   ]) {
     try { localStorage.removeItem(oldKey); } catch { /* ignore */ }
   }

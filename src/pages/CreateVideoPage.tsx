@@ -4,6 +4,7 @@ import { FaVideo, FaSpinner } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
 import { generateVideoApi } from "../utils/mediaApi";
+import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import {
   hasReachedLifetimeMediaLimit,
   incrementLifetimeMediaCount,
@@ -63,9 +64,10 @@ export default function CreateVideoPage() {
       }
       showToast({ message: "Video generated!", type: "success", duration: 3000 });
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Video generation failed";
+      const raw = e instanceof Error ? e.message : "Video generation failed";
+      const message = getUserFriendlyErrorMessage(raw);
       setModalView(null);
-      if (message.toLowerCase().includes("pro") || message.toLowerCase().includes("subscription")) {
+      if (raw.toLowerCase().includes("pro") || raw.toLowerCase().includes("subscription")) {
         setUsageLimitModal("media");
       } else {
         showToast({ message, type: "error", duration: 5000 });
