@@ -472,6 +472,46 @@ body {
   width: 100%;
 }
 
+/* Keep chat input action row fully visible on narrow phones
+   (pencil + mic + voice + send must not clip). */
+.search-toolbar-row {
+  box-sizing: border-box;
+}
+
+.search-toolbar-actions {
+  flex-shrink: 0;
+}
+
+.search-toolbar-left {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .search-toolbar-row {
+    gap: 6px !important;
+  }
+
+  .search-toolbar-actions {
+    gap: 4px !important;
+  }
+
+  .search-toolbar-left {
+    gap: 4px !important;
+    max-width: min(46%, 160px);
+  }
+
+  .search-toolbar-left .btn-ghost {
+    max-width: 100%;
+  }
+
+  .search-toolbar-left .btn-ghost span.font-medium {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 72px;
+  }
+}
+
 .search-input-shell textarea::-webkit-scrollbar,
 .search-input-shell textarea::-webkit-scrollbar-thumb,
 .search-input-shell textarea::-webkit-scrollbar-track {

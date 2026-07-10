@@ -711,7 +711,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
       fontSize: "var(--font-sm)",
       iconSize: 6,
       gap: 4,
-      minWidth: 70,
+      minWidth: 56,
       indicatorSize: 10,
       height: "28px", // Match w-7 h-7 buttons
     },
@@ -1009,7 +1009,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     <>
       <div ref={dropdownRef} style={{ position: "relative" }}>
         <button
-          className="btn-ghost glass-button btn-shadow max-md:!h-[34px] max-md:!min-h-[34px] max-md:!py-0 max-md:!px-[8px]"
+          className="btn-ghost glass-button btn-shadow max-md:!h-[32px] max-md:!min-h-[32px] max-md:!py-0 max-md:!px-[6px]"
           onClick={() => setIsOpen(!isOpen)}
           disabled={disabled}
           style={{
@@ -1017,6 +1017,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
             alignItems: "center",
             gap: currentSize.gap,
             minWidth: currentSize.minWidth,
+            maxWidth: "100%",
             padding: currentSize.padding,
             fontSize: currentSize.fontSize,
             height: currentSize.height,
@@ -1029,6 +1030,8 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               display: "flex",
               alignItems: "center",
               gap: currentSize.gap,
+              minWidth: 0,
+              overflow: "hidden",
             }}
           >
             <ProviderLogo
@@ -1036,11 +1039,11 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
               modelId={selectedModel}
               size={Math.max(currentSize.iconSize + 8, 16)}
             />
-            <span className="font-medium">
+            <span className="font-medium" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {triggerLabel}
             </span>
           </div>
-          <span style={{ fontSize: currentSize.fontSize, opacity: 0.7 }}>
+          <span style={{ fontSize: currentSize.fontSize, opacity: 0.7, flexShrink: 0 }}>
             ▲
           </span>
         </button>

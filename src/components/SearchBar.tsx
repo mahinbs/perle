@@ -1807,7 +1807,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       <div className="search-input-shell">
         <div className="search-input-shell-inner">
       <div
-        className="glass-card font-ubuntu !px-3 !pt-1 !pb-2 no-scrollbar !overflow-hidden"
+        className="glass-card font-ubuntu !px-3 max-md:!px-2 !pt-1 !pb-2 no-scrollbar !overflow-hidden"
         style={{
           position: "relative",
           zIndex: 1,
@@ -2328,7 +2328,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           )}
 
           <div
-            className="max-md:flex-nowrap"
+            className="search-toolbar-row max-md:flex-nowrap max-md:gap-1.5"
             style={{
               width: "100%",
               display: "flex",
@@ -2336,23 +2336,31 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               alignItems: "center",
               flexShrink: 0,
               gap: 8,
+              minWidth: 0,
             }}
           >
             <div
-              className="max-md:gap-[9px]"
-              style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}
+              className="search-toolbar-left max-md:gap-1"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                minWidth: 0,
+                flexShrink: 1,
+                overflow: "hidden",
+              }}
             >
               {/* Attach File - Hide when tool mode is active */}
               {!toolMode && (
                 <div
-                  style={{ position: "relative" }}
+                  style={{ position: "relative", flexShrink: 0 }}
                   className="flex gap-0"
                   data-upload-menu
                 >
                   <button
                     ref={uploadBtnRef}
                     type="button"
-                    className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                    className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[32px] max-md:!h-[32px] max-md:!min-w-[32px] max-md:!min-h-[32px] max-md:!p-[5px] flex items-center justify-center max-md:![&>svg]:!w-[13px] max-md:![&>svg]:!h-[13px]"
                     onClick={openAttachMenu}
                     aria-label="Upload files"
                     disabled={isListening}
@@ -2370,7 +2378,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
               {/* Model selector — free users see Free + upgrade tiers */}
               {!toolMode && showModelSelector && (
-                <div>
+                <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
                   <LLMModelSelector
                     selectedModel={selectedModel}
                     onModelChange={(model) => {
@@ -2382,23 +2390,25 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     isPremium={isPremium}
                     experienceMode={experienceMode}
                     onExperienceModeChange={onExperienceModeChange}
+                    size={hasAnswer ? "small" : "medium"}
                   />
                 </div>
               )}
             </div>
 
             <div
+              className="search-toolbar-actions max-md:gap-1"
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
+                gap: 6,
                 marginLeft: "auto",
                 flexShrink: 0,
               }}
             >
               {hasAnswer && !toolMode && (
                 <button
-                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[14px] max-md:![&>svg]:!h-[14px]"
+                  className="btn-ghost glass-button btn-shadow aspect-square max-md:!w-[32px] max-md:!h-[32px] max-md:!min-w-[32px] max-md:!min-h-[32px] max-md:!p-[5px] flex items-center justify-center max-md:![&>svg]:!w-[13px] max-md:![&>svg]:!h-[13px]"
                   onClick={() => {
                     if (onNewConversation) {
                       onNewConversation();
@@ -2474,7 +2484,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 <>
                   {speechSupported && (
                     <button
-                      className={`btn-ghost glass-button btn-shadow search-action-pulse aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]${isListening && voiceInputModeRef.current === "dictation" ? " mic-recording" : ""}`}
+                      className={`btn-ghost glass-button btn-shadow search-action-pulse aspect-square max-md:!w-[32px] max-md:!h-[32px] max-md:!min-w-[32px] max-md:!min-h-[32px] max-md:!p-[5px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]${isListening && voiceInputModeRef.current === "dictation" ? " mic-recording" : ""}`}
                       onClick={() => {
                         if (isListening && voiceInputModeRef.current === "dictation") {
                           stopVoiceInput();
@@ -2499,7 +2509,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
                   {speechSupported && (
                     <button
-                      className="btn-ghost glass-button btn-shadow search-action-pulse search-action-pulse--delay-1 aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[18px] max-md:![&>svg]:!h-[18px]"
+                      className="btn-ghost glass-button btn-shadow search-action-pulse search-action-pulse--delay-1 aspect-square max-md:!w-[32px] max-md:!h-[32px] max-md:!min-w-[32px] max-md:!min-h-[32px] max-md:!p-[5px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
                       onClick={() => {
                         try {
                           if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -2523,7 +2533,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
                   <button
                     type="button"
-                    className="btn-ghost glass-button btn-shadow search-action-pulse search-action-pulse--delay-2 aspect-square max-md:!w-[34px] max-md:!h-[34px] max-md:!min-w-[34px] max-md:!min-h-[34px] max-md:!p-[6px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
+                    className="btn-ghost glass-button btn-shadow search-action-pulse search-action-pulse--delay-2 aspect-square max-md:!w-[32px] max-md:!h-[32px] max-md:!min-w-[32px] max-md:!min-h-[32px] max-md:!p-[5px] flex items-center justify-center max-md:![&>svg]:!w-[15px] max-md:![&>svg]:!h-[15px]"
                     onClick={triggerSearchWithScroll}
                     disabled={isLoading || !canSubmitSearch}
                     aria-label={queryLimitReached ? "Upgrade to continue" : "Send message"}
@@ -2542,7 +2552,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                         queryLimitReached && canSubmitSearch ? "var(--accent)" : "",
                       opacity: isLoading || !canSubmitSearch ? 0.45 : 1,
                       cursor: isLoading || !canSubmitSearch ? "not-allowed" : "pointer",
-                      marginRight: 4,
                       touchAction: "manipulation",
                       WebkitTapHighlightColor: "transparent",
                       flexShrink: 0,
