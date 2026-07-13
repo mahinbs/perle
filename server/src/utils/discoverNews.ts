@@ -931,6 +931,32 @@ export async function getLiveNewsForCountry(
       NEWS_L1.set(l1Key, { items: l2, ts: Date.now() });
       return l2;
     }
+
+    // Stale-while-revalidate: if there is any last-known-good data (even if
+    // from a previous cycle), serve it instantly and kick a background refresh
+    // so the NEXT request sees fresh content.  This eliminates the 3-5 min cold
+    // startup delay on first install / after server restart.
+    const memGoodStale = NEWS_LAST_GOOD.get(code);
+    const redisGoodStale = memGoodStale ? null : await redisGetJSON<DiscoverItem[]>(`news:lastgood:${NEWS_CACHE_VERSION}:${code}`);
+    const staleItems = pruneStaleNews(
+      ((memGoodStale ?? redisGoodStale) || []).filter((it) => isRealArticleImage(it.image)),
+      NEWS_MAX_AGE_MS
+    );
+    if (staleItems.length > 0) {
+      console.log(`⚡ news:${code} serving ${staleItems.length} stale-while-revalidate items immediately; background refresh starting…`);
+      // Hydrate L1 with stale so the next 60 s of requests are instant.
+      NEWS_L1.set(l1Key, { items: staleItems, ts: Date.now() });
+      // Fire background refresh — do NOT await so the HTTP response returns immediately.
+      void getLiveNewsForCountry(code, limit, true).then((fresh) => {
+        if (fresh.length > 0) {
+          NEWS_L1.set(l1Key, { items: fresh, ts: Date.now() });
+          console.log(`✅ background refresh for ${code}: ${fresh.length} items`);
+        }
+      }).catch((e) => {
+        console.warn(`Background refresh ${code} failed:`, e instanceof Error ? e.message : e);
+      });
+      return staleItems;
+    }
   } else {
     console.log(`🔁 News force-refresh for ${code} — bypassing L1/L2 cache.`);
     NEWS_L1.delete(l1Key);

@@ -671,8 +671,9 @@ export default function AIFriendPage() {
     };
 
     recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
       setIsListening(false);
+      if (!event.error || event.error === "aborted") return;
+      console.error("Speech recognition error:", event.error);
       if (event.error === "not-allowed") {
         const isNative = Capacitor.isNativePlatform();
         showToast({

@@ -2,6 +2,10 @@
 	"appId": "com.syntraiq.com",
 	"appName": "SyntraIQ",
 	"webDir": "dist",
+	"server": {
+		"androidScheme": "https",
+		"hostname": "localhost"
+	},
 	"packageClassList": [
 		"AppPlugin",
 		"CAPBrowserPlugin"

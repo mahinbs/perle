@@ -10,7 +10,7 @@ import {
 } from "../utils/queryLimit";
 import { searchAPI } from "../utils/answerEngine";
 import { getUserFriendlyErrorMessage } from "../utils/helpers";
-import { speakAnswerWithVoicePlan, stopVoiceSpeechOutput } from "../utils/voiceSpeechOutput";
+import { speakAnswerWithVoicePlan, stopVoiceSpeechOutput, warmSpeechSynthesis } from "../utils/voiceSpeechOutput";
 import { ensureMicrophonePermission } from "../utils/microphonePermission";
 import { Capacitor } from "@capacitor/core";
 import {
@@ -168,7 +168,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     setVoiceIsLoading(false);
     voiceConversationIdRef.current = null;
     voiceHistoryRef.current = [];
-    pendingVoiceSpeakRef.current = false;
     clearVoiceSessionFlags();
   };
 
@@ -238,13 +237,25 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         { role: "assistant" as const, content: answerText },
       ].slice(-20);
 
-      setVoiceAnswer({
-        ...res,
-        sources: normalizeSources(res.sources),
-      });
-      localStorage.setItem("syntraiq-speak-next-answer", "1");
+      const normalizedResult = { ...res, sources: normalizeSources(res.sources) };
+      setVoiceAnswer(normalizedResult);
       localStorage.setItem("syntraiq-keep-voice-overlay-open", "1");
       localStorage.setItem("syntraiq-voice-session-active", "1");
+      // Speak directly here — avoids a useEffect round-trip that adds one
+      // React render cycle of latency between response arrival and TTS start.
+      const answerTextForSpeech = normalizedResult.chunks.map((c) => c.text).join("\n\n");
+      speakAnswerWithVoicePlan(answerTextForSpeech, {
+        rate: 0.92,
+        volume: 0.9,
+        onSpeakingChange: setIsSpeaking,
+        onComplete: () => {
+          const voiceSessionActive =
+            localStorage.getItem("syntraiq-voice-session-active") === "1";
+          if (voiceSessionActive) {
+            localStorage.setItem("syntraiq-auto-listen-next", "1");
+          }
+        },
+      });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Voice search failed";
       showToast({ message, type: "error", duration: 3000 });
@@ -441,6 +452,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       return;
     }
 
+    // Pre-warm the speech engine in the background while we wait for mic permission.
+    // This way the engine is ready to speak as soon as the answer arrives.
+    warmSpeechSynthesis();
+
     const micAllowed = await ensureMicrophonePermission();
     if (!micAllowed) {
       console.error("Microphone permission denied");
@@ -582,9 +597,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     };
 
     recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
       clearSilenceTimer();
       setIsListening(false);
+      // "aborted" fires when the user (or code) intentionally stops recognition —
+      // it is not an error worth surfacing.
+      if (!event.error || event.error === "aborted") return;
+      console.error("Speech recognition error:", event.error);
       if (event.error === "not-allowed") {
         const isNative = Capacitor.isNativePlatform();
         showToast({
@@ -631,37 +649,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     stopVoiceSpeechOutput(setIsSpeaking);
   };
 
-  const speakTextImmediately = (text: string) => {
-    speakAnswerWithVoicePlan(text, {
-      rate: 0.92,
-      volume: 0.9,
-      onSpeakingChange: setIsSpeaking,
-      onComplete: () => {
-        const voiceSessionActive =
-          localStorage.getItem("syntraiq-voice-session-active") === "1";
-        if (voiceSessionActive) {
-          localStorage.setItem("syntraiq-auto-listen-next", "1");
-        }
-      },
-    });
-  };
-
-  // When a voice query answer arrives, speak it directly from SearchBar.
-  // Uses voice-only state so home page chat is never updated.
-  const pendingVoiceSpeakRef = useRef(false);
-  useEffect(() => {
-    if (localStorage.getItem("syntraiq-speak-next-answer") === "1") {
-      pendingVoiceSpeakRef.current = true;
-    }
-    if (!pendingVoiceSpeakRef.current) return;
-    if (voiceIsLoading) return;
-    const chunks = voiceAnswer?.chunks;
-    if (!chunks || chunks.length === 0) return;
-    localStorage.removeItem("syntraiq-speak-next-answer");
-    pendingVoiceSpeakRef.current = false;
-    const answerText = chunks.map((c) => c.text).join("\n\n");
-    speakTextImmediately(answerText);
-  }, [voiceAnswer, voiceIsLoading]);
+  // TTS is triggered directly inside performVoiceSearch — no useEffect round-trip.
 
   // When an answer finishes in active voice session, start listening again automatically.
   useEffect(() => {

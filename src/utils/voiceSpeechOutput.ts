@@ -59,6 +59,10 @@ export function speakAnswerWithVoicePlan(
   let speechStartTime = 0;
   let lastBoundaryUpdate = 0;
   let peakDisplayLength = 0;
+  // Track whether we already received at least one boundary event — on platforms
+  // that fire them we trust the boundary-driven path; on ones that don't (some
+  // Android WebViews), the time-based fallback drives the display.
+  let hasBoundaryEvents = false;
 
   const syncDisplay = (offset: number) => {
     const display = plan.displayAtSpeechOffset(
@@ -77,17 +81,19 @@ export function speakAnswerWithVoicePlan(
     peakDisplayLength = 0;
     speechStartTime = Date.now();
     lastBoundaryUpdate = Date.now();
+    hasBoundaryEvents = false;
     updateVoiceDisplay("");
 
     resumeKeepAlive = window.setInterval(() => {
       try {
         if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
     }, 10000);
 
-    const estimatedMsPerWord = 450 / rate;
+    // Time-based fallback: advances the display proportionally to elapsed time
+    // so the text always looks like it's keeping up with speech even when
+    // boundary events don't fire (common on Android WebView).
+    const estimatedMsPerWord = 480 / rate; // roughly 480 ms / word at normal speed
     fallbackInterval = window.setInterval(() => {
       if (!window.speechSynthesis.speaking) return;
 
@@ -101,9 +107,15 @@ export function speakAnswerWithVoicePlan(
         Math.max(totalWords - 1, 0)
       );
 
+      // If we have real boundary events, use a looser threshold — the
+      // fallback acts as a safety-net only.
+      const threshold = hasBoundaryEvents
+        ? estimatedMsPerWord * 1.5
+        : estimatedMsPerWord * 0.7;
+
       if (
         estimatedWordIndex > fallbackWordIndex &&
-        timeSinceLastUpdate > estimatedMsPerWord * 0.8
+        timeSinceLastUpdate > threshold
       ) {
         fallbackWordIndex = estimatedWordIndex;
         const charOffset = wordIndexToCharOffset(
@@ -114,11 +126,12 @@ export function speakAnswerWithVoicePlan(
         syncDisplay(spokenOffset);
         lastBoundaryUpdate = Date.now();
       }
-    }, 150);
+    }, 80);
   };
 
   utterance.onboundary = (event: SpeechSynthesisEvent) => {
     if (event.charIndex === undefined) return;
+    hasBoundaryEvents = true;
 
     const nextOffset = Math.max(
       spokenOffset,
@@ -131,9 +144,7 @@ export function speakAnswerWithVoicePlan(
     syncDisplay(spokenOffset);
   };
 
-  const finish = () => {
-    options.onSpeakingChange?.(false);
-    updateVoiceDisplay(plan.fullDisplayText);
+  const stopIntervals = () => {
     if (resumeKeepAlive) {
       clearInterval(resumeKeepAlive);
       resumeKeepAlive = null;
@@ -142,13 +153,50 @@ export function speakAnswerWithVoicePlan(
       clearInterval(fallbackInterval);
       fallbackInterval = null;
     }
+  };
+
+  const finish = () => {
+    options.onSpeakingChange?.(false);
+    stopIntervals();
+    // Show the full display text once speech actually ends.
+    updateVoiceDisplay(plan.fullDisplayText);
     options.onComplete?.();
   };
 
-  utterance.onend = finish;
-  utterance.onerror = finish;
+  const onError = (event?: SpeechSynthesisErrorEvent) => {
+    // "interrupted" / "canceled" fire when we call speechSynthesis.cancel() —
+    // that's intentional (user stopped, new query, etc.), not an error to log.
+    const err = (event as any)?.error ?? "";
+    if (err === "interrupted" || err === "canceled" || err === "cancelled") {
+      stopIntervals();
+      options.onSpeakingChange?.(false);
+      return;
+    }
+    finish();
+  };
 
-  window.setTimeout(() => window.speechSynthesis.speak(utterance), 100);
+  utterance.onend = finish;
+  utterance.onerror = onError as any;
+
+  // Speak immediately — no artificial delay. speechSynthesis.cancel() above
+  // already flushes any previous utterance so we can queue this one right away.
+  window.speechSynthesis.speak(utterance);
+}
+
+/**
+ * Pre-warm the speech synthesis engine so the first utterance starts without
+ * the typical 300-600ms "cold start" delay on mobile WebViews.
+ * Call this once after a user interaction (e.g. when the voice overlay opens).
+ */
+export function warmSpeechSynthesis(): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  try {
+    // Speaking an empty utterance forces the engine to initialise voices.
+    const warmUp = new SpeechSynthesisUtterance("");
+    warmUp.volume = 0;
+    window.speechSynthesis.speak(warmUp);
+    window.speechSynthesis.cancel();
+  } catch { /* ignore */ }
 }
 
 export function stopVoiceSpeechOutput(onSpeakingChange?: (speaking: boolean) => void) {

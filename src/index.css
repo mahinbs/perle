@@ -1599,3 +1599,9 @@ iframe[src*="razorpay"],
 .razorpay-container iframe {
   color-scheme: light !important;
 }
+
+/* Voice overlay: lightweight CSS pulse orb used on Android native instead of WebGL globe */
+@keyframes voice-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.85; }
+}

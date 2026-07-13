@@ -6,12 +6,18 @@ import React, {
   useCallback,
 } from "react";
 import { createPortal } from "react-dom";
+import { Capacitor } from "@capacitor/core";
 import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
 import { SourcesPill } from "./SourcesPill";
+import { warmSpeechSynthesis } from "../utils/voiceSpeechOutput";
 import type { Source } from "../types";
 import syntraGif from "../assets/gif/syntraiq.gif";
+
+// On Android native WebGL is heavy — skip the 3D globe and use a simple CSS pulse instead.
+const IS_ANDROID_NATIVE =
+  Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
 const BOTTOM_GLOBE_SIZE = "clamp(96px, 30vmin, 145px)";
@@ -73,6 +79,9 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
 }) => {
   const [os, setOs] = useState("");
   const hasAutoStartedRef = useRef(false);
+  // Shared AudioContext — created once on first open (inside a user gesture) so
+  // it's never blocked by the browser's autoplay policy.
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     const platform = navigator.platform.toLowerCase();
@@ -81,15 +90,25 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
     else setOs("other");
   }, []);
 
-  const playActivationBeep = useCallback(async () => {
-    if (typeof window === "undefined") return;
-
+  const getAudioCtx = useCallback((): AudioContext | null => {
+    if (typeof window === "undefined") return null;
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return null;
     try {
-      const AudioCtx =
-        (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
+      if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+        audioCtxRef.current = new AudioCtx();
+      }
+      return audioCtxRef.current;
+    } catch {
+      return null;
+    }
+  }, []);
 
-      const audioCtx = new AudioCtx();
+  const playActivationBeep = useCallback(async () => {
+    const audioCtx = getAudioCtx();
+    if (!audioCtx) return;
+    try {
       if (audioCtx.state === "suspended") {
         await audioCtx.resume();
       }
@@ -113,31 +132,38 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
       gainNode.connect(audioCtx.destination);
 
       await new Promise<void>((resolve) => {
-        oscillator.onended = () => {
-          try {
-            audioCtx.close();
-          } catch { }
-          resolve();
-        };
+        oscillator.onended = () => resolve();
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.3);
       });
     } catch { }
-  }, []);
+  }, [getAudioCtx]);
 
+  // Clear stale answer state and pre-warm speech synthesis whenever the overlay opens.
   useEffect(() => {
     if (!isOpen) {
       hasAutoStartedRef.current = false;
       return;
     }
+    // Wipe previous-session answer text the moment the overlay opens.
+    try {
+      localStorage.removeItem("syntraiq-current-answer-text");
+      localStorage.removeItem("syntraiq-current-word-index");
+    } catch { }
+    // Pre-warm the speech engine so the first TTS response starts instantly.
+    warmSpeechSynthesis();
+  }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
     if (hasAutoStartedRef.current) return;
     hasAutoStartedRef.current = true;
 
     let cancelled = false;
 
     const kickOffListening = async () => {
-      void playActivationBeep();
+      // Play beep first, then start mic so beep isn't starved on Android.
+      await playActivationBeep();
       if (cancelled) return;
       // When opening voice mode to read existing chat answer, do not immediately
       // start listening (which would cancel TTS). Let TTS start first.
@@ -298,19 +324,18 @@ const VoiceResponsePanel: React.FC<{
   const [speaking, setSpeaking] = useState(false);
   const [displayText, setDisplayText] = useState("");
 
-  // Progressive display driven only by live TTS sync (localStorage), never the full answer prop.
+  // Progressive display driven only by live TTS sync (localStorage).
+  // 80 ms interval is fast enough for smooth word-by-word reveal without
+  // the jank of a 60fps requestAnimationFrame loop on Android.
   useEffect(() => {
     if (isLoading) {
       setDisplayText("");
       try {
         localStorage.removeItem("syntraiq-current-answer-text");
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
       return;
     }
-    let raf = 0;
-    const tick = () => {
+    const timer = window.setInterval(() => {
       try {
         const storedText =
           typeof window !== "undefined"
@@ -320,8 +345,6 @@ const VoiceResponsePanel: React.FC<{
         if (storedText !== null && storedText !== "") {
           const cleaned = storedText.replace(/\bundefined\b/gi, "");
           setDisplayText((prev) => (cleaned !== prev ? cleaned : prev));
-        } else if (!window.speechSynthesis?.speaking) {
-          setDisplayText((prev) => (prev ? "" : prev));
         }
 
         if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -329,12 +352,9 @@ const VoiceResponsePanel: React.FC<{
           setSpeaking((s) => (isSpeakingNow !== s ? isSpeakingNow : s));
         }
       } catch { /* ignore */ }
+    }, 80);
 
-      raf = requestAnimationFrame(tick);
-    };
-
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => window.clearInterval(timer);
   }, [isLoading]);
 
   if (isLoading) {
@@ -426,6 +446,23 @@ const VoiceResponsePanel: React.FC<{
 };
 
 const VoiceGlobeOrb: React.FC<{ size: string }> = ({ size }) => {
+  // Android native: skip WebGL globe entirely to avoid frame drops.
+  if (IS_ANDROID_NATIVE) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          background: "radial-gradient(circle at 35% 35%, var(--accent), #1a3a6b 70%)",
+          boxShadow: "0 0 32px var(--accent)",
+          animation: "voice-pulse 2s ease-in-out infinite",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
