@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(OAuthSessionPlugin.class);
         registerPlugin(MicrophonePermissionPlugin.class);
+        registerPlugin(NativeTtsPlugin.class);
         super.onCreate(savedInstanceState);
         bridge.getWebView().post(() -> {
             android.webkit.WebSettings settings = bridge.getWebView().getSettings();

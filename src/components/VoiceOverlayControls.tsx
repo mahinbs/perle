@@ -1,5 +1,6 @@
 import React from "react";
 import MicWaveIcon from "./MicWaveIcon";
+import { stopVoiceSpeechOutput } from "../utils/voiceSpeechOutput";
 
 interface VoiceOverlayControlsProps {
   isListening: boolean;
@@ -17,20 +18,12 @@ const VoiceOverlayControls: React.FC<VoiceOverlayControlsProps> = ({
   centerContent,
 }) => {
   const handleClose = () => {
-    try {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-    } catch { }
+    stopVoiceSpeechOutput();
     onClose();
   };
 
   const handleToggleListening = () => {
-    try {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-    } catch { }
+    stopVoiceSpeechOutput();
     onToggleListening();
   };
 

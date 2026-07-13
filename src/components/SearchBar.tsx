@@ -13,6 +13,7 @@ import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import { speakAnswerWithVoicePlan, stopVoiceSpeechOutput, warmSpeechSynthesis } from "../utils/voiceSpeechOutput";
 import { ensureMicrophonePermission } from "../utils/microphonePermission";
 import { Capacitor } from "@capacitor/core";
+import { NativeTts } from "../plugins/nativeTts";
 import {
   getLocalItem,
   onStorageChange,
@@ -476,12 +477,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     }
 
     // Stop any ongoing TTS playback before starting a new recording
-    try {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-        setIsSpeaking(false);
-      }
-    } catch { }
+    stopVoiceSpeechOutput(setIsSpeaking);
 
     if (isListening) {
       stopVoiceInput();
@@ -518,8 +514,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             recognition.stop();
           } catch { }
           try {
-            if ("speechSynthesis" in window) {
-              window.speechSynthesis.cancel();
+            stopVoiceSpeechOutput();
+            if (Capacitor.isNativePlatform()) {
+              void NativeTts.speak({
+                text: "Please give me an input so I can help you.",
+                rate: 1,
+                volume: 1,
+              });
+            } else if ("speechSynthesis" in window) {
               const nudge = new SpeechSynthesisUtterance(
                 "Please give me an input so I can help you."
               );
@@ -547,11 +549,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       transcript = transcript.trim();
       // If user starts speaking while TTS is in progress, barge-in and stop TTS.
       if (mode === "session") {
-        try {
-          if ("speechSynthesis" in window && window.speechSynthesis.speaking) {
-            window.speechSynthesis.cancel();
-          }
-        } catch { }
+        stopVoiceSpeechOutput(setIsSpeaking);
       }
       if (transcript) {
         setQuery(transcript);
@@ -2011,10 +2009,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           onClose={() => {
             setShowVoiceOverlay(false);
             stopVoiceInput();
-            try {
-              if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-            } catch { }
-            setIsSpeaking(false);
+            stopVoiceSpeechOutput(setIsSpeaking);
             resetVoiceSession();
           }}
         />
@@ -2498,10 +2493,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     <button
                       className="btn-ghost glass-button btn-shadow search-action-pulse search-action-pulse--delay-1 aspect-square max-md:!w-[32px] max-md:!h-[32px] max-md:!min-w-[32px] max-md:!min-h-[32px] max-md:!p-[5px] flex items-center justify-center max-md:![&>svg]:!w-[16px] max-md:![&>svg]:!h-[16px]"
                       onClick={() => {
-                        try {
-                          if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-                        } catch { }
-                        setIsSpeaking(false);
+                        stopVoiceSpeechOutput(setIsSpeaking);
                         resetVoiceSession();
                         localStorage.setItem("syntraiq-voice-session-active", "1");
                         setShowVoiceOverlay(true);

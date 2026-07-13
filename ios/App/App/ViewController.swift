@@ -7,5 +7,6 @@ class ViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(IAPPlugin())
         bridge?.registerPluginInstance(OAuthSessionPlugin())
         bridge?.registerPluginInstance(AppleSignInPlugin())
+        bridge?.registerPluginInstance(NativeTtsPlugin())
     }
 }

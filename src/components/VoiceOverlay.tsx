@@ -11,17 +11,20 @@ import { World, type GlobeConfig, type Position } from "./ui/globe";
 import VoiceResponseText from "./VoiceResponseText";
 import VoiceOverlayControls from "./VoiceOverlayControls";
 import { SourcesPill } from "./SourcesPill";
-import { warmSpeechSynthesis } from "../utils/voiceSpeechOutput";
+import { warmSpeechSynthesis, stopVoiceSpeechOutput } from "../utils/voiceSpeechOutput";
 import type { Source } from "../types";
 import syntraGif from "../assets/gif/syntraiq.gif";
 
-// On Android native WebGL is heavy — skip the 3D globe and use a simple CSS pulse instead.
-const IS_ANDROID_NATIVE =
-  Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+const IS_NATIVE = Capacitor.isNativePlatform();
 
 const FIXED_GLOBE_ROTATION_SPEED = 24;
-const BOTTOM_GLOBE_SIZE = "clamp(96px, 30vmin, 145px)";
-const CENTER_GLOBE_SIZE = "clamp(160px, 48vmin, 260px)";
+// Web keeps the larger WebGL globe; native uses a smaller CSS orb to avoid lag.
+const BOTTOM_GLOBE_SIZE = IS_NATIVE
+  ? "clamp(64px, 18vmin, 96px)"
+  : "clamp(96px, 30vmin, 145px)";
+const CENTER_GLOBE_SIZE = IS_NATIVE
+  ? "clamp(110px, 32vmin, 168px)"
+  : "clamp(160px, 48vmin, 260px)";
 const VOICE_OVERLAY_SAFE_TOP = "max(12px, env(safe-area-inset-top, 0px))";
 const VOICE_CONTENT_H_PADDING = "clamp(12px, 4vw, 28px)";
 
@@ -190,26 +193,14 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
   // TTS may have just been intentionally triggered from chat answer and canceling here
   // causes partial/garbled playback that feels like hallucination.
 
-  // Cancel speech synthesis on page refresh/component mount
+  // Cancel leftover speech on remount / refresh
   useEffect(() => {
-    // Cancel any ongoing speech when component mounts (e.g., on page refresh)
-    try {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-    } catch { }
-
-    // Clear any stored answer text on mount
+    stopVoiceSpeechOutput();
     localStorage.removeItem("syntraiq-current-answer-text");
     localStorage.removeItem("syntraiq-current-word-index");
 
-    // Cleanup on unmount
     return () => {
-      try {
-        if (typeof window !== "undefined" && "speechSynthesis" in window) {
-          window.speechSynthesis.cancel();
-        }
-      } catch { }
+      stopVoiceSpeechOutput();
     };
   }, []);
 
@@ -297,7 +288,7 @@ export const VoiceOverlay: React.FC<VoiceOverlayProps> = ({
           isListening={isListening}
           onClose={() => {
             try {
-              if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+              stopVoiceSpeechOutput();
               localStorage.removeItem("syntraiq-current-answer-text");
               localStorage.removeItem("syntraiq-current-word-index");
               localStorage.removeItem("syntraiq-keep-voice-overlay-open");
@@ -445,24 +436,98 @@ const VoiceResponsePanel: React.FC<{
   );
 };
 
-const VoiceGlobeOrb: React.FC<{ size: string }> = ({ size }) => {
-  // Android native: skip WebGL globe entirely to avoid frame drops.
-  if (IS_ANDROID_NATIVE) {
-    return (
-      <div
-        style={{
-          width: size,
-          height: size,
-          borderRadius: "50%",
-          background: "radial-gradient(circle at 35% 35%, var(--accent), #1a3a6b 70%)",
-          boxShadow: "0 0 32px var(--accent)",
-          animation: "voice-pulse 2s ease-in-out infinite",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
+/** Lightweight CSS “3D” globe for Capacitor — avoids WebGL lag / blank screens. */
+const CssVoiceGlobe: React.FC<{ size: string }> = ({ size }) => (
+  <div
+    className="voice-css-globe"
+    style={{ width: size, height: size, flexShrink: 0 }}
+    aria-hidden
+  >
+    <div className="voice-css-globe__aura" />
+    <div className="voice-css-globe__ring voice-css-globe__ring--outer" />
+    <div className="voice-css-globe__ring voice-css-globe__ring--mid" />
+    <div className="voice-css-globe__sphere">
+      <div className="voice-css-globe__surface" />
+      <div className="voice-css-globe__grid" />
+      <svg
+        className="voice-css-globe__arcs"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <defs>
+          <linearGradient id="voiceArcGradA" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(90,180,255,0)" />
+            <stop offset="50%" stopColor="rgba(120,200,255,0.95)" />
+            <stop offset="100%" stopColor="rgba(90,180,255,0)" />
+          </linearGradient>
+          <linearGradient id="voiceArcGradB" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(199,168,105,0)" />
+            <stop offset="50%" stopColor="rgba(255,210,140,0.95)" />
+            <stop offset="100%" stopColor="rgba(199,168,105,0)" />
+          </linearGradient>
+          <linearGradient id="voiceArcGradC" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(160,120,255,0)" />
+            <stop offset="50%" stopColor="rgba(190,150,255,0.95)" />
+            <stop offset="100%" stopColor="rgba(160,120,255,0)" />
+          </linearGradient>
+          <filter id="voiceArcGlow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="1.2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
 
+        {/* Soft track underlays */}
+        <path className="voice-css-globe__arc-track" d="M14 64 C 30 24, 70 18, 88 46" />
+        <path className="voice-css-globe__arc-track" d="M18 34 C 38 72, 68 78, 90 40" />
+        <path className="voice-css-globe__arc-track" d="M24 82 C 46 54, 64 28, 82 20" />
+        <path className="voice-css-globe__arc-track" d="M30 22 C 48 48, 58 70, 76 86" />
+
+        {/* Animated network arcs */}
+        <path className="voice-css-globe__arc voice-css-globe__arc--a" d="M14 64 C 30 24, 70 18, 88 46" />
+        <path className="voice-css-globe__arc voice-css-globe__arc--b" d="M18 34 C 38 72, 68 78, 90 40" />
+        <path className="voice-css-globe__arc voice-css-globe__arc--c" d="M24 82 C 46 54, 64 28, 82 20" />
+        <path className="voice-css-globe__arc voice-css-globe__arc--d" d="M30 22 C 48 48, 58 70, 76 86" />
+
+        {/* Traveling packets along arcs */}
+        <circle className="voice-css-globe__packet voice-css-globe__packet--a" r="1.35" filter="url(#voiceArcGlow)">
+          <animateMotion dur="2.6s" repeatCount="indefinite" path="M14 64 C 30 24, 70 18, 88 46" />
+        </circle>
+        <circle className="voice-css-globe__packet voice-css-globe__packet--b" r="1.2" filter="url(#voiceArcGlow)">
+          <animateMotion dur="3.1s" begin="-0.8s" repeatCount="indefinite" path="M18 34 C 38 72, 68 78, 90 40" />
+        </circle>
+        <circle className="voice-css-globe__packet voice-css-globe__packet--c" r="1.15" filter="url(#voiceArcGlow)">
+          <animateMotion dur="2.9s" begin="-1.4s" repeatCount="indefinite" path="M24 82 C 46 54, 64 28, 82 20" />
+        </circle>
+        <circle className="voice-css-globe__packet voice-css-globe__packet--d" r="1.1" filter="url(#voiceArcGlow)">
+          <animateMotion dur="3.4s" begin="-0.4s" repeatCount="indefinite" path="M30 22 C 48 48, 58 70, 76 86" />
+        </circle>
+
+        <circle className="voice-css-globe__node voice-css-globe__node--1" cx="14" cy="64" r="1.7" />
+        <circle className="voice-css-globe__node voice-css-globe__node--2" cx="88" cy="46" r="1.7" />
+        <circle className="voice-css-globe__node voice-css-globe__node--3" cx="18" cy="34" r="1.45" />
+        <circle className="voice-css-globe__node voice-css-globe__node--4" cx="90" cy="40" r="1.45" />
+        <circle className="voice-css-globe__node voice-css-globe__node--5" cx="24" cy="82" r="1.35" />
+        <circle className="voice-css-globe__node voice-css-globe__node--6" cx="82" cy="20" r="1.5" />
+        <circle className="voice-css-globe__node voice-css-globe__node--7" cx="30" cy="22" r="1.3" />
+        <circle className="voice-css-globe__node voice-css-globe__node--8" cx="76" cy="86" r="1.3" />
+      </svg>
+      <div className="voice-css-globe__shine" />
+      <div className="voice-css-globe__rim" />
+    </div>
+    <div className="voice-css-globe__border-glow" />
+  </div>
+);
+
+const VoiceGlobeOrb: React.FC<{ size: string }> = ({ size }) => {
+  // Android + iOS native: CSS 3D pulse orb (WebGL three-globe causes lag / blanks).
+  if (IS_NATIVE) return <CssVoiceGlobe size={size} />;
+  return <WebVoiceGlobe size={size} />;
+};
+
+const WebVoiceGlobe: React.FC<{ size: string }> = ({ size }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {

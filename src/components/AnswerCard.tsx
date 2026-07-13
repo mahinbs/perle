@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { Capacitor } from "@capacitor/core";
 import type { AnswerChunk, Source, Mode, UploadedFile } from "../types";
 import { SourcesPill } from "./SourcesPill";
 import { DeepResearchProgress } from "./DeepResearchProgress";
@@ -634,12 +635,16 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
       });
   }, []);
 
-  // Check for speech synthesis support
+  // Check for speech synthesis support (native TTS covers Capacitor apps)
   useEffect(() => {
-    const hasSupport = "speechSynthesis" in window && typeof window.speechSynthesis !== "undefined";
+    const hasWebSupport =
+      "speechSynthesis" in window && typeof window.speechSynthesis !== "undefined";
+    const hasNativeSupport = Capacitor.isNativePlatform();
+    const hasSupport = hasWebSupport || hasNativeSupport;
     console.log('🔊 Speech synthesis support check:', {
       inWindow: "speechSynthesis" in window,
       typeofCheck: typeof window.speechSynthesis,
+      hasNativeSupport,
       hasSupport
     });
     setSpeechSupported(hasSupport);
