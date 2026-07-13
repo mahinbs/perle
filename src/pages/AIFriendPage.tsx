@@ -4,6 +4,7 @@ import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import MicWaveIcon from "../components/MicWaveIcon";
 import HeadsetWaveIcon from "../components/HeadsetWaveIcon";
 import { Capacitor } from "@capacitor/core";
+import { ensureMicrophonePermission } from "../utils/microphonePermission";
 import {
   FaPen,
   FaLightbulb,
@@ -628,20 +629,18 @@ export default function AIFriendPage() {
       return;
     }
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (err) {
-        console.error("Microphone permission denied:", err);
-        showToast({
-          message: "Microphone permission is required for voice search. Please enable it in device settings.",
-          type: "error",
-          duration: 3000,
-        });
-        setIsListening(false);
-        return;
-      }
+    const micAllowed = await ensureMicrophonePermission();
+    if (!micAllowed) {
+      console.error("Microphone permission denied");
+      showToast({
+        message: Capacitor.isNativePlatform()
+          ? "Microphone permission is required for voice search. Please enable it in device settings."
+          : "Microphone permission is required for voice search. Please enable it in browser settings.",
+        type: "error",
+        duration: 3000,
+      });
+      setIsListening(false);
+      return;
     }
 
     if (isListening) {

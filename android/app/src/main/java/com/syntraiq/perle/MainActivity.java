@@ -11,11 +11,14 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(OAuthSessionPlugin.class);
+        registerPlugin(MicrophonePermissionPlugin.class);
         super.onCreate(savedInstanceState);
         bridge.getWebView().post(() -> {
             android.webkit.WebSettings settings = bridge.getWebView().getSettings();
             settings.setUseWideViewPort(true);
             settings.setLoadWithOverviewMode(true);
+            // Allow mic / media capture without an extra user gesture race.
+            settings.setMediaPlaybackRequiresUserGesture(false);
             handleOAuthCallbackIntent(getIntent());
         });
     }

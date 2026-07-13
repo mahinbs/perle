@@ -11,6 +11,7 @@ import {
 import { searchAPI } from "../utils/answerEngine";
 import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import { speakAnswerWithVoicePlan, stopVoiceSpeechOutput } from "../utils/voiceSpeechOutput";
+import { ensureMicrophonePermission } from "../utils/microphonePermission";
 import { Capacitor } from "@capacitor/core";
 import {
   getLocalItem,
@@ -440,16 +441,16 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       return;
     }
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (err) {
-        console.error("Microphone permission denied:", err);
-        alert("Microphone permission is required for voice search. Please enable it in your device settings.");
-        setIsListening(false);
-        return;
-      }
+    const micAllowed = await ensureMicrophonePermission();
+    if (!micAllowed) {
+      console.error("Microphone permission denied");
+      alert(
+        Capacitor.isNativePlatform()
+          ? "Microphone permission is required for voice search. Please enable it in your device settings."
+          : "Microphone permission is required for voice search. Please enable it in your browser settings."
+      );
+      setIsListening(false);
+      return;
     }
 
     voiceInputModeRef.current = mode;
