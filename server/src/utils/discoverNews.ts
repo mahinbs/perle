@@ -2,6 +2,9 @@ import type { DiscoverItem } from '../types.js';
 import { getApiKey } from './apiKeys.js';
 import { redisGetJSON, redisSetJSON } from '../lib/redis.js';
 
+/** Reporter plan daily quota (used to sync from `x-api-quota-left` headers). */
+const WN_PLAN_DAILY_POINTS = 500;
+
 // ── World News API — Reporter plan ($39/mo) ─────────────────────────────────
 // Limits we must respect:
 //   • 500 points/day (then $0.003/point overage) → soft budget 480
@@ -12,14 +15,18 @@ const WN_DAILY_POINT_BUDGET = 480;
 const WN_MAX_RPS = 2;
 const WN_MAX_CONCURRENT = 3; // stay under Reporter's 5 concurrent
 const WN_MIN_INTERVAL_MS = 650; // safer than 500ms — avoids 429 bursts
-/** Results per search — max allowed by World News API for fuller section tabs. */
-const WN_RESULTS_PER_REQUEST = 100;
+/** Results per search — enough to fill category tabs while staying within daily budget. */
+const WN_RESULTS_PER_REQUEST = 50;
 
 let wnInFlight = 0;
 let wnLastStartedAt = 0;
 let wnChain: Promise<void> = Promise.resolve();
 let wnPointsMemDay = '';
 let wnPointsMemUsed = 0;
+let wnLastRecalibrateAttempt = 0;
+/** Latest `x-api-quota-left` from World News — overrides stale local counters. */
+let wnQuotaLeftFromApi: number | null = null;
+const WN_RECALIBRATE_COOLDOWN_MS = 60_000;
 
 function wnUtcDayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -38,16 +45,81 @@ async function getWorldNewsPointsUsed(): Promise<number> {
   return wnPointsMemUsed;
 }
 
+async function setWorldNewsPointsUsed(used: number): Promise<void> {
+  const day = wnUtcDayKey();
+  wnPointsMemDay = day;
+  wnPointsMemUsed = Math.max(0, used);
+  void redisSetJSON(`worldnews:points:${day}`, wnPointsMemUsed, 48 * 60 * 60);
+}
+
 async function addWorldNewsPoints(points: number): Promise<void> {
   if (!(points > 0)) return;
-  const day = wnUtcDayKey();
   const used = (await getWorldNewsPointsUsed()) + points;
-  wnPointsMemDay = day;
-  wnPointsMemUsed = used;
-  void redisSetJSON(`worldnews:points:${day}`, used, 48 * 60 * 60);
+  await setWorldNewsPointsUsed(used);
+}
+
+/** Sync local budget counter from World News `x-api-quota-left` (avoids stale over-count). */
+async function syncWorldNewsQuotaFromHeaders(response: Response): Promise<void> {
+  const leftRaw = response.headers.get('x-api-quota-left') || response.headers.get('X-API-Quota-Left');
+  const left = Number(leftRaw);
+  if (!Number.isFinite(left) || left < 0) return;
+  wnQuotaLeftFromApi = left;
+  const used = Math.max(0, WN_PLAN_DAILY_POINTS - left);
+  await setWorldNewsPointsUsed(used);
+}
+
+/** Shrink result pages when the daily quota is nearly exhausted. */
+function effectiveResultsPerRequest(): number {
+  if (wnQuotaLeftFromApi !== null) {
+    if (wnQuotaLeftFromApi < 25) return 12;
+    if (wnQuotaLeftFromApi < 60) return 20;
+    if (wnQuotaLeftFromApi < 120) return 30;
+  }
+  const softLeft = WN_DAILY_POINT_BUDGET - wnPointsMemUsed;
+  if (softLeft < 25) return 12;
+  if (softLeft < 60) return 20;
+  return WN_RESULTS_PER_REQUEST;
+}
+
+/** Pick which category buckets to fetch when quota is tight (Entertainment always included). */
+function topicsForQuotaBudget(
+  topics: Array<{ q: string; cat: string; tag: string; n: number; categories?: string; text?: string }>
+): typeof topics {
+  const quotaLeft = wnQuotaLeftFromApi ?? (WN_DAILY_POINT_BUDGET - wnPointsMemUsed);
+  if (quotaLeft >= 40) return topics;
+  const priority = new Set(['For You', 'Entertainment', 'Sports', 'Technology', 'Politics']);
+  const picked = topics.filter((t) => priority.has(t.cat));
+  return picked.length > 0 ? picked : topics.slice(0, 3);
+}
+
+/** When local counter says budget is gone but API may still work, probe once and recalibrate. */
+async function recalibrateWorldNewsBudget(apiKey: string): Promise<boolean> {
+  const now = Date.now();
+  if (now - wnLastRecalibrateAttempt < WN_RECALIBRATE_COOLDOWN_MS) return false;
+  wnLastRecalibrateAttempt = now;
+  try {
+    const params = new URLSearchParams({
+      language: 'en',
+      number: '1',
+      categories: 'entertainment',
+    });
+    const response = await fetch(`https://api.worldnewsapi.com/search-news?${params}`, {
+      headers: { 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return false;
+    await syncWorldNewsQuotaFromHeaders(response);
+    const used = await getWorldNewsPointsUsed();
+    const softLeft = WN_DAILY_POINT_BUDGET - used;
+    console.log(`📊 World News budget recalibrated — ~${softLeft.toFixed(0)} pts left (soft cap ${WN_DAILY_POINT_BUDGET})`);
+    return softLeft >= estimateSearchPoints(1);
+  } catch {
+    return false;
+  }
 }
 
 async function canSpendWorldNewsPoints(estimate: number): Promise<boolean> {
+  if (wnQuotaLeftFromApi !== null) return wnQuotaLeftFromApi >= estimate;
   const used = await getWorldNewsPointsUsed();
   return used + estimate <= WN_DAILY_POINT_BUDGET;
 }
@@ -102,8 +174,12 @@ async function worldNewsFetch(
     }
     if (status === 402) {
       console.warn('⚠️ World News quota exhausted (402)');
-      // Mark budget as full so we stop hammering today.
-      await addWorldNewsPoints(WN_DAILY_POINT_BUDGET);
+      await syncWorldNewsQuotaFromHeaders(response);
+      if ((await getWorldNewsPointsUsed()) < WN_DAILY_POINT_BUDGET) {
+        // Header sync disagrees with 402 — allow caller to retry on next cycle.
+      } else {
+        await setWorldNewsPointsUsed(WN_DAILY_POINT_BUDGET);
+      }
       return { ok: false, status, data: null };
     }
     if (!response.ok) {
@@ -125,13 +201,17 @@ async function worldNewsFetch(
             0
           )
         : 0);
-    const spent = Number.isFinite(headerCost) && headerCost > 0
-      ? headerCost
-      : estimateSearchPoints(returned || WN_RESULTS_PER_REQUEST);
-    await addWorldNewsPoints(spent);
-
     const left = response.headers.get('x-api-quota-left') || response.headers.get('X-API-Quota-Left');
-    if (left) console.log(`📊 World News quota left (header): ${left}; spent≈${spent.toFixed(2)}`);
+    if (left && Number.isFinite(Number(left))) {
+      await syncWorldNewsQuotaFromHeaders(response);
+      console.log(`📊 World News quota left (header): ${left}`);
+    } else {
+      const spent = Number.isFinite(headerCost) && headerCost > 0
+        ? headerCost
+        : estimateSearchPoints(returned || WN_RESULTS_PER_REQUEST);
+      await addWorldNewsPoints(spent);
+      console.log(`📊 World News spent≈${spent.toFixed(2)} (estimated)`);
+    }
 
     return { ok: true, status, data };
   } catch (err) {
@@ -566,7 +646,8 @@ const NEWS_L2_TTL_SEC = NEWS_REFRESH_INTERVAL_HOURS * 60 * 60;
 //   v21 = trust API categories for Science/Env/Finance; global dedupe; fetch order fix.
 //   v22 = drop keyword re-filter on API category buckets; categories-only queries (no AND text).
 //   v23 = Psychology → Entertainment (World News `entertainment` category).
-const NEWS_CACHE_VERSION = 'v23';
+//   v24 = Entertainment fetch priority + World News quota header sync.
+const NEWS_CACHE_VERSION = 'v24';
 
 // Refresh-cycle timezone per country. Cycle rotates every NEWS_REFRESH_INTERVAL_HOURS.
 const COUNTRY_TIMEZONES: Record<string, string> = {
@@ -974,9 +1055,9 @@ export async function getLiveNewsForCountry(
   const worldNewsKey = getApiKey('worldnews');
   let items: DiscoverItem[] = [];
 
-  const PER_CAT_TARGET = WN_RESULTS_PER_REQUEST;
+  const PER_CAT_TARGET = effectiveResultsPerRequest();
   const PER_CAT_CAP = WN_RESULTS_PER_REQUEST;
-  const MIN_PER_CAT = 20;
+  const MIN_PER_CAT = Math.min(12, PER_CAT_TARGET);
   const topics: Array<{
     q: string;
     cat: string;
@@ -985,15 +1066,15 @@ export async function getLiveNewsForCountry(
     categories?: string;
     text?: string;
   }> = [
-    // Prioritize previously empty sections first so 429/budget cuts don't starve them.
+    // Entertainment early so budget limits don't skip the tab.
     { q: '', cat: 'For You', tag: 'News', n: PER_CAT_TARGET },
+    { q: '', cat: 'Entertainment', tag: 'Entertainment', n: PER_CAT_TARGET, categories: 'entertainment' },
     { q: '', cat: 'Science', tag: 'Science', n: PER_CAT_TARGET, categories: 'science' },
     { q: '', cat: 'Environment', tag: 'Environment', n: PER_CAT_TARGET, categories: 'environment' },
     { q: '', cat: 'Finance', tag: 'Finance', n: PER_CAT_TARGET, categories: 'business' },
     { q: '', cat: 'Politics', tag: 'Politics', n: PER_CAT_TARGET, categories: 'politics' },
     { q: '', cat: 'Technology', tag: 'Tech', n: PER_CAT_TARGET, categories: 'technology' },
     { q: '', cat: 'Health', tag: 'Health', n: PER_CAT_TARGET, categories: 'health' },
-    { q: '', cat: 'Entertainment', tag: 'Entertainment', n: PER_CAT_TARGET, categories: 'entertainment' },
     { q: '', cat: 'Sports', tag: 'Sports', n: PER_CAT_TARGET, categories: 'sports' },
   ];
 
@@ -1002,12 +1083,22 @@ export async function getLiveNewsForCountry(
   // Sequential per-topic searches; worldNewsFetch enforces 2 rps / concurrency.
   // Skip top-news by default (extra points) — only when budget is healthy.
   if (worldNewsKey) {
-    const pointsLeft = WN_DAILY_POINT_BUDGET - (await getWorldNewsPointsUsed());
+    let pointsLeft = WN_DAILY_POINT_BUDGET - (await getWorldNewsPointsUsed());
+    if (pointsLeft < estimateSearchPoints(WN_RESULTS_PER_REQUEST)) {
+      await recalibrateWorldNewsBudget(worldNewsKey);
+      pointsLeft = wnQuotaLeftFromApi ?? (WN_DAILY_POINT_BUDGET - (await getWorldNewsPointsUsed()));
+    }
     console.log(`📰 World News fetch ${code} (Reporter) — ~${pointsLeft.toFixed(0)} pts left today`);
 
-    for (const t of topics) {
+    const activeTopics = topicsForQuotaBudget(topics);
+    if (activeTopics.length < topics.length) {
+      console.log(`📰 ${code}: low quota — fetching ${activeTopics.map((t) => t.cat).join(', ')} only`);
+    }
+
+    for (const t of activeTopics) {
+      const batchSize = Math.min(t.n, effectiveResultsPerRequest());
       // Stop early if budget is nearly gone — keep last-good for remaining cats.
-      if (!(await canSpendWorldNewsPoints(estimateSearchPoints(WN_RESULTS_PER_REQUEST)))) {
+      if (!(await canSpendWorldNewsPoints(estimateSearchPoints(batchSize)))) {
         console.warn(`⚠️ Stopping ${code} topic fetch early — daily point budget nearly used`);
         break;
       }
@@ -1023,11 +1114,12 @@ export async function getLiveNewsForCountry(
         forceTag: t.tag,
       };
 
-      let fresh = await fetchWorldNewsSearch(code, worldNewsKey, WN_RESULTS_PER_REQUEST, searchOpts);
+      let fresh = await fetchWorldNewsSearch(code, worldNewsKey, batchSize, searchOpts);
 
       // Optional top-news boost for For You only when we still have >150 pts left.
-      if (t.cat === 'For You' && !isWorldwide && pointsLeft > 150) {
-        const top = await fetchWorldNewsTop(code, worldNewsKey, WN_RESULTS_PER_REQUEST);
+      const quotaLeftNow = wnQuotaLeftFromApi ?? pointsLeft;
+      if (t.cat === 'For You' && !isWorldwide && quotaLeftNow > 150) {
+        const top = await fetchWorldNewsTop(code, worldNewsKey, batchSize);
         if (top.length) {
           const seen = new Set(fresh.map((i) => i.url).filter(Boolean));
           for (const item of top) {
@@ -1045,7 +1137,7 @@ export async function getLiveNewsForCountry(
           .filter((it) => isRealArticleImage(it.image))
           .filter((it) => !isLikelyJunkNewsItem(it.title, it.description || '', it.url || ''))
           .map((it) => ({ ...it, category: t.cat, tag: t.tag || it.tag }))
-          .slice(0, t.n)
+          .slice(0, batchSize)
       );
       // Light keyword keep only for text-only buckets (no World News category filter).
       if (!t.categories && t.cat !== 'For You') {

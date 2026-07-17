@@ -300,7 +300,7 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
 //      read is < 1ms. Visible difference on tab switch / back-navigation.
 //   2. Lets the page render BEFORE the network call returns, so Discover
 //      is never a blank "loading…" screen for returning users.
-const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v16';
+const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v17';
 const FRONTEND_NEWS_TTL_MS = 3 * 60 * 60 * 1000; // 3h — matches NEWS_L2_TTL_SEC
 /** Fired (same-tab) whenever live news is written to localStorage so Header previews can refresh. */
 export const DISCOVER_NEWS_UPDATED_EVENT = 'syntraiq-discover-news-updated';
@@ -325,6 +325,7 @@ if (typeof localStorage !== 'undefined') {
     'syntraiq-live-news-cache-v13',
     'syntraiq-live-news-cache-v14',
     'syntraiq-live-news-cache-v15',
+    'syntraiq-live-news-cache-v16',
   ]) {
     try { localStorage.removeItem(oldKey); } catch { /* ignore */ }
   }
