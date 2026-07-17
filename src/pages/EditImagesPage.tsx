@@ -16,6 +16,7 @@ import {
   MediaStudioModal,
   type MediaStudioModalView,
 } from "../components/MediaStudioModal";
+import { downloadMedia, shareMedia } from "../utils/downloadMedia";
 
 const TEMPLATES = [
   { id: "enhance", label: "Enhance quality", prompt: "Enhance this image with sharper details, better lighting and vivid colors" },
@@ -93,16 +94,21 @@ export default function EditImagesPage() {
   const handleDownload = async () => {
     if (!resultUrl) return;
     try {
-      const response = await fetch(resultUrl);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `edited-image-${Date.now()}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const saved = await downloadMedia(resultUrl, `edited-image-${Date.now()}.png`);
+      if (saved) {
+        showToast({ message: "Saved successfully", type: "success", duration: 2500 });
+      }
     } catch {
       showToast({ message: "Download failed", type: "error", duration: 3000 });
+    }
+  };
+
+  const handleShare = async () => {
+    if (!resultUrl) return;
+    try {
+      await shareMedia(resultUrl, `edited-image-${Date.now()}.png`);
+    } catch {
+      showToast({ message: "Share failed", type: "error", duration: 3000 });
     }
   };
 
@@ -220,6 +226,7 @@ export default function EditImagesPage() {
         onLogin={() => navigateTo("/profile", { mode: "login" })}
         onUpgrade={() => navigateTo("/subscription")}
         onDownload={() => void handleDownload()}
+        onShare={() => void handleShare()}
       />
     </div>
   );

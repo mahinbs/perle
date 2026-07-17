@@ -19,6 +19,8 @@
     "@capacitor/app": "^6.0.3",
     "@capacitor/browser": "^6.0.6",
     "@capacitor/core": "^6.0.0",
+    "@capacitor/filesystem": "^6.0.4",
+    "@capacitor/share": "^6.0.4",
     "@react-three/drei": "^9.88.0",
     "@react-three/fiber": "^8.15.0",
     "@supabase/supabase-js": "^2.108.2",

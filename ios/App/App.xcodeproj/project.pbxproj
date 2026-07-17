@@ -25,6 +25,8 @@
 		868033D12FBDCC3700020A1A /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868033D22FBDCC3700020A1A /* ViewController.swift */; };
 		A10033E02FBDCC3700020B01 /* NativeTtsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10033E12FBDCC3700020B01 /* NativeTtsPlugin.swift */; };
 		A10033E22FBDCC3700020B01 /* NativeTtsPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = A10033E32FBDCC3700020B01 /* NativeTtsPlugin.m */; };
+		B20044F02FBDCC3700020C01 /* MediaFilesPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20044F12FBDCC3700020C01 /* MediaFilesPlugin.swift */; };
+		B20044F22FBDCC3700020C01 /* MediaFilesPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = B20044F32FBDCC3700020C01 /* MediaFilesPlugin.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +48,8 @@
 		868033DA2FBDCC3700020A1C /* AppleSignInPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppleSignInPlugin.m; sourceTree = "<group>"; };
 		A10033E12FBDCC3700020B01 /* NativeTtsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTtsPlugin.swift; sourceTree = "<group>"; };
 		A10033E32FBDCC3700020B01 /* NativeTtsPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = NativeTtsPlugin.m; sourceTree = "<group>"; };
+		B20044F12FBDCC3700020C01 /* MediaFilesPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaFilesPlugin.swift; sourceTree = "<group>"; };
+		B20044F32FBDCC3700020C01 /* MediaFilesPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MediaFilesPlugin.m; sourceTree = "<group>"; };
 		868033DB2FBDCC3700020A1C /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		868033D22FBDCC3700020A1A /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
@@ -103,6 +107,8 @@
 				868033DA2FBDCC3700020A1C /* AppleSignInPlugin.m */,
 				A10033E12FBDCC3700020B01 /* NativeTtsPlugin.swift */,
 				A10033E32FBDCC3700020B01 /* NativeTtsPlugin.m */,
+				B20044F12FBDCC3700020C01 /* MediaFilesPlugin.swift */,
+				B20044F32FBDCC3700020C01 /* MediaFilesPlugin.m */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -206,6 +212,8 @@
 				868033D92FBDCC3700020A1C /* AppleSignInPlugin.m in Sources */,
 				A10033E02FBDCC3700020B01 /* NativeTtsPlugin.swift in Sources */,
 				A10033E22FBDCC3700020B01 /* NativeTtsPlugin.m in Sources */,
+				B20044F02FBDCC3700020C01 /* MediaFilesPlugin.swift in Sources */,
+				B20044F22FBDCC3700020C01 /* MediaFilesPlugin.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -347,7 +355,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = Q4AU696B7H;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SyntraIQ;
@@ -357,7 +365,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.10;
+				MARKETING_VERSION = 1.0.12;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.syntraiq.com;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -377,7 +385,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = Q4AU696B7H;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SyntraIQ;
@@ -387,7 +395,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.10;
+				MARKETING_VERSION = 1.0.12;
 				PRODUCT_BUNDLE_IDENTIFIER = com.syntraiq.com;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

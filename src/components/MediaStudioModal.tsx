@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { FaDownload, FaSpinner, FaTimes } from "react-icons/fa";
+import { FaDownload, FaShareAlt, FaSpinner, FaTimes } from "react-icons/fa";
 
 export type MediaStudioModalView =
   | "generating"
@@ -20,7 +20,53 @@ type MediaStudioModalProps = {
   onLogin: () => void;
   onUpgrade: () => void;
   onDownload?: () => void;
+  onShare?: () => void;
 };
+
+function MediaActionOverlay({
+  onDownload,
+  onShare,
+}: {
+  onDownload?: () => void;
+  onShare?: () => void;
+}) {
+  if (!onDownload && !onShare) return null;
+  return (
+    <div
+      className="absolute top-2 right-2 z-10 flex items-center gap-1.5"
+      style={{ pointerEvents: "auto" }}
+    >
+      {onShare ? (
+        <button
+          type="button"
+          className="media-action-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onShare();
+          }}
+          aria-label="Share"
+          title="Share"
+        >
+          <FaShareAlt size={13} />
+        </button>
+      ) : null}
+      {onDownload ? (
+        <button
+          type="button"
+          className="media-action-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDownload();
+          }}
+          aria-label="Download"
+          title="Download"
+        >
+          <FaDownload size={13} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 export function MediaStudioModal({
   view,
@@ -33,6 +79,7 @@ export function MediaStudioModal({
   onLogin,
   onUpgrade,
   onDownload,
+  onShare,
 }: MediaStudioModalProps) {
   if (!view) return null;
 
@@ -184,20 +231,23 @@ export function MediaStudioModal({
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto px-4">
-              {mediaType === "image" ? (
-                <img
-                  src={resultUrl}
-                  alt="Generated result"
-                  className="w-full max-h-[min(42dvh,320px)] object-contain rounded-lg border border-[var(--border)]"
-                />
-              ) : (
-                <video
-                  src={resultUrl}
-                  controls
-                  playsInline
-                  className="w-full max-h-[min(42dvh,320px)] object-contain rounded-lg border border-[var(--border)] bg-black"
-                />
-              )}
+              <div className="relative rounded-lg overflow-hidden border border-[var(--border)]">
+                {mediaType === "image" ? (
+                  <img
+                    src={resultUrl}
+                    alt="Generated result"
+                    className="w-full max-h-[min(42dvh,320px)] object-contain bg-[var(--card)]"
+                  />
+                ) : (
+                  <video
+                    src={resultUrl}
+                    controls
+                    playsInline
+                    className="w-full max-h-[min(42dvh,320px)] object-contain bg-black"
+                  />
+                )}
+                <MediaActionOverlay onDownload={onDownload} onShare={onShare} />
+              </div>
               {prompt ? (
                 <p className="mt-3 text-sm p-3 rounded-lg bg-[var(--input-bg)] border border-[var(--border)] line-clamp-3">
                   {prompt}
@@ -211,17 +261,6 @@ export function MediaStudioModal({
                 paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))",
               }}
             >
-              {onDownload ? (
-                <button
-                  type="button"
-                  className="btn w-full py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2"
-                  style={{ background: "var(--accent)", color: "#111" }}
-                  onClick={onDownload}
-                >
-                  <FaDownload size={14} />
-                  Download
-                </button>
-              ) : null}
               <button
                 type="button"
                 className="w-full py-2.5 rounded-lg font-semibold glass-button"
@@ -234,6 +273,23 @@ export function MediaStudioModal({
         )}
       </div>
       <style>{`
+        .media-action-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 9999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.62);
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+        }
+        .media-action-btn:active {
+          transform: scale(0.96);
+        }
         @media (max-width: 380px) {
           .media-studio-modal {
             width: calc(100vw - 16px) !important;

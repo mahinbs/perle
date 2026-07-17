@@ -11,6 +11,7 @@ const CHAT_SHELL_PREFIXES = [
   '/create-video',
   '/edit-images',
   '/sleep-disorders',
+  '/discover',
 ];
 
 /** Routes that use position:fixed and should not be wrapped in a scroll shell. */

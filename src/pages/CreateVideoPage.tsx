@@ -16,6 +16,7 @@ import {
   MediaStudioModal,
   type MediaStudioModalView,
 } from "../components/MediaStudioModal";
+import { downloadMedia, shareMedia } from "../utils/downloadMedia";
 
 const TEMPLATES = [
   { id: "cinematic", label: "Cinematic scene", prompt: "A cinematic drone shot over misty mountains at sunrise, golden light, 4K quality" },
@@ -80,16 +81,21 @@ export default function CreateVideoPage() {
   const handleDownload = async () => {
     if (!generatedUrl) return;
     try {
-      const response = await fetch(generatedUrl);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `generated-video-${Date.now()}.mp4`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const saved = await downloadMedia(generatedUrl, `generated-video-${Date.now()}.mp4`);
+      if (saved) {
+        showToast({ message: "Saved successfully", type: "success", duration: 2500 });
+      }
     } catch {
       showToast({ message: "Download failed", type: "error", duration: 3000 });
+    }
+  };
+
+  const handleShare = async () => {
+    if (!generatedUrl) return;
+    try {
+      await shareMedia(generatedUrl, `generated-video-${Date.now()}.mp4`);
+    } catch {
+      showToast({ message: "Share failed", type: "error", duration: 3000 });
     }
   };
 
@@ -170,6 +176,7 @@ export default function CreateVideoPage() {
         onLogin={() => navigateTo("/profile", { mode: "login" })}
         onUpgrade={() => navigateTo("/subscription")}
         onDownload={() => void handleDownload()}
+        onShare={() => void handleShare()}
       />
     </div>
   );

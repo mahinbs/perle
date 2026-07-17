@@ -31,6 +31,8 @@ interface RazorpayCheckoutOptions {
   image?: string;
   callback_url?: string;
   redirect?: boolean;
+  /** Required for UPI Intent inside Android/iOS WebView checkout */
+  webview_intent?: boolean;
   prefill?: {
     name?: string;
     email?: string;
@@ -42,6 +44,13 @@ interface RazorpayCheckoutOptions {
   handler?: (response: RazorpayPaymentResponse) => void;
   modal?: {
     ondismiss?: () => void;
+  };
+  config?: {
+    display?: {
+      blocks?: Record<string, unknown>;
+      sequence?: string[];
+      preferences?: { show_default_blocks?: boolean };
+    };
   };
 }
 
@@ -164,13 +173,26 @@ export async function startRazorpaySubscription(plan: RazorpayPlanId): Promise<R
 
   if (shouldUseInAppRazorpayHandler()) {
     const Razorpay = window.Razorpay;
+    // Mark body so CSS can pad Razorpay overlay above system nav buttons.
+    document.documentElement.classList.add('razorpay-checkout-open');
+    document.body.classList.add('razorpay-checkout-open');
+
     return new Promise((resolve) => {
+      const finish = (result: RazorpayCheckoutResult) => {
+        document.documentElement.classList.remove('razorpay-checkout-open');
+        document.body.classList.remove('razorpay-checkout-open');
+        resolve(result);
+      };
+
       const rzp = new Razorpay({
         key: subscription.keyId,
         subscription_id: subscription.subscriptionId,
         name: 'SyntraIQ',
         description: `${PLAN_LABELS[plan]} Subscription`,
         image: `${window.location.origin}/app-icon.png`,
+        // Enable UPI Intent flow inside Capacitor WebView (Android).
+        // https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/webview/upi-intent-android/
+        webview_intent: true,
         prefill: {
           name: user?.name || undefined,
           email: user?.email || undefined,
@@ -181,21 +203,21 @@ export async function startRazorpaySubscription(plan: RazorpayPlanId): Promise<R
         handler: async (response: RazorpayPaymentResponse) => {
           try {
             await verifyRazorpaySubscription(response);
-            resolve({ success: true });
+            finish({ success: true });
           } catch (err) {
-            resolve({
+            finish({
               success: false,
               error: err instanceof Error ? err.message : 'Payment verification failed',
             });
           }
         },
         modal: {
-          ondismiss: () => resolve({ success: false, userCancelled: true }),
+          ondismiss: () => finish({ success: false, userCancelled: true }),
         },
       });
 
       rzp.on('payment.failed', (response) => {
-        resolve({
+        finish({
           success: false,
           error: response.error?.description || 'Payment failed',
         });

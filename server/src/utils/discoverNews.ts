@@ -193,6 +193,8 @@ const CATEGORY_KEYWORDS: Array<{ keys: RegExp; tag: string }> = [
   { keys: /\b(election|elections|parliament|congress|bjp|tmc|aap|government|govt|minister|ministry|cabinet|politics|political|policy|president|prime minister|pm|mp|mla|cm|chief minister|opposition|vote|voted|voting|protest|protests|rally|bill passed|legislation|court|supreme court|high court|judge|judgment|arrest|arrested|probe|investigation|fir|cbi|ed|raid|crime|murder|attack|attacked|strike enters|police|protest)/i, tag: 'Politics' },
   // Health
   { keys: /\b(health|healthcare|medical|hospital|vaccine|vaccination|disease|covid|virus|doctor|doctors|nurse|patient|patients|medicine|pharma|pharmaceutical|drug|fda|who|treatment|clinical|surgery|outbreak|epidemic|pandemic|mental health)\b/i, tag: 'Health' },
+  // Entertainment (film/TV/music/celebrity — before generic Science/Tech)
+  { keys: /\b(entertainment|celebrity|celebrities|hollywood|hollywoodwood|bollywood|movie|movies|film|films|box office|ott|netflix|prime video|disney\+|hotstar|trailer|album|song|songs|concert|music video|grammy|oscar|oscars|emmy|emmys|award show|red carpet|streaming series|tv show|web series|k-pop|kpop|singer|rapper|comedian)\b/i, tag: 'Entertainment' },
   // Science (incl. space)
   { keys: /\b(space|nasa|isro|spacex|rocket|satellite|astronaut|mars|moon|science|scientist|scientific|research|researchers|study|studies|discovery|biology|chemistry|physics|genome|dna|telescope|quantum|lab|laboratory|experiment|astronomy|particle|fossil|archaeolog)\b/i, tag: 'Science' },
   // Environment
@@ -211,14 +213,15 @@ interface CategoryStyle {
 }
 
 const CATEGORY_STYLE: Record<string, CategoryStyle> = {
-  Sports:      { emoji: '🏆', label: 'SPORTS',      from: '#F97316', to: '#DC2626' },
-  Politics:    { emoji: '🏛️', label: 'POLITICS',    from: '#1E3A8A', to: '#0F172A' },
-  Health:      { emoji: '🏥', label: 'HEALTH',      from: '#DC2626', to: '#F97316' },
-  Science:     { emoji: '🔬', label: 'SCIENCE',     from: '#0EA5E9', to: '#1E3A8A' },
-  Environment: { emoji: '🌿', label: 'ENVIRONMENT', from: '#10B981', to: '#065F46' },
-  Tech:        { emoji: '💻', label: 'TECH',        from: '#6366F1', to: '#3730A3' },
-  Finance:     { emoji: '💰', label: 'FINANCE',     from: '#F59E0B', to: '#047857' },
-  News:        { emoji: '📰', label: 'NEWS',        from: '#475569', to: '#1E293B' },
+  Sports:         { emoji: '🏆', label: 'SPORTS',         from: '#F97316', to: '#DC2626' },
+  Politics:       { emoji: '🏛️', label: 'POLITICS',       from: '#1E3A8A', to: '#0F172A' },
+  Health:         { emoji: '🏥', label: 'HEALTH',         from: '#DC2626', to: '#F97316' },
+  Entertainment:  { emoji: '🎬', label: 'ENTERTAINMENT',  from: '#DB2777', to: '#7C3AED' },
+  Science:        { emoji: '🔬', label: 'SCIENCE',        from: '#0EA5E9', to: '#1E3A8A' },
+  Environment:    { emoji: '🌿', label: 'ENVIRONMENT',    from: '#10B981', to: '#065F46' },
+  Tech:           { emoji: '💻', label: 'TECH',           from: '#6366F1', to: '#3730A3' },
+  Finance:        { emoji: '💰', label: 'FINANCE',        from: '#F59E0B', to: '#047857' },
+  News:           { emoji: '📰', label: 'NEWS',           from: '#475569', to: '#1E293B' },
 };
 
 /**
@@ -269,14 +272,15 @@ function pickImageAndTag(text: string, seed: string = ''): { image: string; tag:
 // clean category match still appear on "For You".
 function categoryFromTag(tag: string): string {
   switch (tag) {
-    case 'Tech':        return 'Technology';
-    case 'Finance':     return 'Finance';
-    case 'Health':      return 'Health';
-    case 'Science':     return 'Science';
-    case 'Environment': return 'Environment';
-    case 'Sports':      return 'Sports';
-    case 'Politics':    return 'Politics';
-    default:            return 'For You';
+    case 'Tech':           return 'Technology';
+    case 'Finance':        return 'Finance';
+    case 'Health':         return 'Health';
+    case 'Science':        return 'Science';
+    case 'Environment':    return 'Environment';
+    case 'Sports':         return 'Sports';
+    case 'Politics':       return 'Politics';
+    case 'Entertainment':  return 'Entertainment';
+    default:               return 'For You';
   }
 }
 
@@ -287,8 +291,8 @@ function categoryFromTag(tag: string): string {
 function matchesDiscoverCategory(title: string, description: string, category: string): boolean {
   if (!category || category === 'For You') return true;
   const text = `${title} ${description || ''}`;
-  if (category === 'Psychology') {
-    return /\b(psycholog|mental health|wellbeing|well-being|therapy|therapist|counseling|counsellor|mindfulness|depression|anxiety|ptsd|trauma|cognitive|behaviour|behavior|emotion|stress|burnout|self[- ]esteem|psychiatr|counsel|wellness|mood|suicide|grief)\b/i.test(text);
+  if (category === 'Entertainment') {
+    return /\b(entertainment|celebrity|celebrities|hollywood|hollywoodwood|bollywood|movie|movies|film|films|box office|ott|netflix|prime video|disney|hotstar|trailer|album|song|songs|concert|music|grammy|oscar|oscars|emmy|emmys|award|red carpet|streaming|tv show|web series|k-pop|kpop|singer|rapper|comedian|actor|showbiz|film industry)\b/i.test(text);
   }
   const { tag } = pickImageAndTag(text, title);
   if (categoryFromTag(tag) === category) return true;
@@ -300,6 +304,7 @@ function matchesDiscoverCategory(title: string, description: string, category: s
     Environment: /\b(climate|environment|pollution|carbon|wildlife|flood|earthquake|renewable|emissions|biodiversity|wildfire|heatwave|drought|green energy|weather|monsoon|deforestation|sustainab)\b/i,
     Finance: /\b(stock|stocks|shares|market|economy|economic|inflation|gdp|finance|financial|investor|ipo|earnings|rupee|dollar|sensex|nifty|bank|tariff|revenue|trading|federal reserve|rbi|business|profit|markets)\b/i,
     Sports: /\b(sport|cricket|football|soccer|tennis|olympic|nba|fifa|ipl|match|tournament|championship|athlete|premier league|world cup|goal|wicket)\b/i,
+    Entertainment: /\b(entertainment|celebrity|movie|film|bollywood|hollywoodwood|netflix|music|concert|oscar|emmy|trailer|ott|streaming|showbiz)\b/i,
   };
   return Boolean(extra[category]?.test(text));
 }
@@ -358,10 +363,10 @@ function categoryFromWorldNewsCategory(
     environment: 'Environment',
     business: 'Finance',
     sports: 'Sports',
-    entertainment: 'For You',
-    lifestyle: 'For You',
+    entertainment: 'Entertainment',
+    lifestyle: 'Entertainment',
     travel: 'For You',
-    culture: 'For You',
+    culture: 'Entertainment',
     education: 'Science',
     other: 'For You',
   };
@@ -560,7 +565,8 @@ const NEWS_L2_TTL_SEC = NEWS_REFRESH_INTERVAL_HOURS * 60 * 60;
 //   v20 = Reporter plan tuning: 2 rps / ≤4 concurrent / 480 pt daily budget / 50 results.
 //   v21 = trust API categories for Science/Env/Finance; global dedupe; fetch order fix.
 //   v22 = drop keyword re-filter on API category buckets; categories-only queries (no AND text).
-const NEWS_CACHE_VERSION = 'v22';
+//   v23 = Psychology → Entertainment (World News `entertainment` category).
+const NEWS_CACHE_VERSION = 'v23';
 
 // Refresh-cycle timezone per country. Cycle rotates every NEWS_REFRESH_INTERVAL_HOURS.
 const COUNTRY_TIMEZONES: Record<string, string> = {
@@ -987,7 +993,7 @@ export async function getLiveNewsForCountry(
     { q: '', cat: 'Politics', tag: 'Politics', n: PER_CAT_TARGET, categories: 'politics' },
     { q: '', cat: 'Technology', tag: 'Tech', n: PER_CAT_TARGET, categories: 'technology' },
     { q: '', cat: 'Health', tag: 'Health', n: PER_CAT_TARGET, categories: 'health' },
-    { q: '', cat: 'Psychology', tag: 'Health', n: PER_CAT_TARGET, text: 'psychology mental health wellbeing therapy' },
+    { q: '', cat: 'Entertainment', tag: 'Entertainment', n: PER_CAT_TARGET, categories: 'entertainment' },
     { q: '', cat: 'Sports', tag: 'Sports', n: PER_CAT_TARGET, categories: 'sports' },
   ];
 
@@ -1041,10 +1047,10 @@ export async function getLiveNewsForCountry(
           .map((it) => ({ ...it, category: t.cat, tag: t.tag || it.tag }))
           .slice(0, t.n)
       );
-      // Psychology has no API category — light keyword keep so the tab stays on-topic.
-      if (t.cat === 'Psychology') {
+      // Light keyword keep only for text-only buckets (no World News category filter).
+      if (!t.categories && t.cat !== 'For You') {
         fresh = fresh.filter((it) =>
-          matchesDiscoverCategory(it.title, it.description || '', 'Psychology')
+          matchesDiscoverCategory(it.title, it.description || '', t.cat)
         );
       }
       if (fresh.length > 0) {

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { IoIosArrowBack } from "react-icons/io";
-import { FaImage, FaVideo, FaSpinner, FaTimes, FaPlus, FaArrowUp, FaDownload } from "react-icons/fa";
+import { FaImage, FaVideo, FaSpinner, FaTimes, FaPlus, FaArrowUp, FaDownload, FaShareAlt } from "react-icons/fa";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { useToast } from "../contexts/ToastContext";
 import {
@@ -12,7 +12,7 @@ import {
   type UsageLimitKind,
 } from "../utils/queryLimit";
 import { UsageLimitModal } from "../components/UsageLimitModal";
-import { downloadMedia } from "../utils/downloadMedia";
+import { downloadMedia, shareMedia } from "../utils/downloadMedia";
 import { generateImageApi, generateVideoApi, type ImageModelChoice } from "../utils/mediaApi";
 import { getUserData } from "../utils/auth";
 import { getUserFriendlyErrorMessage } from "../utils/helpers";
@@ -369,12 +369,25 @@ export default function MediaStudioPage() {
     }
   };
 
+  const mediaFilename = (type: MediaMode) =>
+    `${type}-${Date.now()}.${type === "image" ? "png" : "mp4"}`;
+
   const handleDownload = async (url: string, type: MediaMode) => {
     try {
-      const filename = `${type}-${Date.now()}.${type === "image" ? "png" : "mp4"}`;
-      await downloadMedia(url, filename);
+      const saved = await downloadMedia(url, mediaFilename(type));
+      if (saved) {
+        showToast({ message: "Saved successfully", type: "success", duration: 2500 });
+      }
     } catch {
       showToast({ message: "Download failed", type: "error", duration: 3000 });
+    }
+  };
+
+  const handleShare = async (url: string, type: MediaMode) => {
+    try {
+      await shareMedia(url, mediaFilename(type));
+    } catch {
+      showToast({ message: "Share failed", type: "error", duration: 3000 });
     }
   };
 
@@ -512,7 +525,7 @@ export default function MediaStudioPage() {
               )}
               {entry.status === "done" && entry.resultUrl && (
                 <div
-                  className="glass-card border border-[var(--border)] rounded-2xl overflow-hidden"
+                  className="glass-card border border-[var(--border)] rounded-2xl overflow-hidden relative"
                   style={{ width: "100%", maxWidth: "100%" }}
                 >
                   {entry.type === "image" ? (
@@ -542,20 +555,26 @@ export default function MediaStudioPage() {
                     />
                   )}
                   <div
-                    className="flex items-center justify-between gap-2 px-3 py-2.5 border-t border-[var(--border)]"
-                    style={{ background: "var(--card)" }}
+                    className="absolute top-2 right-2 z-10 flex items-center gap-1.5"
+                    style={{ pointerEvents: "auto" }}
                   >
-                    <span className="text-xs opacity-60 truncate min-w-0">
-                      {entry.type === "image" ? "Generated image" : "Generated video"}
-                    </span>
                     <button
                       type="button"
-                      className="btn-ghost glass-button flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full shrink-0"
+                      className="media-result-action-btn"
+                      onClick={() => void handleShare(entry.resultUrl!, entry.type)}
+                      title="Share"
+                      aria-label="Share"
+                    >
+                      <FaShareAlt size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="media-result-action-btn"
                       onClick={() => void handleDownload(entry.resultUrl!, entry.type)}
                       title="Download"
+                      aria-label="Download"
                     >
-                      <FaDownload size={12} />
-                      Download
+                      <FaDownload size={13} />
                     </button>
                   </div>
                 </div>
@@ -830,7 +849,31 @@ export default function MediaStudioPage() {
             ? () => void handleDownload(modalResultUrl, mediaMode)
             : undefined
         }
+        onShare={
+          modalResultUrl
+            ? () => void handleShare(modalResultUrl, mediaMode)
+            : undefined
+        }
       />
+      <style>{`
+        .media-result-action-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 9999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.62);
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+        }
+        .media-result-action-btn:active {
+          transform: scale(0.96);
+        }
+      `}</style>
     </div>
   );
 }

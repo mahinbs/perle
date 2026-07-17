@@ -1600,6 +1600,51 @@ iframe[src*="razorpay"],
   color-scheme: light !important;
 }
 
+/*
+ * Razorpay checkout on Capacitor (Android/iOS): keep the modal inside the
+ * visible viewport so Continue / Cancel are not covered by system nav buttons.
+ */
+html.razorpay-checkout-open,
+body.razorpay-checkout-open {
+  overflow: hidden !important;
+}
+
+body.razorpay-checkout-open .razorpay-container,
+body.razorpay-checkout-open .razorpay-backdrop,
+.razorpay-container {
+  top: env(safe-area-inset-top, 0px) !important;
+  bottom: env(safe-area-inset-bottom, 0px) !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  box-sizing: border-box !important;
+}
+
+.razorpay-container iframe,
+iframe.razorpay-checkout-frame,
+iframe[src*="checkout.razorpay.com"],
+iframe[src*="api.razorpay.com"] {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: calc(
+    100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  ) !important;
+  box-sizing: border-box !important;
+}
+
+/* Discover: sticky chrome + scrollable cards inside chat shell */
+.discover-page {
+  height: 100%;
+  min-height: 0;
+}
+
+.discover-sticky-header {
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
 /* Voice overlay: premium CSS 3D wire globe for Capacitor (Android + iOS) */
 @keyframes voice-pulse {
   0%, 100% { transform: scale(1); }

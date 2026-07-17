@@ -8,6 +8,8 @@
 	},
 	"packageClassList": [
 		"AppPlugin",
-		"CAPBrowserPlugin"
+		"CAPBrowserPlugin",
+		"FilesystemPlugin",
+		"SharePlugin"
 	]
 }
