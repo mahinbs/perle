@@ -1,8 +1,37 @@
 import { getRazorpayPlanIds } from './razorpayConfig.js';
 
+export type RazorpayPlanKey = 'pro' | 'max';
+
 /** Resolve plan IDs for the active RAZORPAY_MODE (live or test). */
 export function getActiveRazorpayPlanIds() {
   return getRazorpayPlanIds();
+}
+
+/**
+ * Resolve Pro vs Max from Razorpay notes / stored plan IDs.
+ * Never defaults unknown IDs to Max — returns null so callers can fail safely.
+ */
+export function resolveRazorpayPlanKey(opts: {
+  planIds: { pro: string; max: string };
+  storedPlanId?: string | null;
+  razorpayPlanId?: string | null;
+  notes?: Record<string, unknown> | null;
+}): RazorpayPlanKey | null {
+  const notes = opts.notes || {};
+  const fromNotes = notes.plan ?? notes.tier;
+  if (fromNotes === 'pro' || fromNotes === 'max') {
+    return fromNotes;
+  }
+
+  const planId = (opts.storedPlanId || opts.razorpayPlanId || '').trim();
+  if (!planId) return null;
+
+  const proId = (opts.planIds.pro || '').trim();
+  const maxId = (opts.planIds.max || '').trim();
+
+  if (proId && planId === proId) return 'pro';
+  if (maxId && planId === maxId) return 'max';
+  return null;
 }
 
 // Helper function to create plans (run once during setup)

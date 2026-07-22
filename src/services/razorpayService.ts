@@ -129,7 +129,14 @@ export async function verifyRazorpaySubscription(payment: RazorpayPaymentRespons
     throw new Error(data.error || 'Verification failed');
   }
 
-  return data;
+  return data as {
+    success: boolean;
+    message: string;
+    tier: 'pro' | 'max';
+    plan?: 'pro' | 'max';
+    subscriptionEndDate?: string;
+    autoRenew?: boolean;
+  };
 }
 
 const PLAN_LABELS: Record<RazorpayPlanId, string> = {
@@ -141,6 +148,8 @@ export interface RazorpayCheckoutResult {
   success: boolean;
   userCancelled?: boolean;
   error?: string;
+  /** Assigned tier after successful verify */
+  tier?: 'pro' | 'max';
   /** Page is navigating to Razorpay hosted checkout */
   redirecting?: boolean;
 }
@@ -202,9 +211,25 @@ export async function startRazorpaySubscription(plan: RazorpayPlanId): Promise<R
         },
         handler: async (response: RazorpayPaymentResponse) => {
           try {
-            await verifyRazorpaySubscription(response);
-            finish({ success: true });
+            const verified = await verifyRazorpaySubscription(response);
+            finish({
+              success: true,
+              tier: verified.tier === 'max' ? 'max' : 'pro',
+            });
           } catch (err) {
+            // Payment may have succeeded — try server sync (covers race / transient verify errors)
+            try {
+              const status = await restoreRazorpaySubscription();
+              if (status.isPremium) {
+                finish({
+                  success: true,
+                  tier: status.tier === 'max' ? 'max' : 'pro',
+                });
+                return;
+              }
+            } catch {
+              // fall through to original error
+            }
             finish({
               success: false,
               error: err instanceof Error ? err.message : 'Payment verification failed',
@@ -259,8 +284,9 @@ export async function restoreRazorpaySubscription(): Promise<{ isPremium: boolea
   }
 
   const data = await response.json();
+  const tier = data.tier === 'max' || data.tier === 'pro' ? data.tier : undefined;
   return {
-    isPremium: data.isActive === true && data.tier !== 'free',
-    tier: data.tier,
+    isPremium: data.isActive === true && (tier === 'pro' || tier === 'max'),
+    tier,
   };
 }

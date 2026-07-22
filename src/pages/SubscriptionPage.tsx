@@ -148,13 +148,19 @@ export default function SubscriptionPage() {
     const canceled = searchParams.get("canceled");
 
     if (success) {
-      showToast({
-        message: "Subscription successful! Welcome to premium.",
-        type: "success",
-        duration: 5000
-      });
       verifyToken().then((user) => {
         if (user) setAuthUser(user);
+        const tierLabel =
+          user?.premiumTier === 'max'
+            ? 'IQ Max'
+            : user?.premiumTier === 'pro'
+              ? 'IQ Pro'
+              : 'premium';
+        showToast({
+          message: `Subscription successful! Welcome to ${tierLabel}.`,
+          type: "success",
+          duration: 5000
+        });
       });
       setSearchParams({}, { replace: true });
     }
@@ -221,8 +227,14 @@ export default function SubscriptionPage() {
         }
 
         if (result.success) {
+          const tierLabel =
+            result.tier === 'max'
+              ? 'IQ Max'
+              : result.tier === 'pro'
+                ? 'IQ Pro'
+                : selectedPlan.shortName;
           showToast({
-            message: "Subscription successful! Welcome to premium.",
+            message: `Subscription successful! Welcome to ${tierLabel}.`,
             type: "success",
             duration: 5000
           });

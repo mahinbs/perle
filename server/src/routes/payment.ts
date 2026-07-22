@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
@@ -8,6 +8,7 @@ import {
   getRazorpayCredentials,
   getRazorpayPlanIds,
 } from '../utils/razorpayConfig.js';
+import { resolveRazorpayPlanKey } from '../utils/razorpayPlans.js';
 import {
   evaluateSubscriptionAccess,
   persistSubscriptionAccessFix,
@@ -73,6 +74,123 @@ function hasValidPaidPeriod(profile: Record<string, unknown> | null | undefined)
   return status === 'active' || status === 'cancelled' || status === 'paused';
 }
 
+function resolvePlanOrThrow(
+  opts: Parameters<typeof resolveRazorpayPlanKey>[0]
+): 'pro' | 'max' {
+  const plan = resolveRazorpayPlanKey(opts);
+  if (!plan) {
+    throw new Error(
+      'Could not resolve subscription plan (Pro/Max). Check Razorpay plan IDs and subscription notes.'
+    );
+  }
+  return plan;
+}
+
+/** Activate Pro/Max on the user profile after a confirmed Razorpay charge. */
+async function activatePremiumForUser(opts: {
+  userId: string;
+  plan: 'pro' | 'max';
+  paymentId: string;
+  startDate: Date;
+  endDate: Date;
+  autoRenew?: boolean;
+}): Promise<void> {
+  const planConfig = getPlans()[opts.plan];
+  const { error } = await supabase
+    .from('user_profiles')
+    .update({
+      premium_tier: planConfig.tier,
+      is_premium: true,
+      razorpay_payment_id: opts.paymentId,
+      subscription_id: `sub_${opts.userId}_${Date.now()}`,
+      subscription_start_date: opts.startDate.toISOString(),
+      subscription_end_date: opts.endDate.toISOString(),
+      subscription_status: 'active',
+      ...(opts.autoRenew !== undefined ? { auto_renew: opts.autoRenew } : {}),
+      updated_at: new Date().toISOString(),
+    } as any)
+    .eq('user_id', opts.userId);
+
+  if (error) {
+    throw new Error(`Failed to activate subscription: ${error.message}`);
+  }
+}
+
+/**
+ * If checkout succeeded in Razorpay but client verify never ran (e.g. Android
+ * killed after UPI), pull status from Razorpay and activate Pro/Max.
+ */
+async function syncPendingRazorpaySubscription(
+  userId: string,
+  profile: SubscriptionProfile
+): Promise<SubscriptionProfile | null> {
+  const subscriptionId = profile.razorpay_subscription_id;
+  if (!subscriptionId || profile.razorpay_payment_id) {
+    return null;
+  }
+
+  const razorpay = getRazorpayInstance();
+  const subscription = (await razorpay.subscriptions.fetch(subscriptionId)) as any;
+  const validStatuses = ['active', 'authenticated'];
+  if (!validStatuses.includes(subscription.status)) {
+    return null;
+  }
+
+  const PLANS = getPlans();
+  const plan = resolvePlanOrThrow({
+    planIds: { pro: PLANS.pro.planId, max: PLANS.max.planId },
+    storedPlanId: profile.razorpay_plan_id,
+    razorpayPlanId: subscription.plan_id,
+    notes: subscription.notes || {},
+  });
+
+  let paymentId: string | null = null;
+  try {
+    const invoices = (await (razorpay as any).invoices.all({
+      subscription_id: subscriptionId,
+      count: 5,
+    })) as { items?: Array<{ payment_id?: string; status?: string }> };
+    const paid = (invoices.items || []).find(
+      (inv) => inv.payment_id && (inv.status === 'paid' || inv.status === 'partially_paid')
+    );
+    paymentId = paid?.payment_id || null;
+  } catch (err) {
+    console.warn('Could not list invoices for subscription sync:', err);
+  }
+
+  if (!paymentId) {
+    // Confirmed active at Razorpay — mark paid so access gating unlocks.
+    paymentId = `rzp_confirmed_${subscriptionId}`;
+  }
+
+  const startDate = new Date((subscription.current_start || subscription.created_at) * 1000);
+  const endDate = new Date(startDate);
+  endDate.setMonth(endDate.getMonth() + 1);
+
+  await activatePremiumForUser({
+    userId,
+    plan,
+    paymentId,
+    startDate,
+    endDate,
+    autoRenew: profile.auto_renew ?? true,
+  });
+
+  console.log(
+    `Synced Razorpay subscription ${subscriptionId} → ${plan} for user ${userId}`
+  );
+
+  return {
+    ...profile,
+    premium_tier: plan,
+    is_premium: true,
+    razorpay_payment_id: paymentId,
+    subscription_status: 'active',
+    subscription_start_date: startDate.toISOString(),
+    subscription_end_date: endDate.toISOString(),
+  };
+}
+
 // Create subscription (with auto-renewal support)
 router.post('/payment/create-subscription', authenticateToken, async (req: AuthRequest, res) => {
   try {
@@ -99,6 +217,13 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
 
     if (!planConfig) {
       return res.status(400).json({ error: 'Invalid plan selected' });
+    }
+
+    if (!planConfig.planId) {
+      return res.status(500).json({
+        error: 'Razorpay plan is not configured',
+        message: `Missing plan ID for ${plan}. Set RAZORPAY_PLAN_ID_${plan.toUpperCase()} (or test equivalent) in server env.`,
+      });
     }
 
     // Check if user has existing subscription
@@ -333,7 +458,7 @@ router.post('/payment/create-subscription', authenticateToken, async (req: AuthR
       message: switchType === 'upgrade' 
         ? proratedAmount > 0
           ? `Upgrading to ${planConfig.name}. You'll be charged ₹${(planConfig.amount / 100).toFixed(2)}. A refund of ₹${(unusedLowerPlanValue / 100).toFixed(2)} (unused lower plan value) will be processed within 5-7 business days.`
-          : 'Upgrade successful! You now have access to the higher plan.'
+          : `Upgrading to ${planConfig.name}. Complete payment to activate your new plan.`
         : switchType === 'downgrade'
         ? `Downgrade scheduled. You'll keep ${existingTier === 'max' ? 'IQ Max' : 'IQ Pro'} access until ${keepAccessUntil?.toLocaleDateString()}, then switch to ${planConfig.name}.`
         : 'Subscription created successfully!'
@@ -470,10 +595,23 @@ router.post('/payment/verify-subscription', authenticateToken, async (req: AuthR
       return res.status(400).json({ error: 'Could not verify payment with Razorpay' });
     }
     
-    // Determine plan from subscription
+    // Determine plan from notes (authoritative) then stored / Razorpay plan IDs
     const PLANS = getPlans();
-    const planId = (profile as any).razorpay_plan_id || subscription.plan_id;
-    const plan = planId === PLANS.pro.planId ? 'pro' : 'max';
+    let plan: 'pro' | 'max';
+    try {
+      plan = resolvePlanOrThrow({
+        planIds: { pro: PLANS.pro.planId, max: PLANS.max.planId },
+        storedPlanId: (profile as any).razorpay_plan_id,
+        razorpayPlanId: subscription.plan_id,
+        notes: subscription.notes || {},
+      });
+    } catch (resolveError: any) {
+      console.error('Plan resolve error on verify:', resolveError);
+      return res.status(400).json({
+        error: 'Could not determine subscription plan',
+        message: resolveError.message,
+      });
+    }
     const planConfig = PLANS[plan];
 
     // Calculate subscription dates
@@ -481,31 +619,29 @@ router.post('/payment/verify-subscription', authenticateToken, async (req: AuthR
     const endDate = new Date((subscription.current_start || subscription.created_at) * 1000);
     endDate.setMonth(endDate.getMonth() + 1); // Add 1 month
 
-    // Update user profile with premium tier and subscription info
-    const { error: updateError } = await supabase
-      .from('user_profiles')
-      .update({
-        premium_tier: planConfig.tier,
-        is_premium: true,
-        razorpay_payment_id: razorpay_payment_id,
-        subscription_id: `sub_${req.userId}_${Date.now()}`,
-        subscription_start_date: startDate.toISOString(),
-        subscription_end_date: endDate.toISOString(),
-        subscription_status: 'active',
-        auto_renew: (profile as any).auto_renew ?? true,
-        updated_at: new Date().toISOString()
-      } as any)
-      .eq('user_id', req.userId);
-
-    if (updateError) {
+    try {
+      await activatePremiumForUser({
+        userId: req.userId,
+        plan,
+        paymentId: razorpay_payment_id,
+        startDate,
+        endDate,
+        autoRenew: (profile as any).auto_renew ?? true,
+      });
+    } catch (updateError: any) {
       console.error('Update profile error:', updateError);
       return res.status(500).json({ error: 'Failed to activate subscription' });
     }
 
+    console.log(
+      `Verified Razorpay payment ${razorpay_payment_id} → activated ${planConfig.tier} for user ${req.userId}`
+    );
+
     res.json({
       success: true,
-      message: 'Subscription activated successfully',
+      message: `${planConfig.name} activated successfully`,
       tier: planConfig.tier,
+      plan: plan,
       subscriptionEndDate: endDate.toISOString(),
       autoRenew: (profile as any).auto_renew ?? true
     });
@@ -522,16 +658,24 @@ router.post('/payment/verify-subscription', authenticateToken, async (req: AuthR
 router.post('/payment/webhook', async (req, res) => {
   try {
     const webhookSignature = req.headers['x-razorpay-signature'] as string;
-    const webhookBody = JSON.stringify(req.body);
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+    const webhookBody = rawBody ? rawBody.toString('utf8') : JSON.stringify(req.body);
 
-    // Verify webhook signature
+    // Verify webhook signature (prefer dedicated webhook secret)
     const { webhookSecret, keySecret } = getRazorpayCredentials();
+    const secret = webhookSecret || keySecret;
+    if (!secret) {
+      console.error('Razorpay webhook secret is not configured');
+      return res.status(500).json({ error: 'Webhook not configured' });
+    }
+
     const expectedSignature = crypto
-      .createHmac('sha256', webhookSecret || keySecret)
+      .createHmac('sha256', secret)
       .update(webhookBody)
       .digest('hex');
 
     if (webhookSignature !== expectedSignature) {
+      console.warn('Invalid Razorpay webhook signature');
       return res.status(400).json({ error: 'Invalid webhook signature' });
     }
 
@@ -543,90 +687,85 @@ router.post('/payment/webhook', async (req, res) => {
     // Handle different subscription events
     switch (event) {
       case 'subscription.activated':
-      case 'subscription.charged':
-        // Subscription activated or renewed
-        if (subscription && payment) {
-          const { data: profile } = await supabase
-            .from('user_profiles')
-            .select('user_id, razorpay_plan_id')
-            .eq('razorpay_subscription_id', subscription.id)
-            .single();
+      case 'subscription.charged': {
+        if (!subscription) break;
 
-          if (profile) {
-            const planId = (profile as any).razorpay_plan_id || subscription.plan_id;
-            const plan = planId === PLANS.pro.planId ? 'pro' : 'max';
-            const planConfig = PLANS[plan];
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('user_id, razorpay_plan_id, auto_renew')
+          .eq('razorpay_subscription_id', subscription.id)
+          .single();
 
-            const startDate = new Date(subscription.current_start * 1000);
-            const endDate = new Date(startDate);
-            endDate.setMonth(endDate.getMonth() + 1);
+        if (!profile) break;
 
-            // Check if this is an upgrade that requires refund
-            const subscriptionNotes = subscription.notes || {};
-            const requiresRefund = subscriptionNotes.requiresRefund === 'true';
-            const unusedLowerPlanValue = parseInt(subscriptionNotes.unusedLowerPlanValue || '0');
+        let plan: 'pro' | 'max';
+        try {
+          plan = resolvePlanOrThrow({
+            planIds: { pro: PLANS.pro.planId, max: PLANS.max.planId },
+            storedPlanId: (profile as any).razorpay_plan_id,
+            razorpayPlanId: subscription.plan_id,
+            notes: subscription.notes || {},
+          });
+        } catch (resolveError) {
+          console.error('Webhook plan resolve failed:', resolveError);
+          break;
+        }
+        const planConfig = PLANS[plan];
 
-            // Process refund for upgrade proration
-            // User paid full subscription amount (e.g., ₹899), but should only pay:
-            // = (Prorated higher plan for remaining days) - (Unused lower plan value)
-            // = Prorated difference
-            // 
-            // Since they paid full amount, we need to refund:
-            // = Full amount - (What they should pay)
-            // = Full amount - (Prorated higher plan - Unused lower plan)
-            // = Full amount - Prorated higher plan + Unused lower plan
-            // = (Full amount - Prorated higher plan) + Unused lower plan
-            // = Overpayment for higher plan + Unused lower plan value
-            if (requiresRefund && unusedLowerPlanValue > 0 && payment.id) {
-              try {
-                const razorpay = getRazorpayInstance();
-                
-                // Calculate what they should pay for remaining days of higher plan
-                const daysRemaining = parseInt(subscriptionNotes.daysRemaining || '0');
-                const proratedHigherPlan = daysRemaining > 0 
-                  ? Math.floor((planConfig.amount * daysRemaining) / 30)
-                  : 0;
-                
-                // Refund amount = Full amount paid - What they should pay
-                // What they should pay = Prorated higher plan - Unused lower plan value
-                // So refund = Full amount - (Prorated higher plan - Unused lower plan)
-                // = Full amount - Prorated higher plan + Unused lower plan
-                const overpaymentForHigherPlan = planConfig.amount - proratedHigherPlan;
-                const totalRefund = overpaymentForHigherPlan + unusedLowerPlanValue;
-                
-                // Create partial refund
-                await razorpay.payments.refund(payment.id, {
-                  amount: totalRefund,
-                  notes: {
-                    reason: 'upgrade_proration',
-                    originalPlan: subscriptionNotes.originalTier,
-                    newPlan: planConfig.tier,
-                    message: `Proration refund: unused lower plan + overpayment for higher plan`
-                  }
-                } as any);
-                console.log(`Refunded ₹${totalRefund / 100} for upgrade proration`);
-              } catch (error: any) {
-                console.error('Error processing refund:', error);
-                // Don't fail the subscription activation if refund fails
-                // Can be processed manually later via Razorpay dashboard
-              }
-            }
+        const startDate = new Date(
+          (subscription.current_start || subscription.created_at || Date.now() / 1000) * 1000
+        );
+        const endDate = new Date(startDate);
+        endDate.setMonth(endDate.getMonth() + 1);
 
-            await supabase
-              .from('user_profiles')
-              .update({
-                premium_tier: planConfig.tier,
-                is_premium: true,
-                subscription_status: 'active',
-                subscription_start_date: startDate.toISOString(),
-                subscription_end_date: endDate.toISOString(),
-                razorpay_payment_id: payment.id,
-                updated_at: new Date().toISOString()
-              } as any)
-              .eq('user_id', (profile as any).user_id);
+        const paymentId =
+          payment?.id || `rzp_confirmed_${subscription.id}`;
+
+        // Check if this is an upgrade that requires refund
+        const subscriptionNotes = subscription.notes || {};
+        const requiresRefund = subscriptionNotes.requiresRefund === 'true';
+        const unusedLowerPlanValue = parseInt(subscriptionNotes.unusedLowerPlanValue || '0', 10);
+
+        if (requiresRefund && unusedLowerPlanValue > 0 && payment?.id) {
+          try {
+            const razorpay = getRazorpayInstance();
+            const daysRemaining = parseInt(subscriptionNotes.daysRemaining || '0', 10);
+            const proratedHigherPlan =
+              daysRemaining > 0
+                ? Math.floor((planConfig.amount * daysRemaining) / 30)
+                : 0;
+            const overpaymentForHigherPlan = planConfig.amount - proratedHigherPlan;
+            const totalRefund = overpaymentForHigherPlan + unusedLowerPlanValue;
+
+            await razorpay.payments.refund(payment.id, {
+              amount: totalRefund,
+              notes: {
+                reason: 'upgrade_proration',
+                originalPlan: subscriptionNotes.originalTier,
+                newPlan: planConfig.tier,
+                message: 'Proration refund: unused lower plan + overpayment for higher plan',
+              },
+            } as any);
+            console.log(`Refunded ₹${totalRefund / 100} for upgrade proration`);
+          } catch (error: any) {
+            console.error('Error processing refund:', error);
           }
         }
+
+        await activatePremiumForUser({
+          userId: (profile as any).user_id,
+          plan,
+          paymentId,
+          startDate,
+          endDate,
+          autoRenew: (profile as any).auto_renew ?? true,
+        });
+
+        console.log(
+          `Webhook ${event}: activated ${plan} for user ${(profile as any).user_id}`
+        );
         break;
+      }
 
       case 'subscription.cancelled':
       case 'subscription.paused':
@@ -674,7 +813,7 @@ router.get('/payment/subscription', authenticateToken, async (req: AuthRequest, 
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const { data: profile } = await supabase
+    let { data: profile } = await supabase
       .from('user_profiles')
       .select('premium_tier, is_premium, subscription_status, subscription_start_date, subscription_end_date, auto_renew, razorpay_subscription_id, razorpay_payment_id, razorpay_plan_id, subscription_id')
       .eq('user_id', req.userId)
@@ -689,7 +828,20 @@ router.get('/payment/subscription', authenticateToken, async (req: AuthRequest, 
       });
     }
 
-    const profileData = profile as SubscriptionProfile;
+    let profileData = profile as SubscriptionProfile;
+
+    // Recover Pro/Max if Razorpay charged but client verify never completed (Android UPI).
+    if (isUnpaidRazorpayNeedingSync(profileData)) {
+      try {
+        const synced = await syncPendingRazorpaySubscription(req.userId, profileData);
+        if (synced) {
+          profileData = synced;
+        }
+      } catch (syncError) {
+        console.error('Razorpay subscription sync failed:', syncError);
+      }
+    }
+
     const access = evaluateSubscriptionAccess(profileData);
     await persistSubscriptionAccessFix(req.userId, access, profileData);
     await persistManualGrantSnapshot(req.userId, profileData, access);
@@ -711,6 +863,10 @@ router.get('/payment/subscription', authenticateToken, async (req: AuthRequest, 
     res.status(500).json({ error: 'Failed to get subscription status' });
   }
 });
+
+function isUnpaidRazorpayNeedingSync(profile: SubscriptionProfile): boolean {
+  return Boolean(profile.razorpay_subscription_id) && !profile.razorpay_payment_id;
+}
 
 // Toggle auto-renewal
 router.post('/payment/toggle-auto-renew', authenticateToken, async (req: AuthRequest, res) => {

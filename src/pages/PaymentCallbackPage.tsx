@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouterNavigation } from '../contexts/RouterNavigationContext';
-import { verifyRazorpaySubscription } from '../services/razorpayService';
+import { verifyRazorpaySubscription, restoreRazorpaySubscription } from '../services/razorpayService';
 import { verifyToken } from '../utils/auth';
 
 export default function PaymentCallbackPage() {
@@ -28,6 +28,17 @@ export default function PaymentCallbackPage() {
         await verifyToken();
         navigateTo('/subscription?success=1', undefined, { replace: true });
       } catch (e) {
+        // Payment may have completed — try syncing from Razorpay before failing.
+        try {
+          const status = await restoreRazorpaySubscription();
+          if (status.isPremium) {
+            await verifyToken();
+            navigateTo('/subscription?success=1', undefined, { replace: true });
+            return;
+          }
+        } catch {
+          // keep original error
+        }
         setError(e instanceof Error ? e.message : 'Payment verification failed');
       }
     };

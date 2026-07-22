@@ -54,7 +54,18 @@ const corsOptions: CorsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-app.use(express.json({ limit: '2mb' }));
+// Capture raw body for Razorpay webhook HMAC (must match Razorpay's exact payload bytes).
+app.use(
+  express.json({
+    limit: '2mb',
+    verify: (req, _res, buf) => {
+      const url = (req as { originalUrl?: string; url?: string }).originalUrl || req.url || '';
+      if (url.includes('/payment/webhook')) {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+      }
+    },
+  })
+);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

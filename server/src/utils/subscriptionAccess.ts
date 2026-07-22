@@ -17,6 +17,7 @@ export type SubscriptionProfile = {
   premium_tier?: string | null;
   is_premium?: boolean | null;
   subscription_status?: string | null;
+  subscription_start_date?: string | null;
   subscription_end_date?: string | null;
   auto_renew?: boolean | null;
   razorpay_subscription_id?: string | null;
