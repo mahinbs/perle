@@ -108,6 +108,46 @@ async function createSubscription(plan: RazorpayPlanId, autoRenew = true): Promi
   return response.json();
 }
 
+export async function toggleRazorpayAutoRenew(autoRenew: boolean): Promise<{
+  success: boolean;
+  autoRenew: boolean;
+  message?: string;
+}> {
+  const response = await authenticatedFetch(`${API_URL}/api/payment/toggle-auto-renew`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ autoRenew }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      (data as { error?: string; message?: string }).error ||
+        (data as { message?: string }).message ||
+        'Failed to update auto-renew'
+    );
+  }
+  return data as { success: boolean; autoRenew: boolean; message?: string };
+}
+
+export async function cancelRazorpaySubscription(): Promise<{
+  success: boolean;
+  message?: string;
+}> {
+  const response = await authenticatedFetch(`${API_URL}/api/payment/cancel`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      (data as { error?: string; message?: string }).error ||
+        (data as { message?: string }).message ||
+        'Failed to cancel subscription'
+    );
+  }
+  return data as { success: boolean; message?: string };
+}
+
 export async function verifyRazorpaySubscription(payment: RazorpayPaymentResponse) {
   const response = await authenticatedFetch(`${API_URL}/api/payment/verify-subscription`, {
     method: 'POST',
@@ -273,7 +313,14 @@ export async function startRazorpaySubscription(plan: RazorpayPlanId): Promise<R
   return { success: false, redirecting: true };
 }
 
-export async function restoreRazorpaySubscription(): Promise<{ isPremium: boolean; tier?: string }> {
+export async function restoreRazorpaySubscription(): Promise<{
+  isPremium: boolean;
+  tier?: string;
+  autoRenew?: boolean;
+  subscriptionEndDate?: string | null;
+  isCancelled?: boolean;
+  subscriptionId?: string | null;
+}> {
   const response = await authenticatedFetch(`${API_URL}/api/payment/subscription`, {
     method: 'GET',
     headers: getAuthHeaders(),
@@ -288,5 +335,9 @@ export async function restoreRazorpaySubscription(): Promise<{ isPremium: boolea
   return {
     isPremium: data.isActive === true && (tier === 'pro' || tier === 'max'),
     tier,
+    autoRenew: data.autoRenew === true,
+    subscriptionEndDate: data.subscriptionEndDate ?? null,
+    isCancelled: data.isCancelled === true,
+    subscriptionId: data.subscriptionId ?? null,
   };
 }

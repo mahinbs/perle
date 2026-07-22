@@ -7,7 +7,7 @@ import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { authenticatedFetch, getAuthHeaders, getUserData, verifyToken, isAuthenticated } from "../utils/auth";
 import { useToast } from "../contexts/ToastContext";
 import { IAPService, IAP_PRODUCT_IDS, type IAPPlanId } from "../services/iapService";
-import { startRazorpaySubscription, restoreRazorpaySubscription, type RazorpayPlanId } from "../services/razorpayService";
+import { startRazorpaySubscription, restoreRazorpaySubscription, toggleRazorpayAutoRenew, cancelRazorpaySubscription, type RazorpayPlanId } from "../services/razorpayService";
 
 const plans = [
   {
@@ -100,9 +100,13 @@ export default function SubscriptionPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { showToast } = useToast();
   const [authUser, setAuthUser] = useState(getUserData());
+  const [autoRenew, setAutoRenew] = useState(true);
+  const [managing, setManaging] = useState(false);
+  const [hasRazorpaySub, setHasRazorpaySub] = useState(false);
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[0];
   const isCurrentPlan = authUser?.premiumTier === selectedPlan.tier;
+  const isPremiumUser = Boolean(authUser?.isPremium && authUser?.premiumTier && authUser.premiumTier !== "free");
 
   const [displayPrices, setDisplayPrices] = useState<Record<string, string>>({
     pro: "₹399/mo",
@@ -117,6 +121,16 @@ export default function SubscriptionPage() {
     void verifyToken().then((user) => {
       if (user) setAuthUser(user);
     });
+    if (usesRazorpay()) {
+      void restoreRazorpaySubscription()
+        .then((status) => {
+          setAutoRenew(status.autoRenew !== false);
+          setHasRazorpaySub(Boolean(status.subscriptionId) || status.isPremium);
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    }
   }, []);
 
   useEffect(() => {
@@ -319,6 +333,57 @@ export default function SubscriptionPage() {
     });
   };
 
+  const handleToggleAutoRenew = async () => {
+    if (!usesRazorpay() || !isPremiumUser) return;
+    const next = !autoRenew;
+    setManaging(true);
+    try {
+      const result = await toggleRazorpayAutoRenew(next);
+      setAutoRenew(result.autoRenew);
+      showToast({
+        message: next
+          ? "Auto-renewal enabled."
+          : "Auto-renewal paused. Access continues until the period ends.",
+        type: "success",
+      });
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Failed to update auto-renew",
+        type: "error",
+      });
+    } finally {
+      setManaging(false);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!usesRazorpay() || !isPremiumUser) return;
+    const ok = window.confirm(
+      "Cancel your subscription? You’ll keep premium until the current period ends, then it won’t renew."
+    );
+    if (!ok) return;
+    setManaging(true);
+    try {
+      await cancelRazorpaySubscription();
+      setAutoRenew(false);
+      await verifyToken().then((user) => {
+        if (user) setAuthUser(user);
+      });
+      showToast({
+        message: "Subscription cancelled. Access continues until the end of the billing period.",
+        type: "success",
+        duration: 5000,
+      });
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Failed to cancel subscription",
+        type: "error",
+      });
+    } finally {
+      setManaging(false);
+    }
+  };
+
   const handleClose = () => {
     if (navState?.fromAuthRedirect) {
       navigateTo("/app", undefined, { replace: true });
@@ -451,10 +516,56 @@ export default function SubscriptionPage() {
           {isLoading ? "Processing..." : isCurrentPlan ? "Current Plan" : selectedPlan.cta}
         </button>
 
+        {/* Manage Razorpay subscription (web / Android) */}
+        {usesRazorpay() && isPremiumUser && hasRazorpaySub && (
+          <div
+            className="glass-card"
+            style={{
+              padding: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              borderRadius: 14,
+            }}
+          >
+            <div className="sub text-sm" style={{ textAlign: "center" }}>
+              Manage subscription
+            </div>
+            <button
+              type="button"
+              className="btn-ghost glass-button"
+              disabled={managing}
+              onClick={() => void handleToggleAutoRenew()}
+              style={{
+                minHeight: 44,
+                borderRadius: 999,
+                opacity: managing ? 0.7 : 1,
+              }}
+            >
+              {autoRenew ? "Pause auto-renewal" : "Enable auto-renewal"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={managing}
+              onClick={() => void handleCancelSubscription()}
+              style={{
+                minHeight: 44,
+                borderRadius: 999,
+                color: "#c0392b",
+                opacity: managing ? 0.7 : 1,
+              }}
+            >
+              Cancel subscription
+            </button>
+          </div>
+        )}
+
         {/* Restore link */}
         <button
           className="text-center text-[var(--sub)] underline text-[var(--font-sm)] bg-transparent border-none cursor-pointer"
           onClick={handleRestore}
+          disabled={isLoading || managing}
         >
           Restore subscription
         </button>

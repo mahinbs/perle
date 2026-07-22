@@ -1,9 +1,24 @@
-import React from "react";
+import React, { useState } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import { FaCheck } from "react-icons/fa";
+import { Capacitor } from "@capacitor/core";
+import { isAuthenticated, verifyToken } from "../utils/auth";
+import { useToast } from "../contexts/ToastContext";
+import { restoreRazorpaySubscription } from "../services/razorpayService";
+import { IAPService } from "../services/iapService";
+
+const usesRazorpay = () => {
+  if (!Capacitor.isNativePlatform()) return true;
+  return Capacitor.getPlatform() === "android";
+};
+
+const isIOSIAPPlatform = () =>
+  Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
 
 export const UpgradeCard: React.FC = () => {
   const { navigateTo } = useRouterNavigation();
+  const { showToast } = useToast();
+  const [restoring, setRestoring] = useState(false);
 
   const features = [
     "Access to all AI models — GPT-4o, Claude, Gemini, Grok & more",
@@ -15,6 +30,52 @@ export const UpgradeCard: React.FC = () => {
     "Unlimited saved Spaces & prompts",
     "Toggle auto-renewal anytime",
   ];
+
+  const handleRestore = async () => {
+    if (!isAuthenticated()) {
+      showToast({
+        message: "Please log in to restore your subscription.",
+        type: "info",
+        duration: 4000,
+      });
+      navigateTo("/profile", { mode: "login", returnTo: "/subscription" });
+      return;
+    }
+
+    setRestoring(true);
+    try {
+      if (isIOSIAPPlatform()) {
+        const iap = IAPService.getInstance();
+        await iap.initialize();
+        const txs = await iap.restorePurchases();
+        if (!txs?.length) {
+          showToast({ message: "No active subscription found.", type: "info" });
+          return;
+        }
+        await verifyToken();
+        showToast({ message: "Subscription restored!", type: "success" });
+        return;
+      }
+
+      if (usesRazorpay()) {
+        const status = await restoreRazorpaySubscription();
+        await verifyToken();
+        if (status.isPremium) {
+          showToast({ message: "Subscription restored!", type: "success" });
+        } else {
+          showToast({ message: "No active subscription found.", type: "info" });
+        }
+        return;
+      }
+
+      showToast({ message: "Restore is not available on this platform.", type: "info" });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Restore failed";
+      showToast({ message, type: "error" });
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   return (
     <div className="card" style={{ padding: 24 }}>
@@ -36,7 +97,6 @@ export const UpgradeCard: React.FC = () => {
           </div>
         </div>
 
-        {/* Features List */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {features.map((feature, index) => (
             <div
@@ -62,10 +122,11 @@ export const UpgradeCard: React.FC = () => {
           ))}
         </div>
 
-        {/* Restore Subscription Link */}
         <button
+          type="button"
           className="btn-ghost"
-          onClick={() => console.log("Restore subscription clicked")}
+          onClick={() => void handleRestore()}
+          disabled={restoring}
           style={{
             padding: 0,
             border: "none",
@@ -76,13 +137,13 @@ export const UpgradeCard: React.FC = () => {
             fontWeight: 400,
             justifyContent: "flex-start",
             minHeight: "auto",
-            cursor: "pointer",
+            cursor: restoring ? "wait" : "pointer",
+            opacity: restoring ? 0.7 : 1,
           }}
         >
-          Restore subscription
+          {restoring ? "Restoring…" : "Restore subscription"}
         </button>
 
-        {/* Upgrade Button */}
         <button
           className="btn btn-strong"
           onClick={() => navigateTo("/subscription")}
