@@ -1,6 +1,6 @@
 import type { DiscoverItem } from '../types.js';
 import { getApiKey } from './apiKeys.js';
-import { redisGetJSON, redisSetJSON } from '../lib/redis.js';
+import { redisGetJSON, redisSetJSON, redisDel } from '../lib/redis.js';
 
 /** Reporter plan daily quota (used to sync from `x-api-quota-left` headers). */
 const WN_PLAN_DAILY_POINTS = 500;
@@ -389,10 +389,11 @@ function matchesDiscoverCategory(title: string, description: string, category: s
   return Boolean(extra[category]?.test(text));
 }
 
-/** Rolling retention: keep ≤7 days; on refresh drop the oldest ~2.5 days. */
-const NEWS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const NEWS_DROP_OLDEST_ON_REFRESH_MS = Math.round(2.5 * 24 * 60 * 60 * 1000);
-const NEWS_KEEP_ON_REFRESH_MS = NEWS_MAX_AGE_MS - NEWS_DROP_OLDEST_ON_REFRESH_MS;
+/** Rolling retention: keep ≤5 days; older stories are purged from cache/DB. */
+const NEWS_MAX_AGE_DAYS = 5;
+const NEWS_MAX_AGE_MS = NEWS_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+/** On every refresh, keep only the rolling 5-day window (drop day 6+). */
+const NEWS_KEEP_ON_REFRESH_MS = NEWS_MAX_AGE_MS;
 
 function itemAgeMs(it: DiscoverItem): number | null {
   if (it.publishedAt) {
@@ -553,7 +554,7 @@ async function fetchWorldNewsSearch(
   if (code !== 'WW') {
     params.set('source-country', code.toLowerCase());
   }
-  // Pull up to 7 days; pruneStaleNews drops older items on write.
+  // Pull up to 5 days; pruneStaleNews drops older items on write.
   const earliest = new Date(Date.now() - NEWS_MAX_AGE_MS);
   params.set('earliest-publish-date', earliest.toISOString().slice(0, 10));
   if (opts.categories) params.set('categories', opts.categories);
@@ -579,34 +580,116 @@ async function fetchWorldNewsSearch(
     .slice(0, limit);
 }
 
+/**
+ * Top News — https://worldnewsapi.com/docs/top-news/
+ * Clustered daily headlines for a country + language + date.
+ * Current-day results update throughout the day; pass explicit `date` (YYYY-MM-DD).
+ * We take the lead article from each cluster first (highest-ranked story), then fill.
+ */
 async function fetchWorldNewsTop(
   country: string,
   apiKey: string,
-  limit: number
+  limit: number,
+  opts?: { date?: string; forceCategory?: string; forceTag?: string }
 ): Promise<DiscoverItem[]> {
-  // Top News is useful but costs extra points — only used when budget allows.
+  const code = country.toUpperCase();
+  if (code === 'WW') return []; // Top News requires a real source-country.
   if (!(await canSpendWorldNewsPoints(2))) return [];
+
+  const timeZone = COUNTRY_TIMEZONES[code] || 'UTC';
+  const day =
+    opts?.date ||
+    formatYmdInTz(new Date(), timeZone);
+
   const params = new URLSearchParams({
-    'source-country': country.toLowerCase(),
+    'source-country': code.toLowerCase(),
     language: 'en',
+    date: day,
+    'headlines-only': 'false',
   });
   const url = `https://api.worldnewsapi.com/top-news?${params}`;
   const { ok, status, data } = await worldNewsFetch(url, apiKey, 2);
   if (!ok) {
-    console.warn(`World News API top-news failed for ${country}: HTTP ${status || 'error'}`);
+    console.warn(
+      `World News API top-news failed for ${country} date=${day}: HTTP ${status || 'error'}`
+    );
     return [];
   }
+
   const clusters: any[] = Array.isArray(data?.top_news) ? data.top_news : [];
-  const articles: any[] = [];
+  // Lead article per cluster first (best representative of each top story).
+  const leadArticles: any[] = [];
+  const extras: any[] = [];
   for (const cluster of clusters) {
-    if (Array.isArray(cluster?.news)) articles.push(...cluster.news);
+    const news = Array.isArray(cluster?.news) ? cluster.news : [];
+    if (news.length === 0) continue;
+    leadArticles.push(news[0]);
+    for (let i = 1; i < news.length; i++) extras.push(news[i]);
   }
-  return articles
+  const orderedArticles = [...leadArticles, ...extras];
+
+  const forceCategory = opts?.forceCategory || 'For You';
+  const forceTag = opts?.forceTag || 'News';
+  const mapped = orderedArticles
     .map((item, idx) =>
-      mapWorldNewsArticle(item, country, idx, { forceCategory: 'For You', forceTag: 'News' })
+      mapWorldNewsArticle(item, country, idx, { forceCategory, forceTag })
     )
     .filter((x): x is DiscoverItem => x !== null)
     .slice(0, limit);
+
+  console.log(
+    `📰 top-news ${code} date=${day}: ${clusters.length} clusters → ${mapped.length} articles`
+  );
+  return mapped;
+}
+
+/** Local calendar day for a country (used for daily Top News extraction). */
+function localNewsDay(countryCode: string): string {
+  const code = countryCode.toUpperCase();
+  return formatYmdInTz(new Date(), COUNTRY_TIMEZONES[code] || 'UTC');
+}
+
+/** Persist today's snapshot and purge any cached items older than NEWS_MAX_AGE_DAYS. */
+async function persistNewsStore(
+  code: string,
+  items: DiscoverItem[]
+): Promise<DiscoverItem[]> {
+  const pruned = pruneStaleNews(
+    items.filter((it) => isRealArticleImage(it.image)),
+    NEWS_MAX_AGE_MS
+  ).sort((a, b) => {
+    const tb =
+      (b.publishedAt && Number.isFinite(Date.parse(b.publishedAt))
+        ? Date.parse(b.publishedAt)
+        : b.fetchedAt) || 0;
+    const ta =
+      (a.publishedAt && Number.isFinite(Date.parse(a.publishedAt))
+        ? Date.parse(a.publishedAt)
+        : a.fetchedAt) || 0;
+    return tb - ta;
+  });
+
+  NEWS_LAST_GOOD.set(code, pruned);
+  void redisSetJSON(
+    `news:lastgood:${NEWS_CACHE_VERSION}:${code}`,
+    pruned,
+    LAST_GOOD_REDIS_TTL_SEC
+  );
+
+  // Daily snapshot — TTL matches retention so day-6+ keys expire automatically.
+  const ymd = localNewsDay(code);
+  const dailyKey = `news:daily:${NEWS_CACHE_VERSION}:${code}:${ymd}`;
+  void redisSetJSON(dailyKey, pruned, NEWS_MAX_AGE_MS / 1000);
+
+  // Best-effort: delete yesterday-beyond-retention daily keys (day -6 … -10).
+  for (let ago = NEWS_MAX_AGE_DAYS + 1; ago <= NEWS_MAX_AGE_DAYS + 5; ago++) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - ago);
+    const oldYmd = d.toISOString().slice(0, 10);
+    void redisDel(`news:daily:${NEWS_CACHE_VERSION}:${code}:${oldYmd}`);
+  }
+
+  return pruned;
 }
 
 function slugify(s: string): string {
@@ -647,7 +730,9 @@ const NEWS_L2_TTL_SEC = NEWS_REFRESH_INTERVAL_HOURS * 60 * 60;
 //   v22 = drop keyword re-filter on API category buckets; categories-only queries (no AND text).
 //   v23 = Psychology → Entertainment (World News `entertainment` category).
 //   v24 = Entertainment fetch priority + World News quota header sync.
-const NEWS_CACHE_VERSION = 'v24';
+//   v25 = newest-first sort by publishedAt across Discover sections.
+//   v26 = daily Top News (`date` param) + 5-day retention / purge older.
+const NEWS_CACHE_VERSION = 'v26';
 
 // Refresh-cycle timezone per country. Cycle rotates every NEWS_REFRESH_INTERVAL_HOURS.
 const COUNTRY_TIMEZONES: Record<string, string> = {
@@ -993,7 +1078,7 @@ const NEWS_LAST_GOOD = new Map<string, DiscoverItem[]>();
 // Per-category last-known-good — key `${country}:${category}` (e.g. "IN:Technology").
 // Lets one transient World News miss on a category NOT empty out that tab.
 const NEWS_CATEGORY_LAST_GOOD = new Map<string, DiscoverItem[]>();
-const LAST_GOOD_REDIS_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
+const LAST_GOOD_REDIS_TTL_SEC = NEWS_MAX_AGE_DAYS * 24 * 60 * 60; // match 5-day retention
 
 /** Fetch live news for one country. Tries: L1 → L2 → fresh fetch → last-known-good.
  *  When `forceRefresh` is true, bypasses BOTH cache layers and re-queries upstream. */
@@ -1103,8 +1188,20 @@ export async function getLiveNewsForCountry(
         break;
       }
 
-      // Important: when `categories` is set, do NOT also pass `text` — World News
-      // ANDs filters, which was starving Science/Environment/Finance down to 0–2 items.
+      let fresh: DiscoverItem[] = [];
+
+      // For You: pull today's Top News first (World News docs — daily clustered headlines).
+      // Current-day top-news is frequently updated throughout the day.
+      if (t.cat === 'For You' && !isWorldwide) {
+        const top = await fetchWorldNewsTop(code, worldNewsKey, batchSize, {
+          date: localNewsDay(code),
+          forceCategory: 'For You',
+          forceTag: 'News',
+        });
+        if (top.length) fresh.push(...top);
+      }
+
+      // Category tabs + For You fill: search-news with sort=publish-time DESC.
       const searchOpts = {
         categories: t.categories,
         text: t.categories
@@ -1114,19 +1211,13 @@ export async function getLiveNewsForCountry(
         forceTag: t.tag,
       };
 
-      let fresh = await fetchWorldNewsSearch(code, worldNewsKey, batchSize, searchOpts);
-
-      // Optional top-news boost for For You only when we still have >150 pts left.
-      const quotaLeftNow = wnQuotaLeftFromApi ?? pointsLeft;
-      if (t.cat === 'For You' && !isWorldwide && quotaLeftNow > 150) {
-        const top = await fetchWorldNewsTop(code, worldNewsKey, batchSize);
-        if (top.length) {
-          const seen = new Set(fresh.map((i) => i.url).filter(Boolean));
-          for (const item of top) {
-            if (item.url && seen.has(item.url)) continue;
-            if (item.url) seen.add(item.url);
-            fresh.push({ ...item, category: 'For You', tag: item.tag || 'News' });
-          }
+      const searched = await fetchWorldNewsSearch(code, worldNewsKey, batchSize, searchOpts);
+      if (searched.length) {
+        const seen = new Set(fresh.map((i) => i.url).filter(Boolean));
+        for (const item of searched) {
+          if (item.url && seen.has(item.url)) continue;
+          if (item.url) seen.add(item.url);
+          fresh.push(item);
         }
       }
 
@@ -1155,7 +1246,7 @@ export async function getLiveNewsForCountry(
           if (item.url) seen.add(item.url);
           merged.push(item);
         }
-        // On refresh: drop oldest ~2–3 days from the rolling week.
+        // Keep rolling 5-day window only — older than 5 days is dropped from store.
         const pruned = pruneStaleNews(merged, NEWS_KEEP_ON_REFRESH_MS).slice(0, PER_CAT_CAP * 2);
         NEWS_CATEGORY_LAST_GOOD.set(lgKey, pruned);
         void redisSetJSON(`news:lastgood-cat:${lgKey}`, pruned, LAST_GOOD_REDIS_TTL_SEC);
@@ -1269,17 +1360,19 @@ export async function getLiveNewsForCountry(
     );
   }
 
-  // Never serve placeholder SVG cards / news older than 7 days.
+  // Never serve placeholder SVG cards / news older than 5 days.
   items = pruneStaleNews(
     items.filter((it) => isRealArticleImage(it.image)),
     NEWS_MAX_AGE_MS
   );
 
   if (items.length > 0) {
+    items = await persistNewsStore(code, items);
     NEWS_L1.set(l1Key, { items, ts: Date.now() });
     void redisSetJSON(l2Key, items, NEWS_L2_TTL_SEC);
-    NEWS_LAST_GOOD.set(code, items);
-    void redisSetJSON(`news:lastgood:${NEWS_CACHE_VERSION}:${code}`, items, LAST_GOOD_REDIS_TTL_SEC);
+    console.log(
+      `💾 ${code}: stored ${items.length} items (≤${NEWS_MAX_AGE_DAYS}d retention, day=${localNewsDay(code)})`
+    );
     return items;
   }
 
@@ -1446,6 +1539,16 @@ async function enrichDiscoverImages(items: DiscoverItem[]): Promise<void> {
  */
 function dedupeDiscoverItems(items: DiscoverItem[]): DiscoverItem[] {
   const sorted = [...items].sort((a, b) => {
+    // Newest first, then prefer local (non-WW) over worldwide copies.
+    const bTime =
+      (b.publishedAt && Number.isFinite(Date.parse(b.publishedAt))
+        ? Date.parse(b.publishedAt)
+        : b.fetchedAt) || 0;
+    const aTime =
+      (a.publishedAt && Number.isFinite(Date.parse(a.publishedAt))
+        ? Date.parse(a.publishedAt)
+        : a.fetchedAt) || 0;
+    if (bTime !== aTime) return bTime - aTime;
     const aWw = a.nationCode === 'WW' ? 1 : 0;
     const bWw = b.nationCode === 'WW' ? 1 : 0;
     return aWw - bWw;
@@ -1522,10 +1625,9 @@ export async function getLiveNews(countries: string[], perCountry = 8, forceRefr
           NEWS_MAX_AGE_MS
         );
         if (countryItems.length > 0) {
-          NEWS_L1.set(l1Key, { items: countryItems, ts: Date.now() });
-          await redisSetJSON(l2Key, countryItems, NEWS_L2_TTL_SEC);
-          NEWS_LAST_GOOD.set(code, countryItems);
-          await redisSetJSON(`news:lastgood:${NEWS_CACHE_VERSION}:${code}`, countryItems, LAST_GOOD_REDIS_TTL_SEC);
+          const stored = await persistNewsStore(code, countryItems);
+          NEWS_L1.set(l1Key, { items: stored, ts: Date.now() });
+          await redisSetJSON(l2Key, stored, NEWS_L2_TTL_SEC);
         }
       }
     }).catch((e) => {

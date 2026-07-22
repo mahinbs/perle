@@ -14,6 +14,7 @@ import mediaRouter from './routes/media.js';
 import aiFriendsRouter from './routes/aiFriends.js';
 import spacesRouter from './routes/spaces.js';
 import conversationsRouter from './routes/conversations.js';
+import reportsRouter from './routes/reports.js';
 import { errorHandler } from './utils/errorHandler.js';
 import { cleanupExpiredSessions } from './utils/auth.js';
 
@@ -74,6 +75,7 @@ app.use('/api/media', mediaRouter);
 app.use('/api', aiFriendsRouter);
 app.use('/api', spacesRouter);
 app.use('/api', conversationsRouter);
+app.use('/api', reportsRouter);
 
 // 404 handler
 app.use((_req, res) => {

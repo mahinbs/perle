@@ -24,6 +24,11 @@ export default function HelpPage() {
       answer: "Yes, you can clear your entire search history from the Profile page under the 'Search History' section."
     },
     {
+      question: "How do I report inappropriate AI content?",
+      answer:
+        "On every AI response you will see a Report button (flag icon + Report). Tap it, choose a reason such as hate speech, violence, sexual content, harassment, dangerous advice, false information, spam, or other, optionally add details, and submit. Reports are reviewed by our team. You do not need to leave the app or email us for AI content reports.",
+    },
+    {
       question: "How do I report a bug?",
       answer: "Email us at business@syntraiq.ai with a description of the issue. You can open the email from the Report Bug option in your Profile. We appreciate your feedback!"
     }

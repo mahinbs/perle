@@ -22,6 +22,7 @@ import {
   MediaStudioModal,
   type MediaStudioModalView,
 } from "../components/MediaStudioModal";
+import { ReportAIResponseButton } from "../components/ReportAIResponseButton";
 import {
   CHAT_EXCHANGE_SCROLL_OFFSET,
   getActiveExchangeMinHeight,
@@ -576,6 +577,27 @@ export default function MediaStudioPage() {
                     >
                       <FaDownload size={13} />
                     </button>
+                  </div>
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      borderTop: "1px solid var(--border)",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <span className="sub text-sm">Inappropriate AI media?</span>
+                    <ReportAIResponseButton
+                      variant="full"
+                      aiResponse={`[Generated ${entry.type}] ${entry.prompt || ""}\n${entry.resultUrl}`}
+                      userPrompt={entry.prompt}
+                      conversationId="media-studio"
+                      messageId={entry.id}
+                      chatMode="media_studio"
+                    />
                   </div>
                 </div>
               )}

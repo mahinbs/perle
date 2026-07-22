@@ -48,6 +48,7 @@ import {
 import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import { ChatDateDivider } from "../components/ChatDateDivider";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
+import { ReportAIResponseButton } from "../components/ReportAIResponseButton";
 
 interface Message {
   id: string;
@@ -1653,6 +1654,30 @@ export default function AIFriendPage() {
               <div className={`text-[length:var(--font-md)] whitespace-pre-wrap w-full ${message.role === "user" ? "text-right" : ""}`}>
                 {message.content}
               </div>
+                {message.role === "ai" && message.id !== "1" && message.content?.trim() && (
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[length:var(--font-xs)] opacity-70">
+                      See something harmful?
+                    </span>
+                    <ReportAIResponseButton
+                      variant="full"
+                      aiResponse={message.content}
+                      userPrompt={
+                        [...messages]
+                          .slice(0, index)
+                          .reverse()
+                          .find((m) => m.role === "user")?.content
+                      }
+                      conversationId={
+                        isGroupChat
+                          ? "ai-friend-group"
+                          : selectedFriendId || "ai-friend"
+                      }
+                      messageId={message.id}
+                      chatMode="ai_friend"
+                    />
+                  </div>
+                )}
                 <div
                   className={`text-[length:var(--font-xs)] opacity-60 mt-1.5 ${message.role === "user" ? "text-right" : "text-left"
                     }`}

@@ -1,7 +1,13 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { authenticateToken, type AuthRequest } from '../middleware/auth.js';
+import {
+  listAiContentReports,
+  updateAiContentReportStatus,
+  type AiReportStatus,
+} from '../utils/aiReportsStore.js';
 
 const router = Router();
 
@@ -9,6 +15,52 @@ const router = Router();
 // For now, we'll use an environment variable for admin user IDs
 // Set ADMIN_USER_IDS in .env: ADMIN_USER_IDS=user-id-1,user-id-2,user-id-3
 const ADMIN_USER_IDS = (process.env.ADMIN_USER_IDS || '').split(',').filter(Boolean);
+
+// Admin panel credentials for /admin UI (override via env in production)
+const PANEL_EMAIL = (
+  process.env.ADMIN_PANEL_EMAIL || 'Syntraiq-admin@gmail.com'
+).trim().toLowerCase();
+const PANEL_PASSWORD = process.env.ADMIN_PANEL_PASSWORD || 'syntraiq@admin';
+const PANEL_SECRET =
+  process.env.ADMIN_PANEL_SECRET ||
+  process.env.JWT_SECRET ||
+  'syntraiq-admin-panel-secret';
+
+function signPanelToken(email: string): string {
+  const exp = Date.now() + 12 * 60 * 60 * 1000; // 12h
+  const payload = Buffer.from(JSON.stringify({ email, exp })).toString('base64url');
+  const sig = crypto.createHmac('sha256', PANEL_SECRET).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function verifyPanelToken(token: string | undefined): boolean {
+  if (!token) return false;
+  const [payload, sig] = token.split('.');
+  if (!payload || !sig) return false;
+  const expected = crypto.createHmac('sha256', PANEL_SECRET).update(payload).digest('base64url');
+  if (sig !== expected) return false;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+      email?: string;
+      exp?: number;
+    };
+    if (!data.email || data.email.toLowerCase() !== PANEL_EMAIL) return false;
+    if (!data.exp || Date.now() > data.exp) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function requirePanelAuth(req: AuthRequest, res: any, next: any): void {
+  const auth = req.headers.authorization;
+  const token = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined;
+  if (!verifyPanelToken(token)) {
+    res.status(401).json({ error: 'Admin panel login required' });
+    return;
+  }
+  next();
+}
 
 async function isAdmin(userId: string): Promise<boolean> {
   // Check if user is in admin list
@@ -216,6 +268,62 @@ router.get('/admin/users/premium', authenticateToken, requireAdmin, async (req: 
       error: 'Failed to list premium users',
       message: error.message 
     });
+  }
+});
+
+// ── Admin panel (AI reports moderation) ─────────────────────────────────────
+// Dedicated email/password gate for /admin UI (Play Store AI content policy).
+
+router.post('/admin/panel/login', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    if (email !== PANEL_EMAIL || password !== PANEL_PASSWORD) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    const token = signPanelToken(email);
+    return res.json({
+      ok: true,
+      token,
+      email: PANEL_EMAIL,
+      expiresInHours: 12,
+    });
+  } catch (err) {
+    console.error('Admin panel login error:', err);
+    return res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+router.get('/admin/panel/reports', requirePanelAuth, async (req, res) => {
+  try {
+    const statusRaw = String(req.query.status || 'all');
+    const status =
+      statusRaw === 'pending' || statusRaw === 'reviewed' || statusRaw === 'dismissed'
+        ? (statusRaw as AiReportStatus)
+        : 'all';
+    const reports = await listAiContentReports({ status, limit: 300 });
+    return res.json({ count: reports.length, reports });
+  } catch (err) {
+    console.error('Admin panel list reports error:', err);
+    return res.status(500).json({ error: 'Failed to load reports' });
+  }
+});
+
+router.patch('/admin/panel/reports/:id', requirePanelAuth, async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    const status = String(req.body?.status || '') as AiReportStatus;
+    if (!['pending', 'reviewed', 'dismissed'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    const notes =
+      typeof req.body?.adminNotes === 'string' ? req.body.adminNotes.slice(0, 2000) : undefined;
+    const updated = await updateAiContentReportStatus(id, status, notes);
+    if (!updated) return res.status(404).json({ error: 'Report not found' });
+    return res.json({ ok: true, report: updated });
+  } catch (err) {
+    console.error('Admin panel update report error:', err);
+    return res.status(500).json({ error: 'Failed to update report' });
   }
 });
 

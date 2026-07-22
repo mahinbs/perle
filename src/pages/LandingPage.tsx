@@ -228,6 +228,8 @@ export default function LandingPage() {
           <p>
             SyntraIQ combines the best of Perplexity-style cited search, OpenAI-grade reasoning, and
             Gemini-level versatility — in one beautiful workspace for web, mobile, and deep research.
+            AI-generated responses may occasionally be incorrect. Users can report inappropriate AI
+            responses directly inside the app.
           </p>
 
           <form className="landing__search-demo" onSubmit={handleSearchSubmit}>

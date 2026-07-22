@@ -860,6 +860,26 @@ export default function ProfilePage() {
         </button>
       </div>
 
+      {/* Always visible — Google Play AI-Generated Content policy disclaimer */}
+      <div
+        className="card glass-card"
+        style={{
+          padding: 16,
+          marginBottom: 20,
+          fontSize: "var(--font-sm)",
+          lineHeight: 1.5,
+          color: "var(--sub)",
+        }}
+      >
+        <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
+          AI safety notice
+        </div>
+        AI responses may be inaccurate. Do not rely on them for medical, financial, or legal
+        decisions. If you encounter inappropriate or harmful AI-generated content, use the{" "}
+        <strong style={{ color: "var(--text)" }}>Report</strong> button on the response — you
+        can report it without leaving the app.
+      </div>
+
       {/* Authentication Section */}
       {!isAuthenticated ? (
         <div
@@ -1110,6 +1130,26 @@ export default function ProfilePage() {
         <div className="card glass-card" style={{ padding: 20, marginBottom: 20 }}>
           <div className="h3" style={{ marginBottom: 16 }}>
             Settings
+          </div>
+
+          <div
+            style={{
+              marginBottom: 16,
+              padding: 14,
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+              background: "var(--input-bg)",
+              fontSize: "var(--font-sm)",
+              lineHeight: 1.5,
+              color: "var(--sub)",
+            }}
+          >
+            <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
+              AI safety notice
+            </div>
+            AI responses may be inaccurate. Do not rely on them for medical, financial, or legal
+            decisions. If you encounter inappropriate content, please report it using the{" "}
+            <strong style={{ color: "var(--text)" }}>Report</strong> option on the AI response.
           </div>
 
           {/* Current Plan Display */}

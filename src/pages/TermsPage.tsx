@@ -228,6 +228,9 @@ export default function TermsPage() {
             <p style={{ marginBottom: "12px" }}>
               AI-generated responses are provided "as is" and may not always be accurate. You are responsible 
               for verifying information before relying on it. We do not claim ownership of AI-generated content.
+              Do not rely on AI responses for medical, financial, or legal decisions. If you encounter
+              inappropriate or harmful AI-generated content, please use the in-app <strong>Report</strong> option
+              on the response so we can review it.
             </p>
 
             <h3 style={{ fontSize: "var(--font-lg)", fontWeight: 600, marginTop: "16px", marginBottom: "12px" }}>

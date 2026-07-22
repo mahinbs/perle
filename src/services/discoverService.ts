@@ -80,9 +80,32 @@ function isSameDiscoverStory(a: string, b: string): boolean {
   return overlap / minSize >= 0.4 || (overlap / union >= 0.28 && overlap >= 4);
 }
 
+function itemFreshnessMs(it: DiscoverItem): number {
+  if (it.publishedAt) {
+    const t = Date.parse(it.publishedAt);
+    if (Number.isFinite(t)) return t;
+  }
+  if (typeof it.fetchedAt === 'number' && Number.isFinite(it.fetchedAt)) {
+    return it.fetchedAt;
+  }
+  return 0;
+}
+
+/** Newest stories first; prefer local (non-WW) when timestamps tie. */
+function sortDiscoverNewestFirst(items: DiscoverItem[]): DiscoverItem[] {
+  return [...items].sort((a, b) => {
+    const tb = itemFreshnessMs(b);
+    const ta = itemFreshnessMs(a);
+    if (tb !== ta) return tb - ta;
+    const aWw = a.nationCode === 'WW' ? 1 : 0;
+    const bWw = b.nationCode === 'WW' ? 1 : 0;
+    return aWw - bWw;
+  });
+}
+
 function buildForYouMix(newsOnly: DiscoverItem[]): DiscoverItem[] {
   const byCat = new Map<string, DiscoverItem[]>();
-  for (const it of newsOnly) {
+  for (const it of sortDiscoverNewestFirst(newsOnly)) {
     const cat = mapDiscoverCategory(it);
     if (!byCat.has(cat)) byCat.set(cat, []);
     byCat.get(cat)!.push(it);
@@ -137,9 +160,9 @@ export function filterByDiscoverCategory(
   const seenUrls = new Set<string>();
   const seenTitles: string[] = [];
   const out: DiscoverItem[] = [];
-  const sorted = newsOnly
-    .filter((i) => mapDiscoverCategory(i) === category)
-    .sort((a, b) => (a.nationCode === 'WW' ? 1 : 0) - (b.nationCode === 'WW' ? 1 : 0));
+  const sorted = sortDiscoverNewestFirst(
+    newsOnly.filter((i) => mapDiscoverCategory(i) === category)
+  );
   for (const i of sorted) {
     const urlKey = normalizeDiscoverUrl(i.url);
     if (urlKey && seenUrls.has(urlKey)) continue;
@@ -300,8 +323,33 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
 //      read is < 1ms. Visible difference on tab switch / back-navigation.
 //   2. Lets the page render BEFORE the network call returns, so Discover
 //      is never a blank "loading…" screen for returning users.
-const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v17';
+const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v19';
 const FRONTEND_NEWS_TTL_MS = 3 * 60 * 60 * 1000; // 3h — matches NEWS_L2_TTL_SEC
+/** Calendar day key — forces a fresh fetch once per local day. */
+const FRONTEND_NEWS_DAY_KEY = 'syntraiq-live-news-day-v2';
+
+function localDayKey(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function shouldForceDailyRefresh(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    const prev = localStorage.getItem(FRONTEND_NEWS_DAY_KEY);
+    const today = localDayKey();
+    if (prev !== today) {
+      localStorage.setItem(FRONTEND_NEWS_DAY_KEY, today);
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
 /** Fired (same-tab) whenever live news is written to localStorage so Header previews can refresh. */
 export const DISCOVER_NEWS_UPDATED_EVENT = 'syntraiq-discover-news-updated';
 
@@ -326,6 +374,8 @@ if (typeof localStorage !== 'undefined') {
     'syntraiq-live-news-cache-v14',
     'syntraiq-live-news-cache-v15',
     'syntraiq-live-news-cache-v16',
+    'syntraiq-live-news-cache-v17',
+    'syntraiq-live-news-cache-v18',
   ]) {
     try { localStorage.removeItem(oldKey); } catch { /* ignore */ }
   }
@@ -382,18 +432,20 @@ export async function fetchLiveNewsItems(forceRefresh = false): Promise<Discover
   const order = getUserRegionOrder().join(',');
 
   // Serve from the frontend cache if present and within TTL — repeat visits
-  // / tab switches feel instant. forceRefresh bypasses it (kept for future
-  // pull-to-refresh, even though the visible button was removed).
-  if (!forceRefresh) {
+  // / tab switches feel instant. forceRefresh bypasses it. Also force once
+  // per local calendar day so Discover always gets a daily rotation.
+  const dailyForce = !forceRefresh && shouldForceDailyRefresh();
+  if (!forceRefresh && !dailyForce) {
     const cached = readFrontendCache(order);
     if (cached) {
       console.log(`[discover/news] ⚡ served ${cached.length} items from localStorage (TTL 3h)`);
       return cached;
     }
   }
+  const effectiveForce = forceRefresh || dailyForce;
 
   try {
-    const refreshParam = forceRefresh ? '&refresh=1' : '';
+    const refreshParam = effectiveForce ? '&refresh=1' : '';
     const timeParam = `&_t=${Date.now()}`;
     const url = `${baseUrl.replace(/\/+$/, '')}/api/discover/news?country=${encodeURIComponent(order)}${refreshParam}${timeParam}`;
     const res = await fetch(url, {
@@ -414,7 +466,7 @@ export async function fetchLiveNewsItems(forceRefresh = false): Promise<Discover
       return [];
     }
     const realOnly = items.filter((i: DiscoverItem) => isRealDiscoverImage(i.image));
-    console.log(`[discover/news] ✅ loaded ${realOnly.length} real-image items (from ${items.length}, regions=${order}, refresh=${forceRefresh})`);
+    console.log(`[discover/news] ✅ loaded ${realOnly.length} real-image items (from ${items.length}, regions=${order}, refresh=${effectiveForce})`);
     writeFrontendCache(order, realOnly);
     return realOnly;
   } catch (err) {

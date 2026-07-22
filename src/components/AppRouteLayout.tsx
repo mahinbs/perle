@@ -15,7 +15,7 @@ const CHAT_SHELL_PREFIXES = [
 ];
 
 /** Routes that use position:fixed and should not be wrapped in a scroll shell. */
-const PASS_THROUGH_PREFIXES = ['/subscription'];
+const PASS_THROUGH_PREFIXES = ['/subscription', '/admin'];
 
 function matchesPrefix(pathname: string, prefixes: string[]): boolean {
   return prefixes.some(

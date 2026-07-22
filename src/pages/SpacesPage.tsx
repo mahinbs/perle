@@ -23,6 +23,7 @@ import { LLMModelSelector } from "../components/LLMModelSelector";
 import type { LLMModel } from "../types";
 import { IoIosArrowBack, IoIosSend } from "react-icons/io";
 import { getUserLocalContext } from "../utils/userLocalContext";
+import { ReportAIResponseButton } from "../components/ReportAIResponseButton";
 
 interface Space {
   id: string;
@@ -834,6 +835,27 @@ export default function SpacesPage() {
                 }}
               >
                 <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
+                {msg.role !== "user" && msg.content?.trim() && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <span className="sub text-sm">See something harmful?</span>
+                    <ReportAIResponseButton
+                      variant="full"
+                      aiResponse={msg.content}
+                      conversationId={selectedSpace?.id}
+                      messageId={msg.id}
+                      chatMode="space"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           ))}

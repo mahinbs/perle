@@ -1432,6 +1432,10 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                     attachments={prevAnswer.attachments}
                     generatedMedia={prevAnswer.generatedMedia}
                     hideSources={false}
+                    conversationId={activeConversationId || undefined}
+                    messageId={`hist-${prevAnswer.timestamp}-${index}`}
+                    modelUsed={selectedModel}
+                    chatMode={experienceMode || mode}
                     onQueryEdit={(editedQuery) => {
                       setQuery(editedQuery);
                       doSearch(editedQuery);

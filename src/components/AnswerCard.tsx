@@ -36,6 +36,7 @@ import {
   FaDownload,
 } from "react-icons/fa";
 import syntraGif from "../assets/gif/syntraiq.gif";
+import { ReportAIResponseButton } from "./ReportAIResponseButton";
 
 type ModeType = Mode;
 
@@ -560,6 +561,11 @@ interface AnswerCardProps {
    * "IQ is thinking" spinner, because deep research can take 60-180s.
    */
   searchType?: 'auto' | 'instant' | 'deep';
+  /** For AI content reporting (Play Store policy) */
+  conversationId?: string;
+  messageId?: string;
+  modelUsed?: string;
+  chatMode?: string;
 }
 
 /** Mobile chat query sizing — aligned with ChatGPT / Perplexity phone UI */
@@ -587,6 +593,10 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
   generatedMedia,
   hideSources = false,
   suggestedQuestions = [],
+  conversationId,
+  messageId,
+  modelUsed,
+  chatMode,
 }) => {
   const isVideoAttachment = (file: UploadedFile) =>
     Boolean(file.file?.type?.startsWith("video/"));
@@ -1901,6 +1911,17 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
           >
             <FaShare size={18} />
           </button>
+          {!isLoading && !isStreamingAnswer && chunks.some((c) => c.text?.trim()) && (
+            <ReportAIResponseButton
+              aiResponse={chunks.map((c) => c.text).join("\n\n")}
+              userPrompt={query}
+              conversationId={conversationId}
+              messageId={messageId}
+              modelUsed={modelUsed}
+              chatMode={chatMode || mode}
+              variant="compact"
+            />
+          )}
         </div>
       </div>
 
@@ -2158,6 +2179,34 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
         </div>
       )}
 
+      {/* Play Store AI policy: clear in-app report affordance on every completed answer */}
+      {!isLoading && !isStreamingAnswer && chunks.some((c) => c.text?.trim()) && (
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <div className="sub text-sm" style={{ flex: "1 1 180px", lineHeight: 1.4 }}>
+            AI responses may be inaccurate. See something harmful? Report it.
+          </div>
+          <ReportAIResponseButton
+            variant="full"
+            aiResponse={chunks.map((c) => c.text).join("\n\n")}
+            userPrompt={query}
+            conversationId={conversationId}
+            messageId={messageId}
+            modelUsed={modelUsed}
+            chatMode={chatMode || mode}
+          />
+        </div>
+      )}
 
       {/* Uploaded Attachments Download Section */}
       {attachments && attachments.length > 0 && !isLoading && (

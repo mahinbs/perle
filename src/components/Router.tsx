@@ -26,6 +26,7 @@ import SupportPage from '../pages/SupportPage';
 import LandingPage from '../pages/LandingPage';
 import RefundCancellationPage from '../pages/RefundCancellationPage';
 import PaymentCallbackPage from '../pages/PaymentCallbackPage';
+import AdminPage from '../pages/AdminPage';
 
 // Set this to true to enable maintenance mode
 const MAINTENANCE_MODE = false;
@@ -81,6 +82,7 @@ export function AppRouter() {
       <Route path="/contact-us" element={<ContactPage />} />
       <Route path="/support" element={<SupportPage />} />
       <Route path="/refund-cancellation" element={<RefundCancellationPage />} />
+      <Route path="/admin" element={<AdminPage />} />
       <Route path="/maintenance" element={<MaintenancePage />} />
       <Route path="*" element={<Navigate to={defaultRoute} replace />} />
     </Routes>

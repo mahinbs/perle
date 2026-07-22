@@ -93,6 +93,7 @@ export default function PrivacyPage() {
               <li style={{ marginBottom: "8px" }}><strong>Profile Settings:</strong> Notification preferences, dark mode preference, search history settings, voice search settings</li>
               <li style={{ marginBottom: "8px" }}><strong>Payment Information:</strong> Payment details are processed by Razorpay. We store only subscription status and plan information</li>
               <li style={{ marginBottom: "8px" }}><strong>Content:</strong> Search queries, conversation history, uploaded files, bookmarks, saved spaces, and library items</li>
+              <li style={{ marginBottom: "8px" }}><strong>AI Content Reports:</strong> When you report an AI response, we store the report reason, optional description, related prompt and AI response text, conversation/message identifiers, model used, device info, and timestamp so our team can review and moderate harmful or offensive AI-generated content</li>
             </ul>
 
             <h3 style={{ fontSize: "var(--font-lg)", fontWeight: 600, marginTop: "16px", marginBottom: "12px" }}>
@@ -139,6 +140,7 @@ export default function PrivacyPage() {
               <li style={{ marginBottom: "8px" }}><strong>Service Improvement:</strong> Analyzing usage patterns, fixing bugs, developing new features</li>
               <li style={{ marginBottom: "8px" }}><strong>Security:</strong> Detecting fraud, preventing abuse, protecting against security threats</li>
               <li style={{ marginBottom: "8px" }}><strong>Compliance:</strong> Meeting legal obligations and enforcing our Terms of Service</li>
+              <li style={{ marginBottom: "8px" }}><strong>AI Safety Moderation:</strong> Reviewing user reports of harmful or offensive AI-generated content to improve safety</li>
             </ul>
           </section>
 

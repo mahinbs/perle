@@ -260,17 +260,21 @@ export default function DiscoverPage() {
             width: "100%",
           }}
         >
-          <div
-            className="row"
-            style={{
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 12,
-            }}
-          >
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div className="h1" style={{ margin: 0 }}>
               Discover
             </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              className="btn-ghost glass-button"
+              onClick={() => loadItems(true)}
+              disabled={isLoading}
+              style={{ fontSize: "var(--font-sm)", padding: "8px 12px" }}
+              aria-label="Refresh news"
+              title="Refresh news"
+            >
+              Refresh
+            </button>
             <button
               className="btn-ghost glass-button"
               onClick={() => navigateTo("/app")}
@@ -279,6 +283,7 @@ export default function DiscoverPage() {
             >
               <IoIosArrowBack size={24} /> Back
             </button>
+            </div>
           </div>
 
           <div
