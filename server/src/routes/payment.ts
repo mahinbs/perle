@@ -1,4 +1,4 @@
-import { Router, type Request } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
@@ -16,8 +16,111 @@ import {
   isManualAdminGrant,
   type SubscriptionProfile,
 } from '../utils/subscriptionAccess.js';
+import { getFrontendOrigin } from '../lib/supabaseOAuth.js';
 
 const router = Router();
+
+function getAllowedFrontendOrigins(): string[] {
+  return [process.env.CORS_ORIGIN, process.env.CORS_ORIGINS, process.env.FRONTEND_URL]
+    .filter(Boolean)
+    .flatMap((value) => (value as string).split(','))
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+/** Prevent open redirects: only allow CORS-listed origins (plus default frontend). */
+function resolveCheckoutReturnOrigin(req: Request): string {
+  const candidates = [
+    typeof req.query.return_to === 'string' ? req.query.return_to : null,
+    typeof (req.body as { return_to?: string } | undefined)?.return_to === 'string'
+      ? (req.body as { return_to: string }).return_to
+      : null,
+  ].filter(Boolean) as string[];
+
+  const allowed = new Set(getAllowedFrontendOrigins());
+  allowed.add(getFrontendOrigin());
+
+  for (const raw of candidates) {
+    try {
+      const origin = new URL(raw).origin;
+      if (allowed.has(origin)) return origin;
+    } catch {
+      // ignore invalid return_to
+    }
+  }
+  return getFrontendOrigin();
+}
+
+function pickCallbackField(
+  sources: Array<Record<string, unknown>>,
+  key: string
+): string | null {
+  for (const src of sources) {
+    const value = src[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+/**
+ * Razorpay callback_url always POSTs payment fields.
+ * Static hosts (Vercel SPA) reject POST → HTTP 405.
+ * Accept POST/GET here and 303-redirect to the SPA as a GET with query params.
+ * Docs: https://razorpay.com/docs/payments/payment-gateway/callback-url/
+ */
+function handleRazorpayCheckoutCallback(req: Request, res: Response) {
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const query = (req.query && typeof req.query === 'object' ? req.query : {}) as Record<string, unknown>;
+  const sources = [body, query];
+
+  const params = new URLSearchParams();
+  for (const key of [
+    'razorpay_payment_id',
+    'razorpay_subscription_id',
+    'razorpay_order_id',
+    'razorpay_signature',
+    'error',
+    'error[code]',
+    'error[description]',
+  ]) {
+    const value = pickCallbackField(sources, key);
+    if (value) params.set(key, value);
+  }
+
+  const frontend = resolveCheckoutReturnOrigin(req);
+  // /payment/complete avoids Vercel rewrite of /payment/callback → serverless loop
+  const target = `${frontend}/payment/complete${params.toString() ? `?${params.toString()}` : ''}`;
+  console.log(`Razorpay checkout callback ${req.method} → 303 ${target}`);
+  return res.redirect(303, target);
+}
+
+router.post('/payment/callback', handleRazorpayCheckoutCallback);
+router.get('/payment/callback', handleRazorpayCheckoutCallback);
+
+/**
+ * Razorpay subscription checkout signature:
+ *   hmac_sha256(razorpay_payment_id + "|" + razorpay_subscription_id, key_secret)
+ * Docs: https://razorpay.com/docs/payments/subscriptions/integration-guide/
+ * (Order payments use order_id|payment_id — do not confuse the two.)
+ */
+function verifySubscriptionCheckoutSignature(
+  paymentId: string,
+  subscriptionId: string,
+  signature: string,
+  secret: string
+): boolean {
+  if (!paymentId || !subscriptionId || !signature || !secret) return false;
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(`${paymentId}|${subscriptionId}`)
+    .digest('hex');
+  if (expected.length !== signature.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(signature, 'utf8'));
+  } catch {
+    return expected === signature;
+  }
+}
 
 function getRazorpayInstance() {
   const { keyId, keySecret } = getRazorpayCredentials();
@@ -547,15 +650,24 @@ router.post('/payment/verify-subscription', authenticateToken, async (req: AuthR
 
     const { razorpay_subscription_id, razorpay_payment_id, razorpay_signature } = parse.data;
 
-    // Verify signature
-    const text = `${razorpay_subscription_id}|${razorpay_payment_id}`;
-    const generatedSignature = crypto
-      .createHmac('sha256', getRazorpayCredentials().keySecret)
-      .update(text)
-      .digest('hex');
+    const creds = getRazorpayCredentials();
+    if (!creds.keySecret) {
+      return res.status(500).json({ error: 'Razorpay is not configured on the server' });
+    }
 
-    if (generatedSignature !== razorpay_signature) {
-      return res.status(400).json({ error: 'Invalid payment signature' });
+    // Verify signature: payment_id|subscription_id (NOT the reverse — that caused Invalid Signature).
+    let signatureOk = verifySubscriptionCheckoutSignature(
+      razorpay_payment_id,
+      razorpay_subscription_id,
+      razorpay_signature,
+      creds.keySecret
+    );
+
+    if (!signatureOk) {
+      console.warn(
+        `⚠️ Razorpay signature mismatch (mode=${creds.mode}, key=${creds.keyId?.slice(0, 12)}…). ` +
+          `Will try API confirmation for sub=${razorpay_subscription_id} pay=${razorpay_payment_id}`
+      );
     }
 
     // Verify subscription exists and belongs to user
@@ -590,8 +702,41 @@ router.post('/payment/verify-subscription', authenticateToken, async (req: AuthR
           message: `Payment status: ${paymentStatus}`,
         });
       }
+
+      // When HMAC failed, only recover if this payment is clearly tied to this subscription.
+      if (!signatureOk) {
+        const notesSub =
+          payment.notes?.subscription_id ||
+          payment.notes?.razorpay_subscription_id ||
+          null;
+        const invoiceId = payment.invoice_id as string | undefined;
+        let invoiceMatches = false;
+        if (invoiceId) {
+          try {
+            const invoice = await razorpay.invoices.fetch(invoiceId) as any;
+            invoiceMatches = invoice?.subscription_id === razorpay_subscription_id;
+          } catch {
+            invoiceMatches = false;
+          }
+        }
+        const notesMatch = notesSub === razorpay_subscription_id;
+        if (!invoiceMatches && !notesMatch) {
+          console.error(
+            `Refusing activation: signature invalid and payment ${razorpay_payment_id} ` +
+              `not linked to subscription ${razorpay_subscription_id}`
+          );
+          return res.status(400).json({ error: 'Invalid payment signature' });
+        }
+        console.warn(
+          `⚠️ Activating via Razorpay API confirmation after signature mismatch ` +
+            `(payment=${razorpay_payment_id}, status=${paymentStatus}, sub=${subscription.status})`
+        );
+      }
     } catch (paymentError: any) {
       console.error('Razorpay payment fetch error:', paymentError);
+      if (!signatureOk) {
+        return res.status(400).json({ error: 'Invalid payment signature' });
+      }
       return res.status(400).json({ error: 'Could not verify payment with Razorpay' });
     }
     

@@ -63,6 +63,7 @@ export function AppRouter() {
       <Route path="/upgrade" element={<UpgradePlansPage />} />
       <Route path="/subscription" element={<SubscriptionPage />} />
       <Route path="/payment/callback" element={<PaymentCallbackPage />} />
+      <Route path="/payment/complete" element={<PaymentCallbackPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/details/:id" element={<DetailsPage />} />
       <Route path="/verify" element={<VerificationPage />} />

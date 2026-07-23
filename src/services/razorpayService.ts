@@ -195,9 +195,14 @@ export interface RazorpayCheckoutResult {
 }
 
 function getCallbackUrl(): string {
-  return `${window.location.origin}/payment/callback`;
+  // Razorpay POSTs to callback_url. Static SPA hosts return HTTP 405 on POST,
+  // so we hit the API which 303-redirects to /payment/callback as GET.
+  const apiBase = API_URL.replace(/\/+$/, '');
+  const returnTo = encodeURIComponent(window.location.origin);
+  return `${apiBase}/api/payment/callback?return_to=${returnTo}`;
 }
 
+/** In-app handler for Capacitor (Android). iOS uses App Store IAP instead. */
 function shouldUseInAppRazorpayHandler(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 }

@@ -54,6 +54,9 @@ const corsOptions: CorsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
+// Razorpay callback_url posts application/x-www-form-urlencoded.
+app.use(express.urlencoded({ extended: false }));
+
 // Capture raw body for Razorpay webhook HMAC (must match Razorpay's exact payload bytes).
 app.use(
   express.json({

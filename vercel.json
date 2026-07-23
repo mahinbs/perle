@@ -1,9 +1,12 @@
 {
   "rewrites": [
     {
+      "source": "/payment/callback",
+      "destination": "/api/razorpay-callback"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
 }
-
