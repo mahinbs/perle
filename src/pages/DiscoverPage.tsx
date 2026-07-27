@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { App as CapacitorApp } from "@capacitor/app";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import {
   getAllDiscoverItems,
   DISCOVER_CATEGORIES,
+  DISCOVER_NEWS_UPDATED_EVENT,
   filterByDiscoverCategory,
   getForYouNews,
   isRealDiscoverImage,
@@ -176,6 +178,77 @@ export default function DiscoverPage() {
 
   useEffect(() => {
     loadItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep Discover fresh without a full-screen reload. On mobile the app is
+  // usually backgrounded rather than closed, so the mount-only fetch above
+  // never re-runs across days and the once-per-day forced refresh never fires
+  // — users get stuck on yesterday's headlines. Re-pull whenever the app
+  // returns to the foreground (and on a light interval). This is a SOFT
+  // refresh: it never flips isLoading, so the list is never blanked; it only
+  // swaps in items when a non-empty result comes back. fetchLiveNewsItems'
+  // own daily-force + 3h TTL logic decides whether to actually hit the network.
+  useEffect(() => {
+    let cancelled = false;
+
+    const softRefresh = () => {
+      getAllDiscoverItems(false)
+        .then((items) => {
+          if (cancelled) return;
+          const realOnly = (Array.isArray(items) ? items : []).filter((i) =>
+            isRealDiscoverImage(i.image)
+          );
+          // Only replace when we actually got fresh content — never wipe the
+          // visible list because a background refresh came back empty.
+          if (realOnly.length > 0) {
+            setDiscoverItems(realOnly);
+            setBrokenImageIds(new Set());
+          }
+        })
+        .catch(() => {
+          /* keep whatever is on screen */
+        });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") softRefresh();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", softRefresh);
+    window.addEventListener("focus", softRefresh);
+    window.addEventListener(DISCOVER_NEWS_UPDATED_EVENT, softRefresh);
+
+    // Native (iOS/Android): visibilitychange/focus are unreliable on app
+    // resume, so use Capacitor's appStateChange as the authoritative signal.
+    let removeAppStateListener: (() => void) | undefined;
+    void CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) softRefresh();
+    })
+      .then((handle) => {
+        if (cancelled) {
+          void handle.remove();
+        } else {
+          removeAppStateListener = () => void handle.remove();
+        }
+      })
+      .catch(() => {
+        /* not running under Capacitor (plain web) — DOM listeners cover it */
+      });
+
+    // Roll with the 3h news cycle even if the app is left open in the foreground.
+    const intervalId = window.setInterval(softRefresh, 15 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", softRefresh);
+      window.removeEventListener("focus", softRefresh);
+      window.removeEventListener(DISCOVER_NEWS_UPDATED_EVENT, softRefresh);
+      window.clearInterval(intervalId);
+      removeAppStateListener?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
