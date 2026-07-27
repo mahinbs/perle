@@ -26,10 +26,29 @@ let wnPointsMemUsed = 0;
 let wnLastRecalibrateAttempt = 0;
 /** Latest `x-api-quota-left` from World News — overrides stale local counters. */
 let wnQuotaLeftFromApi: number | null = null;
+/** UTC day that `wnQuotaLeftFromApi` was captured for — must reset at midnight. */
+let wnQuotaLeftDay = '';
 const WN_RECALIBRATE_COOLDOWN_MS = 60_000;
 
 function wnUtcDayKey(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * World News plan quota resets daily (UTC). An in-memory `x-api-quota-left`
+ * of 0 from yesterday must NOT block fetches forever — that froze Discover
+ * after 2026-07-23 until process restart.
+ */
+function ensureWorldNewsQuotaDay(): void {
+  const day = wnUtcDayKey();
+  if (wnQuotaLeftDay === day) return;
+  wnQuotaLeftDay = day;
+  wnQuotaLeftFromApi = null;
+  wnLastRecalibrateAttempt = 0;
+  if (wnPointsMemDay !== day) {
+    wnPointsMemDay = '';
+    wnPointsMemUsed = 0;
+  }
 }
 
 function estimateSearchPoints(resultCount: number): number {
@@ -37,6 +56,7 @@ function estimateSearchPoints(resultCount: number): number {
 }
 
 async function getWorldNewsPointsUsed(): Promise<number> {
+  ensureWorldNewsQuotaDay();
   const day = wnUtcDayKey();
   if (wnPointsMemDay === day) return wnPointsMemUsed;
   const fromRedis = await redisGetJSON<number>(`worldnews:points:${day}`);
@@ -46,6 +66,7 @@ async function getWorldNewsPointsUsed(): Promise<number> {
 }
 
 async function setWorldNewsPointsUsed(used: number): Promise<void> {
+  ensureWorldNewsQuotaDay();
   const day = wnUtcDayKey();
   wnPointsMemDay = day;
   wnPointsMemUsed = Math.max(0, used);
@@ -60,16 +81,23 @@ async function addWorldNewsPoints(points: number): Promise<void> {
 
 /** Sync local budget counter from World News `x-api-quota-left` (avoids stale over-count). */
 async function syncWorldNewsQuotaFromHeaders(response: Response): Promise<void> {
-  const leftRaw = response.headers.get('x-api-quota-left') || response.headers.get('X-API-Quota-Left');
+  ensureWorldNewsQuotaDay();
+  const leftRaw =
+    response.headers.get('x-api-quota-left') || response.headers.get('X-API-Quota-Left');
+  // Missing header must NOT become Number(null) === 0 — that permanently
+  // blocked Discover fetches until process restart.
+  if (leftRaw == null || String(leftRaw).trim() === '') return;
   const left = Number(leftRaw);
   if (!Number.isFinite(left) || left < 0) return;
   wnQuotaLeftFromApi = left;
+  wnQuotaLeftDay = wnUtcDayKey();
   const used = Math.max(0, WN_PLAN_DAILY_POINTS - left);
   await setWorldNewsPointsUsed(used);
 }
 
 /** Shrink result pages when the daily quota is nearly exhausted. */
 function effectiveResultsPerRequest(): number {
+  ensureWorldNewsQuotaDay();
   if (wnQuotaLeftFromApi !== null) {
     if (wnQuotaLeftFromApi < 25) return 12;
     if (wnQuotaLeftFromApi < 60) return 20;
@@ -85,6 +113,7 @@ function effectiveResultsPerRequest(): number {
 function topicsForQuotaBudget(
   topics: Array<{ q: string; cat: string; tag: string; n: number; categories?: string; text?: string }>
 ): typeof topics {
+  ensureWorldNewsQuotaDay();
   const quotaLeft = wnQuotaLeftFromApi ?? (WN_DAILY_POINT_BUDGET - wnPointsMemUsed);
   if (quotaLeft >= 40) return topics;
   const priority = new Set(['For You', 'Entertainment', 'Sports', 'Technology', 'Politics']);
@@ -119,9 +148,23 @@ async function recalibrateWorldNewsBudget(apiKey: string): Promise<boolean> {
 }
 
 async function canSpendWorldNewsPoints(estimate: number): Promise<boolean> {
-  if (wnQuotaLeftFromApi !== null) return wnQuotaLeftFromApi >= estimate;
+  ensureWorldNewsQuotaDay();
   const used = await getWorldNewsPointsUsed();
-  return used + estimate <= WN_DAILY_POINT_BUDGET;
+  const softOk = used + estimate <= WN_DAILY_POINT_BUDGET;
+  if (wnQuotaLeftFromApi !== null) {
+    if (wnQuotaLeftFromApi >= estimate) return true;
+    // Header says exhausted but soft day counter still has room → treat header
+    // as stale (e.g. missing header previously synced as 0) and allow spend.
+    if (wnQuotaLeftFromApi <= 0 && softOk) {
+      console.warn(
+        '📊 World News API quota-left was 0 but soft budget remains — clearing stale header'
+      );
+      wnQuotaLeftFromApi = null;
+      return true;
+    }
+    return false;
+  }
+  return softOk;
 }
 
 /** Serialize + rate-limit World News calls for the Reporter plan. */
@@ -681,11 +724,13 @@ async function persistNewsStore(
   const dailyKey = `news:daily:${NEWS_CACHE_VERSION}:${code}:${ymd}`;
   void redisSetJSON(dailyKey, pruned, NEWS_MAX_AGE_MS / 1000);
 
-  // Best-effort: delete yesterday-beyond-retention daily keys (day -6 … -10).
+  // Best-effort: delete beyond-retention daily keys (day -6 … -10) in local TZ.
+  const timeZone = COUNTRY_TIMEZONES[code] || 'UTC';
   for (let ago = NEWS_MAX_AGE_DAYS + 1; ago <= NEWS_MAX_AGE_DAYS + 5; ago++) {
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() - ago);
-    const oldYmd = d.toISOString().slice(0, 10);
+    const oldYmd = formatYmdInTz(
+      new Date(Date.now() - ago * 24 * 60 * 60 * 1000),
+      timeZone
+    );
     void redisDel(`news:daily:${NEWS_CACHE_VERSION}:${code}:${oldYmd}`);
   }
 
@@ -732,7 +777,8 @@ const NEWS_L2_TTL_SEC = NEWS_REFRESH_INTERVAL_HOURS * 60 * 60;
 //   v24 = Entertainment fetch priority + World News quota header sync.
 //   v25 = newest-first sort by publishedAt across Discover sections.
 //   v26 = daily Top News (`date` param) + 5-day retention / purge older.
-const NEWS_CACHE_VERSION = 'v26';
+//   v27 = reset World News quota left at UTC day boundary (unblocks post-midnight fetches).
+const NEWS_CACHE_VERSION = 'v27';
 
 // Refresh-cycle timezone per country. Cycle rotates every NEWS_REFRESH_INTERVAL_HOURS.
 const COUNTRY_TIMEZONES: Record<string, string> = {
@@ -1169,9 +1215,13 @@ export async function getLiveNewsForCountry(
   // Skip top-news by default (extra points) — only when budget is healthy.
   if (worldNewsKey) {
     let pointsLeft = WN_DAILY_POINT_BUDGET - (await getWorldNewsPointsUsed());
-    if (pointsLeft < estimateSearchPoints(WN_RESULTS_PER_REQUEST)) {
+    if (pointsLeft < estimateSearchPoints(WN_RESULTS_PER_REQUEST) || wnQuotaLeftFromApi === 0) {
       await recalibrateWorldNewsBudget(worldNewsKey);
-      pointsLeft = wnQuotaLeftFromApi ?? (WN_DAILY_POINT_BUDGET - (await getWorldNewsPointsUsed()));
+      pointsLeft =
+        wnQuotaLeftFromApi ?? (WN_DAILY_POINT_BUDGET - (await getWorldNewsPointsUsed()));
+    } else {
+      // Prefer live header when present so logs match topicsForQuotaBudget.
+      if (wnQuotaLeftFromApi !== null) pointsLeft = wnQuotaLeftFromApi;
     }
     console.log(`📰 World News fetch ${code} (Reporter) — ~${pointsLeft.toFixed(0)} pts left today`);
 

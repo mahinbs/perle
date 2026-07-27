@@ -323,10 +323,10 @@ export function getForYouNews(items: DiscoverItem[]): DiscoverItem[] {
 //      read is < 1ms. Visible difference on tab switch / back-navigation.
 //   2. Lets the page render BEFORE the network call returns, so Discover
 //      is never a blank "loading…" screen for returning users.
-const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v19';
+const FRONTEND_NEWS_CACHE_KEY = 'syntraiq-live-news-cache-v20';
 const FRONTEND_NEWS_TTL_MS = 3 * 60 * 60 * 1000; // 3h — matches NEWS_L2_TTL_SEC
 /** Calendar day key — forces a fresh fetch once per local day. */
-const FRONTEND_NEWS_DAY_KEY = 'syntraiq-live-news-day-v2';
+const FRONTEND_NEWS_DAY_KEY = 'syntraiq-live-news-day-v3';
 
 function localDayKey(): string {
   const d = new Date();
@@ -336,19 +336,24 @@ function localDayKey(): string {
   return `${y}-${m}-${day}`;
 }
 
+/** True when we haven't successfully refreshed live news yet today. */
 function shouldForceDailyRefresh(): boolean {
   if (typeof localStorage === 'undefined') return false;
   try {
     const prev = localStorage.getItem(FRONTEND_NEWS_DAY_KEY);
-    const today = localDayKey();
-    if (prev !== today) {
-      localStorage.setItem(FRONTEND_NEWS_DAY_KEY, today);
-      return true;
-    }
+    return prev !== localDayKey();
+  } catch {
+    return false;
+  }
+}
+
+function markDailyRefreshDone(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(FRONTEND_NEWS_DAY_KEY, localDayKey());
   } catch {
     /* ignore */
   }
-  return false;
 }
 /** Fired (same-tab) whenever live news is written to localStorage so Header previews can refresh. */
 export const DISCOVER_NEWS_UPDATED_EVENT = 'syntraiq-discover-news-updated';
@@ -376,9 +381,11 @@ if (typeof localStorage !== 'undefined') {
     'syntraiq-live-news-cache-v16',
     'syntraiq-live-news-cache-v17',
     'syntraiq-live-news-cache-v18',
+    'syntraiq-live-news-cache-v19',
   ]) {
     try { localStorage.removeItem(oldKey); } catch { /* ignore */ }
   }
+  try { localStorage.removeItem('syntraiq-live-news-day-v2'); } catch { /* ignore */ }
 }
 
 interface FrontendNewsCache {
@@ -468,6 +475,9 @@ export async function fetchLiveNewsItems(forceRefresh = false): Promise<Discover
     const realOnly = items.filter((i: DiscoverItem) => isRealDiscoverImage(i.image));
     console.log(`[discover/news] ✅ loaded ${realOnly.length} real-image items (from ${items.length}, regions=${order}, refresh=${effectiveForce})`);
     writeFrontendCache(order, realOnly);
+    // Only mark the day after a successful non-empty fetch so a failed
+    // daily force can retry later the same day.
+    markDailyRefreshDone();
     return realOnly;
   } catch (err) {
     console.error('[discover/news] fetch failed:', err);

@@ -27,8 +27,6 @@ import {
 import { useToast } from "../contexts/ToastContext";
 
 import {
-  FaVolumeUp,
-  FaStop,
   FaBookmark,
   FaShare,
   FaClipboard,
@@ -1858,37 +1856,6 @@ export const AnswerCard: React.FC<AnswerCardProps> = ({
             gap: 4,
           }}
         >
-          {speechSupported && (
-            <>
-              <button
-                className="btn-ghost"
-                onClick={startVoiceOutput}
-                aria-label={isSpeaking ? "Stop speaking" : "Speak answer"}
-                style={{
-                  padding: 8,
-                  fontSize: "var(--font-md)",
-                  background: isSpeaking ? "var(--accent)" : "transparent",
-                  color: isSpeaking ? "white" : "inherit",
-                }}
-              >
-                <FaVolumeUp size={18} />
-              </button>
-              {isSpeaking && (
-                <button
-                  className="btn-ghost"
-                  onClick={stopVoiceOutput}
-                  aria-label="Stop speaking"
-                  style={{
-                    padding: 8,
-                    fontSize: "var(--font-md)",
-                    color: "var(--accent)",
-                  }}
-                >
-                  <FaStop size={18} />
-                </button>
-              )}
-            </>
-          )}
           <button
             className="btn-ghost"
             onClick={handleBookmarkAnswer}
