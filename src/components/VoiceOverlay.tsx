@@ -335,7 +335,10 @@ const VoiceResponsePanel: React.FC<{
 
         if (storedText !== null && storedText !== "") {
           const cleaned = storedText.replace(/\bundefined\b/gi, "");
-          setDisplayText((prev) => (cleaned !== prev ? cleaned : prev));
+          // Grow-only: the text is written both by live streaming and by the
+          // TTS karaoke sync. Only ever move forward so the handoff from
+          // streamed preview to spoken playback never blanks or rewinds.
+          setDisplayText((prev) => (cleaned.length > prev.length ? cleaned : prev));
         }
 
         if (typeof window !== "undefined" && "speechSynthesis" in window) {

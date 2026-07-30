@@ -8,7 +8,7 @@ import {
   incrementLifetimeQueryCount,
   shouldEnforceUsageLimits,
 } from "../utils/queryLimit";
-import { searchAPI } from "../utils/answerEngine";
+import { searchAPIStream } from "../utils/answerEngine";
 import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import { speakAnswerWithVoicePlan, stopVoiceSpeechOutput, warmSpeechSynthesis } from "../utils/voiceSpeechOutput";
 import { ensureMicrophonePermission } from "../utils/microphonePermission";
@@ -141,6 +141,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const [voiceAnswer, setVoiceAnswer] = useState<AnswerResult | null>(null);
   const [voiceIsLoading, setVoiceIsLoading] = useState(false);
   const [voiceQuery, setVoiceQuery] = useState("");
+  // Live text streamed into the voice overlay before the final answer is finalized.
+  const [voiceStreamingText, setVoiceStreamingText] = useState("");
+  // Aborts the in-flight voice stream (new query, overlay close, or safety-net timeout).
+  const voiceAbortRef = useRef<AbortController | null>(null);
   const voiceConversationIdRef = useRef<string | null>(null);
   const voiceHistoryRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const { showToast } = useToast();
@@ -164,7 +168,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   const resetVoiceSession = () => {
+    voiceAbortRef.current?.abort();
+    voiceAbortRef.current = null;
     setVoiceAnswer(null);
+    setVoiceStreamingText("");
     setVoiceQuery("");
     setVoiceIsLoading(false);
     voiceConversationIdRef.current = null;
@@ -209,59 +216,146 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       incrementLifetimeQueryCount();
     }
 
+    // Cancel any still-in-flight voice request before starting a new one.
+    voiceAbortRef.current?.abort();
+    const controller = new AbortController();
+    voiceAbortRef.current = controller;
+
     setVoiceQuery(q);
     setVoiceIsLoading(true);
     setVoiceAnswer(null);
+    setVoiceStreamingText("");
     removeLocalItem(STORAGE_KEYS.currentAnswerText);
 
+    const { backendMode, effectiveSearchType, effectiveModel } = getVoiceSearchParams();
+
+    // Voice answers STREAM (same endpoint the chat uses) so the first words
+    // appear in ~1-2s instead of the user staring at "IQ is thinking" until the
+    // entire answer is generated. Two watchdog timers guarantee the overlay can
+    // never hang forever: one if streaming never starts, one hard ceiling.
+    let accumulated = "";
+    let streamSources: Source[] = [];
+    let gotFirstToken = false;
+    let settled = false;
+
+    const FIRST_TOKEN_MS = 30000; // nothing started arriving → bail out
+    const HARD_CAP_MS = 90000;    // overall ceiling even if tokens trickle in
+
+    const clearWatchdogs = () => {
+      clearTimeout(firstTokenTimer);
+      clearTimeout(hardCapTimer);
+    };
+    const failGracefully = (message: string) => {
+      if (settled) return;
+      settled = true;
+      clearWatchdogs();
+      controller.abort();
+      setVoiceIsLoading(false);
+      setVoiceStreamingText("");
+      // The voice session keeps listening, so the user can simply ask again.
+      showToast({ message, type: "error", duration: 4000 });
+    };
+    const firstTokenTimer = setTimeout(() => {
+      if (!gotFirstToken) failGracefully("Taking longer than usual — please ask again.");
+    }, FIRST_TOKEN_MS);
+    const hardCapTimer = setTimeout(() => {
+      failGracefully("That took too long to answer — please try again.");
+    }, HARD_CAP_MS);
+
     try {
-      const { backendMode, effectiveSearchType, effectiveModel } = getVoiceSearchParams();
-      const res = await searchAPI(
+      await searchAPIStream(
         q,
         backendMode,
         effectiveModel,
         false,
-        [],
         voiceConversationIdRef.current,
         voiceHistoryRef.current,
         effectiveSearchType,
-      );
+        {
+          onMeta: (conversationId) => {
+            if (conversationId) voiceConversationIdRef.current = conversationId;
+          },
+          onSources: (sources) => {
+            streamSources = sources;
+          },
+          onToken: (text) => {
+            if (!gotFirstToken) {
+              gotFirstToken = true;
+              clearTimeout(firstTokenTimer);
+              // Words are arriving — drop the "IQ is thinking" state immediately.
+              setVoiceIsLoading(false);
+            }
+            accumulated += text;
+            setVoiceStreamingText(accumulated);
+            // Feed the live text into the overlay's display key so the answer
+            // is shown building in real time (the panel polls this key).
+            try {
+              localStorage.setItem("syntraiq-current-answer-text", accumulated);
+            } catch {
+              /* ignore */
+            }
+          },
+          onDone: (suggestedQuestions, cleanText) => {
+            if (settled) return;
+            settled = true;
+            clearWatchdogs();
+            // Prefer the backend's authoritative text if the stream was truncated.
+            const finalText =
+              cleanText && cleanText.trim().length >= accumulated.trim().length
+                ? cleanText
+                : accumulated;
 
-      if (res.conversationId) {
-        voiceConversationIdRef.current = res.conversationId;
-      }
+            const result: AnswerResult = {
+              sources: normalizeSources(streamSources),
+              chunks: [{ text: finalText, citationIds: [] }],
+              query: q,
+              mode: backendMode,
+              timestamp: Date.now(),
+              conversationId: voiceConversationIdRef.current ?? undefined,
+              suggestedQuestions,
+              wasStreamed: true,
+            };
 
-      const answerText = res.chunks.map((c) => c.text).join("\n\n");
-      voiceHistoryRef.current = [
-        ...voiceHistoryRef.current,
-        { role: "user" as const, content: q },
-        { role: "assistant" as const, content: answerText },
-      ].slice(-20);
+            voiceHistoryRef.current = [
+              ...voiceHistoryRef.current,
+              { role: "user" as const, content: q },
+              { role: "assistant" as const, content: finalText },
+            ].slice(-20);
 
-      const normalizedResult = { ...res, sources: normalizeSources(res.sources) };
-      setVoiceAnswer(normalizedResult);
-      localStorage.setItem("syntraiq-keep-voice-overlay-open", "1");
-      localStorage.setItem("syntraiq-voice-session-active", "1");
-      // Speak directly here — avoids a useEffect round-trip that adds one
-      // React render cycle of latency between response arrival and TTS start.
-      const answerTextForSpeech = normalizedResult.chunks.map((c) => c.text).join("\n\n");
-      speakAnswerWithVoicePlan(answerTextForSpeech, {
-        rate: 0.92,
-        volume: 0.9,
-        onSpeakingChange: setIsSpeaking,
-        onComplete: () => {
-          const voiceSessionActive =
-            localStorage.getItem("syntraiq-voice-session-active") === "1";
-          if (voiceSessionActive) {
-            localStorage.setItem("syntraiq-auto-listen-next", "1");
-          }
+            setVoiceAnswer(result);
+            setVoiceStreamingText("");
+            setVoiceIsLoading(false);
+            localStorage.setItem("syntraiq-keep-voice-overlay-open", "1");
+            localStorage.setItem("syntraiq-voice-session-active", "1");
+            // Speak the completed answer.
+            speakAnswerWithVoicePlan(finalText, {
+              rate: 0.92,
+              volume: 0.9,
+              onSpeakingChange: setIsSpeaking,
+              onComplete: () => {
+                const voiceSessionActive =
+                  localStorage.getItem("syntraiq-voice-session-active") === "1";
+                if (voiceSessionActive) {
+                  localStorage.setItem("syntraiq-auto-listen-next", "1");
+                }
+              },
+            });
+          },
+          onError: (message) => {
+            failGracefully(message || "Voice search failed");
+          },
         },
-      });
+        [],
+        controller.signal,
+      );
     } catch (error: unknown) {
+      // A deliberate abort (new query / overlay close / watchdog) is not an error.
+      if (controller.signal.aborted) return;
       const message = error instanceof Error ? error.message : "Voice search failed";
-      showToast({ message, type: "error", duration: 3000 });
+      failGracefully(message);
     } finally {
-      setVoiceIsLoading(false);
+      clearWatchdogs();
+      if (voiceAbortRef.current === controller) voiceAbortRef.current = null;
     }
   };
 
@@ -1997,7 +2091,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           isListening={isListening}
           isLoading={voiceIsLoading}
           queryText={voiceQuery}
-          responseText={voiceAnswer?.chunks.map((c) => c.text).join("\n\n") || ""}
+          responseText={
+            voiceAnswer?.chunks?.length
+              ? voiceAnswer.chunks.map((c) => c.text).join("\n\n")
+              : voiceStreamingText
+          }
           sources={voiceOverlaySources}
           onToggleListening={() => {
             if (isListening) {
