@@ -125,6 +125,9 @@ export default function MediaStudioPage() {
   // Image model selection (premium only). Free users always run on 'auto'
   // and the backend silently picks the chain it can authenticate against.
   const [imageModel, setImageModel] = useState<ImageModelChoice>("auto");
+  // Video output options — providers support 16:9 / 9:16 / 1:1 and 8s or 12s.
+  const [videoAspect, setVideoAspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [videoDuration, setVideoDuration] = useState<8 | 12>(8);
   const [imageModelOpen, setImageModelOpen] = useState(false);
   const imageModelBtnRef = useRef<HTMLButtonElement>(null);
   const [imageModelMenuStyle, setImageModelMenuStyle] = useState<React.CSSProperties | null>(null);
@@ -335,8 +338,8 @@ export default function MediaStudioPage() {
       } else {
         const result = await generateVideoApi(
           text,
-          5,
-          "16:9",
+          videoDuration,
+          videoAspect,
           attachedFiles.length > 0 ? attachedFiles : undefined,
         );
         setModalResultUrl(result.url);
@@ -672,6 +675,50 @@ export default function MediaStudioPage() {
               />
             </div>
           </div>
+
+          {/* Video output options — only in video mode */}
+          {mediaMode === "video" && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="sub text-xs opacity-70">Ratio</span>
+                <div className="flex items-center rounded-full p-1" style={{ background: "var(--input-bg)" }}>
+                  {(["16:9", "9:16", "1:1"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setVideoAspect(v)}
+                      className="px-2 py-1 rounded-full text-xs font-medium transition-all"
+                      style={{
+                        background: videoAspect === v ? "var(--card)" : "transparent",
+                        color: videoAspect === v ? "var(--text)" : "var(--sub)",
+                      }}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="sub text-xs opacity-70">Length</span>
+                <div className="flex items-center rounded-full p-1" style={{ background: "var(--input-bg)" }}>
+                  {([8, 12] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setVideoDuration(d)}
+                      className="px-2 py-1 rounded-full text-xs font-medium transition-all"
+                      style={{
+                        background: videoDuration === d ? "var(--card)" : "transparent",
+                        color: videoDuration === d ? "var(--text)" : "var(--sub)",
+                      }}
+                    >
+                      {d}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Bottom row: mode toggle + optional model + send (send never wraps off-screen) */}
           <div className="flex items-center gap-2 min-w-0">

@@ -31,6 +31,9 @@ export default function CreateVideoPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
   const [prompt, setPrompt] = useState("");
+  // Video output options — providers support 16:9 / 9:16 / 1:1 and 8s or 12s.
+  const [aspect, setAspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [duration, setDuration] = useState<8 | 12>(8);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [modalView, setModalView] = useState<MediaStudioModalView | null>(null);
@@ -57,7 +60,7 @@ export default function CreateVideoPage() {
     setGeneratedUrl(null);
 
     try {
-      const result = await generateVideoApi(text, 5, "16:9");
+      const result = await generateVideoApi(text, duration, aspect);
       setGeneratedUrl(result.url);
       setModalView("result");
       if (shouldEnforceUsageLimits()) {
@@ -147,6 +150,53 @@ export default function CreateVideoPage() {
           className="w-full glass-panel border border-[var(--border)] rounded-xl p-3 text-[var(--text)] bg-transparent resize-none min-h-[80px] mb-3 outline-none"
           rows={3}
         />
+
+        {/* Output options */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="sub text-xs opacity-70">Ratio</span>
+            <div className="flex items-center rounded-full p-1" style={{ background: "var(--input-bg)" }}>
+              {([
+                { v: "16:9", label: "16:9" },
+                { v: "9:16", label: "9:16" },
+                { v: "1:1", label: "1:1" },
+              ] as const).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setAspect(o.v)}
+                  className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                  style={{
+                    background: aspect === o.v ? "var(--card)" : "transparent",
+                    color: aspect === o.v ? "var(--text)" : "var(--sub)",
+                  }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="sub text-xs opacity-70">Length</span>
+            <div className="flex items-center rounded-full p-1" style={{ background: "var(--input-bg)" }}>
+              {([8, 12] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDuration(d)}
+                  className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                  style={{
+                    background: duration === d ? "var(--card)" : "transparent",
+                    color: duration === d ? "var(--text)" : "var(--sub)",
+                  }}
+                >
+                  {d}s
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <button
           type="button"
           className="btn w-full flex items-center justify-center gap-2"
