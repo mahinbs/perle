@@ -127,6 +127,16 @@ function providerOf(m: LLMModel): string {
   return 'other';
 }
 
+// OpenAI's gpt-5.4 / 5.5 / 5.6 reasoning models reject the classic sampling
+// controls (any temperature other than the default 1, top_p, frequency_penalty,
+// presence_penalty) and require `max_completion_tokens` in place of
+// `max_tokens`. Sending the old params yields a hard 400. Detect these by their
+// resolved OpenAI API id so callers can build a reasoning-safe request body.
+// Legacy ids (gpt-5..gpt-5.3) resolve to gpt-4o and are intentionally excluded.
+function isOpenAIReasoningModel(apiModel: string): boolean {
+  return /^gpt-5\.(4|5|6)\b/.test(apiModel);
+}
+
 // ── Web-search cache (L1 in-memory + L2 Redis) ──────────────────────────────
 // Keyed by the (normalized) search query. Lets a cross-provider FALLBACK reuse
 // the search the primary model already ran, instead of re-searching (~5s saved).
@@ -1982,21 +1992,35 @@ export async function generateOpenAIAnswer(
   const tokenLimit = getEffectiveTokenLimit(mode, isContinuationFollowUpQuery(query) && conversationHistory.length > 0, isPremium, searchType === 'deep', chatMode, query);
   const isCompanion = chatMode === 'ai_friend' || chatMode === 'ai_psychologist';
 
+  // OpenAI reasoning models (gpt-5.4/5.5/5.6) reject temperature≠1, top_p and
+  // penalties, and require max_completion_tokens. Build a reasoning-safe body for
+  // them; every other OpenAI model keeps the tuned sampling params below.
+  const openaiRequestBody: any = isOpenAIReasoningModel(openaiModel)
+    ? {
+        model: openaiModel,
+        messages: messages,
+        max_completion_tokens: Math.max(
+          isCompanion ? Math.min(tokenLimit, 1024) : tokenLimit,
+          2048,
+        ),
+      }
+    : {
+        model: openaiModel,
+        messages: messages,
+        temperature: isCompanion ? 0.55 : 0.2,
+        max_tokens: isCompanion ? Math.min(tokenLimit, 1024) : tokenLimit,
+        // SPEED OPTIMIZATIONS (search/normal only):
+        ...(isCompanion
+          ? { frequency_penalty: 0.35, presence_penalty: 0.45 }
+          : {
+              top_p: 0.9,
+              frequency_penalty: 0.5,
+              presence_penalty: 0.3,
+            }),
+      };
+
   const response = await withTimeout(
-    client.chat.completions.create({
-      model: openaiModel,
-      messages: messages,
-      temperature: isCompanion ? 0.55 : 0.2,
-      max_tokens: isCompanion ? Math.min(tokenLimit, 1024) : tokenLimit,
-      // SPEED OPTIMIZATIONS (search/normal only):
-      ...(isCompanion
-        ? { frequency_penalty: 0.35, presence_penalty: 0.45 }
-        : {
-            top_p: 0.9,
-            frequency_penalty: 0.5,
-            presence_penalty: 0.3,
-          }),
-    }),
+    client.chat.completions.create(openaiRequestBody),
     isCompanion ? 12_000 : 30_000
   );
 
@@ -2675,14 +2699,26 @@ ${buildFollowupLanguageInstruction(query)}
   // provider — but ONLY then, not on every request.
   let stream: any;
   try {
-    stream = await client.chat.completions.create({
-      model: cfg.apiModel,
-      messages,
-      temperature: cfg.temperature ?? 0.3,
-      max_tokens: tokenLimit,
-      top_p: cfg.topP ?? 0.9,
-      stream: true,
-    });
+    // OpenAI reasoning models (gpt-5.4/5.5/5.6) reject temperature/top_p and use
+    // max_completion_tokens; give them enough budget that reasoning tokens don't
+    // starve the visible answer. Everything else keeps the classic sampling body.
+    const reqBody: any =
+      cfg.providerKey === 'openai' && isOpenAIReasoningModel(cfg.apiModel)
+        ? {
+            model: cfg.apiModel,
+            messages,
+            max_completion_tokens: Math.max(tokenLimit, 2048),
+            stream: true,
+          }
+        : {
+            model: cfg.apiModel,
+            messages,
+            temperature: cfg.temperature ?? 0.3,
+            max_tokens: tokenLimit,
+            top_p: cfg.topP ?? 0.9,
+            stream: true,
+          };
+    stream = await client.chat.completions.create(reqBody);
   } catch (err: any) {
     if (isRateLimitError(err)) reportRateLimitForProvider(cfg.providerKey);
     throw err;
