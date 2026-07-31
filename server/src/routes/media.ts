@@ -668,9 +668,9 @@ router.post('/generate-video-from-image', authenticateToken, upload.single('imag
     const { prompt, duration: durationStr, aspectRatio } = parse.data;
     const duration = parseInt(durationStr) || 5;
 
-    // Validate duration
-    if (duration < 2 || duration > 10) {
-      return res.status(400).json({ error: 'Duration must be between 2 and 10 seconds' });
+    // Validate duration (providers generate in fixed 4/8/12s steps).
+    if (duration < 2 || duration > 12) {
+      return res.status(400).json({ error: 'Duration must be between 2 and 12 seconds' });
     }
 
     console.log(`🎥 Image-to-video generation request: "${prompt || 'No description'}" (${duration}s, ${aspectRatio})`);
