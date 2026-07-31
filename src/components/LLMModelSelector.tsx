@@ -71,6 +71,27 @@ const premiumModels: LLMModelInfo[] = [
   // OpenAI Models
   // OpenAI — latest tier
   {
+    id: "gpt-5.6-sol",
+    name: "GPT-5.6 Sol",
+    provider: "OpenAI",
+    description: "Flagship GPT-5.6 — frontier intelligence and coding",
+    capabilities: ["Max Intelligence", "Deep Reasoning", "Coding", "Premium"],
+  },
+  {
+    id: "gpt-5.6-terra",
+    name: "GPT-5.6 Terra",
+    provider: "OpenAI",
+    description: "Balanced everyday GPT-5.6 — great quality for the price",
+    capabilities: ["Advanced Reasoning", "Balanced", "Tool Use"],
+  },
+  {
+    id: "gpt-5.6-luna",
+    name: "GPT-5.6 Luna",
+    provider: "OpenAI",
+    description: "Fast, most affordable GPT-5.6 — great for high volume",
+    capabilities: ["Fast", "Cost Effective", "Tool Use"],
+  },
+  {
     id: "gpt-5.5-pro",
     name: "GPT-5.5 Pro",
     provider: "OpenAI",
@@ -391,6 +412,27 @@ const premiumModels: LLMModelInfo[] = [
   },
   // Kimi / Moonshot
   {
+    id: "kimi-k3",
+    name: "Kimi K3",
+    provider: "Moonshot",
+    description: "Flagship Kimi — 1M context, native vision and always-on reasoning",
+    capabilities: ["1M Context", "Vision", "Deep Reasoning", "Premium"],
+  },
+  {
+    id: "kimi-k2.7-code",
+    name: "Kimi K2.7 Code",
+    provider: "Moonshot",
+    description: "Coding-specialized agent model with prompt caching",
+    capabilities: ["Coding", "Agentic", "Long Context"],
+  },
+  {
+    id: "kimi-k2.6",
+    name: "Kimi K2.6",
+    provider: "Moonshot",
+    description: "Value tier — 256K context general-purpose chat",
+    capabilities: ["256K Context", "General Purpose", "Cost Effective"],
+  },
+  {
     id: "kimi-k2.5",
     name: "Kimi K2.5",
     provider: "Moonshot",
@@ -537,6 +579,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
   const deepResearchIds: LLMModel[] = [
     'exa-deep',
     // OpenAI deep research / reasoning
+    'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna',
     'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3', 'gpt-5.2', 'gpt-5.1', 'gpt-5',
     'o3', 'o4-mini',
     // Grok heavy / premium
@@ -554,7 +597,7 @@ export const LLMModelSelector: React.FC<LLMModelSelectorProps> = ({
     // belong in the deep_research filter. Sonar (live web search) stays out so
     // it surfaces in Web mode, not Deep.
     'deepseek-r1', 'deepseek-v3.2-exp',
-    'kimi-k2-thinking', 'kimi-k2.5',
+    'kimi-k3', 'kimi-k2-thinking', 'kimi-k2.5',
     'perplexity-sonar-reasoning-pro',
     'perplexity-deep-research',
     'perplexity-adv-deep-research',
