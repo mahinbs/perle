@@ -2943,7 +2943,8 @@ async function* streamKimiAnswer(...args: any[]): AsyncGenerator<GeminiStreamEve
   yield* streamOpenAICompatibleAnswer(
     { providerKey: 'kimi', baseURL: 'https://api.moonshot.ai/v1',
       apiModel: resolveKimiModel(model), label: 'kimi',
-      hasNativeWebSearch: false, temperature: 0.3 },
+      // Current Kimi models (k3 / k2.5 / k2.6 / k2.7-code) require temperature = 1.
+      hasNativeWebSearch: false, temperature: 1 },
     query, mode, model, isPremium, conversationHistory, chatMode,
     friendDescription, friendName, friendMemoryContext, spaceTitle, spaceDescription,
     imageDataUrl, userContext, searchType, attachments, priorSummary,
@@ -3882,7 +3883,8 @@ export async function generateKimiAnswer(
       apiModel: resolveKimiModel(model),
       label: 'kimi',
       hasNativeWebSearch: false,
-      temperature: 0.3,
+      // Current Kimi models (k3 / k2.5 / k2.6 / k2.7-code) require temperature = 1.
+      temperature: 1,
     },
     query, mode, model, conversationHistory, chatMode,
     friendDescription, friendName, friendMemoryContext,

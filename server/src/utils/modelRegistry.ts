@@ -36,6 +36,10 @@ export function getCompanionFallbackChain(): LLMModel[] {
 
 /** UI model id → provider API model id */
 export const OPENAI_API_MODELS: Partial<Record<LLMModel, string>> = {
+  // GPT-5.6 family (Sol / Terra / Luna)
+  'gpt-5.6-sol': 'gpt-5.6-sol',
+  'gpt-5.6-terra': 'gpt-5.6-terra',
+  'gpt-5.6-luna': 'gpt-5.6-luna',
   'gpt-5': 'gpt-4o',
   'gpt-5.1': 'gpt-4o',
   'gpt-5.2': 'gpt-4o',
@@ -92,8 +96,13 @@ export const DEEPSEEK_API_MODELS: Partial<Record<LLMModel, string>> = {
 
 /** Moonshot / Kimi — direct API (OpenAI-compatible) at https://api.moonshot.cn/v1 */
 export const KIMI_API_MODELS: Partial<Record<LLMModel, string>> = {
+  // Current Kimi generation (direct model ids on api.moonshot.ai/v1)
+  'kimi-k3': 'kimi-k3',
+  'kimi-k2.7-code': 'kimi-k2.7-code',
+  'kimi-k2.6': 'kimi-k2.6',
+  'kimi-k2.5': 'kimi-k2.5',
+  // Legacy generic Moonshot ids (kept for backward compatibility)
   'kimi-k2': 'moonshot-v1-32k',
-  'kimi-k2.5': 'moonshot-v1-128k',
   'kimi-k2-thinking': 'moonshot-v1-128k',
 };
 
@@ -118,6 +127,12 @@ export const GROK_API_MODELS: Partial<Record<LLMModel, string>> = {
 };
 
 export const NEW_MODEL_IDS: LLMModel[] = [
+  'gpt-5.6-sol',
+  'gpt-5.6-terra',
+  'gpt-5.6-luna',
+  'kimi-k3',
+  'kimi-k2.7-code',
+  'kimi-k2.6',
   'gpt-5.4',
   'gpt-5.5',
   'gpt-5.5-pro',
