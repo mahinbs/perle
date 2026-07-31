@@ -927,8 +927,8 @@ export default function ProfilePage() {
             loop
             playsInline
             preload="metadata"
-            className="w-full max-w-[280px] mx-auto object-cover rounded-lg"
-            style={{ maxHeight: "22vh", aspectRatio: "16 / 9" }}
+            className="w-full max-w-[280px] mx-auto object-contain rounded-lg"
+            style={{ maxHeight: "22vh", aspectRatio: "1 / 1" }}
             aria-hidden
           />
         </div>
