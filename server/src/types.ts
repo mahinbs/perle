@@ -4,6 +4,9 @@ export type ChatMode = 'normal' | 'ai_friend' | 'ai_psychologist' | 'space';
 
 export type LLMModel =
   | 'auto'
+  | 'gpt-5.6-sol'
+  | 'gpt-5.6-terra'
+  | 'gpt-5.6-luna'
   | 'gpt-5'
   | 'gpt-5.1'
   | 'gpt-5.2'
@@ -57,6 +60,9 @@ export type LLMModel =
   | 'deepseek-v3.1'
   | 'deepseek-r1'
   // Kimi / Moonshot
+  | 'kimi-k3'
+  | 'kimi-k2.7-code'
+  | 'kimi-k2.6'
   | 'kimi-k2'
   | 'kimi-k2.5'
   | 'kimi-k2-thinking'
