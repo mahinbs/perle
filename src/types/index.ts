@@ -9,6 +9,7 @@ export type LLMModel =
   | 'exa-deep'
   | 'auto'
   // OpenAI
+  | 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna'
   | 'gpt-5' | 'gpt-5.1' | 'gpt-5.2' | 'gpt-5.3' | 'gpt-5.4' | 'gpt-5.5' | 'gpt-5.5-pro'
   | 'gpt-4.1' | 'gpt-4.1-mini' | 'gpt-4.1-nano'
   | 'o3' | 'o4-mini'
@@ -27,6 +28,7 @@ export type LLMModel =
   // DeepSeek
   | 'deepseek-v3.2' | 'deepseek-v3.2-exp' | 'deepseek-v3.1' | 'deepseek-r1'
   // Kimi / Moonshot
+  | 'kimi-k3' | 'kimi-k2.7-code' | 'kimi-k2.6'
   | 'kimi-k2' | 'kimi-k2.5' | 'kimi-k2-thinking'
   // Perplexity (Sonar family)
   | 'perplexity-sonar' | 'perplexity-sonar-pro' | 'perplexity-sonar-reasoning-pro'
