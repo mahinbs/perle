@@ -1,9 +1,9 @@
 import { isChatGreetingMessage } from "./chatDates";
 
 export const PSYCHOLOGIST_GREETING =
-  "Hi, I'm Dr. Maya. This is a safe space — what's on your mind today?";
+  "Hi, I'm Maya — a supportive AI companion for reflection and everyday wellness. I'm not a therapist and I don't diagnose or treat. What's on your mind today?";
 
-export const PSYCHOLOGIST_DISPLAY_NAME = "Dr. Maya";
+export const PSYCHOLOGIST_DISPLAY_NAME = "Maya";
 
 /** History sent to /api/chat — skip placeholder greeting bubbles. */
 export function buildCompanionHistoryPayload(

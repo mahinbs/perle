@@ -1,6 +1,7 @@
 import { IoIosArrowBack } from "react-icons/io";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 import sleepDisorderVideo from "../assets/sleep-disorder-video.mp4";
+import { HealthWellnessDisclaimer } from "../components/HealthWellnessDisclaimer";
 
 export default function SleepDisorderPage() {
   const { navigateTo } = useRouterNavigation();
@@ -13,15 +14,16 @@ export default function SleepDisorderPage() {
             <IoIosArrowBack size={24} />
           </button>
           <div>
-            <div className="h3 mb-0">Sleep Disorders</div>
-            <div className="sub text-sm opacity-70">Understanding sleep health</div>
+            <div className="h3 mb-0">Better Sleep</div>
+            <div className="sub text-sm opacity-70">General wellness tips for rest</div>
           </div>
         </div>
+        <HealthWellnessDisclaimer compact />
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-6 gap-6 overflow-y-auto">
         <p className="text-center text-[var(--text)] max-w-md leading-relaxed opacity-90">
-          Many people face challenges with sleep disorders. Watch this guide to learn about common sleep issues and practical steps toward better rest.
+          Many people want better rest. Watch this general wellness guide for everyday sleep habits — it is not a medical diagnosis or treatment plan.
         </p>
         <div className="w-full max-w-2xl glass-card border border-[var(--border)] rounded-2xl overflow-hidden shadow-lg">
           <video
@@ -38,9 +40,9 @@ export default function SleepDisorderPage() {
           type="button"
           className="btn glass-button"
           style={{ background: "var(--accent)", color: "#111" }}
-          onClick={() => navigateTo("/app", { searchQuery: "How can I improve my sleep if I have a sleep disorder", bypassSleepDisorderRedirect: true })}
+          onClick={() => navigateTo("/app", { searchQuery: "What are some everyday tips for better sleep and rest?", bypassSleepDisorderRedirect: true })}
         >
-          Ask IQ about sleep disorders
+          Ask IQ about better sleep
         </button>
       </div>
     </div>

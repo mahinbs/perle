@@ -874,8 +874,10 @@ export default function ProfilePage() {
         <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
           AI safety notice
         </div>
-        AI responses may be inaccurate. Do not rely on them for medical, financial, or legal
-        decisions. If you encounter inappropriate or harmful AI-generated content, use the{" "}
+        AI responses may be inaccurate. Do not rely on them for medical, mental-health, financial, or legal
+        decisions — they are not a substitute for a doctor's advice. Wellness Chat is for informational
+        support only and does not diagnose or treat. If you encounter inappropriate or harmful AI-generated
+        content, use the{" "}
         <strong style={{ color: "var(--text)" }}>Report</strong> button on the response — you
         can report it without leaving the app.
       </div>
@@ -1149,8 +1151,9 @@ export default function ProfilePage() {
             <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
               AI safety notice
             </div>
-            AI responses may be inaccurate. Do not rely on them for medical, financial, or legal
-            decisions. If you encounter inappropriate content, please report it using the{" "}
+            AI responses may be inaccurate. Do not rely on them for medical, mental-health, financial, or legal
+            decisions — always seek a doctor's advice before making health decisions. Wellness Chat is informational
+            only and does not diagnose or treat. If you encounter inappropriate content, please report it using the{" "}
             <strong style={{ color: "var(--text)" }}>Report</strong> option on the AI response.
           </div>
 

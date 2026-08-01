@@ -1645,7 +1645,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               }}
             >
               <span style={{ fontSize: "var(--font-sm)", whiteSpace: "nowrap" }}>
-                Sleep Disorders
+                Sleep tips
               </span>
             </button>
           </div>
@@ -1865,7 +1865,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   }}
                 >
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    Sleep Disorders
+                    Sleep tips
                   </span>
                 </button>
               </div>

@@ -212,9 +212,9 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             className="glass-button header-pill-btn"
             onClick={() => navigateTo("/ai-psychology")}
-            aria-label="AI Psychology"
+            aria-label="Wellness Chat"
           >
-            AI Psychology
+            Wellness Chat
           </button>
         </div>
 

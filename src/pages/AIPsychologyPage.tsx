@@ -38,6 +38,7 @@ import {
   buildCompanionHistoryPayload,
   areGenericPsychFollowUps,
 } from "../utils/companionChat";
+import { HealthWellnessDisclaimer } from "../components/HealthWellnessDisclaimer";
 
 interface Message {
   id: string;
@@ -57,9 +58,9 @@ export default function AIPsychologyPage() {
 
   // Generate avatars using UI Avatars service
   const aiProfile = {
-    name: "Dr. Maya",
-    handle: "@syntraIQ psychologist",
-    avatar: `https://ui-avatars.com/api/?name=Dr+Maya&background=9B59B6&color=fff&size=120&bold=true&font-size=0.5`,
+    name: "Maya",
+    handle: "@syntraIQ wellness companion · not a therapist",
+    avatar: `https://ui-avatars.com/api/?name=Maya&background=9B59B6&color=fff&size=120&bold=true&font-size=0.5`,
   };
   const userProfile = {
     name: userName,
@@ -80,7 +81,7 @@ export default function AIPsychologyPage() {
     historyOldestRef.current = null;
     setMessages([makeGreetingMessage()]);
     showToast({
-      message: "New session started",
+      message: "New chat started",
       type: "success",
       duration: 2000,
     });
@@ -96,9 +97,9 @@ export default function AIPsychologyPage() {
   const [newConversation, setNewConversation] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(() => !hasAIConsent());
   const [suggestions, setSuggestions] = useState<string[]>([
-    "I've been feeling stressed lately and could use some guidance.",
-    "Can you help me understand my emotions better?",
-    "I'd like to talk about coping strategies for anxiety.",
+    "I've had a stressful day and would like to talk it through.",
+    "Can you help me reflect on how I'm feeling?",
+    "I'd like some everyday wellness ideas to unwind.",
   ]);
   const [dailySuggestionUses, setDailySuggestionUses] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -544,7 +545,7 @@ export default function AIPsychologyPage() {
               type="button"
               className="btn-ghost glass-button !px-2.5 !py-1.5 text-xs whitespace-nowrap"
               onClick={startNewConversation}
-              title="Start a new session"
+              title="Start a new chat"
             >
               New
             </button>
@@ -556,6 +557,7 @@ export default function AIPsychologyPage() {
             </button>
           </div>
         </div>
+        <HealthWellnessDisclaimer compact />
       </div>
 
       {/* Messages Area */}
@@ -686,7 +688,7 @@ export default function AIPsychologyPage() {
         )}
       </div>
 
-      {/* Input Area — therapeutic chat, no search-mode buttons. */}
+      {/* Input Area — wellness companion chat, no search-mode buttons. */}
       <div className="p-3 px-4 border-none border-[var(--border)] sticky bottom-0 input-bar-safe-bottom">
         {attachedFileName && (
           <div className="mt-2.5 p-2.5 px-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)] flex justify-between items-center gap-3">

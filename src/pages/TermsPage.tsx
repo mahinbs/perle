@@ -91,7 +91,7 @@ export default function TermsPage() {
             <ul style={{ marginLeft: "24px", marginBottom: "12px" }}>
               <li style={{ marginBottom: "8px" }}>AI-powered search with multiple modes (Ask, Research, Summarize, Compare)</li>
               <li style={{ marginBottom: "8px" }}>Access to various AI models (GPT, Claude, Gemini, Grok)</li>
-              <li style={{ marginBottom: "8px" }}>AI Friend and AI Psychologist conversational modes</li>
+              <li style={{ marginBottom: "8px" }}>AI Friend and Wellness Chat conversational modes</li>
               <li style={{ marginBottom: "8px" }}>Voice search and text-to-speech capabilities</li>
               <li style={{ marginBottom: "8px" }}>File upload and analysis (images, PDFs, documents)</li>
               <li style={{ marginBottom: "8px" }}>Search history and bookmarks (Library)</li>
@@ -272,16 +272,20 @@ export default function TermsPage() {
 
           <section style={{ marginBottom: "32px" }}>
             <h2 style={{ fontSize: "var(--font-xl)", fontWeight: 600, marginBottom: "16px" }}>
-              9. AI Psychologist Disclaimer
+              9. Wellness Chat & Health Information Disclaimer
             </h2>
             <p style={{ marginBottom: "12px" }}>
-              The AI Psychologist mode is NOT a substitute for professional mental health care. It does not 
-              provide medical advice, diagnosis, or treatment. If you are experiencing a mental health emergency, 
-              please contact emergency services or a qualified mental health professional immediately.
+              Wellness Chat (including any AI companion for reflection or emotional support) and any sleep,
+              health, or wellness-related content in SyntraIQ are for informational and general wellness
+              purposes only. They are NOT a substitute for professional medical or mental health care.
+              SyntraIQ does not provide medical advice, diagnosis, or treatment. Always seek a doctor's or
+              other qualified health provider's advice before making any medical or health decisions. If you
+              are experiencing a medical or mental health emergency, contact emergency services or a
+              qualified professional immediately.
             </p>
             <p style={{ marginBottom: "12px" }}>
-              The AI Psychologist is designed for informational and supportive purposes only and should not 
-              replace consultation with licensed healthcare providers.
+              SyntraIQ is not a medical device and has not been cleared or approved as a diagnostic or
+              treatment tool. Do not use the Service in place of consultation with licensed healthcare providers.
             </p>
           </section>
 
