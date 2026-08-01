@@ -71,6 +71,8 @@ function DiscoverCard({
             width: "100%",
             height: "100%",
             objectFit: "cover",
+            // Anchor to the top so portrait news photos don't crop off heads.
+            objectPosition: "center top",
           }}
         />
       </div>

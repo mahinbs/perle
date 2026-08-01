@@ -300,6 +300,9 @@ export default function AIFriendPage() {
   ]);
   const [dailySuggestionUses, setDailySuggestionUses] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  // When the message box is focused (keyboard open), collapse the secondary
+  // icon row + helper text so the input docks compactly like WhatsApp.
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   // Mention system state
   const [showMentionList, setShowMentionList] = useState(false);
@@ -1811,6 +1814,8 @@ export default function AIFriendPage() {
               onSelect={(e) => {
                 setCursorPosition((e.target as HTMLTextAreaElement).selectionStart);
               }}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
               placeholder="Type your message..."
               className="flex-1 border-none bg-transparent resize-none py-1 text-[length:var(--font-md)] text-[var(--text)] outline-none font-inherit leading-relaxed min-h-[24px] max-h-[100px] overflow-y-auto h-auto"
               rows={1}
@@ -1818,7 +1823,8 @@ export default function AIFriendPage() {
             />
           </div>
 
-          <div className="flex w-full items-center justify-between gap-2">
+          <div className={`flex w-full items-center gap-2 ${isInputFocused ? "justify-end" : "justify-between"}`}>
+            {!isInputFocused && (
             <div className="flex gap-2 items-center">
               <button
                 className={`btn-ghost glass-button w-7 h-7 min-h-fit! border-none! rounded-full !p-0 flex items-center justify-center transition-colors duration-200 ${isLoading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
@@ -1867,6 +1873,7 @@ export default function AIFriendPage() {
                 <FaComments size={16} />
               </button>
             </div>
+            )}
 
             <div className="flex gap-2 items-center shrink-0">
               <button
@@ -1904,9 +1911,11 @@ export default function AIFriendPage() {
           </div>
         </div>
 
-        <div className="sub text-sm mt-2 text-[length:var(--font-xs)] text-center">
-          Press Enter to send, Shift+Enter for new line
-        </div>
+        {!isInputFocused && (
+          <div className="sub text-sm mt-2 text-[length:var(--font-xs)] text-center">
+            Press Enter to send, Shift+Enter for new line
+          </div>
+        )}
 
         {showSuggestions && (
           <div className="mt-4 p-3 rounded-[var(--radius-sm)] bg-[rgba(199,168,105,0.08)] border border-[rgba(199,168,105,0.2)]">
