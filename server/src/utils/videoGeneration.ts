@@ -27,6 +27,25 @@ export class VideoGenerationError extends Error {
 const BASE_URL = 'https://generativelanguage.googleapis.com';
 
 /**
+ * Build the Veo `parameters` object for a predictLongRunning request.
+ * Veo only supports 16:9 / 9:16 aspect ratios and 4/6/8-second durations, and
+ * requires 8s when reference images / video extension are used. Map the UI
+ * selection to the nearest valid value so the request is actually honored
+ * instead of silently generating the provider default (16:9 / 8s).
+ */
+function buildVeoParameters(
+  aspectRatio: string | undefined,
+  duration: number | undefined,
+  opts?: { forceEightSeconds?: boolean }
+): { aspectRatio: string; durationSeconds: number } {
+  const veoAspectRatio = aspectRatio === '9:16' ? '9:16' : '16:9';
+  const allowedDurations = [4, 6, 8];
+  let veoDuration = allowedDurations.includes(Number(duration)) ? Number(duration) : 8;
+  if (opts?.forceEightSeconds) veoDuration = 8;
+  return { aspectRatio: veoAspectRatio, durationSeconds: veoDuration };
+}
+
+/**
  * Upload video to Gemini File API and return file_uri for use as reference in video-to-video.
  * Best practice: upload once, pass file_uri in subsequent "make it better" requests.
  */
@@ -215,9 +234,14 @@ export async function generateVideoWithGemini(
          }
          
          const requestBody = {
-           instances: [instance]
+           instances: [instance],
+           // Forward the requested aspect ratio / duration. Reference images or a
+           // reference video require an 8s duration on Veo.
+           parameters: buildVeoParameters(aspectRatio, duration, {
+             forceEightSeconds: referenceImages.length > 0 || !!referenceVideoFileUri,
+           }),
          };
-         
+
          endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predictLongRunning?key=${apiKey}`;
          
          console.log(`   🔍 Request payload: ${JSON.stringify(requestBody).substring(0, 300)}...`);
@@ -233,9 +257,9 @@ export async function generateVideoWithGemini(
         // VERTEX AI FORMAT - Veo 3.0
         const requestBody: any = {
           instances: [{ prompt: prompt }],
-          parameters: {}
+          parameters: buildVeoParameters(aspectRatio, duration),
         };
-        
+
         endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model.name}:predictLongRunning?key=${apiKey}`;
 
         response = await fetch(endpoint, {
@@ -711,7 +735,8 @@ export async function generateVideoFromImage(
             bytesBase64Encoded: imageBase64
           }
         }],
-        parameters: {}
+        // Image-to-video uses a reference image, so Veo requires an 8s duration.
+        parameters: buildVeoParameters(aspectRatio, duration, { forceEightSeconds: true }),
       };
       
       console.log(`📤 Sending image-to-video request (image size: ${imageBase64.length} chars)`);

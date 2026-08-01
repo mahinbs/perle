@@ -77,7 +77,7 @@ export const DiscoverRail: React.FC = () => {
             <img
               src={item.image}
               alt={item.alt}
-              className="w-[100px] min-w-[100px] h-[88px] object-cover shrink-0"
+              className="w-[100px] min-w-[100px] h-[88px] object-cover object-top shrink-0"
             />
             <div className="flex-1 p-3 flex flex-col justify-center min-w-0">
               <div className="font-semibold text-sm mb-1 truncate">{item.title}</div>

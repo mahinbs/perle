@@ -120,7 +120,7 @@ export default function DetailsPage() {
             src={item.image}
             alt={item.alt}
             onError={() => setImgError(true)}
-            style={{ display: "block", width: "100%", height: 200, objectFit: "cover" }}
+            style={{ display: "block", width: "100%", height: 200, objectFit: "cover", objectPosition: "center top" }}
           />
           <div
             style={{

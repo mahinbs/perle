@@ -31,9 +31,10 @@ export default function CreateVideoPage() {
   const { navigateTo } = useRouterNavigation();
   const { showToast } = useToast();
   const [prompt, setPrompt] = useState("");
-  // Video output options — providers support 16:9 / 9:16 / 1:1 and 8s or 12s.
-  const [aspect, setAspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
-  const [duration, setDuration] = useState<8 | 12>(8);
+  // Video output options — the Veo provider supports 16:9 / 9:16 aspect ratios
+  // and 4/6/8-second durations only (1:1 and 12s are not supported upstream).
+  const [aspect, setAspect] = useState<"16:9" | "9:16">("16:9");
+  const [duration, setDuration] = useState<4 | 6 | 8>(8);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [modalView, setModalView] = useState<MediaStudioModalView | null>(null);
@@ -159,7 +160,6 @@ export default function CreateVideoPage() {
               {([
                 { v: "16:9", label: "16:9" },
                 { v: "9:16", label: "9:16" },
-                { v: "1:1", label: "1:1" },
               ] as const).map((o) => (
                 <button
                   key={o.v}
@@ -179,7 +179,7 @@ export default function CreateVideoPage() {
           <div className="flex items-center gap-2">
             <span className="sub text-xs opacity-70">Length</span>
             <div className="flex items-center rounded-full p-1" style={{ background: "var(--input-bg)" }}>
-              {([8, 12] as const).map((d) => (
+              {([4, 6, 8] as const).map((d) => (
                 <button
                   key={d}
                   type="button"
