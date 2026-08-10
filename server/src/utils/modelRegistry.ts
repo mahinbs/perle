@@ -60,6 +60,7 @@ export const OPENAI_API_MODELS: Partial<Record<LLMModel, string>> = {
 };
 
 export const GEMINI_API_MODELS: Partial<Record<LLMModel, string>> = {
+  'gemini-3.6-flash': 'gemini-3.6-flash',
   'gemini-2.0-latest': 'gemini-3.5-flash',
   'gemini-3.0': 'gemini-3.5-flash',
   'gemini-3.1': 'gemini-3.1-pro-preview',
@@ -116,6 +117,7 @@ export const PERPLEXITY_API_MODELS: Partial<Record<LLMModel, string>> = {
 };
 
 export const GROK_API_MODELS: Partial<Record<LLMModel, string>> = {
+  'grok-4.5': 'grok-4.5',
   'grok-4.3': 'grok-4.3',
   'grok-4.20': 'grok-4.20',
   'grok-4-heavy': 'grok-4.3',
@@ -127,6 +129,8 @@ export const GROK_API_MODELS: Partial<Record<LLMModel, string>> = {
 };
 
 export const NEW_MODEL_IDS: LLMModel[] = [
+  'grok-4.5',
+  'gemini-3.6-flash',
   'gpt-5.6-sol',
   'gpt-5.6-terra',
   'gpt-5.6-luna',
@@ -265,11 +269,11 @@ export const LLM_MODEL_ENUM = [
   'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'o3', 'o4-mini',
   'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo',
   'gemini-2.0-latest', 'gemini-3.0', 'gemini-3.1', 'gemini-3.1-flash',
-  'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-lite',
+  'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-lite',
   'claude-4.8-opus', 'claude-4.7-opus',
   'claude-4.5-sonnet', 'claude-4.5-opus', 'claude-4.6-sonnet', 'claude-4.6-opus',
   'claude-4.5-haiku', 'claude-4-sonnet', 'claude-4-opus', 'claude-4.1-opus', 'claude-3-haiku',
-  'grok-4.3', 'grok-4.20', 'grok-3', 'grok-3-mini',
+  'grok-4.5', 'grok-4.3', 'grok-4.20', 'grok-3', 'grok-3-mini',
   'grok-4-heavy', 'grok-4-fast', 'grok-code-fast-1', 'grok-beta',
   'gemini-pro', 'gemini-pro-vision', 'llama-2', 'mistral-7b',
   // DeepSeek
