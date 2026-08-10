@@ -219,6 +219,13 @@ const premiumModels: LLMModelInfo[] = [
     capabilities: ["Pro Quality", "Reasoning", "Tooling"],
   },
   {
+    id: "gemini-3.6-flash",
+    name: "Gemini 3.6 Flash",
+    provider: "Google",
+    description: "Gemini 3.6 Flash — Google's newest fast multimodal model",
+    capabilities: ["Newest", "Fast", "Multimodal", "Web Search"],
+  },
+  {
     id: "gemini-3.5-flash",
     name: "Gemini 3.5 Flash",
     provider: "Google",
@@ -323,6 +330,13 @@ const premiumModels: LLMModelInfo[] = [
     capabilities: ["200K Context", "Fast", "Cost Effective", "Lightweight"],
   },
   // xAI Grok Models (Latest First)
+  {
+    id: "grok-4.5",
+    name: "Grok 4.5",
+    provider: "xAI",
+    description: "Grok 4.5 — xAI's newest flagship, strong agentic reasoning and code",
+    capabilities: ["Newest", "Max Intelligence", "Real-time", "Web Search"],
+  },
   {
     id: "grok-4.20",
     name: "Grok 4.20",
