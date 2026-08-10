@@ -128,6 +128,100 @@ export async function uploadVideoToGeminiFileAPI(videoBuffer: Buffer): Promise<s
   }
 }
 
+/**
+ * Extend an already-generated Veo 3.1 clip by ~7 seconds (one continuation),
+ * turning an 8s clip into ~15s so users can request "longer" (10-12s+) videos.
+ *
+ * Follows the documented Gemini API extension flow: download the source clip,
+ * pass it back as inline video data to predictLongRunning, and poll for the
+ * (cumulative) extended result. Only works on veo-3.1-generate-preview and only
+ * for pure text-to-video (no reference images / reference video).
+ *
+ * Returns the extended video URI, or null on ANY failure — callers must fall
+ * back to the original clip so the user is never worse off than an 8s video.
+ */
+async function extendVeoVideoOnce(
+  sourceVideoUri: string,
+  prompt: string,
+  aspectRatio: '16:9' | '9:16' | '1:1',
+  apiKey: string
+): Promise<string | null> {
+  try {
+    // 1. Download the source clip bytes (the generateVideoResponse uri needs the key appended).
+    const dlUrl = sourceVideoUri.includes('?')
+      ? `${sourceVideoUri}&key=${apiKey}`
+      : `${sourceVideoUri}?key=${apiKey}`;
+    const dl = await fetch(dlUrl, { signal: AbortSignal.timeout(120000) });
+    if (!dl.ok) {
+      console.warn(`🔗 extend: could not download source clip (${dl.status})`);
+      return null;
+    }
+    const buf = Buffer.from(await dl.arrayBuffer());
+    if (buf.length === 0) {
+      console.warn('🔗 extend: downloaded source clip was empty');
+      return null;
+    }
+    const base64 = buf.toString('base64');
+
+    // 2. Ask Veo to continue the same clip for another ~7s (returns the cumulative video).
+    const veoAspect = aspectRatio === '9:16' ? '9:16' : '16:9';
+    const body = {
+      instances: [{
+        prompt: `Continue this exact video seamlessly, keeping the same subject, style, lighting and motion. ${prompt}`,
+        video: { inlineData: { mimeType: 'video/mp4', data: base64 } },
+      }],
+      parameters: { numberOfVideos: 1, aspectRatio: veoAspect, resolution: '720p' },
+    };
+    const endpoint = `${BASE_URL}/v1beta/models/veo-3.1-generate-preview:predictLongRunning?key=${apiKey}`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!res.ok) {
+      console.warn(`🔗 extend: request rejected (${res.status}): ${(await res.text()).substring(0, 200)}`);
+      return null;
+    }
+    const data = await res.json();
+    const operationId = data.name || data.operationId;
+    if (!operationId) {
+      console.warn('🔗 extend: no operation id returned');
+      return null;
+    }
+
+    // 3. Poll for completion (extension takes about as long as a fresh generation).
+    let attempts = 0;
+    const maxAttempts = 150;
+    while (attempts < maxAttempts) {
+      await new Promise((r) => setTimeout(r, 1000));
+      attempts++;
+      const statusRes = await fetch(`${BASE_URL}/v1beta/${operationId}?key=${apiKey}`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const status = await statusRes.json();
+      if (status.done) {
+        if (status.error) {
+          console.warn('🔗 extend: generation error:', status.error?.message || status.error);
+          return null;
+        }
+        const uri = status.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
+        if (uri) {
+          console.log('✅ extend: extended clip ready (~15s)');
+          return uri;
+        }
+        console.warn('🔗 extend: completed but no video uri in response');
+        return null;
+      }
+    }
+    console.warn('🔗 extend: timed out waiting for extension');
+    return null;
+  } catch (e: any) {
+    console.warn('🔗 extend: unexpected error —', e?.message || e);
+    return null;
+  }
+}
+
 // Generate video using Gemini Veo API - tries fast model first, then falls back to standard
 export async function generateVideoWithGemini(
   prompt: string, 
@@ -359,10 +453,32 @@ export async function generateVideoWithGemini(
           if (videoUrl) {
             console.log(`✅ Video generated successfully with ${model.displayName}`);
             console.log(`🎬 Video URL: ${videoUrl}`);
+
+            // Longer videos (10s+): extend the base 8s clip by one ~7s continuation
+            // (→ ~15s). Only on Veo 3.1 text-to-video; reference media forces 8s.
+            // Any failure falls back to the base clip, so it's never worse than 8s.
+            let finalUrl = videoUrl;
+            let finalDuration = duration;
+            const wantsLong = Number(duration) >= 10;
+            const canExtend =
+              model.name === 'veo-3.1-generate-preview' &&
+              referenceImages.length === 0 &&
+              !referenceVideoFileUri;
+            if (wantsLong && canExtend) {
+              console.log(`🔗 Long video requested (${duration}s) — attempting one Veo extension (+~7s)...`);
+              const extended = await extendVeoVideoOnce(videoUrl, prompt, aspectRatio, apiKey);
+              if (extended) {
+                finalUrl = extended;
+                finalDuration = 15; // 8s base + ~7s continuation
+              } else {
+                console.log('ℹ️ Extension unavailable — returning the base 8s clip');
+              }
+            }
+
             return {
-              url: videoUrl,
+              url: finalUrl,
               prompt: prompt,
-              duration: duration,
+              duration: finalDuration,
               width: width,
               height: height
             };

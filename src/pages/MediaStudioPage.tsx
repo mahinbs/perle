@@ -128,7 +128,7 @@ export default function MediaStudioPage() {
   // Video output options — the Veo provider supports 16:9 / 9:16 aspect ratios
   // and 4/6/8-second durations only (1:1 and 12s are not supported upstream).
   const [videoAspect, setVideoAspect] = useState<"16:9" | "9:16">("16:9");
-  const [videoDuration, setVideoDuration] = useState<4 | 6 | 8>(8);
+  const [videoDuration, setVideoDuration] = useState<4 | 6 | 8 | 12>(8);
   const [imageModelOpen, setImageModelOpen] = useState(false);
   const imageModelBtnRef = useRef<HTMLButtonElement>(null);
   const [imageModelMenuStyle, setImageModelMenuStyle] = useState<React.CSSProperties | null>(null);
@@ -702,7 +702,7 @@ export default function MediaStudioPage() {
               <div className="flex items-center gap-1.5">
                 <span className="sub text-xs opacity-70">Length</span>
                 <div className="flex items-center rounded-full p-1" style={{ background: "var(--input-bg)" }}>
-                  {([4, 6, 8] as const).map((d) => (
+                  {([4, 6, 8, 12] as const).map((d) => (
                     <button
                       key={d}
                       type="button"
