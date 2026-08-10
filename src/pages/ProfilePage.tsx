@@ -1136,26 +1136,8 @@ export default function ProfilePage() {
             Settings
           </div>
 
-          <div
-            style={{
-              marginBottom: 16,
-              padding: 14,
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border)",
-              background: "var(--input-bg)",
-              fontSize: "var(--font-sm)",
-              lineHeight: 1.5,
-              color: "var(--sub)",
-            }}
-          >
-            <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
-              AI safety notice
-            </div>
-            AI responses may be inaccurate. Do not rely on them for medical, mental-health, financial, or legal
-            decisions — always seek a doctor's advice before making health decisions. Wellness Chat is informational
-            only and does not diagnose or treat. If you encounter inappropriate content, please report it using the{" "}
-            <strong style={{ color: "var(--text)" }}>Report</strong> option on the AI response.
-          </div>
+          {/* AI safety notice intentionally not repeated here — it is shown once
+              at the top of this page (always-visible Google Play disclaimer). */}
 
           {/* Current Plan Display */}
           <div

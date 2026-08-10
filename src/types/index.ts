@@ -16,14 +16,14 @@ export type LLMModel =
   | 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-4' | 'gpt-3.5-turbo'
   // Gemini
   | 'gemini-2.0-latest' | 'gemini-3.0' | 'gemini-3.1' | 'gemini-3.1-flash'
-  | 'gemini-3.5-flash' | 'gemini-3.1-flash-lite' | 'gemini-lite'
+  | 'gemini-3.6-flash' | 'gemini-3.5-flash' | 'gemini-3.1-flash-lite' | 'gemini-lite'
   | 'gemini-pro' | 'gemini-pro-vision'
   // Claude
   | 'claude-4.8-opus' | 'claude-4.7-opus'
   | 'claude-4.5-sonnet' | 'claude-4.5-opus' | 'claude-4.6-sonnet' | 'claude-4.6-opus'
   | 'claude-4.5-haiku' | 'claude-4-sonnet' | 'claude-4-opus' | 'claude-4.1-opus' | 'claude-3-haiku'
   // Grok
-  | 'grok-4.3' | 'grok-4.20' | 'grok-3' | 'grok-3-mini'
+  | 'grok-4.5' | 'grok-4.3' | 'grok-4.20' | 'grok-3' | 'grok-3-mini'
   | 'grok-4-heavy' | 'grok-4-fast' | 'grok-code-fast-1' | 'grok-beta'
   // DeepSeek
   | 'deepseek-v3.2' | 'deepseek-v3.2-exp' | 'deepseek-v3.1' | 'deepseek-r1'
