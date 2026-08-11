@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useRouterNavigation } from "../contexts/RouterNavigationContext";
 
-const CONSENT_KEY = "syntraiq_ai_consent_v1";
-const CONSENT_SKIPPED_KEY = "syntraiq_ai_consent_skipped_v1";
+/** Bump this when disclaimer text changes so users see the updated screen. */
+const CONSENT_KEY = "syntraiq_ai_consent_v3";
+const CONSENT_SKIPPED_KEY = "syntraiq_ai_consent_skipped_v3";
 
 export function hasAIConsent(): boolean {
   return (
@@ -27,8 +28,12 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
   const { navigateTo } = useRouterNavigation();
   const [accepting, setAccepting] = useState(false);
   const [skipping, setSkipping] = useState(false);
+  const [acknowledgedHealth, setAcknowledgedHealth] = useState(false);
+
+  const busy = accepting || skipping;
 
   const handleAccept = () => {
+    if (!acknowledgedHealth) return;
     setAccepting(true);
     grantAIConsent();
     setTimeout(() => {
@@ -37,6 +42,7 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
   };
 
   const handleSkip = () => {
+    if (!acknowledgedHealth) return;
     setSkipping(true);
     skipAIConsent();
     setTimeout(() => {
@@ -69,7 +75,6 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
           background: "var(--card)",
           border: "1px solid var(--border)",
           borderRadius: "24px",
-          /* Responsive width: full on small screens, capped on large screens */
           width: "min(560px, calc(100vw - 48px))",
           maxHeight: "calc(100vh - 80px)",
           overflowY: "auto",
@@ -82,7 +87,6 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
           gap: "0px",
         }}
       >
-        {/* Header row: icon + skip button */}
         <div
           style={{
             display: "flex",
@@ -91,7 +95,6 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
             marginBottom: "clamp(12px, 2vw, 20px)",
           }}
         >
-          {/* Icon */}
           <div
             style={{
               width: "clamp(44px, 8vw, 56px)",
@@ -109,18 +112,22 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
             🔒
           </div>
 
-          {/* Skip button — top-right — fixes Apple guideline 2.1(a) */}
           <button
             id="ai-consent-skip-btn"
             onClick={handleSkip}
-            disabled={skipping || accepting}
-            aria-label="Skip consent screen"
+            disabled={busy || !acknowledgedHealth}
+            aria-label="Skip data-sharing details"
+            title={
+              acknowledgedHealth
+                ? "Skip agreeing to data-sharing details"
+                : "Acknowledge the health disclaimer first"
+            }
             style={{
               background: "none",
               border: "1px solid var(--border)",
               borderRadius: "10px",
               color: "var(--sub)",
-              cursor: "pointer",
+              cursor: busy || !acknowledgedHealth ? "not-allowed" : "pointer",
               fontSize: "clamp(12px, 2vw, 14px)",
               fontWeight: 600,
               padding: "8px 16px",
@@ -129,20 +136,19 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
               transition: "all 0.15s ease",
               flexShrink: 0,
               alignSelf: "center",
+              opacity: acknowledgedHealth ? 1 : 0.45,
             }}
           >
             {skipping ? "…" : "Skip"}
           </button>
         </div>
 
-        {/* Title */}
         <h2
           id="consent-modal-title"
           style={{
             fontSize: "clamp(18px, 3.5vw, 24px)",
             fontWeight: 700,
             color: "var(--text)",
-            marginBottom: "clamp(6px, 1vw, 10px)",
             lineHeight: 1.3,
             margin: "0 0 clamp(6px, 1vw, 10px) 0",
           }}
@@ -154,16 +160,59 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
           style={{
             fontSize: "clamp(13px, 2vw, 15px)",
             color: "var(--sub)",
-            marginBottom: "clamp(16px, 2.5vw, 24px)",
             lineHeight: 1.65,
             margin: "0 0 clamp(16px, 2.5vw, 24px) 0",
           }}
         >
-          SyntraIQ uses third-party AI services to generate responses. Please
-          review how your data is used before continuing.
+          SyntraIQ is a research and discovery app that uses third-party AI for
+          informational answers only. Please read the health disclaimer and how
+          your data is used before continuing.
         </p>
 
-        {/* What data is sent */}
+        {/* Guideline 1.4.1 — must be first, visible without scrolling on review devices */}
+        <div
+          role="note"
+          aria-label="Health and medical disclaimer"
+          style={{
+            background: "rgba(220, 80, 70, 0.10)",
+            border: "1.5px solid rgba(220, 80, 70, 0.45)",
+            borderRadius: "14px",
+            padding: "clamp(12px, 2.5vw, 18px) clamp(14px, 2.5vw, 20px)",
+            marginBottom: "clamp(10px, 1.5vw, 16px)",
+          }}
+        >
+          <p
+            style={{
+              fontSize: "clamp(13px, 2.1vw, 15px)",
+              fontWeight: 800,
+              color: "var(--text)",
+              margin: "0 0 8px 0",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            ⚕️ Not medical advice
+          </p>
+          <p
+            style={{
+              fontSize: "clamp(12px, 2vw, 14px)",
+              color: "var(--text)",
+              lineHeight: 1.6,
+              margin: 0,
+            }}
+          >
+            SyntraIQ is a <strong>research and information app</strong>,{" "}
+            <strong>not a medical device</strong>, and has not been cleared to
+            diagnose, treat, cure, or prevent any disease. AI answers may be
+            inaccurate and must not be used as medical, mental-health, or
+            treatment advice. <strong>Always seek a doctor&apos;s or licensed
+            professional&apos;s advice</strong> before making any health decision.
+            If you are in a medical or mental-health emergency, contact local
+            emergency services immediately.
+          </p>
+        </div>
+
         <div
           style={{
             background: "var(--bg)",
@@ -178,7 +227,6 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
               fontSize: "clamp(12px, 2vw, 14px)",
               fontWeight: 700,
               color: "var(--text)",
-              marginBottom: "clamp(8px, 1.5vw, 12px)",
               display: "flex",
               alignItems: "center",
               gap: 8,
@@ -220,7 +268,6 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
           </ul>
         </div>
 
-        {/* Who receives it */}
         <div
           style={{
             background: "var(--bg)",
@@ -235,7 +282,6 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
               fontSize: "clamp(12px, 2vw, 14px)",
               fontWeight: 700,
               color: "var(--text)",
-              marginBottom: "clamp(8px, 1.5vw, 12px)",
               display: "flex",
               alignItems: "center",
               gap: 8,
@@ -312,7 +358,6 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
             style={{
               fontSize: "clamp(11px, 1.8vw, 12px)",
               color: "var(--sub)",
-              marginTop: "clamp(10px, 1.5vw, 14px)",
               lineHeight: 1.55,
               margin: "clamp(10px, 1.5vw, 14px) 0 0 0",
             }}
@@ -322,23 +367,60 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
           </p>
         </div>
 
-        {/* Accept button */}
+        <label
+          htmlFor="health-disclaimer-ack"
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            marginBottom: "clamp(12px, 2vw, 16px)",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            id="health-disclaimer-ack"
+            type="checkbox"
+            checked={acknowledgedHealth}
+            onChange={(e) => setAcknowledgedHealth(e.target.checked)}
+            style={{
+              width: 20,
+              height: 20,
+              minWidth: 20,
+              marginTop: 2,
+              accentColor: "var(--accent)",
+              cursor: "pointer",
+            }}
+          />
+          <span
+            style={{
+              fontSize: "clamp(12px, 2vw, 14px)",
+              color: "var(--text)",
+              lineHeight: 1.55,
+            }}
+          >
+            I understand this app does <strong>not</strong> provide medical
+            advice, diagnosis, or treatment, and I will seek a doctor&apos;s
+            advice before making any health decisions.
+          </span>
+        </label>
+
         <button
           id="ai-consent-accept-btn"
           onClick={handleAccept}
-          disabled={accepting || skipping}
+          disabled={busy || !acknowledgedHealth}
           style={{
             width: "100%",
             padding: "clamp(13px, 2vw, 16px) 24px",
             borderRadius: "14px",
-            background: accepting
-              ? "rgba(199,168,105,0.5)"
-              : "var(--accent)",
+            background:
+              busy || !acknowledgedHealth
+                ? "rgba(199,168,105,0.45)"
+                : "var(--accent)",
             color: "#111",
             fontWeight: 700,
             fontSize: "clamp(14px, 2.2vw, 16px)",
             border: "none",
-            cursor: accepting || skipping ? "not-allowed" : "pointer",
+            cursor: busy || !acknowledgedHealth ? "not-allowed" : "pointer",
             marginBottom: "clamp(8px, 1.5vw, 12px)",
             transition: "all 0.2s ease",
             minHeight: "52px",
@@ -347,7 +429,6 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
           {accepting ? "Saving your preference…" : "I Understand & Agree to Continue"}
         </button>
 
-        {/* Learn more link */}
         <p
           style={{
             textAlign: "center",
@@ -356,7 +437,22 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
             margin: 0,
           }}
         >
-          Read our full{" "}
+          Read our{" "}
+          <button
+            onClick={() => navigateTo("/terms")}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--accent)",
+              cursor: "pointer",
+              textDecoration: "underline",
+              fontSize: "clamp(11px, 1.8vw, 13px)",
+              padding: 0,
+            }}
+          >
+            Terms
+          </button>
+          {" "}(§9 Wellness &amp; Health disclaimer) and{" "}
           <button
             onClick={() => navigateTo("/privacy")}
             style={{
@@ -371,7 +467,7 @@ export function AIDataConsentModal({ onAccept }: AIDataConsentModalProps) {
           >
             Privacy Policy
           </button>
-          {" "}to learn more about how your data is used.
+          .
         </p>
       </div>
 

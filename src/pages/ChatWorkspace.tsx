@@ -12,6 +12,8 @@ import { getUserData, onAuthChange, isLoggedIn, hasPaidPremiumPlan } from "../ut
 import { getLocalItem, removeLocalItem, setLocalItem, STORAGE_KEYS } from "../utils/storage";
 import type { Mode, AnswerResult, LLMModel, UploadedFile, ExperienceMode, Source } from "../types";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
+import { HealthWellnessDisclaimer } from "../components/HealthWellnessDisclaimer";
+import { supportsSleepHealthFeatures } from "../utils/platformFeatures";
 import {
   incrementDailyQueryCount,
   shouldEnforceQueryLimit,
@@ -548,7 +550,11 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
         q = FILE_ONLY_DEFAULT_QUERY;
       }
 
-      if (q && /\b(sleep disorder|sleep disorders|insomnia|can't sleep|cannot sleep|trouble sleeping)\b/i.test(q)) {
+      if (
+        supportsSleepHealthFeatures() &&
+        q &&
+        /\b(sleep disorder|sleep disorders|insomnia|can't sleep|cannot sleep|trouble sleeping)\b/i.test(q)
+      ) {
         if (!currentData?.bypassSleepDisorderRedirect) {
           navigateTo("/sleep-disorders");
           return;
@@ -1343,6 +1349,20 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                 isAnalyzePage ? undefined : () => setIsSidebarOpen(true)
               }
             />
+            {supportsSleepHealthFeatures() ? (
+              <HealthWellnessDisclaimer compact className="!mx-2 !mb-2" />
+            ) : (
+              <div
+                role="note"
+                className="mx-2 mb-2 px-3 py-2 text-[11px] leading-snug rounded-[10px] border border-[var(--border)]"
+                style={{ color: "var(--sub)", background: "rgba(199,168,105,0.06)" }}
+              >
+                <strong style={{ color: "var(--text)" }}>Research only: </strong>
+                SyntraIQ answers are for general information and may be inaccurate.
+                This is not medical, legal, or financial advice. Consult a qualified
+                professional for those decisions.
+              </div>
+            )}
           </div>
 
           <div

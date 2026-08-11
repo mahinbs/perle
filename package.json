@@ -1,6 +1,6 @@
 {
   "name": "perle-mobile",
-  "version": "3.0.2",
+  "version": "3.0.4",
   "description": "Elegant Perplexity-style mobile web app",
   "main": "index.js",
   "scripts": {

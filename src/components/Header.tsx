@@ -13,6 +13,7 @@ import {
   authFetch,
 } from "../utils/auth";
 import { onStorageChange } from "../utils/storage";
+import { supportsWellnessCompanionFeatures } from "../utils/platformFeatures";
 import type { DiscoverItem } from "../types";
 
 interface HeaderProps {
@@ -208,14 +209,16 @@ export const Header: React.FC<HeaderProps> = ({
           >
             AI Friend
           </button>
-          <button
-            type="button"
-            className="glass-button header-pill-btn"
-            onClick={() => navigateTo("/ai-psychology")}
-            aria-label="Wellness Chat"
-          >
-            Wellness Chat
-          </button>
+          {supportsWellnessCompanionFeatures() && (
+            <button
+              type="button"
+              className="glass-button header-pill-btn"
+              onClick={() => navigateTo("/ai-psychology")}
+              aria-label="Wellness Chat"
+            >
+              Wellness Chat
+            </button>
+          )}
         </div>
 
         <div className="header-actions-right">

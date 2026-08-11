@@ -48,6 +48,8 @@ import {
 import { getUserFriendlyErrorMessage } from "../utils/helpers";
 import { ChatDateDivider } from "../components/ChatDateDivider";
 import { AIDataConsentModal, hasAIConsent } from "../components/AIDataConsentModal";
+import { HealthWellnessDisclaimer } from "../components/HealthWellnessDisclaimer";
+import { supportsWellnessCompanionFeatures } from "../utils/platformFeatures";
 import { ReportAIResponseButton } from "../components/ReportAIResponseButton";
 
 interface Message {
@@ -1560,6 +1562,20 @@ export default function AIFriendPage() {
             </button> */}
           </div>
         </div>
+        {supportsWellnessCompanionFeatures() ? (
+          <HealthWellnessDisclaimer compact />
+        ) : (
+          <div
+            role="note"
+            className="mx-3 mb-2 px-3 py-2 text-[11px] leading-snug rounded-[10px] border border-[var(--border)]"
+            style={{ color: "var(--sub)", background: "rgba(199,168,105,0.06)" }}
+          >
+            <strong style={{ color: "var(--text)" }}>Companion chat only: </strong>
+            AI Friend is for casual conversation. It is not medical advice,
+            therapy, diagnosis, or treatment. Seek a qualified professional for
+            health decisions.
+          </div>
+        )}
       </div>
 
       {/* Messages Area */}

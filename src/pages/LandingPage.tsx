@@ -45,9 +45,9 @@ const FEATURES = [
   },
   {
     icon: <IoMdChatbubbles size={22} />,
-    title: "AI Friend & Wellness Chat",
+    title: "AI Friend",
     description:
-      "Warm companion chat and reflective wellness conversation — for everyday support, not medical or clinical care.",
+      "Warm companion chat with memory that feels human — for everyday conversation, not medical or clinical care.",
   },
   {
     icon: <IoMdBook size={22} />,

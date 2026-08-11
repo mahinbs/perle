@@ -27,6 +27,10 @@ import LandingPage from '../pages/LandingPage';
 import RefundCancellationPage from '../pages/RefundCancellationPage';
 import PaymentCallbackPage from '../pages/PaymentCallbackPage';
 import AdminPage from '../pages/AdminPage';
+import {
+  supportsSleepHealthFeatures,
+  supportsWellnessCompanionFeatures,
+} from '../utils/platformFeatures';
 
 // Set this to true to enable maintenance mode
 const MAINTENANCE_MODE = false;
@@ -44,6 +48,9 @@ export function AppRouter() {
     );
   }
 
+  const wellnessEnabled = supportsWellnessCompanionFeatures();
+  const sleepEnabled = supportsSleepHealthFeatures();
+
   return (
     <Routes>
       <Route
@@ -59,7 +66,12 @@ export function AppRouter() {
       <Route path="/library" element={<LibraryPage />} />
       <Route path="/spaces" element={<SpacesPage />} />
       <Route path="/ai-friend" element={<AIFriendPage />} />
-      <Route path="/ai-psychology" element={<AIPsychologyPage />} />
+      <Route
+        path="/ai-psychology"
+        element={
+          wellnessEnabled ? <AIPsychologyPage /> : <Navigate to="/app" replace />
+        }
+      />
       <Route path="/upgrade" element={<UpgradePlansPage />} />
       <Route path="/subscription" element={<SubscriptionPage />} />
       <Route path="/payment/callback" element={<PaymentCallbackPage />} />
@@ -76,7 +88,12 @@ export function AppRouter() {
       <Route path="/create" element={<MediaStudioPage />} />
       <Route path="/create-video" element={<MediaStudioPage />} />
       <Route path="/edit-images" element={<MediaStudioPage />} />
-      <Route path="/sleep-disorders" element={<SleepDisorderPage />} />
+      <Route
+        path="/sleep-disorders"
+        element={
+          sleepEnabled ? <SleepDisorderPage /> : <Navigate to="/app" replace />
+        }
+      />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/help" element={<HelpPage />} />
       <Route path="/contact" element={<ContactPage />} />
@@ -89,4 +106,3 @@ export function AppRouter() {
     </Routes>
   );
 }
-

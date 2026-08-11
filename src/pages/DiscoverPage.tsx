@@ -12,6 +12,13 @@ import {
 } from "../services/discoverService";
 import type { DiscoverItem } from "../types";
 import { IoIosArrowBack } from "react-icons/io";
+import { supportsWellnessCompanionFeatures } from "../utils/platformFeatures";
+
+const VISIBLE_DISCOVER_CATEGORIES = supportsWellnessCompanionFeatures()
+  ? DISCOVER_CATEGORIES
+  : DISCOVER_CATEGORIES.filter((category) => category !== "Health");
+
+const HEALTH_CATEGORY_BLOCKLIST = /health\s*care|mental\s*health|wellness|diagnos|treatment|therapy|medicine|medical/i;
 
 // Strip leftover markdown/scraped junk that may sneak in from raw Exa text.
 function sanitizeCardDescription(raw?: string): string {
@@ -270,7 +277,15 @@ export default function DiscoverPage() {
     selectedCategory
   )
     .filter(matchesSearch)
-    .filter((i) => isRealDiscoverImage(i.image) && !brokenImageIds.has(i.id));
+    .filter((i) => isRealDiscoverImage(i.image) && !brokenImageIds.has(i.id))
+    .filter((i) => {
+      if (supportsWellnessCompanionFeatures()) return true;
+      const mapped = i.category === "Health Care" ? "Health" : i.category;
+      if (mapped === "Health") return false;
+      return !HEALTH_CATEGORY_BLOCKLIST.test(
+        `${i.title || ""} ${i.description || ""} ${i.category || ""}`
+      );
+    });
 
   const forYouItems = getForYouNews(categoryItems).filter(
     (i) => isRealDiscoverImage(i.image) && !brokenImageIds.has(i.id)
@@ -392,7 +407,7 @@ export default function DiscoverPage() {
             }}
             className="no-scrollbar"
           >
-            {DISCOVER_CATEGORIES.map((category) => (
+            {VISIBLE_DISCOVER_CATEGORIES.map((category) => (
               <button
                 key={category}
                 type="button"

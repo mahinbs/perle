@@ -14,6 +14,7 @@ import { speakAnswerWithVoicePlan, stopVoiceSpeechOutput, warmSpeechSynthesis } 
 import { ensureMicrophonePermission } from "../utils/microphonePermission";
 import { Capacitor } from "@capacitor/core";
 import { NativeTts } from "../plugins/nativeTts";
+import { supportsSleepHealthFeatures } from "../utils/platformFeatures";
 import {
   getLocalItem,
   onStorageChange,
@@ -1628,6 +1629,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 View Gallery
               </span>
             </button>
+            {supportsSleepHealthFeatures() && (
             <button
               className="btn-ghost glass-button btn-shadow !font-normal"
               onClick={() => navigateTo("/sleep-disorders")}
@@ -1648,6 +1650,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                 Sleep tips
               </span>
             </button>
+            )}
           </div>
 
           {/* Desktop dropdown container */}
@@ -1848,6 +1851,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                   </span>
                 </button>
 
+                {supportsSleepHealthFeatures() && (
                 <button
                   className="btn-ghost glass-button btn-shadow"
                   onClick={() => {
@@ -1868,6 +1872,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
                     Sleep tips
                   </span>
                 </button>
+                )}
               </div>
               );
             })()}

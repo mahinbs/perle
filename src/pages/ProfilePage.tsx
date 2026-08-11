@@ -875,8 +875,8 @@ export default function ProfilePage() {
           AI safety notice
         </div>
         AI responses may be inaccurate. Do not rely on them for medical, mental-health, financial, or legal
-        decisions — they are not a substitute for a doctor's advice. Wellness Chat is for informational
-        support only and does not diagnose or treat. If you encounter inappropriate or harmful AI-generated
+        decisions — they are not a substitute for a doctor's advice. AI chat features are for informational
+        and conversational use only and do not diagnose or treat. If you encounter inappropriate or harmful AI-generated
         content, use the{" "}
         <strong style={{ color: "var(--text)" }}>Report</strong> button on the response — you
         can report it without leaving the app.
