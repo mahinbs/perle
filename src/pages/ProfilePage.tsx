@@ -860,26 +860,21 @@ export default function ProfilePage() {
         </button>
       </div>
 
-      {/* Always visible — Google Play AI-Generated Content policy disclaimer */}
+      {/* Always visible — Google Play AI-Generated Content policy disclaimer.
+          Kept minimal/unobtrusive (small grey text) so it stays compliant
+          without dominating the screen. */}
       <div
-        className="card glass-card"
+        role="note"
         style={{
-          padding: 16,
-          marginBottom: 20,
-          fontSize: "var(--font-sm)",
-          lineHeight: 1.5,
+          margin: "0 2px 16px",
+          fontSize: "11px",
+          lineHeight: 1.4,
           color: "var(--sub)",
+          opacity: 0.8,
         }}
       >
-        <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
-          AI safety notice
-        </div>
-        AI responses may be inaccurate. Do not rely on them for medical, mental-health, financial, or legal
-        decisions — they are not a substitute for a doctor's advice. AI chat features are for informational
-        and conversational use only and do not diagnose or treat. If you encounter inappropriate or harmful AI-generated
-        content, use the{" "}
-        <strong style={{ color: "var(--text)" }}>Report</strong> button on the response — you
-        can report it without leaving the app.
+        AI responses may be inaccurate and are general information only — not medical, legal, or financial
+        advice. Report inappropriate content with the Report button on any response.
       </div>
 
       {/* Authentication Section */}
