@@ -1,65 +1,80 @@
 /**
- * Visible medical / mental-health disclaimer for App Store Guideline 1.4.1.
- * Keep this on-screen for wellness-related features (not buried only in Terms).
+ * Minimal, unobtrusive AI/health disclaimer — kept for App Store Guideline 1.4.1
+ * and Google Play's AI-content policy, but styled like the small grey notices in
+ * ChatGPT / Gemini rather than a large coloured banner. Still on-screen (so it
+ * stays compliant) but visually quiet, and dismissible for the session so it
+ * never permanently occupies the chat.
  *
- * It can be dismissed to free up chat space, but the dismissal only lasts for
- * the current app session (module-level flag) — it re-appears the next time the
- * app is opened, so the disclaimer stays compliant while not permanently
- * occupying the screen.
+ * Variants pick the wording for the surface it sits on:
+ *   - "wellness"  (default) full health/wellness notice (AI Psychology, Sleep)
+ *   - "general"   normal chat / search — "AI can make mistakes" style line
+ *   - "companion" AI Friend casual-chat note
  */
 
 import { useState } from "react";
 
+type Variant = "wellness" | "general" | "companion";
+
 type HealthWellnessDisclaimerProps = {
   compact?: boolean;
   className?: string;
+  variant?: Variant;
   /** Show the close (×) button so users can dismiss it after reading. Default true. */
   dismissible?: boolean;
 };
 
-const DISCLAIMER_TEXT =
-  "For wellness and informational support only. This is not medical or mental-health advice, diagnosis, or treatment. Always seek a doctor's or licensed professional's advice before making health decisions. If you are in crisis, contact emergency services immediately.";
+const TEXTS: Record<Variant, string> = {
+  wellness:
+    "SyntraIQ is for wellness and informational support only — not medical or mental-health advice, diagnosis, or treatment. Seek a licensed professional before making health decisions; in a crisis, contact emergency services.",
+  general:
+    "SyntraIQ can make mistakes — answers are general information, not medical, legal, or financial advice.",
+  companion:
+    "AI Friend is for casual conversation — not medical advice, therapy, diagnosis, or treatment. Seek a qualified professional for health decisions.",
+};
 
 // Session-scoped: once dismissed, stays hidden until the app is relaunched.
-let dismissedThisSession = false;
+// Keyed per-variant so closing one surface doesn't hide a different one.
+const dismissedThisSession: Record<Variant, boolean> = {
+  wellness: false,
+  general: false,
+  companion: false,
+};
 
 export function HealthWellnessDisclaimer({
   compact = false,
   className = "",
+  variant = "wellness",
   dismissible = true,
 }: HealthWellnessDisclaimerProps) {
-  const [hidden, setHidden] = useState(dismissedThisSession);
+  const [hidden, setHidden] = useState(dismissedThisSession[variant]);
   if (hidden) return null;
 
   return (
     <div
       role="note"
-      aria-label="Health and wellness disclaimer"
+      aria-label="AI safety notice"
       className={`health-wellness-disclaimer ${className}`.trim()}
       style={{
-        margin: compact ? "0" : "0 12px 10px",
-        padding: compact ? "8px 10px" : "10px 12px",
-        borderRadius: "10px",
-        border: "1px solid rgba(199, 168, 105, 0.35)",
-        background: "rgba(199, 168, 105, 0.08)",
+        margin: compact ? "0" : "0 12px 8px",
+        padding: compact ? "2px 2px" : "4px 2px",
+        border: "none",
+        background: "transparent",
         color: "var(--sub)",
-        fontSize: compact ? "11px" : "12px",
-        lineHeight: 1.45,
+        fontSize: "10.5px",
+        lineHeight: 1.4,
+        opacity: 0.8,
         display: "flex",
         alignItems: "flex-start",
-        gap: "8px",
+        gap: "6px",
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <strong style={{ color: "var(--text)", fontWeight: 600 }}>Important: </strong>
-        {DISCLAIMER_TEXT}
-      </div>
+      <span style={{ flex: 1, minWidth: 0 }}>{TEXTS[variant]}</span>
       {dismissible && (
         <button
           type="button"
-          aria-label="Dismiss disclaimer"
+          aria-label="Dismiss notice"
           onClick={() => {
-            dismissedThisSession = true;
+            dismissedThisSession[variant] = true;
             setHidden(true);
           }}
           style={{
@@ -68,10 +83,10 @@ export function HealthWellnessDisclaimer({
             background: "transparent",
             color: "var(--sub)",
             cursor: "pointer",
-            fontSize: "16px",
+            fontSize: "14px",
             lineHeight: 1,
             padding: "0 2px",
-            marginTop: "-1px",
+            opacity: 0.9,
           }}
         >
           &times;
@@ -81,4 +96,4 @@ export function HealthWellnessDisclaimer({
   );
 }
 
-export const HEALTH_WELLNESS_DISCLAIMER_TEXT = DISCLAIMER_TEXT;
+export const HEALTH_WELLNESS_DISCLAIMER_TEXT = TEXTS.wellness;
