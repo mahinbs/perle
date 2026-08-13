@@ -1349,20 +1349,11 @@ export function ChatWorkspace({ variant = "home" }: ChatWorkspaceProps) {
                 isAnalyzePage ? undefined : () => setIsSidebarOpen(true)
               }
             />
-            {supportsSleepHealthFeatures() ? (
-              <HealthWellnessDisclaimer compact className="!mx-2 !mb-2" />
-            ) : (
-              <div
-                role="note"
-                className="mx-2 mb-2 px-3 py-2 text-[11px] leading-snug rounded-[10px] border border-[var(--border)]"
-                style={{ color: "var(--sub)", background: "rgba(199,168,105,0.06)" }}
-              >
-                <strong style={{ color: "var(--text)" }}>Research only: </strong>
-                SyntraIQ answers are for general information and may be inaccurate.
-                This is not medical, legal, or financial advice. Consult a qualified
-                professional for those decisions.
-              </div>
-            )}
+            <HealthWellnessDisclaimer
+              compact
+              variant={supportsSleepHealthFeatures() ? "wellness" : "general"}
+              className="!mx-2 !mb-2"
+            />
           </div>
 
           <div
