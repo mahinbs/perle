@@ -7,11 +7,13 @@ import { initPlatformInsets } from './utils/platformInsets'
 import { initMobileWebViewportLayout } from './utils/mobileWebViewport'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { registerAuthSessionListeners } from './utils/auth'
+import { initAnalytics } from './utils/analytics'
 
 migrateLegacyStorageKeys()
 initPlatformInsets()
 initMobileWebViewportLayout()
 registerAuthSessionListeners()
+initAnalytics()
 
 const app = (
   <ErrorBoundary>
