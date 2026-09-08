@@ -157,19 +157,21 @@ export default function ContactPage() {
             </div>
             <div>
               <div style={{ fontSize: "var(--font-xs)", opacity: 0.6 }}>Email</div>
-              <div style={{ fontSize: "var(--font-sm)" }}>support@syntraiq.com</div>
+              <a href="mailto:support@syntraiq.com" style={{ fontSize: "var(--font-sm)", color: "inherit", textDecoration: "none" }}>support@syntraiq.com</a>
             </div>
           </div>
           
+          {import.meta.env.VITE_SUPPORT_PHONE && (
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div className="glass-button" style={{ width: 40, height: 40, borderRadius: 12, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <IoMdCall size={20} color="var(--accent)" />
             </div>
             <div>
               <div style={{ fontSize: "var(--font-xs)", opacity: 0.6 }}>Phone</div>
-              <div style={{ fontSize: "var(--font-sm)" }}>+1 (555) 123-4567</div>
+              <a href={`tel:${import.meta.env.VITE_SUPPORT_PHONE}`} style={{ fontSize: "var(--font-sm)", color: "inherit", textDecoration: "none" }}>{import.meta.env.VITE_SUPPORT_PHONE}</a>
             </div>
           </div>
+          )}
 
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div className="glass-button" style={{ width: 40, height: 40, borderRadius: 12, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -177,7 +179,7 @@ export default function ContactPage() {
             </div>
             <div>
               <div style={{ fontSize: "var(--font-xs)", opacity: 0.6 }}>Location</div>
-              <div style={{ fontSize: "var(--font-sm)" }}>San Francisco, CA</div>
+              <div style={{ fontSize: "var(--font-sm)" }}>{(import.meta.env.VITE_SUPPORT_LOCATION as string) || "Bengaluru, India"}</div>
             </div>
           </div>
         </div>
